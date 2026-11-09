@@ -64,6 +64,10 @@ def run() -> int:
         os.environ["T0_FAKE_TORRENT"] = str(torrent)
 
         cfg = load_config()
+        if os.name == "nt":
+            # Windows 不能直接执行带 shebang 的 .py 脚本（WinError 193），
+            # 自检改用当前解释器显式启动假 CLI；只影响本自检，不改产品 CLI v1 契约。
+            cfg["launch"]["cli_argv"] = [sys.executable] + list(cfg["launch"]["cli_argv"])
         harness = Harness(cfg)
         harness.prepare()
         ctx = harness.context()

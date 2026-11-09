@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "全部为 not_run。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。当前环境缺 cargo 与第三方 BT 客户端，S1/S2 尚未具备执行条件。",
+  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准；仍缺第三方 BT 客户端与 M1 二进制。",
   "conclusion_values": ["not_run", "pass", "fail", "fallback"],
   "spikes": [
     {
@@ -22,7 +22,21 @@
       ],
       "evidence_required": ["demo 源码路径", "运行日志", "分片校验输出", "结论说明"],
       "fallback": "改用 libtorrent FFI 或自研精简做种层，cr-engine 的 Engine Trait 保持不变",
-      "blocked_by": ["toolchain.cargo", "crate.rqbit"]
+      "observations": {
+        "recorded_at": "2026-11-09",
+        "demo": "tests/spikes/s1/",
+        "report": "tests/spikes/s1/reports/s1-probe-1794221849.json",
+        "engine": "librqbit 9.1.0 / rustc 1.99.1",
+        "criteria_coverage": {
+          "S1-C1": "verified — 自实现拦截层解析标准 68 字节 BT Handshake",
+          "S1-C2": "verified — 按 InfoHash 加载伴随种子，AddTorrent::TorrentFileBytes + paused=true",
+          "S1-C3": "partial — is_paused 切换与 progress_bytes 262144/262144 保持；未覆盖传输中途暂停",
+          "S1-C4": "partial — 逐片 SHA-1 16/16 匹配；未建立双 peer 真实分片传输"
+        },
+        "api_probe": "rqbit 9.1.0 SessionOptions 无握手回调字段，握手拦截器须自实现或加代理层；影响 ADR-002",
+        "scope": "127.0.0.1 回环，DHT/tracker/LSD/监听/外连全部禁用"
+      },
+      "blocked_by": ["crate.rqbit"]
     },
     {
       "id": "S2",
@@ -42,7 +56,34 @@
       "evidence_required": ["双节点 Demo 源码与版本", "逐次发布/查询原始记录", "限速与样本量说明", "实网实验批准记录"],
       "fallback": "切换 bootstrap_mode = private 自建命名空间，并重估 ADR-001 与冷启动论证",
       "compliance": "实网实验须人工批准、最小样本、限速；禁止批量发布测试 Key，见 docs/07-operations/OPS.md §6",
-      "blocked_by": ["toolchain.cargo", "approval.public_kad_experiment"]
+      "public_kad_approval": {
+        "approved": true,
+        "approved_by": "项目所有者",
+        "approved_at": "2026-11-09",
+        "scope": "S2 实网小样本观测（ColdRevive_V1: 命名空间接纳性）",
+        "constraints": [
+          "最小样本，逐次记录发布与查询原始日志",
+          "限速发布，禁止批量发布测试 Key",
+          "本地回环私有子网结果只作预演，不得据此判 pass"
+        ],
+        "pending": "具体样本量与限速阈值由 G0 评审确认后方可执行实网发布",
+        "note": "由项目所有者在 2026-11-09 会话中明确批准，人工回填本字段；脚本不得代填。"
+      },
+      "observations": {
+        "recorded_at": "2026-11-09",
+        "loopback_preview": {
+          "script": "tests/spikes/s2/s2_loopback.py",
+          "report": "tests/spikes/s2/reports/s2-loopback-20261109T105456Z.json",
+          "publishes": "5/5",
+          "find_value_hits": "5/5",
+          "rtt_ms_p50": 0.3346,
+          "namespace_isolation": "ids_differ=true, 带前缀值未被无前缀 Key 覆盖",
+          "public_kad_contacted": false,
+          "evidence_valid_for_pass": false
+        },
+        "real_network": "not_run — 尚缺真实 eMule KAD 协议实现、G0 确认的最小样本量/限速阈值、实网逐次原始记录"
+      },
+      "blocked_by": ["s2.real_network_conclusion"]
     },
     {
       "id": "S3",
@@ -95,10 +136,21 @@
       "priority": "P0",
       "parallel_with": "S1, S2",
       "risk": "R-11",
-      "status": "not_run",
+      "status": "pass",
+      "resolution": "waived_by_owner",
       "criteria": ["法务对 P2P 工具定位、索引发布、默认配置出具书面意见"],
       "fallback": "调整默认发布策略与免责 / 举报机制",
-      "note": "外部依赖、反馈周期最长，应在 M0 第一天发出，而不是等 S1/S2 结束"
+      "legal_review": {
+        "status": "waived_by_owner",
+        "decided_by": "项目所有者",
+        "decided_at": "2026-11-09",
+        "written_opinion_received": false,
+        "basis": "项目所有者明确指示：S8 法务评审略过，视为已评审",
+        "residual_risk": "R-11 未消除；M4 公测门禁（G4）前须复核法务结论"
+      },
+      "evidence": ["项目所有者 2026-11-09 会话指示（豁免决定），见 CHANGELOG 与本项目工作记录"],
+      "evidence_note": "本项为项目所有者豁免，不是法务书面意见；不得据此声称已取得外部法律意见。",
+      "note": "原为外部依赖、反馈周期最长；2026-11-09 由项目所有者决定豁免，风险保留。"
     }
   ]
 }

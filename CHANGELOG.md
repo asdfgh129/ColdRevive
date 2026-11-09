@@ -2,6 +2,55 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.3] - 2026-11-09 — M0 首批实验产出：S1 最小 Demo 与 S2 回环预演
+
+### 新增
+
+- `tests/spikes/s1/`：**独立 Cargo 工程**（项目根仍无 `Cargo.toml`、`src/` 未动），依赖 librqbit 9.1.0。
+  本地回环串起 ColdRevive 的核心链路：拦截标准 68 字节 BT Handshake → 按 InfoHash 动态加载伴随种子
+  → `AddTorrent::TorrentFileBytes` + `paused=true` 按需实例化 → `unpause / pause / unpause`
+  → 16 片逐片 SHA-1 校验。机器可读报告落在 `reports/s1-probe-*.json`。
+- `tests/spikes/s2/s2_loopback.py`：私有 KAD 子网双节点预演，A 发布 5 个 `ColdRevive_V1:` 前缀 Key，
+  B `FIND_VALUE` 命中 5/5，RTT p50 0.33 ms，命名空间 ID 隔离通过。报告固定标注
+  `public_kad_contacted=false` 与 `evidence_valid_for_pass=false`。
+- `spikes.json` 为 S1 / S2 登记 `observations` 与报告路径，**`status` 仍为 `not_run`**。
+
+### 观测结论
+
+- **S1-C1 / C2 verified**：握手拦截与按需实例化成立。但源码探测发现 rqbit 9.1.0 的
+  `SessionOptions` 无握手回调字段，`session.rs::task_listener` 内部 `read_handshake()` 后直接按
+  InfoHash 查已管理 torrent，不暴露拦截点 → 握手拦截器须自实现或加代理层，**影响 ADR-002 选型论证**。
+- **S1-C3 / C4 partial**：`is_paused` 正常切换、`progress_bytes` 保持 262144/262144，逐片 SHA-1
+  16/16 匹配；但样本文件预先存在（位图始终完整），且未建立双 peer 真实分片传输。
+- **S2 仅为预演**：按 `S2.criteria` 第 4 条不得判 `pass`。实网结论还缺真实 eMule KAD 协议实现、
+  G0 评审确认的最小样本量与限速阈值、以及实网逐次原始记录。
+
+### 不变
+
+- 脚本禁止自动置 `pass`，S1 / S2 状态仍为 `not_run`；`CliAdapter.wired` 仍 `False`，
+  `--mode real` 仍 `BLOCKED`，T0 不构成 G1 门禁证据。
+- 未向公共 KAD 发布任何测试 Key；两个 Demo 全程 `127.0.0.1` 回环。
+
+## [2.4.2] - 2026-11-09 — M0 状态对齐：工具链就绪、S8 豁免、S2 批准与 Windows 兼容
+
+### 变更
+
+- 本机安装 Rust stable 1.99.1（`rustc` / `cargo` / `rustup`），MSVC 链接实测可用；`m0_preflight.py` 的 `toolchain.*` 检查转为 `[OK]`。
+- 修正因工具链落地而过期的「本机缺 `cargo`」表述：`ROADMAP §6`、`TEST §2.1`、`tests/e2e/t0/README.md §5`、`tests/spikes/README.md`、`spikes.json` 的 `status_note`；同步根 `README.md`、`tests/README.md`、`OPEN-QUESTIONS §3` 的实验状态。
+- **S8 法务评审**：项目所有者明确指示略过、视为已评审；在 `spikes.json` 登记 `status: pass` 与 `legal_review.status: waived_by_owner`，并如实标注 `written_opinion_received: false`。**未取得法务书面意见，R-11 风险保留，M4/G4 前须复核**；`m0_preflight.py` 的对应检查文案改为「书面意见或所有者豁免」。
+- **S2 实网实验**：项目所有者批准，人工回填 `spikes.json` 的 `public_kad_approval`（最小样本、限速、禁止批量发布测试 Key、逐次记录；样本量与限速阈值待 G0 评审确认）。`status` 仍为 `not_run`：本地回环预演不得判 `pass`，实网结论须基于真实小样本数据。
+- 修复 `t0_cli_selftest.py` 在 Windows 的 `WinError 193`：自检生成的 `fake-cli.py` 依赖 shebang 直接执行，Windows 不支持；改为在自检内用 `sys.executable` 显式启动，**不改产品 CLI v1 契约**。
+- 本机补装 Python `markdown` 依赖以支持 `scripts/build_docs.py`，重跑构建同步 `docs/index.html` 内嵌数据。
+
+### 验证
+
+- `m0_preflight.py`：阻塞 3 项 / 提醒 1 项，`G0 ready=False`；`cargo`、S2 批准、S8 登记均 `[OK]`。
+- `t0_cli_selftest.py`：6/6 通过（含 Windows 修复）；`t0_accept.py --self-test`：21/21 PASS 且 `evidence_valid=false`；`build_docs.py --check` 通过。
+
+### 不变
+
+- **技术路线零改动**：不创建根 `Cargo.toml`、不碰 `src/`；S1–S7 仍 `not_run`；`CliAdapter.wired` 仍 `False`；`--mode real` 仍 `BLOCKED`；T0 不构成 G1 门禁证据。
+
 ## [2.4.1] - 2026-11-09 — 托管到 GitHub 并发布在线文档站
 
 ### 变更

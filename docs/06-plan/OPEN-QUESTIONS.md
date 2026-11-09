@@ -38,9 +38,9 @@ updated: 2026-11-09
 
 ## 3. 立即下一步（M0 Spike 清单）
 
-1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S8** 八项验证，每项输出「通过 / 不通过 / 替代方案」结论。
-2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)。
-3. 完成首次法务评审（S8）与 [OPS §6](../07-operations/OPS.md) 红线确认。
+1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。
+2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
+3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。
 5. 回填 [RISK](../05-quality/RISK.md) 中各风险的概率/影响与等级。
 

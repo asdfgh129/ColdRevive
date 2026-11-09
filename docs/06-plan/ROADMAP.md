@@ -107,8 +107,11 @@ ColdRevive
 - 已完成：文档体系工程化（v2.4 自包含索引页，21 份 DOC + 10 份 ADR）、项目目录骨架、风险登记册、测试与计划基线。
 - 已就位：**[T0 双节点验收骨架](../../tests/e2e/t0/README.md)**（21 条用例、断言引擎、双实例编排、JSON 报告）+ **CLI v1 契约与 20 条真实观测映射**（`t0_cli.py` / `t0_cli_selftest.py`）+ **[M0 Spike 实验包](../../tests/spikes/README.md)**（S1–S8 判据、`spikes.json` 状态登记、`m0_preflight.py` 就绪度检查）。
 - 当前 `CliAdapter.wired = False`：`--mode real` 仍 `BLOCKED`（1 PASS / 20 BLOCKED，退出码 2），**不构成 G1 门禁证据**。接线清单见骨架 README §5，用例判据见 [TEST §2.1](../05-quality/TEST.md)。
-- 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1–S8 实验、法务评审。本机缺 `cargo` 与第三方 BT 客户端，S2 实网实验还需人工批准；`m0_preflight.py` 逐条列出阻塞项。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：S2 优先（否决产品定位）、S1 并行（否决架构）、S8 法务评审首日发出；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+- 工具链：`rustc` / `cargo` 1.99.1 已在本机安装（2026-11-09），`m0_preflight.py` 的工具链检查已转为 `[OK]`，S1 最小 Demo 具备执行条件。
+- 决策：S8 法务评审由项目所有者于 2026-11-09 决定豁免，登记为 `pass`（**未取得法务书面意见**，R-11 风险保留，M4 公测前复核）；S2 实网实验的人工批准已写入 `spikes.json` 的 `public_kad_approval`。
+- 已产出首批观测（2026-11-09）：[S1 最小 Demo](../../tests/spikes/s1/README.md)（握手拦截、按需实例化 `verified`；Pause-Resume、真实分片传输 `partial`）+ [S2 回环预演](../../tests/spikes/s2/README.md)（发布 5/5、`FIND_VALUE` 命中 5/5，按判据**不得判 `pass`**）；证据路径登记在 `spikes.json` 的 `observations`。S1 / S2 状态仍为 `not_run`。
+- 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1–S7 的完整/实网实验。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
+- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：S1（否决架构）与 S2（否决产品定位）并行推进，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 

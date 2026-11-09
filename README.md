@@ -11,7 +11,7 @@
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
 | 文档版本 | v2.4（索引页自包含 + T0 验收骨架 + CLI 契约与 M0 实验包） |
 | 验收骨架 | [T0 双节点 Demo](tests/e2e/t0/README.md) 已就位：CLI v1 契约与 20 条真实观测映射已落地，真实链路未接线，非 G1 证据 |
-| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1–S8 全部 `not_run`；`m0_preflight.py` 列出当前阻塞项 |
+| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1–S7 `not_run`、S8 已豁免 `pass`；`cargo` 已就绪，[S1 Demo](tests/spikes/s1/README.md) 与 [S2 回环预演](tests/spikes/s2/README.md) 已产出首批观测（均不构成 G0 结论），剩余阻塞见 `m0_preflight.py` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
 | 原始想法 | [docs/09-archive/chat.md](docs/09-archive/chat.md) |
 | 历史基线 | [docs/09-archive/ColdRevive-项目开发文档-v2.0.md](docs/09-archive/ColdRevive-项目开发文档-v2.0.md)（已废止，勿作为依据） |

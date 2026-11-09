@@ -152,9 +152,12 @@ def build_checks(cfg: dict[str, Any], spikes: dict[str, Any],
         bool(by_id["S2"].get("public_kad_approval")),
         {"note": "批准记录需人工写入 spikes.json 的 public_kad_approval 字段，脚本不得代填"},
         ["S2"])
-    add("approval.legal", "S8 法务评审已发出并收到书面意见",
-        bool(by_id["S8"].get("legal_review")),
-        {"note": "外部流程，非技术阻塞；应在 M0 第一天启动"},
+    legal = by_id["S8"].get("legal_review") or {}
+    add("approval.legal", "S8 法务结论已登记（书面意见或所有者豁免）",
+        bool(legal.get("status")),
+        {"status": legal.get("status", "未登记"),
+         "written_opinion_received": legal.get("written_opinion_received", False),
+         "note": "外部流程，非技术阻塞；豁免不等于取得书面法律意见"},
         ["S8"], severity="warn")
 
     net = probe_network() if probe else {"checked": False, "advisory_only": True,
@@ -209,9 +212,9 @@ def main() -> int:
         "blockers": [c["id"] for c in blockers],
         "warnings": [c["id"] for c in warnings],
         "next_actions": [
-            "安装 cargo（rustup）后可编译 S1 最小 Demo，核对 rqbit 的按需实例化 / 握手拦截能力",
-            "S2 实网小样本实验须先取得人工批准并限速；本地回环模拟只能作为预演",
-            "S8 法务评审为外部依赖，应立即发出，不要等 S1/S2 结束",
+            "cargo 已就绪：在 tests/spikes/s1/ 编译最小 Demo，核对 rqbit 的按需实例化 / 握手拦截能力",
+            "S2 实网小样本实验已获人工批准，仍须限速、最小样本并逐次记录；本地回环模拟只能作为预演",
+            "S8 已由项目所有者豁免登记；无书面法律意见，M4 公测前须复核 R-11",
             "安装任一第三方 BT 客户端并编译 M1 二进制后，才能把 CliAdapter.wired 置为 True",
         ],
     }

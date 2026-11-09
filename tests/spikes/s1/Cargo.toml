@@ -1,0 +1,15 @@
+[package]
+name = "coldrevive-s1-probe"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "ColdRevive M0 / S1: local-only probe for rqbit on-demand instantiation, pause-resume, handshake interception and per-piece SHA-1"
+
+[dependencies]
+librqbit = "9.1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }
+bytes = "1"
+sha1 = "0.10"
+serde_json = "1"
+hex = "0.4"
+anyhow = "1"
