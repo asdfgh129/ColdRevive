@@ -2,6 +2,33 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.5] - 2026-11-09 — 修复 T0 skeleton CI 断言与 S8 豁免的冲突
+
+### 变更
+
+- `.github/workflows/t0.yml` 的「M0 preflight must report blockers honestly」步骤：原断言
+  `all(s['status'] == 'not_run')` 与 2026-11-09 登记的 S8 项目所有者豁免（`pass`）冲突，
+  导致 `eccec2e` / `c7b065f` 两个提交的 T0 skeleton 工作流失败
+  （`AssertionError: Spike 结论不得由脚本自动置为 pass`）。Docs / Pages 同期为 success。
+- 改为**更严格的分级校验**：S1–S7 必须保持 `not_run`（脚本不得自动置 `pass`）；
+  唯一允许的非 `not_run` 是 S8，且须能从 `spikes.json` 追溯到
+  `resolution=waived_by_owner`、`legal_review.status=waived_by_owner`、
+  `written_opinion_received=false`、`residual_risk` 非空 —— 既不放宽其余 Spike 的结论入口，
+  也禁止把豁免包装成「已取得法务书面意见」。
+- 其余门禁不变：`g0_ready=false`、`t0_real_ready=false`、preflight 退出码 2、
+  stub 报告 `evidence_valid=false`、`--mode real` 仍 `BLOCKED`。
+
+### 验证
+
+- 本地以同一断言脚本跑 `m0_preflight.py --json`：通过，
+  blockers = `downloader.any` / `binaries.m1` / `t0.wired`。
+- 本修复提交后需确认 T0 skeleton 工作流转绿。
+
+### 不变
+
+- S8 仍为所有者豁免（无书面法务意见，R-11 保留）；S2 仍 `not_run`；未接触公共 KAD；
+  项目根仍无 `Cargo.toml`、`src/` 未动。
+
 ## [2.4.4] - 2026-11-09 — S2 实网排期与最小 eMule KAD 客户端（真实 wire 回环）
 
 ### 新增

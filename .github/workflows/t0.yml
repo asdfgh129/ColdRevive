@@ -37,8 +37,26 @@ jobs:
           r = json.load(open('/tmp/m0-preflight.json', encoding='utf-8'))
           assert r['g0_ready'] is False, 'M1 未实现时不得宣称 G0 就绪'
           assert r['t0_real_ready'] is False, '真实链路未接线时不得宣称就绪'
-          assert all(s['status'] == 'not_run' for s in r['spikes'].values()), \
-              'Spike 结论不得由脚本自动置为 pass'
+
+          # 除 S8 的项目所有者豁免外，Spike 结论只能由实验执行人依据实网证据手工回填；
+          # 脚本不得自动置 pass，S1–S7 必须保持 not_run。
+          allowed_manual = {'S8'}
+          for sid, s in r['spikes'].items():
+              status = s['status']
+              if sid in allowed_manual:
+                  assert status in ('not_run', 'pass'), sid + ' 状态异常: ' + status
+              else:
+                  assert status == 'not_run', sid + ' 结论不得由脚本自动置为 pass'
+
+          # S8 若登记为 pass，必须能追溯到所有者豁免，且不得伪造书面法务意见。
+          src = json.load(open('tests/spikes/spikes.json', encoding='utf-8'))
+          s8 = next(s for s in src['spikes'] if s['id'] == 'S8')
+          if s8['status'] == 'pass':
+              legal = s8.get('legal_review') or {}
+              assert s8.get('resolution') == 'waived_by_owner', 'S8 pass 必须登记为所有者豁免'
+              assert legal.get('status') == 'waived_by_owner', 'S8 法务状态必须标注豁免'
+              assert legal.get('written_opinion_received') is False, '不得伪造法务书面意见'
+              assert legal.get('residual_risk'), '豁免须保留 R-11 残余风险'
           print('OK: blockers =', r['blockers'])
           PY
 
