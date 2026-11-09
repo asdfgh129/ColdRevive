@@ -1,7 +1,7 @@
 # M0 Spike 实验包（tests/spikes/）
 
 > **状态：S1–S7 `not_run`；S8 已由项目所有者豁免登记为 `pass`（无书面意见）。** 本目录是「实验的准备与就绪度检查」，不是实验结果。
-> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P2 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环）已完成，实网 P3/P4 仍被 G0 参数与 bootstrap 门禁阻断。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
+> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P3 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环、LAN 互操作、`0xE5` 解包、tolerance 收敛）已完成；P4 门禁已解锁但仍**未执行**，须实验执行人显式运行。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
 
 ## 1. 定位与红线
 

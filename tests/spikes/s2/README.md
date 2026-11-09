@@ -9,14 +9,14 @@
 | 层 | 路径 | 作用 |
 | :--- | :--- | :--- |
 | L1 逻辑预演 | [`s2_loopback.py`](s2_loopback.py) | JSON 消息的私有子网双节点，只验流程与命名空间概念，**不是真实协议** |
-| L2 **真实 wire 闭环** | [`kad-mini/`](kad-mini/README.md) | 独立 Rust Cargo 工程，真实 `0xE4` Kademlia2 报文，BOOTSTRAP / HELLO / 迭代查找 / PUBLISH_KEY / SEARCH_KEY |
+| L2 **真实 wire 闭环** | [`kad-mini/`](kad-mini/README.md) | 独立零依赖 Rust Cargo 工程，真实 `0xE4` Kademlia2 报文 + `0xE5` zlib 解包，BOOTSTRAP / HELLO / 迭代查找 / PUBLISH_KEY / SEARCH_KEY |
 | L2.5 **真实客户端 LAN 互操作** | `kad-mini lan-probe` | RFC1918 内真实 eMule，只发 BOOTSTRAP / HELLO，验报文可解析性，**不发布 Key** |
 | L3 实网小样本 | `kad-mini live` | **未执行**；[PLAN.md](PLAN.md) 的 P0–P3 已完成，只差实验执行人显式执行 P4 |
 
 ```bash
 python3 tests/spikes/s2/s2_loopback.py                    # L1
 cd tests/spikes/s2/kad-mini && cargo test                 # L2 单测 7/7
-cd tests/spikes/s2/kad-mini && cargo run -- selftest      # L2 常量/编解码断言 29/29
+cd tests/spikes/s2/kad-mini && cargo run -- selftest      # L2 常量/编解码/zlib/门禁断言 37/37
 cd tests/spikes/s2/kad-mini && cargo run -- loopback      # L2 真实报文闭环
 cd tests/spikes/s2/kad-mini && cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>   # L2.5
 cd tests/spikes/s2/kad-mini && cargo run -- live --check  # L3 门禁检查（不发包）
@@ -68,6 +68,12 @@ BOOTSTRAP_REQ/RES → HELLO_REQ/RES → KADEMLIA2_REQ/RES (迭代查找)
 `kad-mini live --check` 带齐参数后现在会返回 `gate.passed=true`，但 **`--check` 永不发包**；
 只有实验执行人显式去掉 `--check` 并给出 `--attest-i-am-the-experiment-operator` 才会执行 P4。
 在此之前 `S2.status` 保持 `not_run`，公共 KAD 未被接触。
+
+**v2.4.7 已补齐 P4 前置实现**（详见 [PLAN.md §6](PLAN.md)）：`live` 发布前先迭代收敛到
+`SEARCHTOLERANCE` 邻域、跳过 HELLO、用 `bind_any()` 绑定公网 socket、解码 `0xE5` 压缩帧；
+`live_gate` 现在实际解析 bootstrap 并拒绝非公网 IPv4 / `lan-interop-probe-only` 清单。
+`cargo test` 7/7、`selftest` 37/37、`loopback` 5/5 发布 + 5/5 命中、0 协议错误均复验通过。
+**这些仍是预演，P4 未执行，公共 KAD 未被接触。**
 
 合规红线不变：人工批准、最小样本、限速、禁止批量发布测试 Key、bootstrap 由用户提供且仓库不内置。
 观测口径已按 [PROTO §2.0](../../../docs/04-protocol/PROTO.md) 与

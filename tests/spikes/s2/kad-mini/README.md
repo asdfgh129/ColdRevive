@@ -31,10 +31,11 @@ A(发布者)                 index(索引节点)              B(查询者)
 ```bash
 cd tests/spikes/s2/kad-mini
 cargo test                    # 7 个单测：SHA-1 向量、Tag/Contact/报文轮编、容差语义
-cargo run -- selftest         # 29 项协议常量与编解码断言，输出 JSON
+cargo run -- selftest         # 37 项协议常量 / 编解码 / zlib / 门禁断言，输出 JSON
 cargo run -- loopback         # 真实报文回环闭环，输出 JSON 报告
 cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>   # 真实客户端互操作探测，不发布 Key
-cargo run -- live --check     # 只检查实网门禁，不发送任何报文
+cargo run -- live --check --bootstrap <PUBLIC_LIST> --sample-size 3 --rate-limit 0.2 \
+                             --attest-i-am-the-experiment-operator   # 只检查实网门禁，不发送任何报文
 ```
 
 `lan-probe` 硬编码拒绝非私有地址（10/8、172.16/12、192.168/16、127/8），只发
@@ -49,7 +50,7 @@ cargo run -- live --check     # 只检查实网门禁，不发送任何报文
 | 常量 / 布局 | 值 | 源码路径 |
 | :--- | :--- | :--- |
 | 帧头 `OP_KADEMLIAHEADER` | `0xE4` | `src/include/protocol/Protocols.h` |
-| 压缩帧 `OP_KADEMLIAPACKEDPROT` | `0xE5`（本探针不支持） | 同上 |
+| 压缩帧 `OP_KADEMLIAPACKEDPROT` | `0xE5` + opcode + zlib(payload)，解码见 `src/inflate.rs` | `ClientUDPSocket.cpp` `OP_KADEMLIAPACKEDPROT` 分支（`uncompress(buffer+2, len-2)`） |
 | 帧结构 | `[0xE4][opcode][payload]` | `src/kademlia/net/KademliaUDPListener.cpp::ProcessPacket` |
 | `KADEMLIA_VERSION` | `0x08` | `src/include/protocol/kad2/Constants.h` |
 | `SEARCHTOLERANCE` | `16777216` (2^24) | `src/kademlia/kademlia/Defines.h` |
@@ -73,7 +74,7 @@ cargo run -- live --check     # 只检查实网门禁，不发送任何报文
 | 未实现 | 影响 |
 | :--- | :--- |
 | sender/receiver UDP key、RC4 混淆 | **刻意不实现**：源码核实表明 `0xE4` 明文帧不会被「因未加密」丢弃；key 只用于反 IP 欺骗与「已验证联系人」标记且绑定源 IP。`HELLO_RES` 对 kadVersion ≥ 6 才用 RC4，P4 流程跳过 HELLO |
-| `0xE5` zlib 压缩帧解码 | >200 字节响应会变成 `0xE5` + zlib；探针**能分类但不能解压**。LAN 实测同一节点会交替回 `0xE4` / `0xE5`；若 P4 中该桶占比过高，再追加 zlib 解码 |
+| `0xE5` zlib 压缩帧解码 | ✅ v2.4.7 已补齐：std-only `src/inflate.rs` 覆盖 stored / fixed / dynamic 三种 DEFLATE 块型并校验 Adler-32；`decode_wire()` 对 `0xE4` / `0xE5` 统一返回 `(opcode, payload)`，压缩帧不再被误记为协议层失败 |
 | 完整 routing zone 二叉树 / `nodes.dat` 持久化 / 防火墙检测 | 只有单索引节点，迭代查找只有一跳 |
 | `KADEMLIA_FIND_VALUE_MORE` 扩展查询 | 不支持扩大搜索宽度 |
 | 真实 KAD 节点身份校验、IP 反欺骗 | 回环环境不需要 |
@@ -107,9 +108,15 @@ cargo run -- live --check     # 只检查实网门禁，不发送任何报文
 `spikes.json` 的 `approved=true`、`pending` 已清除、`confirmed.sample_size` / `rate_limit_pps` 存在 ·
 用户提供 `--bootstrap FILE`（仓库不内置任何节点） · `--sample-size` / `--rate-limit`
 **必须与 G0 确认值逐项一致**（当前 3 / 0.2） · 硬上限 1..=10 与 (0, 1.0] 包/秒 ·
-`--attest-i-am-the-experiment-operator`。
+`--attest-i-am-the-experiment-operator` · bootstrap 清单必须**实际解析为公网可路由 IPv4**
+（v2.4.7：拒绝 RFC1918 / loopback / link-local / CGNAT / 组播 / 文档保留段，并拒绝
+`lan-interop-probe-only` 文件）。
 
-P3 已完成，因此带齐参数运行 `live --check` 会返回 `gate.passed=true`（**仍不发包**）；
+P4 发送前还会先用 `KADEMLIA2_REQ/RES` 最多 3 跳迭代收敛到 `SEARCHTOLERANCE` 邻域；
+找不到邻域节点就跳过该样本不发布。`live` 不发 `HELLO_REQ`，socket 用 `bind_any()`。
+
+P3 已完成，因此带齐参数 + 公网清单运行 `live --check` 会返回 `gate.passed=true`（**仍不发包**）；
+LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、退出码 2）；
 只有去掉 `--check` 才会真正执行 P4。详见 [../PLAN.md §2/§3](../PLAN.md)。
 
 ## 7. LAN 真实客户端互操作探测（2026-11-09）
@@ -122,6 +129,9 @@ P3 已完成，因此带齐参数运行 `live --check` 会返回 `gate.passed=tr
 | `HELLO_REQ (0x11)`，v8 / v7 | 均无响应（超时） |
 
 这直接支持第 6 条的决策：明文能被接受，问题在压缩帧与 HELLO 路径，而非 UDP key。
+v2.4.7 复验：新探测解出 `0xE4` 明文的 521 B payload / **20 个联系人**；
+此前捕获的真实 519 B `0xE5` 帧也经 `inflate.rs` 解出同样的 521 B payload（与 Python
+`zlib.decompress` 一致），证明压缩帧已可正确归类，不再污染 RISK R-02 的三桶计数。
 报告落在 `../reports/kad-lan-probe-*.json`（已忽略），固定
 `public_kad_contacted=false`、`evidence_valid_for_pass=false`、`publish_sent=false`。
 LAN 节点**不是公共 KAD 证据**，也禁止在其上发布测试 Key。

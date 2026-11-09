@@ -2,6 +2,40 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.7] - 2026-11-09 — P4 前置一致性修正（补齐实现与判据的错配）
+
+推送 [v2.4.6](tests/spikes/s2/PLAN.md) 后复核 `kad-mini live` 实现，发现四处会让 P4 产出假结论的
+错配。**只改 S2 spike 实现与其文档，不动协议设计基线**：`PROTOCOL_VERSION` 仍为 1、
+T0 golden files 不变、`S2.status` 仍为 `not_run`、**公共 KAD 未被接触**。
+
+### 修复
+
+| 错配 | 修复 |
+| :--- | :--- |
+| `live` 直接向 bootstrap 节点发布，违反 `S2.criteria` 第 2 条 | 发布前用 `KADEMLIA2_REQ/RES (0x21/0x29)` 最多 3 跳迭代收敛到 `SEARCHTOLERANCE = 2^24` 邻域；未收敛则记录 `skipped` 并跳过该样本，不制造必然被静默丢弃的无效发布 |
+| `live` 仍发 `HELLO_REQ`，与 `confirmed.protocol_scope`「跳过 HELLO」矛盾 | 移除 HELLO 交换；逐次记录 `hello=skipped_per_p4_protocol_scope` |
+| `0xE5` 压缩响应被当作「协议层失败」，污染 RISK R-02 三桶计数 | 新增零依赖 `tests/spikes/s2/kad-mini/src/inflate.rs`（zlib/DEFLATE，覆盖 stored / fixed / dynamic 块型、校验 Adler-32）；`decode_wire()` 统一处理 `0xE4` / `0xE5` |
+| `live_gate` 只数 `"ip"` 字段不校验地址；`live` 用 127.0.0.1 绑定 socket | 门禁实际解析清单并拒绝非公网 IPv4 / `lan-interop-probe-only`；`live` 改用 `bind_any()` |
+
+### 复验结果
+
+- `cargo test` **7/7**；`kad-mini selftest` **37/37**（新增 8 项：三种 DEFLATE 块型、Adler-32 拒绝、
+  非 KAD 拒绝、明文回归、公网/私有 IPv4 门禁）；`loopback` **5/5 发布 + 5/5 命中 + 84 条原始记录 + 0 协议错误**。
+- 真实 LAN eMule `BOOTSTRAP_RES` 解出 521 B payload / **20 个联系人**；此前捕获的
+  真实 519 B `0xE5` 帧经 `inflate.rs` 解出同样结果，与 Python `zlib.decompress` 一致。
+- `live --check`：公网清单 `gate.passed=true`；LAN 清单命中两条 blocker；无标记的 RFC1918 清单仍被
+  公网 IPv4 校验拦截。三条路径均 `public_kad_contacted=false`，**未发送任何报文**。
+- 修复了 v2.4.6 正常 `git push` 因本地代理 CONNECT 502 失败的问题（重试即成功）；Git Data API
+  兜底曾因 tree SHA 不一致在更新远端 ref **之前**中止，未产生任何远端副作用。
+  远端 `main` 的 tree 与本地 `e25b0f0` 完全一致（`eaad7a5b…`），三个 workflow 已复验。
+
+### 文档
+
+[PLAN.md §0/§1/§2/§3/§5/§6](tests/spikes/s2/PLAN.md)、[kad-mini/README.md](tests/spikes/s2/kad-mini/README.md)、
+[S2 README](tests/spikes/s2/README.md)、[tests/spikes/README.md](tests/spikes/README.md)、
+[ROADMAP](docs/06-plan/ROADMAP.md)、[TEST](docs/05-quality/TEST.md)、
+[OPEN-QUESTIONS](docs/06-plan/OPEN-QUESTIONS.md)、`spikes.json` 同步登记；`docs/index.html` 已重建。
+
 ## [2.4.6] - 2026-11-09 — 判据口径回写 + G0 参数确认 + LAN 互操作探测
 
 ### 变更：把判据口径改对（A）

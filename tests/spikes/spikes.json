@@ -86,7 +86,7 @@
         "tests/spikes/s2/reports/bootstrap.lan.local.json"
       ],
       "bootstrap_note": "两个本地文件均被 .gitignore 排除，仓库不含任何公共节点 IP；LAN 节点只用于互操作探测，禁止用于 live 发布",
-      "protocol_scope": "保持明文 0xE4，跳过 HELLO 路径；BOOTSTRAP/PUBLISH/SEARCH 的响应为明文或 0xE5 压缩帧，sender/receiver UDP key 与 RC4 不实现（见 PLAN.md §5）"
+      "protocol_scope": "保持明文 0xE4，跳过 HELLO 路径；BOOTSTRAP/PUBLISH/SEARCH 的响应为明文或 0xE5 压缩帧（v2.4.7 起由零依赖 inflate.rs 解码），sender/receiver UDP key 与 RC4 不实现（见 PLAN.md §5）"
     },
     "note": "由项目所有者在 2026-11-09 会话中明确批准并确认参数，人工回填本字段；脚本不得代填。kad-mini live_gate 会校验 CLI 参数必须与本 confirmed 值一致。"
   },
@@ -156,6 +156,27 @@
         "tests/spikes/s2/PLAN.md"
       ],
       "note": "只按源码核实结果修正 KAD 集成映射与观测口径，不改 §3 私有控制面 v1 字段，PROTOCOL_VERSION 保持 1，T0 golden 不变"
+    },
+    "p4_readiness_fixes": {
+      "recorded_at": "2026-11-09",
+      "version": "v2.4.7",
+      "note": "复核发现 live 实现与 v2.4.6 判据的四处错配并修复；均为实现层修正，不改变 S2.status，公共 KAD 未被接触",
+      "fixes": [
+        "发布前用 KADEMLIA2_REQ/RES 最多 3 跳迭代收敛到 SEARCHTOLERANCE 邻域，未收敛则跳过该样本不发布",
+        "移除与 confirmed.protocol_scope 冲突的 HELLO_REQ",
+        "新增零依赖 inflate.rs 解码 0xE5 zlib 帧，decode_wire 统一 0xE4/0xE5，避免压缩帧误记协议层失败",
+        "live_gate 实际解析 bootstrap 并拒绝非公网 IPv4 与 lan-interop-probe-only；live 改用 bind_any()"
+      ],
+      "validation": {
+        "cargo_test": "7/7",
+        "selftest": "37/37",
+        "loopback": "5/5 publishes, 5/5 hits, 84 raw records, 0 protocol errors",
+        "real_0xE5_frame": "519 B packed BOOTSTRAP_RES -> 521 B payload / 20 contacts (matches python zlib.decompress)",
+        "lan_bootstrap_live_check": "gate.passed=false (scope marker + non-public IPv4), no packets sent",
+        "private_bootstrap_live_check": "gate.passed=false (non-public IPv4), no packets sent",
+        "public_bootstrap_live_check": "gate.passed=true, no packets sent"
+      },
+      "evidence_valid_for_pass": false
     },
     "real_network": "not_run — P0–P3 已完成（协议实现、G0 确认参数、bootstrap 清单、明文口径决策齐备）；仅剩 P4 由实验执行人显式执行 live（不带 --check）并产出逐次原始记录"
   },

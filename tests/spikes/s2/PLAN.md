@@ -15,10 +15,10 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
 | 128-bit / 160-bit Key | KAD ID 空间 **128-bit**；[PROTO §1](../../../docs/04-protocol/PROTO.md) 原定义 `Target_Key = SHA1(...)` 是 **160-bit** | ✅ PROTO §1/§2.0 已定义 `KAD_ID(x) = x[0..16]`；截断规则仍标「暂定待 ADR」 |
 | `ColdRevive_V1:` 前缀 | 线上传输的是 128-bit **哈希 ID**，不是字符串；前缀只影响本地哈希输入 | ✅ `S2.criteria` 已改为「Key 空间不互相覆盖」，不再观测「前缀是否被接纳」 |
 | KAD = 通用 KV | KAD 存的是「关键词 ID → (文件 ID, Tag 列表)」索引，`PUBLISH_KEY_REQ (0x43)` 的 Value 必须编码成 Tag | ✅ PROTO §2 已把 `Node_Descriptor` 定义为 Tag 列表 |
-| 发布到 bootstrap 节点即可 | `Process2PublishKeyRequest` 有 `SEARCHTOLERANCE = 2^24` 距离校验，越界**静默丢弃、无响应** | 必须先做 `KADEMLIA2_REQ/RES (0x21/0x29)` 迭代查找，定位 tolerance zone 内节点 |
+| 发布到 bootstrap 节点即可 | `Process2PublishKeyRequest` 有 `SEARCHTOLERANCE = 2^24` 距离校验，越界**静默丢弃、无响应** | 必须先做 `KADEMLIA2_REQ/RES (0x21/0x29)` 迭代查找，定位 tolerance zone 内节点；✅ v2.4.7 已在 `live` 实现（最多 3 跳，未收敛则跳过该样本、不发布） |
 | 命名空间 Key 派生 | L1 预演取 SHA-256 前 16 字节，L2 探针取 SHA-1 前 16 字节，均非协议规定 | 两层 Key ID 不可直接比较；最终 160-bit → 128-bit 映射规则须由 ADR / PROTO 定稿 |
 | 明文 UDP / UDP key | `ClientUDPSocket.cpp` 对首字节 `0xE4` 直接放行；`PacketTracking.cpp` 的 key 形参实际未启用；key 为 `(m_key, m_ip)` 且绑定源 IP | **明文不会被「因为没加密」而静默丢弃**；key 只用于反 IP 欺骗与「已验证联系人」标记，且不能从 `nodes.dat` 跨主机复制 |
-| 响应帧形态 | >200 字节响应改 `0xE5` + zlib；`SendMyDetails` 对 kadVersion ≥ 6 才用 RC4 加密 `HELLO_RES` | 实测同一 LAN 节点对 `BOOTSTRAP_REQ` 交替回 `0xE4` 明文与 `0xE5` 压缩帧；实网流程跳过 HELLO，`BOOTSTRAP/PUBLISH/SEARCH` 的响应发送端均传 `cryptTargetID = NULL` |
+| 响应帧形态 | >200 字节响应改 `0xE5` + zlib；`SendMyDetails` 对 kadVersion ≥ 6 才用 RC4 加密 `HELLO_RES` | 实测同一 LAN 节点对 `BOOTSTRAP_REQ` 交替回 `0xE4` 明文与 `0xE5` 压缩帧；实网流程跳过 HELLO，`BOOTSTRAP/PUBLISH/SEARCH` 的响应发送端均传 `cryptTargetID = NULL`；✅ v2.4.7 已实现 zlib 解码，两种帧统一走 `decode_wire()` |
 
 协议依据固定为 aMule `master` @ `6a1105634d81242a581a0f36a7e00379b12a83f3`，
 逐条出处见 [kad-mini/README.md](kad-mini/README.md)。**不引用二手资料的 opcode 表**：
@@ -30,10 +30,10 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
 | 阶段 | 交付物 | 退出条件 | 状态 |
 | :--- | :--- | :--- | :--- |
 | **P0** 协议核实 | opcode / 帧头 / Contact / Tag / 距离校验 / 版本号的源码级依据 | 每个常量能指向 aMule 源码行 | ✅ 2026-11-09 |
-| **P1** Wire codec | `kad-mini/src/wire.rs`：Kademlia2 帧编解码、128-bit ID、XOR 距离、命名空间 Key 派生、Tag 编解码 | `kad-mini selftest` 全绿，含轮编与已知 SHA-1 向量 | ✅ 2026-11-09 |
+| **P1** Wire codec | `kad-mini/src/wire.rs` + `src/inflate.rs`（std-only zlib/DEFLATE）：Kademlia2 帧编解码、128-bit ID、XOR 距离、命名空间 Key 派生、Tag 编解码、`0xE5` 解包 | `kad-mini selftest` **37/37** 全绿，含三种 DEFLATE 块型与真实 `0xE5` 帧验证 | ✅ 2026-11-09（v2.4.7 补解码） |
 | **P2** 本地真实报文闭环 | `kad-mini loopback`：BOOTSTRAP → HELLO → 迭代查找 → PUBLISH_KEY/RES → SEARCH_KEY/RES，全程 `0xE4` 真实报文 | 报告 `public_kad_contacted=false`、命中率与逐次原始记录完整 | ✅ 2026-11-09 |
 | **P3** 实网门禁与参数 | 用户提供的 bootstrap 节点清单、G0 确认的最小样本量与限速阈值、`pending` 项清除 | `spikes.json` 的 `public_kad_approval` 不再含 `pending`；`kad-mini live --check` 通过 | ✅ 2026-11-09（见 §3） |
-| **P4** 实网小样本执行 | 逐次发布/查询原始记录、成功率、RTT 分布、丢弃/拒绝观测 | 由实验执行人依据证据人工回填 `S2.status` | ⏳ **未执行**；门禁已解锁，须显式运行 `live`（不带 `--check`）才会发包 |
+| **P4** 实网小样本执行 | 逐次发布/查询原始记录、成功率、RTT 分布、丢弃/拒绝观测 | 由实验执行人依据证据人工回填 `S2.status` | ⏳ **未执行**；门禁已解锁且 v2.4.7 已补齐 P4 前置实现，须显式运行 `live`（不带 `--check`）才会发包 |
 
 ## 2. 红线（不可通过参数绕过）
 
@@ -47,6 +47,13 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
 6. **逐次原始记录**：每个收发报文记录时间戳、方向、opcode、完整十六进制、来源/目的地址，落盘后才发下一个包。
 7. **不自动置 `pass`**：程序只产出观测；结论由实验执行人手工回填 `spikes.json`。
 8. **本地回环不得判 `pass`**：报告固定写 `public_kad_contacted=false` 与 `evidence_valid_for_pass=false`。
+9. **bootstrap 必须是公网可路由 IPv4**（v2.4.7）：`live_gate` 实际解析清单并拒绝 RFC1918 / loopback /
+   link-local / CGNAT / 组播 / 文档保留段，也拒绝带 `lan-interop-probe-only` 标记的文件；
+   防止把 LAN 节点当成实网目标发布。
+10. **未收敛不发布**（v2.4.7）：`live` 先以 `KADEMLIA2_REQ/RES` 迭代定位 `SEARCHTOLERANCE`
+    邻域节点；找不到就跳过该样本并记录 `skipped`，不制造必然被静默丢弃的无效发布。
+11. **跳过 HELLO、绑定通配地址**（v2.4.7）：与 `confirmed.protocol_scope` 一致，`live` 不发
+    `HELLO_REQ`；socket 改用 `bind_any()`，否则 127.0.0.1 绑定的 socket 根本无法向公网发包。
 
 ## 3. P3 项目所有者确认清单（2026-11-09 全部完成）
 
@@ -62,6 +69,10 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
 > P3 完成**不等于** P4 已执行。`kad-mini live --check` 只报告门禁状态、不发包；
 > 实网发布必须由实验执行人显式去掉 `--check` 并给出 `--attest-i-am-the-experiment-operator`。
 > 在此之前 `S2.status` 保持 `not_run`，公共 KAD 未被接触。
+
+v2.4.7 实测门禁：公网 bootstrap 清单 + 完整参数 → `gate.passed=true`（不发包）；
+LAN 清单 → 同时命中「`lan-interop-probe-only` 标记」与「非公网地址」两条 blocker；
+无标记的 RFC1918 清单 → 仍被公网 IPv4 校验拦截。三条路径均 `public_kad_contacted=false`。
 
 ## 4. 与既有文档的关系
 
@@ -100,7 +111,26 @@ tests/spikes/s2/reports/bootstrap.lan.local.json     # 仅 LAN 节点，供互�
 
 **这就是不补 sender/receiver UDP key 的实测依据**：明文请求能拿到明文响应，
 问题集中在「压缩帧解析」和「HELLO 路径」两处，而 P4 的发布/查询链路可以绕开 HELLO。
-若 P4 发现 `0xE5` 帧占比过高导致无法判定，再按 P1 追加 zlib 解码（工作量远小于移植 RC4 + key 协商）。
+v2.4.7 已追加 std-only 的 `src/inflate.rs`（zlib/DEFLATE，覆盖 stored / fixed / dynamic
+三种块型），并用此前捕获的**真实 519 B `0xE5` 帧**验证：解出 521 B `BOOTSTRAP_RES` payload、
+20 个联系人，与 Python `zlib.decompress` 一致。自此 `0xE5` 不再落入「协议层不可解析」桶。
+RC4 + key 协商仍刻意不实现（工作量远大于 zlib，且 P4 链路用不到）。
 
 **LAN 节点不是 S2 的实网证据**：它是私有子网上的单机，按 `S2.criteria` 第 5 条只作预演；
 且若它同时连着公共 KAD，向其发布测试 Key 可能被转发到公共网络，因此明文规定禁止在 LAN 上发布。
+
+## 6. v2.4.7 P4 前置一致性修正（2026-11-09）
+
+v2.4.6 把 `S2.criteria` 改对了，但复核 `kad-mini live` 实现时发现**四处会让 P4 产出假结论**的错配，
+已全部修复并复验：
+
+| 错配 | 后果 | 修复 |
+| :--- | :--- | :--- |
+| `live` 直接向 bootstrap 节点 `PUBLISH_KEY_REQ` | 违反 `criteria` 第 2 条，越界发布被静默丢弃，会把「必然的协议行为」误记为「索引层拒绝」 | 发布前用 `KADEMLIA2_REQ/RES` 最多 3 跳迭代收敛到 `SEARCHTOLERANCE` 邻域；未收敛则跳过该样本并记录 `skipped` |
+| `live` 仍发 `HELLO_REQ` | 与 `confirmed.protocol_scope`「跳过 HELLO」矛盾；v7/v8 的 RC4 `HELLO_RES` 必然超时 | 移除 HELLO 交换，逐次记录 `hello=skipped_per_p4_protocol_scope` |
+| `0xE5` 压缩帧被当作「协议层失败」 | LAN 实测约半数 `BOOTSTRAP_RES` 是压缩帧，会把正常响应计入失败桶 | 新增 std-only `inflate.rs`，`decode_wire()` 统一处理 `0xE4`/`0xE5`；selftest 37/37，真实帧解码验证通过 |
+| `live_gate` 只数 `"ip"` 字段，不校验地址 | `bootstrap.lan.local.json` 能通过门禁；`Client::bind` 还把 socket 绑在 127.0.0.1，根本发不出去 | 门禁实际解析并拒绝非公网 IPv4 / `lan-interop-probe-only`；`live` 改用 `bind_any()` |
+
+复验结果：`cargo test` 7/7、`selftest` 37/37、`loopback` 5/5 发布 + 5/5 命中 + 84 条原始记录 + 0 协议错误、
+真实 LAN `BOOTSTRAP_RES` 解出 20 个联系人、公网清单 `live --check` 放行 / LAN 清单拒绝（均不发包）。
+**P4 仍未执行**，`S2.status` 仍为 `not_run`，公共 KAD 未被接触。

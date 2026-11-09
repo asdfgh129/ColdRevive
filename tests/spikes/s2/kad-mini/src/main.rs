@@ -12,14 +12,15 @@
 //! HARD RULE: this binary never contacts a non-loopback address unless every
 //! gate in `live_gate()` passes. See tests/spikes/s2/PLAN.md.
 
+mod inflate;
 mod sha1;
 mod wire;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io;
-use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -189,6 +190,90 @@ fn rec(endpoint: &str, dir: &str, peer: &str, data: &[u8], detail: &str) -> Reco
     }
 }
 
+/// Decode either an unpacked `0xE4` frame or a zlib-packed `0xE5` frame.
+/// aMule layout (src/ClientUDPSocket.cpp, `OP_KADEMLIAPACKEDPROT` branch):
+/// `[0xE5][opcode][zlib(payload)]`; the inflated bytes are the KAD payload
+/// only, i.e. exactly what `parse_frame()` would return for a plaintext frame.
+fn decode_wire(data: &[u8]) -> Result<(u8, Vec<u8>), String> {
+    match data.first().copied() {
+        Some(PROTO_KAD) => {
+            let (op, payload) = parse_frame(data)?;
+            Ok((op, payload.to_vec()))
+        }
+        Some(PROTO_KAD_PACKED) => {
+            if data.len() < 3 {
+                return Err("0xE5 frame too short".into());
+            }
+            let op = data[1];
+            let payload = inflate::zlib_decode(&data[2..])
+                .map_err(|e| format!("0xE5 inflate failed: {e}"))?;
+            Ok((op, payload))
+        }
+        Some(p) => Err(format!("non-KAD frame 0x{p:02x} (likely RC4 obfuscated)")),
+        None => Err("empty datagram".into()),
+    }
+}
+
+/// Reject anything that is not a routable public IPv4 address. P4 must never
+/// publish a test Key to a LAN / loopback / reserved peer (PLAN §5).
+fn is_global_ipv4(ip: impl Into<IpAddr>) -> bool {
+    let o = match ip.into() {
+        IpAddr::V4(v4) => v4.octets(),
+        IpAddr::V6(_) => return false, // this spike is IPv4-only
+    };
+    if o[0] == 0 || o[0] == 10 || o[0] == 127 || o[0] >= 224 {
+        return false; // 0/8, private, loopback, multicast + reserved
+    }
+    if o[0] == 169 && o[1] == 254 {
+        return false; // link-local
+    }
+    if o[0] == 172 && (16..=31).contains(&o[1]) {
+        return false; // RFC1918
+    }
+    if o[0] == 192 && o[1] == 168 {
+        return false; // RFC1918
+    }
+    if o[0] == 100 && (64..=127).contains(&o[1]) {
+        return false; // RFC6598 CGNAT
+    }
+    if (o[0] == 192 && o[1] == 0 && o[2] == 2)
+        || (o[0] == 198 && o[1] == 51 && o[2] == 100)
+        || (o[0] == 203 && o[1] == 0 && o[2] == 113)
+        || (o[0] == 198 && (o[1] == 18 || o[1] == 19))
+    {
+        return false; // documentation / benchmarking ranges
+    }
+    true
+}
+
+fn contact_addr(c: &Contact) -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::new(c.ip[0], c.ip[1], c.ip[2], c.ip[3]), c.udp))
+}
+
+/// Selftest-only hex decoder (the crate has no hex crate dependency).
+fn unhex(text: &str) -> Vec<u8> {
+    let b = text.as_bytes();
+    (0..b.len() / 2)
+        .map(|i| {
+            let h = |c: u8| -> u8 {
+                match c {
+                    b'0'..=b'9' => c - b'0',
+                    b'a'..=b'f' => c - b'a' + 10,
+                    b'A'..=b'F' => c - b'A' + 10,
+                    _ => 0,
+                }
+            };
+            (h(b[2 * i]) << 4) | h(b[2 * i + 1])
+        })
+        .collect()
+}
+
+fn packed_frame(zlib_hex: &str) -> Vec<u8> {
+    let mut f = vec![PROTO_KAD_PACKED, op::BOOTSTRAP_RES];
+    f.extend_from_slice(&unhex(zlib_hex));
+    f
+}
+
 // ------------------------------------------------------------- rate limiter --
 
 struct Limiter {
@@ -276,18 +361,10 @@ impl Client {
         let t0 = Instant::now();
         let (_, data) = self.recv(recv_detail)?;
         let rtt = t0.elapsed().as_secs_f64() * 1000.0;
-        let (op, payload) = parse_frame(&data).map_err(|e| {
-            if data.first() == Some(&PROTO_KAD_PACKED) {
-                io::Error::other("packed 0xE5 response (zlib); kad-mini has no zlib decoder")
-            } else if data.first().is_some_and(|p| *p != PROTO_KAD) {
-                io::Error::other(format!(
-                    "non-KAD frame 0x{:02x} (likely RC4 obfuscated)",
-                    data.first().copied().unwrap_or(0)
-                ))
-            } else {
-                io::Error::other(e)
-            }
-        })?;
+        // Both 0xE4 plaintext and 0xE5 zlib-packed responses are valid KAD
+        // replies. Misclassifying a packed frame as a protocol failure would
+        // corrupt the RISK R-02 three-bucket observation semantics.
+        let (op, payload) = decode_wire(&data).map_err(io::Error::other)?;
         if op != expected {
             return Err(io::Error::other(format!(
                 "expected opcode 0x{expected:02x} ({}), got 0x{op:02x} ({})",
@@ -295,7 +372,7 @@ impl Client {
                 opcode_name(op)
             )));
         }
-        Ok((payload.to_vec(), rtt))
+        Ok((payload, rtt))
     }
 }
 
@@ -850,7 +927,7 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
         let sent_hex = sha1::hex(&frame);
         let reply = client.recv("lan-probe: response");
         let rtt = t0.elapsed().as_secs_f64() * 1000.0;
-        let (class, opcode, recv_hex, recv_len, from) = match reply {
+        let (class, opcode, recv_hex, recv_len, from, dec_ok, dec_payload, dec_contacts) = match reply {
             Ok((from, data)) => {
                 let proto = data.first().copied().unwrap_or(0x00);
                 let op = data.get(1).copied().unwrap_or(0xFF);
@@ -865,9 +942,18 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
                 } else {
                     "non_kad_likely_rc4_obfuscated"
                 };
-                (cls, op, sha1::hex(&data), data.len(), from.to_string())
+                // Decode both frame shapes with the same path used by `live`.
+                let (ok, plen, contacts) = match decode_wire(&data) {
+                    Ok((_, payload)) => (
+                        true,
+                        payload.len(),
+                        parse_bootstrap_res(&payload).map(|r| r.contacts.len()).unwrap_or(0),
+                    ),
+                    Err(_) => (false, 0, 0),
+                };
+                (cls, op, sha1::hex(&data), data.len(), from.to_string(), ok, plen, contacts)
             }
-            Err(_) => ("timeout_no_datagram", 0xFF, String::new(), 0, dest.to_string()),
+            Err(_) => ("timeout_no_datagram", 0xFF, String::new(), 0, dest.to_string(), false, 0, 0),
         };
         attempts.push(J::Obj(vec![
             ("probe".to_string(), s(label)),
@@ -877,6 +963,9 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
             ("response_opcode".to_string(), s(format!("0x{opcode:02X}"))),
             ("response_bytes".to_string(), n(recv_len as f64)),
             ("response_hex".to_string(), s(recv_hex)),
+            ("decoded_ok".to_string(), b(dec_ok)),
+            ("decoded_payload_bytes".to_string(), n(dec_payload as f64)),
+            ("decoded_bootstrap_contacts".to_string(), n(dec_contacts as f64)),
             ("rtt_ms".to_string(), n(rtt)),
             ("peer".to_string(), s(from)),
         ]));
@@ -895,7 +984,7 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
         ("rate_limit_pps", n(rate)),
         ("attempts", J::Arr(attempts)),
         ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
-        ("note", s("只用 BOOTSTRAP/HELLO 探测真实 eMule 客户端的报文可解析性；不发布任何 Key，不能作为 S2 公共 KAD 结论证据。")),
+        ("note", s("只用 BOOTSTRAP/HELLO 探测真实 eMule 客户端的报文可解析性；0xE4 与 0xE5(zlib) 帧均解码并记录 decoded_* 字段；不发布任何 Key，不能作为 S2 公共 KAD 结论证据。")),
     ]))
 }
 
@@ -965,11 +1054,37 @@ fn live_gate(args: &LiveArgs) -> (bool, Vec<String>, Vec<String>) {
         None => blockers.push("缺少 --bootstrap <file>；按 OPS §6 禁止内置默认 bootstrap 列表".into()),
         Some(p) => match fs::read_to_string(p) {
             Ok(text) => {
-                let count = text.matches("\"ip\"").count();
-                if count == 0 {
-                    blockers.push(format!("{} 中没有可用的 bootstrap 节点", p.display()));
-                } else {
-                    info.push(format!("bootstrap_nodes={count} (user supplied)"));
+                // A LAN interop file is explicitly forbidden for live publishing:
+                // that peer may itself be connected to public KAD (PLAN §5).
+                if text.contains("lan-interop-probe-only") {
+                    blockers.push(format!(
+                        "{} 标记为 lan-interop-probe-only：禁止向 LAN 节点发布测试 Key",
+                        p.display()
+                    ));
+                }
+                match parse_bootstrap_file(&text) {
+                    Ok(nodes) if nodes.is_empty() => {
+                        blockers.push(format!("{} 中没有可解析的 bootstrap 节点", p.display()));
+                    }
+                    Ok(nodes) => {
+                        let bad: Vec<String> = nodes
+                            .iter()
+                            .filter(|a| !is_global_ipv4(a.ip()))
+                            .map(|a| a.ip().to_string())
+                            .collect();
+                        if !bad.is_empty() {
+                            blockers.push(format!(
+                                "bootstrap 含非公网地址（RFC1918 / loopback / 保留段），禁止 live 发布: {}",
+                                bad.join(", ")
+                            ));
+                        }
+                        info.push(format!(
+                            "bootstrap_nodes={} (user supplied, parsed; public-IPv4 validation {})",
+                            nodes.len(),
+                            if bad.is_empty() { "passed" } else { "FAILED" }
+                        ));
+                    }
+                    Err(e) => blockers.push(format!("bootstrap 文件解析失败 {}: {e}", p.display())),
                 }
             }
             Err(e) => blockers.push(format!("无法读取 bootstrap 文件 {}: {e}", p.display())),
@@ -1030,10 +1145,10 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
     }
     let sample = args.sample_size.unwrap();
     let rate = args.rate_limit.unwrap();
-    let mut client = Client::bind("live-probe", node_id("live-probe"))
+    // A 127.0.0.1-bound socket cannot send to public peers; bind_any() also
+    // sets the 3 s read timeout. (Client::bind is loopback-only by design.)
+    let mut client = Client::bind_any("live-probe", node_id("live-probe"))
         .map_err(|e| format!("bind live socket: {e}"))?;
-    client.sock.set_read_timeout(Some(Duration::from_secs(3)))
-        .map_err(|e| format!("timeout: {e}"))?;
     let mut limiter = Limiter::new(rate);
     let mut attempts = Vec::new();
 
@@ -1045,37 +1160,106 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
             ("logical", s(*logical)),
             ("key_id", s(id_hex(&key))),
             ("bootstrap", s(dest.to_string())),
+            // P4 protocol_scope: keep plaintext, skip HELLO, no UDP key / RC4.
+            ("hello", s("skipped_per_p4_protocol_scope")),
         ];
 
-        // BOOTSTRAP_REQ -> BOOTSTRAP_RES (may be silently dropped by real nodes)
+        // BOOTSTRAP_REQ -> BOOTSTRAP_RES (plaintext 0xE4 or zlib-packed 0xE5).
         let boot = client.exchange(
             dest, &bootstrap_req(), op::BOOTSTRAP_RES,
             "live: bootstrap request", "live: bootstrap response", &mut limiter,
         );
         fields.push(("bootstrap_res", b(boot.is_ok())));
-        if let Ok((p, rtt)) = &boot {
-            fields.push(("bootstrap_rtt_ms", n(*rtt)));
-            fields.push(("bootstrap_contacts", n(parse_bootstrap_res(p).map(|r| r.contacts.len()).unwrap_or(0) as f64)));
-        } else {
-            fields.push(("bootstrap_error", s(boot.as_ref().err().unwrap().to_string())));
+        let mut known: Vec<Contact> = Vec::new();
+        match &boot {
+            Ok((p, rtt)) => {
+                fields.push(("bootstrap_rtt_ms", n(*rtt)));
+                match parse_bootstrap_res(p) {
+                    Ok(r) => {
+                        fields.push(("bootstrap_contacts", n(r.contacts.len() as f64)));
+                        known = r.contacts;
+                    }
+                    Err(e) => {
+                        fields.push(("bootstrap_contacts", n(0.0)));
+                        fields.push(("bootstrap_parse_error", s(format!("BOOTSTRAP_RES: {e}"))));
+                    }
+                }
+            }
+            Err(e) => fields.push(("bootstrap_error_or_drop", s(e.to_string()))),
         }
 
-        // HELLO_REQ -> HELLO_RES
-        let hello_frame = hello(
-            op::HELLO_REQ,
-            &Contact { id: client.id, ip: [127, 0, 0, 1], udp: client.addr().port(), tcp: client.addr().port(), version: KAD_VERSION },
-            &[],
-        );
-        let hi = client.exchange(dest, &hello_frame, op::HELLO_RES, "live: hello request", "live: hello response", &mut limiter);
-        fields.push(("hello_res", b(hi.is_ok())));
+        // S2.criteria #2: converge into the SEARCHTOLERANCE zone with
+        // KADEMLIA2_REQ/RES (0x21/0x29) BEFORE publishing. A publish sent to an
+        // arbitrary bootstrap node outside the zone is silently dropped by
+        // Process2PublishKeyRequest, which would produce a false "rejection".
+        let zone_candidate = |contacts: &[Contact]| -> Option<Contact> {
+            contacts.iter().find(|c| {
+                c.udp != 0
+                    && top_chunk(&c.id, &key) <= SEARCHTOLERANCE
+                    && is_global_ipv4(contact_addr(c).ip())
+            }).cloned()
+        };
+        let mut seen: HashSet<SocketAddr> = HashSet::new();
+        let mut hops = 0usize;
+        let mut in_zone = zone_candidate(&known);
+        while in_zone.is_none() && hops < 3 {
+            let candidates: Vec<Contact> = closest(&key, &known, 2)
+                .into_iter().cloned().collect();
+            if candidates.is_empty() {
+                break;
+            }
+            let mut learned: Vec<Contact> = Vec::new();
+            for c in candidates {
+                let addr = contact_addr(&c);
+                if c.udp == 0 || !is_global_ipv4(addr.ip()) || !seen.insert(addr) {
+                    continue;
+                }
+                let req = find_node_req(&key, &c.id, ALPHA_QUERY as u8);
+                match client.exchange(
+                    addr, &req, op::RES,
+                    "live: KADEMLIA2_REQ (tolerance iteration)",
+                    "live: KADEMLIA2_RES", &mut limiter,
+                ) {
+                    Ok((p, _)) => {
+                        if let Ok(r) = parse_find_node_res(&p) {
+                            learned.extend(r.contacts);
+                        }
+                    }
+                    // Raw record is already kept; this is a protocol-layer
+                    // no-response, NOT an index-layer rejection (RISK R-02).
+                    Err(_) => {}
+                }
+            }
+            hops += 1;
+            for c in learned {
+                if !known.iter().any(|k| k.id == c.id) {
+                    known.push(c);
+                }
+            }
+            in_zone = zone_candidate(&known);
+        }
+        let tolerance_reached = in_zone.is_some();
+        let publish_target = in_zone.as_ref().map(contact_addr).unwrap_or(dest);
+        fields.push(("iteration_hops", n(hops as f64)));
+        fields.push(("known_contacts", n(known.len() as f64)));
+        fields.push(("tolerance_reached", b(tolerance_reached)));
+        fields.push(("publish_target", s(publish_target.to_string())));
 
-        // PUBLISH_KEY_REQ -> PUBLISH_RES
+        if !tolerance_reached {
+            fields.push(("publish_res", b(false)));
+            fields.push(("hit", b(false)));
+            fields.push(("skipped", s("no contact inside SEARCHTOLERANCE; publishing would be silently dropped (S2.criteria #2)")));
+            attempts.push(J::Obj(fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect()));
+            continue;
+        }
+
+        // PUBLISH_KEY_REQ -> PUBLISH_RES, targeted at the tolerance-zone node.
         let entry = IndexEntry {
             source_id: node_id(&format!("live-descriptor-{i}")),
             tags: descriptor_tags(logical, "live-probe", client.addr().port()),
         };
         let publ = client.exchange(
-            dest, &publish_key_req(&key, &[entry.clone()]), op::PUBLISH_RES,
+            publish_target, &publish_key_req(&key, &[entry.clone()]), op::PUBLISH_RES,
             "live: publish namespaced Key", "live: publish response", &mut limiter,
         );
         fields.push(("publish_res", b(publ.is_ok())));
@@ -1088,7 +1272,7 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
 
         // SEARCH_KEY_REQ -> SEARCH_RES
         let srch = client.exchange(
-            dest, &search_key_req(&key), op::SEARCH_RES,
+            publish_target, &search_key_req(&key), op::SEARCH_RES,
             "live: search namespaced Key", "live: search response", &mut limiter,
         );
         let hit = match &srch {
@@ -1119,7 +1303,8 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
         ("rate_limit_pps", n(rate)),
         ("attempts", J::Arr(attempts)),
         ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
-        ("note", s("程序不自动置 pass；结论由实验执行人依据逐次原始记录手工回填 spikes.json。")),
+        ("protocol_scope", s("plaintext 0xE4 / zlib-packed 0xE5 decoded; HELLO skipped; no UDP key / RC4")),
+        ("note", s("发布前先做 KADEMLIA2_REQ/RES 迭代收敛到 SEARCHTOLERANCE 邻域；未收敛则跳过该样本而不发布。程序不自动置 pass；结论由实验执行人依据逐次原始记录手工回填 spikes.json。")),
     ]))
 }
 
@@ -1301,8 +1486,59 @@ fn run_selftest() -> Result<J, String> {
     // frame
     let f = frame(op::BOOTSTRAP_REQ, &[]);
     checks.push(("frame.bootstrap", f == vec![0xE4, 0x01], "0xE4 + opcode"));
-    checks.push(("frame.reject_packed", parse_frame(&[0xE5, 0x01]).is_err(), "0xE5 unsupported"));
+    checks.push(("frame.reject_packed", parse_frame(&[0xE5, 0x01]).is_err(), "parse_frame only handles 0xE4; decode_wire handles 0xE5"));
     checks.push(("frame.reject_other", parse_frame(&[0xC5, 0x01]).is_err(), "not KAD"));
+
+    // zlib / packed 0xE5 frames. Three vectors cover all DEFLATE block types.
+    // BTYPE 0 (stored) is assembled here instead of embedding 300 bytes of hex.
+    let mut z_stored: Vec<u8> = vec![0x78, 0x01, 0x01, 0x2c, 0x01, 0xd3, 0xfe];
+    z_stored.extend(std::iter::repeat(b'A').take(300));
+    z_stored.extend_from_slice(&[0xcb, 0x9e, 0x4c, 0x2d]); // Adler-32 of 300 x 'A'
+    let mut f_stored = vec![PROTO_KAD_PACKED, op::BOOTSTRAP_RES];
+    f_stored.extend_from_slice(&z_stored);
+    checks.push((
+        "packed.btype0_stored",
+        decode_wire(&f_stored).map(|(o, p)| o == op::BOOTSTRAP_RES && p == vec![b'A'; 300]).unwrap_or(false),
+        "RFC 1951 stored block + RFC 1950 Adler-32",
+    ));
+    checks.push((
+        "packed.btype1_fixed_huffman",
+        decode_wire(&packed_frame("780173cecf49094a2dcb2c4b8d0f33b472c6c303004cc70f3a"))
+            .map(|(o, p)| o == op::BOOTSTRAP_RES && p == b"ColdRevive_V1:".repeat(3)).unwrap_or(false),
+        "RFC 1951 fixed Huffman",
+    ));
+    checks.push((
+        "packed.btype2_dynamic_huffman",
+        decode_wire(&packed_frame("78daedcc410ac2301040d1abcc155a44c59045a93b772eba95b69945a0644232f4fc7a0de1af1fbcd98ef4d6339ffa598687bca6a76c66debdad559af66aa5abec567cdd5d8edc3d48b1a4710a52ad79bc5c6f63909ce230deb7fcd3999191919191919191919191919191919191f1efc72fcb338197"))
+            .map(|(_, p)| p.len() == 4920 && p.starts_with(b"ColdRevive_V1: KAD bootstrap")).unwrap_or(false),
+        "RFC 1951 dynamic Huffman + back-references",
+    ));
+    let mut corrupted = f_stored.clone();
+    let last = corrupted.len() - 1;
+    corrupted[last] ^= 0xFF;
+    checks.push(("packed.adler32_mismatch_rejected", decode_wire(&corrupted).is_err(), "RFC 1950 trailer"));
+    checks.push(("packed.non_kad_rejected", decode_wire(&[0xC5, 0x09, 0x00]).is_err(), "likely RC4 obfuscated"));
+    let plain = bootstrap_res(&Contact {
+        id: node_id("selftest"), ip: [127, 0, 0, 1], udp: 4672, tcp: 4662, version: KAD_VERSION,
+    }, &[]);
+    checks.push(("packed.plaintext_still_decodes", decode_wire(&plain).is_ok(), "0xE4 regression"));
+
+    // live gate must refuse private / reserved bootstrap targets (PLAN §5)
+    checks.push((
+        "gate.private_ipv4_rejected",
+        !is_global_ipv4(Ipv4Addr::new(10, 0, 0, 1))
+            && !is_global_ipv4(Ipv4Addr::new(172, 16, 0, 1))
+            && !is_global_ipv4(Ipv4Addr::new(192, 168, 1, 1))
+            && !is_global_ipv4(Ipv4Addr::new(127, 0, 0, 1))
+            && !is_global_ipv4(Ipv4Addr::new(169, 254, 1, 1))
+            && !is_global_ipv4(Ipv4Addr::new(100, 64, 0, 1)),
+        "RFC1918 / loopback / link-local / CGNAT",
+    ));
+    checks.push((
+        "gate.public_ipv4_accepted",
+        is_global_ipv4(Ipv4Addr::new(8, 8, 8, 8)) && is_global_ipv4(Ipv4Addr::new(1, 1, 1, 1)),
+        "routable unicast",
+    ));
 
     // contact is 25 bytes
     let c = Contact { id: node_id("A"), ip: [127, 0, 0, 1], udp: 4672, tcp: 4662, version: KAD_VERSION };
