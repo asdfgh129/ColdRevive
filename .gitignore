@@ -1,0 +1,50 @@
+# ColdRevive .gitignore
+
+# Rust / Cargo
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock.bak
+
+# 文档构建产物（由 scripts/build_docs.py 生成，不纳入版本控制）
+docs/**/*.html
+!docs/index.html
+
+# 本地运行数据与索引库
+*.db
+*.db-wal
+*.db-shm
+/coldrevive.toml
+/config/local.toml
+/data/
+/logs/
+
+# 共享目录（用户内容，绝不入库）
+/Shared/
+/shared/
+
+# 编辑器与系统
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# T0 验收运行产物（由 tests/e2e/t0/ 脚本生成，不纳入版本控制）
+tests/e2e/t0/.run/
+tests/e2e/t0/reports/*
+!tests/e2e/t0/reports/.gitkeep
+tests/fixtures/t0/sample/*
+!tests/fixtures/t0/sample/.gitkeep
+
+# M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
+tests/spikes/reports/*
+!tests/spikes/reports/.gitkeep
+
+# 本地智能体工作记忆（仅本机，不进入公开仓库）
+.workbuddy/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/

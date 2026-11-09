@@ -1,0 +1,72 @@
+name: T0 skeleton
+
+on:
+  push:
+    paths: ['tests/e2e/t0/**', 'tests/fixtures/t0/**', 'tests/spikes/**', '.github/workflows/t0.yml']
+  pull_request:
+    paths: ['tests/e2e/t0/**', 'tests/fixtures/t0/**', 'tests/spikes/**', '.github/workflows/t0.yml']
+  workflow_dispatch:
+
+jobs:
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Compile T0 and M0 scripts
+        run: python3 -m py_compile tests/e2e/t0/*.py tests/spikes/*.py
+
+      - name: Harness self-check
+        run: python3 tests/e2e/t0/t0_harness.py --self-check
+
+      - name: Observation layer must not fabricate values
+        run: python3 tests/e2e/t0/t0_cli_selftest.py
+
+      - name: M0 preflight must report blockers honestly
+        run: |
+          set +e
+          python3 tests/spikes/m0_preflight.py --json > /tmp/m0-preflight.json
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          python3 - <<'PY'
+          import json
+          r = json.load(open('/tmp/m0-preflight.json', encoding='utf-8'))
+          assert r['g0_ready'] is False, 'M1 未实现时不得宣称 G0 就绪'
+          assert r['t0_real_ready'] is False, '真实链路未接线时不得宣称就绪'
+          assert all(s['status'] == 'not_run' for s in r['spikes'].values()), \
+              'Spike 结论不得由脚本自动置为 pass'
+          print('OK: blockers =', r['blockers'])
+          PY
+
+      - name: Stub self-test must pass without claiming G1 evidence
+        run: |
+          python3 tests/e2e/t0/t0_accept.py --self-test
+          python3 - <<'PY'
+          import glob, json
+          path = sorted(glob.glob('tests/e2e/t0/reports/*-stub.json'))[-1]
+          report = json.load(open(path, encoding='utf-8'))
+          assert report['evidence_valid'] is False, 'stub 结果不得标记为门禁证据'
+          assert report['summary']['failed'] == 0
+          assert report['summary']['passed'] == report['summary']['total']
+          print('OK:', report['summary']['passed'], 'PASS, evidence_valid=false')
+          PY
+
+      - name: Real mode stays BLOCKED until M1 wiring
+        run: |
+          set +e
+          python3 tests/e2e/t0/t0_accept.py --mode real > /tmp/t0-real.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          grep -q 'BLOCKED' /tmp/t0-real.log
+          echo "OK: real mode blocked with exit code 2"
+
+      - name: Upload T0 reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coldrevive-t0-reports
+          path: tests/e2e/t0/reports/

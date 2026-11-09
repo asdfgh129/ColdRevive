@@ -1,0 +1,74 @@
+{
+  "suite": "T0",
+  "schema": "coldrevive.t0.config/v1",
+  "description": "单机回环双守护进程实例（A 持有者 / B 请求方），G1 门禁的最快反馈环境。所有阈值取自 TEST.md 与 SRS.md，不在本文件另立标准。",
+  "bind": "127.0.0.1",
+  "nodes": {
+    "A": {
+      "role": "holder",
+      "http_port": 16800,
+      "wake_udp_port": 16801,
+      "bt_port": 16802
+    },
+    "B": {
+      "role": "requester",
+      "http_port": 16900,
+      "wake_udp_port": 16901,
+      "bt_port": 16902
+    }
+  },
+  "timeouts_sec": {
+    "startup": 10,
+    "wake": 1.5,
+    "download": 120,
+    "index": 30,
+    "teardown": 5
+  },
+  "thresholds": {
+    "wake_p95_ms": 3000,
+    "revival_success_rate": 1.0,
+    "wake_sample_count": 30
+  },
+  "fixture": {
+    "filename": "coldrevive-t0-sample.bin",
+    "size_bytes": 262144,
+    "seed": 20261109,
+    "keywords": ["coldrevive", "t0", "sample"]
+  },
+  "protocol": {
+    "version": 1,
+    "namespace": "ColdRevive_V1:",
+    "challenge_window_sec": 300
+  },
+  "paths": {
+    "fixtures": "tests/fixtures/t0",
+    "sample_dir": "tests/fixtures/t0/sample",
+    "golden_dir": "tests/fixtures/t0/golden",
+    "workdir": "tests/e2e/t0/.run",
+    "reports": "tests/e2e/t0/reports"
+  },
+  "bin": {
+    "daemon_env": "COLDREVIVE_DAEMON",
+    "cli_env": "COLDREVIVE_CLI",
+    "downloader_env": "T0_DOWNLOADER"
+  },
+  "launch": {
+    "schema": "coldrevive.t0.cli-contract/v1",
+    "status": "proposed-v1 — M1 定稿时确认；观测实现见 tests/e2e/t0/t0_cli.py，契约说明见 README.md §5.1",
+    "_note": "CLI v1 契约提案，已替换原占位。契约变更须同步 t0_cli.py 的 OBSERVE_PLAN 与 README §5.1，并经 G0 评审。",
+    "daemon_argv": ["{daemon}", "--config", "{config}", "--node-id", "{node}", "--bind", "{bind}", "--http-port", "{http_port}", "--wake-port", "{wake_udp_port}", "--bt-port", "{bt_port}"],
+    "cli_argv": ["{cli}", "--json", "--node", "{node}", "{command}"],
+    "health_path": "/health",
+    "response": "stdout 输出单个 JSON 对象；非 0 退出码或非法 JSON 一律判观测不可用，不得降级为合成值",
+    "commands": {
+      "inspect": "file <hash> | index <hash> | kad | state <hash> | torrent <hash>",
+      "find": "<keyword>",
+      "wake": "probe <hash> <infohash> | ack <hash> <infohash>",
+      "scenario": "loopback | file-gone | bad-challenge | not-whitelisted | hash-mismatch | holder-offline | nonce-replay | bad-version（后接 <hash>）",
+      "metrics": "wake-latency <n> | revival <n>",
+      "download": "<magnet>",
+      "golden": "verify v1",
+      "env": "defaults"
+    }
+  }
+}

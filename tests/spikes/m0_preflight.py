@@ -1,0 +1,246 @@
+#!/usr/bin/env python3
+"""ColdRevive M0 就绪度检查（preflight）。
+
+只回答一个问题：**现在这台机器能不能开始做 S1 / S2 和 T0 真实验收？**
+不执行任何 Spike，不接触公共 KAD，不产出技术结论，也绝不把「未运行」写成「通过」。
+
+    python3 tests/spikes/m0_preflight.py
+    python3 tests/spikes/m0_preflight.py --probe-network   # 可选：仅探测依赖源可达性
+
+退出码：0 = 全部就绪；2 = 存在阻塞（当前环境必然为 2）；1 = 脚本自身错误。
+报告落在 tests/spikes/reports/，不纳入版本控制。
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+T0_DIR = ROOT / "tests" / "e2e" / "t0"
+REPORT_DIR = HERE / "reports"
+SPIKES_JSON = HERE / "spikes.json"
+
+DOWNLOADERS = ("qbittorrent-nox", "transmission-cli", "aria2c")
+BIN_ENV = ("COLDREVIVE_DAEMON", "COLDREVIVE_CLI", "T0_DOWNLOADER")
+
+
+def which_version(name: str, timeout: float = 3.0) -> dict[str, Any]:
+    """返回命令是否可用及版本首行；不把「能执行」误判为「能力通过」。"""
+    path = shutil.which(name)
+    if not path:
+        return {"available": False, "path": "", "version": ""}
+    version = ""
+    try:
+        r = subprocess.run([path, "--version"], capture_output=True, text=True,
+                           timeout=timeout, check=False)
+        version = (r.stdout or r.stderr).strip().splitlines()[0][:120] if (r.stdout or r.stderr) else ""
+    except (OSError, subprocess.TimeoutExpired, IndexError):
+        version = "(版本查询超时或失败)"
+    return {"available": True, "path": path, "version": version}
+
+
+def check_ports(cfg: dict[str, Any]) -> dict[str, Any]:
+    problems: list[str] = []
+    bind = cfg["bind"]
+    for node, spec in cfg["nodes"].items():
+        for key in ("http_port", "wake_udp_port", "bt_port"):
+            kind = socket.SOCK_DGRAM if key == "wake_udp_port" else socket.SOCK_STREAM
+            s = socket.socket(socket.AF_INET, kind)
+            try:
+                s.bind((bind, int(spec[key])))
+            except OSError as exc:
+                problems.append(f"{node}.{key}={spec[key]} 不可绑定: {exc}")
+            finally:
+                s.close()
+    return {"available": not problems, "problems": problems, "bind": bind}
+
+
+def check_binaries() -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for env in BIN_ENV:
+        raw = os.environ.get(env, "").strip()
+        out[env] = {
+            "set": bool(raw),
+            "value": raw,
+            "exists": bool(raw) and Path(raw).is_file(),
+        }
+    return out
+
+
+def check_observer_layer() -> dict[str, Any]:
+    """观测采集层是否已实现；注意 wired 是独立的接线开关，必须单独报告。"""
+    if str(T0_DIR) not in sys.path:
+        sys.path.insert(0, str(T0_DIR))
+    result: dict[str, Any] = {"plan_available": False, "plan_size": 0,
+                              "wired": None, "import_error": ""}
+    try:
+        import t0_cli  # noqa: F401
+        plan = getattr(t0_cli, "OBSERVE_PLAN", {})
+        result.update(plan_available=bool(plan), plan_size=len(plan))
+    except Exception as exc:
+        result["import_error"] = f"{type(exc).__name__}: {exc}"
+    try:
+        import t0_adapters  # noqa: F401
+        result["wired"] = bool(t0_adapters.CliAdapter.wired)
+    except Exception as exc:
+        result["import_error"] = (result["import_error"] + "; " if result["import_error"] else "") \
+            + f"{type(exc).__name__}: {exc}"
+    return result
+
+
+def probe_network() -> dict[str, Any]:
+    """仅探测依赖源可达性，不发布任何数据；结果只作参考，不构成结论。"""
+    try:
+        req = urllib.request.Request("https://crates.io", method="HEAD",
+                                     headers={"User-Agent": "ColdRevive-M0-preflight/1.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return {"checked": True, "http_status": getattr(resp, "status", 0),
+                    "advisory_only": True}
+    except Exception as exc:
+        return {"checked": True, "error": f"{type(exc).__name__}: {exc}",
+                "advisory_only": True}
+
+
+def build_checks(cfg: dict[str, Any], spikes: dict[str, Any],
+                 probe: bool) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+
+    def add(cid: str, label: str, ok: bool, detail: Any, needed_by: list[str],
+            severity: str = "blocker") -> None:
+        checks.append({"id": cid, "label": label,
+                       "status": "ok" if ok else ("warn" if severity == "warn" else "missing"),
+                       "detail": detail, "needed_by": needed_by, "severity": severity})
+
+    rustc = which_version("rustc")
+    cargo = which_version("cargo")
+    add("toolchain.rustc", "rustc 可用", rustc["available"], rustc, ["S1", "S2", "T0"])
+    add("toolchain.cargo", "cargo 可用（Cargo Workspace 的前提）", cargo["available"], cargo,
+        ["S1", "S2", "T0"])
+
+    dl = {name: which_version(name) for name in DOWNLOADERS}
+    dl_ok = any(v["available"] for v in dl.values())
+    add("downloader.any", "至少一个第三方 BT 客户端", dl_ok, dl, ["T0-08", "G3"])
+
+    bins = check_binaries()
+    bins_ok = all(v["exists"] for v in bins.values())
+    add("binaries.m1", "M1 二进制与下载器环境变量指向真实文件", bins_ok, bins,
+        ["T0-real"])
+
+    ports = check_ports(cfg)
+    add("network.ports", "T0 双实例端口可绑定", ports["available"], ports, ["T0-real"])
+
+    obs = check_observer_layer()
+    add("t0.observers", "20 条真实用例的观测采集层已实现",
+        obs["plan_available"] and obs["plan_size"] >= 20, obs, ["T0-real"])
+    add("t0.wired", "CliAdapter 已接线（仅在二进制与观测齐备后置 True）",
+        bool(obs["wired"]), {"wired": obs["wired"]}, ["T0-real"])
+
+    by_id = {s["id"]: s for s in spikes["spikes"]}
+    add("approval.public_kad", "S2 实网小样本实验已获人工批准",
+        bool(by_id["S2"].get("public_kad_approval")),
+        {"note": "批准记录需人工写入 spikes.json 的 public_kad_approval 字段，脚本不得代填"},
+        ["S2"])
+    add("approval.legal", "S8 法务评审已发出并收到书面意见",
+        bool(by_id["S8"].get("legal_review")),
+        {"note": "外部流程，非技术阻塞；应在 M0 第一天启动"},
+        ["S8"], severity="warn")
+
+    net = probe_network() if probe else {"checked": False, "advisory_only": True,
+                                        "note": "默认不探测；加 --probe-network 才检查依赖源可达性"}
+    add("network.registry", "依赖源可达性（仅供参考）",
+        bool(probe and net.get("http_status") == 200), net, [], severity="warn")
+
+    return checks
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="ColdRevive M0 就绪度检查")
+    ap.add_argument("--probe-network", action="store_true",
+                    help="可选：HEAD 探测依赖源（不发布任何数据，结果仅供参考）")
+    ap.add_argument("--json", action="store_true", help="只输出 JSON，不打印表格")
+    args = ap.parse_args()
+
+    try:
+        cfg = json.loads((T0_DIR / "t0_config.json").read_text(encoding="utf-8"))
+        spikes = json.loads(SPIKES_JSON.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[ERROR] 配置读取失败: {exc}", file=sys.stderr)
+        return 1
+
+    checks = build_checks(cfg, spikes, args.probe_network)
+    blockers = [c for c in checks if c["status"] == "missing"]
+    warnings = [c for c in checks if c["status"] == "warn"]
+
+    spike_status = {
+        s["id"]: {
+            "status": s["status"],
+            "priority": s["priority"],
+            "blocked_by": [c["id"] for c in blockers if s["id"] in c["needed_by"]],
+        }
+        for s in spikes["spikes"]
+    }
+
+    g0_ready = not blockers
+    t0_real_ready = not any(c["id"] in {"binaries.m1", "downloader.any",
+                                        "t0.observers", "t0.wired",
+                                        "network.ports", "toolchain.cargo"}
+                            for c in blockers)
+    report = {
+        "schema": "coldrevive.m0.preflight/v1",
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "host": {"os": platform.system(), "python": platform.python_version()},
+        "scope": "本地就绪度检查；未执行任何 Spike，未接触公共 KAD，不产出技术结论",
+        "g0_ready": g0_ready,
+        "t0_real_ready": t0_real_ready,
+        "spikes": spike_status,
+        "checks": checks,
+        "blockers": [c["id"] for c in blockers],
+        "warnings": [c["id"] for c in warnings],
+        "next_actions": [
+            "安装 cargo（rustup）后可编译 S1 最小 Demo，核对 rqbit 的按需实例化 / 握手拦截能力",
+            "S2 实网小样本实验须先取得人工批准并限速；本地回环模拟只能作为预演",
+            "S8 法务评审为外部依赖，应立即发出，不要等 S1/S2 结束",
+            "安装任一第三方 BT 客户端并编译 M1 二进制后，才能把 CliAdapter.wired 置为 True",
+        ],
+    }
+
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    out = REPORT_DIR / f"m0-preflight-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+    out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print("ColdRevive M0 就绪度检查（只查条件，不做实验）")
+        print(f"主机: {report['host']['os']} / Python {report['host']['python']}")
+        print("-" * 78)
+        for c in checks:
+            mark = {"ok": "[OK]     ", "warn": "[WARN]   ", "missing": "[MISSING]"}[c["status"]]
+            print(f"{mark} {c['label']}")
+            if c["status"] != "ok":
+                print(f"          需要方: {', '.join(c['needed_by']) or '—'}")
+        print("-" * 78)
+        print(f"G0 就绪: {g0_ready} | T0 真实验收就绪: {t0_real_ready} | "
+              f"阻塞项 {len(blockers)} 个 / 提醒 {len(warnings)} 个")
+        print("Spike 状态: " + ", ".join(f"{k}={v['status']}" for k, v in spike_status.items()))
+        print(f"报告: {out.relative_to(ROOT).as_posix()}")
+        print("[NOTE] 本脚本不产出任何 Spike 结论；结论须由实验执行人按证据手工回填 spikes.json。")
+        for a in report["next_actions"]:
+            print("  → " + a)
+    return 0 if g0_ready else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

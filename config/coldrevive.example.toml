@@ -1,0 +1,56 @@
+# ColdRevive 默认配置样例
+# 规范说明：docs/04-protocol/CONFIG.md
+# 用法：cp config/coldrevive.example.toml coldrevive.toml，然后按需修改。
+#        coldrevive.toml 与 config/local.toml 已被 .gitignore 排除。
+# 默认值遵循「最小暴露」原则：仅回环监听、共享目录为空、RPC 需密钥。
+
+[shared]
+dirs = ["~/ColdRevive/Shared"]
+min_file_size_mb = 1
+exclude = ["*.part", "*.crdownload"]
+
+[indexer]
+# auto | 262144 | 524288 | 1048576
+piece_size = "auto"
+torrent_gen_concurrency = 2
+max_keywords_per_file = 8
+
+[network]
+http_port = 16800
+wake_udp_port = 16801
+bt_port = 16802
+enable_upnp = true
+enable_ipv6 = true
+# 远程管理需显式改为 "0.0.0.0" 并配置 security.rpc_secret
+bind = "127.0.0.1"
+
+[kad]
+namespace = "ColdRevive_V1"
+# public | private | hybrid
+bootstrap_mode = "public"
+publish_ttl_sec = 1800
+publish_rate = 20
+
+[scheduler]
+max_active_seeds = 50
+idle_sleep_minutes = 10
+wake_session_ttl_sec = 7200
+memory_soft_limit_mb = 100
+memory_hard_limit_mb = 200
+
+[qos]
+background_upload_ratio = 0.2
+max_connections_total = 200
+prefer_utp = true
+
+[security]
+# 为空时强制仅允许回环监听
+rpc_secret = ""
+wake_rate_per_ip = 5
+max_wake_concurrency = 8
+cors_allowlist = []
+
+[observability]
+log_level = "info"
+log_format = "json"
+metrics_enabled = true

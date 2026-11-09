@@ -1,0 +1,30 @@
+{
+  "suite": "T0",
+  "schema": "coldrevive.t0.cases/v1",
+  "version": "0.1.0-skeleton",
+  "gate": "G1",
+  "_note": "本文件只定义「验什么」（用例元数据与门禁归属）。「怎么验」的断言实现在 t0_accept.py 的 ASSERTS 表，按 id 一一对应；新增用例须同步两处，并在此登记判据出处，避免把未经文档确认的标准写进脚本。",
+  "cases": [
+    {"id": "T0-00", "title": "断言引擎自检（注入坏观测，验证引擎能判 FAIL）", "group": "framework", "mandatory": true, "flow": "—", "source": "本骨架自检"},
+    {"id": "T0-01", "title": "样本文件入库与伴随种子生成", "group": "chain", "mandatory": true, "flow": "F1", "source": "FLOWS §1 / ROADMAP M1"},
+    {"id": "T0-02", "title": "影子索引建立且文件处于 COLD 冷态", "group": "chain", "mandatory": true, "flow": "F1", "source": "FLOWS §1、§7 / DATA files.state"},
+    {"id": "T0-03", "title": "KAD 专属命名空间发布与关键词发现命中", "group": "chain", "mandatory": true, "flow": "F2", "source": "PROTO §1、§2 / M0 Spike S2"},
+    {"id": "T0-04", "title": "WAKEUP_REQ 与 Challenge / nonce / 时间窗校验", "group": "chain", "mandatory": true, "flow": "F3", "source": "PROTO §3.2 / FLOWS §3"},
+    {"id": "T0-05", "title": "WAKEUP_ACK 状态 OK 且必填字段齐全", "group": "chain", "mandatory": true, "flow": "F3", "source": "PROTO §3.3"},
+    {"id": "T0-06", "title": "magnet InfoHash 一致且伴随种子可取", "group": "chain", "mandatory": true, "flow": "F3", "source": "PROTO §3.3 / ADR-006"},
+    {"id": "T0-07", "title": "COLD → WAKING → HOT 状态跃迁与按需做种就绪", "group": "chain", "mandatory": true, "flow": "F7 状态机", "source": "FLOWS §7 / M0 Spike S1"},
+    {"id": "T0-08", "title": "第三方 BT 客户端完成标准数据面下载且逐片校验通过", "group": "chain", "mandatory": true, "flow": "F4", "source": "ROADMAP M1 / TEST §3 兼容性矩阵"},
+    {"id": "T0-09", "title": "下载完成落共享目录并触发 F1 入库闭环", "group": "chain", "mandatory": true, "flow": "F4 → F1", "source": "FLOWS §4 / LLD §13 冷启动策略"},
+    {"id": "T0-10", "title": "唤醒时延采样 P95 < 3 s 且无失败", "group": "chain", "mandatory": true, "flow": "F3 指标", "source": "SRS NFR-04 / TEST §4"},
+    {"id": "T0-11", "title": "受控环境复活成功率 100%", "group": "chain", "mandatory": true, "flow": "全链路", "source": "ROADMAP G1 / TEST §6"},
+    {"id": "T0-12", "title": "索引命中但文件已删除 → REJECT_FILE_GONE 且撤销发布", "group": "negative", "mandatory": false, "flow": "F8 降级", "source": "FLOWS §8 / PROTO §3.4 / TEST §5"},
+    {"id": "T0-13", "title": "错误 Challenge → REJECT_BAD_CHALLENGE", "group": "negative", "mandatory": false, "flow": "F3 异常", "source": "PROTO §3.4"},
+    {"id": "T0-14", "title": "非白名单文件 → REJECT_NOT_FOUND 且不泄露存在性", "group": "negative", "mandatory": false, "flow": "F3 异常", "source": "PROTO §5 / SRS NFR-09"},
+    {"id": "T0-15", "title": "magnet InfoHash 不符 → HASH_MISMATCH 并拉黑节点", "group": "negative", "mandatory": false, "flow": "F3 异常", "source": "PROTO §3.4 / FLOWS §8"},
+    {"id": "T0-16", "title": "持有者离线 → 1.5 s 超时后切换候选，不阻塞", "group": "negative", "mandatory": false, "flow": "F8 降级", "source": "PROTO §3.1 / FLOWS §8"},
+    {"id": "T0-17", "title": "nonce 重放 → 去重生效，不重复激活", "group": "negative", "mandatory": false, "flow": "F3 异常", "source": "PROTO §3.2 / SRS NFR-08"},
+    {"id": "T0-18", "title": "协议版本不兼容 → REJECT_VERSION", "group": "negative", "mandatory": false, "flow": "F3 异常", "source": "PROTO §4"},
+    {"id": "T0-19", "title": "golden 唤醒报文与 PROTO v1 字段契约一致", "group": "contract", "mandatory": false, "flow": "契约测试", "source": "PROTO §3 / TEST §1 协议一致性"},
+    {"id": "T0-20", "title": "默认最小暴露与双实例端口隔离、退出无残留", "group": "env", "mandatory": false, "flow": "环境", "source": "CONFIG §3 / OPS 合规边界"}
+  ]
+}

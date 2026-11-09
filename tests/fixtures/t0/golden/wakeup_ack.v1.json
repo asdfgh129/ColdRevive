@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "WAKEUP_ACK",
+  "trace_id": "00000000-0000-4000-8000-000000000001",
+  "status": "OK",
+  "magnet": "magnet:?xt=urn:btih:INFOHASH_PLACEHOLDER_20_BYTE_HEX&xs=http%3A%2F%2F127.0.0.1%3A16800%2Ftorrent%2FINFOHASH_PLACEHOLDER_20_BYTE_HEX",
+  "torrent_url": "http://127.0.0.1:16800/torrent/INFOHASH_PLACEHOLDER_20_BYTE_HEX",
+  "file_size": 262144,
+  "piece_size": 262144,
+  "ttl": 7200,
+  "bt_port": 16802
+}

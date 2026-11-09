@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "WAKEUP_REQ",
+  "trace_id": "00000000-0000-4000-8000-000000000001",
+  "file_hash": "SHA256_PLACEHOLDER_T0_SAMPLE",
+  "infohash": "INFOHASH_PLACEHOLDER_20_BYTE_HEX",
+  "nonce": "NONCE_PLACEHOLDER_16B",
+  "ts": 1762650000,
+  "challenge": "HMAC_PLACEHOLDER",
+  "client_version": "coldrevive/0.1.0",
+  "capabilities": {"bt": true, "utp": true, "ed2k": false}
+}
