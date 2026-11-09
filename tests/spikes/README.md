@@ -1,7 +1,7 @@
 # M0 Spike 实验包（tests/spikes/）
 
 > **状态：S1–S7 `not_run`；S8 已由项目所有者豁免登记为 `pass`（无书面意见）。** 本目录是「实验的准备与就绪度检查」，不是实验结果。
-> 本机已具备 `rustc` / `cargo` 1.99.1，S1 可开展最小 Demo；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
+> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P2 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环）已完成，实网 P3/P4 仍被 G0 参数与 bootstrap 门禁阻断。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
 
 ## 1. 定位与红线
 
@@ -68,8 +68,8 @@ python3 tests/spikes/m0_preflight.py --json
 | 项 | 内容 |
 | :--- | :--- |
 | 前置 | `cargo` 可用；**实网实验人工批准记录**（写入 `spikes.json` 的 `S2.public_kad_approval`）；限速配置 |
-| 预演 | 先在 `127.0.0.1` 双节点私有 KAD 子网跑通「A 发布 → B `FIND_VALUE` 命中」，此步只验协议实现，**不产生 S2 结论** |
-| 实网 | 最小样本、逐条记录发布成功率与查询时延分布、观察是否被现有节点丢弃 / 视为污染；禁止批量发布测试 Key |
+| 预演 | L1 逻辑预演 [`s2_loopback.py`](s2/s2_loopback.py) + L2 真实 wire 回环 [`kad-mini/`](s2/kad-mini/README.md)（真实 `0xE4` Kademlia2 报文）均已在 `127.0.0.1` 跑通发布/查询闭环，此步只验协议实现，**不产生 S2 结论** |
+| 实网 | **未执行**，门禁见 [PLAN.md §2/§3](s2/PLAN.md)：须先由 G0 确认最小样本量与限速阈值、由用户提供 bootstrap 清单；`kad-mini live --check` 当前拒绝。执行时按最小样本逐条记录发布成功率与查询时延分布、观察是否被现有节点丢弃 / 视为污染，禁止批量发布测试 Key |
 | 判据 | 见 `spikes.json` 的 `S2.criteria`；量化阈值由 G0 评审确认后写入，当前不硬编码 |
 | 失败替代 | `bootstrap_mode = private` 自建命名空间，并重估 [ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md) 与冷启动论证 |
 | 影响 | 唯一能否决**产品定位**的 Spike；T0-03 只能在私有子网验证，不得向公共网络发布测试数据 |

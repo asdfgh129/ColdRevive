@@ -1,0 +1,4 @@
+/target/
+# 运行报告写到上一级 ../reports/（由 tests/spikes/s2/.gitignore 排除）
+*-out.json
+*-err.txt

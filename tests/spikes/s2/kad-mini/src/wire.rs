@@ -1,0 +1,778 @@
+//! eMule Kademlia v2 wire codec (minimal subset for the S2 spike).
+//!
+//! Every constant below is transcribed from aMule `master`
+//! @ 6a1105634d81242a581a0f36a7e00379b12a83f3. Source paths are given inline.
+//! This is a PROTOCOL PROBE, not a KAD implementation: no routing-zone tree,
+//! no UDP firewall tester, no sender/receiver key (obfuscation), no zlib
+//! packing, no `nodes.dat`. Those omissions are the subject of S2-C2.
+
+use crate::sha1::{hex, sha1};
+
+// src/include/protocol/Protocols.h
+pub const PROTO_KAD: u8 = 0xE4;
+pub const PROTO_KAD_PACKED: u8 = 0xE5;
+
+// src/include/protocol/kad2/Client2Client/UDP.h
+// Full table is kept even where this probe only uses a subset: the constants
+// are part of the audit trail showing which opcodes were verified.
+#[allow(dead_code)]
+pub mod op {
+    pub const BOOTSTRAP_REQ: u8 = 0x01;
+    pub const BOOTSTRAP_RES: u8 = 0x09;
+    pub const HELLO_REQ: u8 = 0x11;
+    pub const HELLO_RES: u8 = 0x19;
+    pub const REQ: u8 = 0x21;
+    pub const HELLO_RES_ACK: u8 = 0x22;
+    pub const RES: u8 = 0x29;
+    pub const SEARCH_KEY_REQ: u8 = 0x33;
+    pub const SEARCH_SOURCE_REQ: u8 = 0x34;
+    pub const SEARCH_NOTES_REQ: u8 = 0x35;
+    pub const SEARCH_RES: u8 = 0x3B;
+    pub const PUBLISH_KEY_REQ: u8 = 0x43;
+    pub const PUBLISH_SOURCE_REQ: u8 = 0x44;
+    pub const PUBLISH_NOTES_REQ: u8 = 0x45;
+    pub const PUBLISH_RES: u8 = 0x4B;
+    pub const PUBLISH_RES_ACK: u8 = 0x4C;
+    pub const FIREWALLED2_REQ: u8 = 0x53;
+    pub const PING: u8 = 0x60;
+    pub const PONG: u8 = 0x61;
+    pub const FIREWALLUDP: u8 = 0x62;
+}
+
+// src/include/protocol/kad2/Constants.h
+pub const KAD_VERSION: u8 = 0x08;
+// src/kademlia/kademlia/Defines.h
+pub const SEARCHTOLERANCE: u32 = 16_777_216; // 2^24
+pub const K: usize = 10;
+pub const ALPHA_QUERY: usize = 5;
+
+// src/include/tags/TagTypes.h
+#[allow(dead_code)]
+pub mod tag_type {
+    pub const HASH16: u8 = 0x01;
+    pub const STRING: u8 = 0x02;
+    pub const UINT32: u8 = 0x03;
+    pub const FLOAT32: u8 = 0x04;
+    pub const BOOL: u8 = 0x05;
+    pub const BOOLARRAY: u8 = 0x06;
+    pub const BLOB: u8 = 0x07;
+    pub const UINT16: u8 = 0x08;
+    pub const UINT8: u8 = 0x09;
+    pub const BSOB: u8 = 0x0A;
+    pub const UINT64: u8 = 0x0B;
+    pub const STR1: u8 = 0x11;
+    pub const STR16: u8 = 0x20;
+}
+
+// src/include/tags/FileTags.h
+pub const TAG_FILENAME: u8 = 0x01;
+pub const TAG_FILESIZE: u8 = 0x02;
+pub const TAG_FILESIZE_HI: u8 = 0x3A;
+pub const TAG_KADMISCOPTIONS: u8 = 0xF2;
+pub const TAG_SOURCEUPORT: u8 = 0xFC;
+pub const TAG_SOURCETYPE: u8 = 0xFF;
+
+pub const NAMESPACE: &str = "ColdRevive_V1:";
+pub const ID_LEN: usize = 16; // KAD ID space is 128-bit, NOT SHA-1's 160-bit.
+pub type KadId = [u8; ID_LEN];
+
+/// Derive a 128-bit KAD key from a namespaced logical name.
+///
+/// PROTO §1 defines `Target_Key = SHA1(NAMESPACE_PREFIX + file_hash)` (160-bit).
+/// eMule KAD IDs are 128-bit, so this probe truncates SHA-1 to its first 16
+/// bytes. The truncation rule is a PROTO/ADR-001 decision that is still open;
+/// it is recorded as a finding rather than silently assumed.
+pub fn namespaced_key(logical: &str) -> KadId {
+    let digest = sha1(format!("{NAMESPACE}{logical}").as_bytes());
+    let mut id = [0u8; ID_LEN];
+    id.copy_from_slice(&digest[..ID_LEN]);
+    id
+}
+
+pub fn plain_key(logical: &str) -> KadId {
+    let digest = sha1(logical.as_bytes());
+    let mut id = [0u8; ID_LEN];
+    id.copy_from_slice(&digest[..ID_LEN]);
+    id
+}
+
+pub fn node_id(seed: &str) -> KadId {
+    let digest = sha1(format!("coldrevive.s2.node:{seed}").as_bytes());
+    let mut id = [0u8; ID_LEN];
+    id.copy_from_slice(&digest[..ID_LEN]);
+    id
+}
+
+pub fn xor_distance(a: &KadId, b: &KadId) -> u128 {
+    u128::from_be_bytes(*a) ^ u128::from_be_bytes(*b)
+}
+
+/// `CUInt128::Get32BitChunk(0)` is the most significant 32 bits
+/// (src/kademlia/utils/UInt128.h `Set32BitChunk`: "Chunk 0 being the most significant").
+pub fn top_chunk(a: &KadId, b: &KadId) -> u32 {
+    (xor_distance(a, b) >> 96) as u32
+}
+
+/// `Process2PublishKeyRequest`:
+/// `if (distance.Get32BitChunk(0) > SEARCHTOLERANCE && !IsLanIP(ip)) return;`
+/// i.e. LAN sources bypass the tolerance zone entirely.
+pub fn publish_allowed(owner: &KadId, key: &KadId, peer_is_lan: bool) -> bool {
+    peer_is_lan || top_chunk(owner, key) <= SEARCHTOLERANCE
+}
+
+// ---------------------------------------------------------------- byte IO --
+
+pub struct Buf(pub Vec<u8>);
+
+impl Buf {
+    pub fn new() -> Self {
+        Buf(Vec::new())
+    }
+    pub fn u8(&mut self, v: u8) {
+        self.0.push(v);
+    }
+    pub fn u16(&mut self, v: u16) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn u32(&mut self, v: u32) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn u64(&mut self, v: u64) {
+        self.0.extend_from_slice(&v.to_le_bytes());
+    }
+    pub fn id(&mut self, v: &KadId) {
+        self.0.extend_from_slice(v);
+    }
+    pub fn raw(&mut self, v: &[u8]) {
+        self.0.extend_from_slice(v);
+    }
+}
+
+pub struct Cur<'a> {
+    pub b: &'a [u8],
+    pub p: usize,
+}
+
+impl<'a> Cur<'a> {
+    pub fn new(b: &'a [u8]) -> Self {
+        Cur { b, p: 0 }
+    }
+    pub fn remaining(&self) -> usize {
+        self.b.len().saturating_sub(self.p)
+    }
+    fn need(&self, n: usize) -> Result<(), String> {
+        if self.remaining() < n {
+            Err(format!("truncated: need {n}, have {}", self.remaining()))
+        } else {
+            Ok(())
+        }
+    }
+    pub fn u8(&mut self) -> Result<u8, String> {
+        self.need(1)?;
+        let v = self.b[self.p];
+        self.p += 1;
+        Ok(v)
+    }
+    pub fn u16(&mut self) -> Result<u16, String> {
+        self.need(2)?;
+        let v = u16::from_le_bytes([self.b[self.p], self.b[self.p + 1]]);
+        self.p += 2;
+        Ok(v)
+    }
+    pub fn u32(&mut self) -> Result<u32, String> {
+        self.need(4)?;
+        let mut a = [0u8; 4];
+        a.copy_from_slice(&self.b[self.p..self.p + 4]);
+        self.p += 4;
+        Ok(u32::from_le_bytes(a))
+    }
+    pub fn u64(&mut self) -> Result<u64, String> {
+        self.need(8)?;
+        let mut a = [0u8; 8];
+        a.copy_from_slice(&self.b[self.p..self.p + 8]);
+        self.p += 8;
+        Ok(u64::from_le_bytes(a))
+    }
+    pub fn id(&mut self) -> Result<KadId, String> {
+        self.need(ID_LEN)?;
+        let mut a = [0u8; ID_LEN];
+        a.copy_from_slice(&self.b[self.p..self.p + ID_LEN]);
+        self.p += ID_LEN;
+        Ok(a)
+    }
+    pub fn raw(&mut self, n: usize) -> Result<&'a [u8], String> {
+        self.need(n)?;
+        let v = &self.b[self.p..self.p + n];
+        self.p += n;
+        Ok(v)
+    }
+}
+
+/// `[0xE4][opcode][payload]` — src/kademlia/net/KademliaUDPListener.cpp
+/// `ProcessPacket` reads `opcode = data[1]; packetData = data + 2`.
+pub fn frame(opcode: u8, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 + payload.len());
+    out.push(PROTO_KAD);
+    out.push(opcode);
+    out.extend_from_slice(payload);
+    out
+}
+
+pub fn parse_frame(data: &[u8]) -> Result<(u8, &[u8]), String> {
+    if data.len() < 2 {
+        return Err("frame shorter than 2 bytes".into());
+    }
+    match data[0] {
+        PROTO_KAD => Ok((data[1], &data[2..])),
+        PROTO_KAD_PACKED => Err("0xE5 zlib-packed frame: unsupported by this probe".into()),
+        other => Err(format!("not a KAD frame: header 0x{other:02x}")),
+    }
+}
+
+pub fn opcode_name(op: u8) -> &'static str {
+    match op {
+        op::BOOTSTRAP_REQ => "KADEMLIA2_BOOTSTRAP_REQ",
+        op::BOOTSTRAP_RES => "KADEMLIA2_BOOTSTRAP_RES",
+        op::HELLO_REQ => "KADEMLIA2_HELLO_REQ",
+        op::HELLO_RES => "KADEMLIA2_HELLO_RES",
+        op::REQ => "KADEMLIA2_REQ",
+        op::RES => "KADEMLIA2_RES",
+        op::SEARCH_KEY_REQ => "KADEMLIA2_SEARCH_KEY_REQ",
+        op::SEARCH_RES => "KADEMLIA2_SEARCH_RES",
+        op::PUBLISH_KEY_REQ => "KADEMLIA2_PUBLISH_KEY_REQ",
+        op::PUBLISH_RES => "KADEMLIA2_PUBLISH_RES",
+        op::PING => "KADEMLIA2_PING",
+        op::PONG => "KADEMLIA2_PONG",
+        _ => "UNKNOWN",
+    }
+}
+
+// ------------------------------------------------------------------- tags --
+
+/// eMule `CTag` new-ED2K encoding (src/Tag.cpp `WriteNewEd2kTag`).
+/// One-byte tag name is signalled by `type | 0x80`; otherwise the name is a
+/// uint16-length string. STR1..STR16 carry the length in the type byte.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TagValue {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    Str(String),
+    Hash16([u8; 16]),
+    Raw(u8, Vec<u8>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tag {
+    pub name: Vec<u8>,
+    pub value: TagValue,
+}
+
+impl Tag {
+    pub fn int1(name: u8, v: u8) -> Self {
+        Tag { name: vec![name], value: TagValue::U8(v) }
+    }
+    pub fn int2(name: u8, v: u16) -> Self {
+        Tag { name: vec![name], value: TagValue::U16(v) }
+    }
+    pub fn int4(name: u8, v: u32) -> Self {
+        Tag { name: vec![name], value: TagValue::U32(v) }
+    }
+    pub fn str1(name: u8, v: &str) -> Self {
+        Tag { name: vec![name], value: TagValue::Str(v.into()) }
+    }
+
+    pub fn encode(&self, b: &mut Buf) -> Result<(), String> {
+        let ty = match &self.value {
+            TagValue::U8(_) => tag_type::UINT8,
+            TagValue::U16(_) => tag_type::UINT16,
+            TagValue::U32(_) => tag_type::UINT32,
+            TagValue::U64(_) => tag_type::UINT64,
+            TagValue::Hash16(_) => tag_type::HASH16,
+            TagValue::Raw(t, _) => *t,
+            TagValue::Str(s) => {
+                let n = s.len();
+                if (1..=16).contains(&n) {
+                    tag_type::STR1 + (n as u8) - 1
+                } else {
+                    tag_type::STRING
+                }
+            }
+        };
+        if self.name.len() == 1 {
+            b.u8(ty | 0x80);
+            b.u8(self.name[0]);
+        } else {
+            b.u8(ty);
+            b.u16(self.name.len() as u16);
+            b.raw(&self.name);
+        }
+        match &self.value {
+            TagValue::U8(v) => b.u8(*v),
+            TagValue::U16(v) => b.u16(*v),
+            TagValue::U32(v) => b.u32(*v),
+            TagValue::U64(v) => b.u64(*v),
+            TagValue::Hash16(v) => b.raw(v),
+            TagValue::Raw(_, v) => b.raw(v),
+            TagValue::Str(s) => {
+                if ty == tag_type::STRING {
+                    b.u16(s.len() as u16);
+                }
+                b.raw(s.as_bytes());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn decode(c: &mut Cur<'_>) -> Result<Self, String> {
+        let raw_ty = c.u8()?;
+        let short_name = raw_ty & 0x80 != 0;
+        let ty = raw_ty & 0x7F;
+        let name = if short_name {
+            vec![c.u8()?]
+        } else {
+            let n = c.u16()? as usize;
+            c.raw(n)?.to_vec()
+        };
+        let value = match ty {
+            tag_type::UINT8 => TagValue::U8(c.u8()?),
+            tag_type::UINT16 => TagValue::U16(c.u16()?),
+            tag_type::UINT32 => TagValue::U32(c.u32()?),
+            tag_type::UINT64 => TagValue::U64(c.u64()?),
+            tag_type::HASH16 => {
+                let mut h = [0u8; 16];
+                h.copy_from_slice(c.raw(16)?);
+                TagValue::Hash16(h)
+            }
+            tag_type::STRING => {
+                let n = c.u16()? as usize;
+                TagValue::Str(String::from_utf8_lossy(c.raw(n)?).into_owned())
+            }
+            t if (tag_type::STR1..=tag_type::STR16).contains(&t) => {
+                let n = (t - tag_type::STR1 + 1) as usize;
+                TagValue::Str(String::from_utf8_lossy(c.raw(n)?).into_owned())
+            }
+            tag_type::BLOB | tag_type::BSOB => {
+                let n = c.u32()? as usize;
+                TagValue::Raw(ty, c.raw(n)?.to_vec())
+            }
+            other => return Err(format!("unsupported tag type 0x{other:02x}")),
+        };
+        Ok(Tag { name, value })
+    }
+}
+
+pub fn write_tags(b: &mut Buf, tags: &[Tag]) -> Result<(), String> {
+    b.u8(tags.len() as u8);
+    for t in tags {
+        t.encode(b)?;
+    }
+    Ok(())
+}
+
+pub fn read_tags(c: &mut Cur<'_>) -> Result<Vec<Tag>, String> {
+    let n = c.u8()? as usize;
+    let mut out = Vec::with_capacity(n);
+    for _ in 0..n {
+        out.push(Tag::decode(c)?);
+    }
+    Ok(out)
+}
+
+// --------------------------------------------------------------- contacts --
+
+/// `<id 16><ip 4><udp 2><tcp 2><version 1>` = 25 bytes.
+/// src/kademlia/net/KademliaUDPListener.cpp `Process2BootstrapRequest`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Contact {
+    pub id: KadId,
+    pub ip: [u8; 4],
+    pub udp: u16,
+    pub tcp: u16,
+    pub version: u8,
+}
+
+impl Contact {
+    pub fn encode(&self, b: &mut Buf) {
+        b.id(&self.id);
+        b.raw(&self.ip);
+        b.u16(self.udp);
+        b.u16(self.tcp);
+        b.u8(self.version);
+    }
+    pub fn decode(c: &mut Cur<'_>) -> Result<Self, String> {
+        let id = c.id()?;
+        let mut ip = [0u8; 4];
+        ip.copy_from_slice(c.raw(4)?);
+        Ok(Contact { id, ip, udp: c.u16()?, tcp: c.u16()?, version: c.u8()? })
+    }
+    pub fn addr(&self) -> String {
+        format!("{}.{}.{}.{}:{}", self.ip[0], self.ip[1], self.ip[2], self.ip[3], self.udp)
+    }
+}
+
+pub fn closest<'a>(target: &KadId, contacts: &'a [Contact], n: usize) -> Vec<&'a Contact> {
+    let mut v: Vec<&Contact> = contacts.iter().collect();
+    v.sort_by_key(|c| xor_distance(&c.id, target));
+    v.truncate(n);
+    v
+}
+
+// --------------------------------------------------------------- messages --
+
+pub fn bootstrap_req() -> Vec<u8> {
+    frame(op::BOOTSTRAP_REQ, &[])
+}
+
+pub fn bootstrap_res(self_contact: &Contact, contacts: &[Contact]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(&self_contact.id);
+    b.u16(self_contact.tcp);
+    b.u8(KAD_VERSION);
+    b.u16(contacts.len() as u16);
+    for c in contacts {
+        c.encode(&mut b);
+    }
+    frame(op::BOOTSTRAP_RES, &b.0)
+}
+
+pub struct BootstrapRes {
+    pub self_id: KadId,
+    pub self_tcp: u16,
+    pub version: u8,
+    pub contacts: Vec<Contact>,
+}
+
+pub fn parse_bootstrap_res(payload: &[u8]) -> Result<BootstrapRes, String> {
+    let mut c = Cur::new(payload);
+    let self_id = c.id()?;
+    let self_tcp = c.u16()?;
+    let version = c.u8()?;
+    let n = c.u16()? as usize;
+    let mut contacts = Vec::with_capacity(n);
+    for _ in 0..n {
+        contacts.push(Contact::decode(&mut c)?);
+    }
+    Ok(BootstrapRes { self_id, self_tcp, version, contacts })
+}
+
+/// HELLO_REQ / HELLO_RES share `<id><tcp><version><tags>`.
+/// src/kademlia/net/KademliaUDPListener.cpp `SendMyDetails` / `AddContact2`.
+pub fn hello(opcode: u8, contact: &Contact, extra_tags: &[Tag]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(&contact.id);
+    b.u16(contact.tcp);
+    b.u8(KAD_VERSION);
+    let mut tags = vec![Tag::int2(TAG_SOURCEUPORT, contact.udp)];
+    tags.extend_from_slice(extra_tags);
+    write_tags(&mut b, &tags).expect("tag encode is infallible for these types");
+    frame(opcode, &b.0)
+}
+
+pub struct Hello {
+    pub id: KadId,
+    pub tcp: u16,
+    pub version: u8,
+    pub tags: Vec<Tag>,
+    pub udp_from_tag: Option<u16>,
+}
+
+pub fn parse_hello(payload: &[u8]) -> Result<Hello, String> {
+    let mut c = Cur::new(payload);
+    let id = c.id()?;
+    let tcp = c.u16()?;
+    let version = c.u8()?;
+    let tags = read_tags(&mut c)?;
+    let udp_from_tag = tags.iter().find_map(|t| match (&t.name[..], &t.value) {
+        ([TAG_SOURCEUPORT], TagValue::U16(v)) => Some(*v),
+        ([TAG_SOURCEUPORT], TagValue::U8(v)) => Some(*v as u16),
+        ([TAG_SOURCEUPORT], TagValue::U32(v)) => Some(*v as u16),
+        _ => None,
+    });
+    Ok(Hello { id, tcp, version, tags, udp_from_tag })
+}
+
+/// `KADEMLIA2_REQ`: `<type/contactCount 1><target 16><receiverID 16>`.
+/// src/kademlia/kademlia/Search.cpp `StorePacket` (REQUEST branch).
+pub fn find_node_req(target: &KadId, receiver: &KadId, wanted: u8) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.u8(wanted & 0x1F);
+    b.id(target);
+    b.id(receiver);
+    frame(op::REQ, &b.0)
+}
+
+pub struct FindNodeReq {
+    pub wanted: u8,
+    pub target: KadId,
+    pub receiver: KadId,
+}
+
+pub fn parse_find_node_req(payload: &[u8]) -> Result<FindNodeReq, String> {
+    let mut c = Cur::new(payload);
+    let wanted = c.u8()? & 0x1F;
+    let target = c.id()?;
+    let receiver = c.id()?;
+    Ok(FindNodeReq { wanted, target, receiver })
+}
+
+pub fn find_node_res(target: &KadId, contacts: &[Contact]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(target);
+    b.u8(contacts.len() as u8);
+    for c in contacts {
+        c.encode(&mut b);
+    }
+    frame(op::RES, &b.0)
+}
+
+pub struct FindNodeRes {
+    pub target: KadId,
+    pub contacts: Vec<Contact>,
+}
+
+pub fn parse_find_node_res(payload: &[u8]) -> Result<FindNodeRes, String> {
+    let mut c = Cur::new(payload);
+    let target = c.id()?;
+    let n = c.u8()? as usize;
+    let mut contacts = Vec::with_capacity(n);
+    for _ in 0..n {
+        contacts.push(Contact::decode(&mut c)?);
+    }
+    Ok(FindNodeRes { target, contacts })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexEntry {
+    /// In `PUBLISH_KEY_REQ` this is the *file/source ID*; the keyword hash is
+    /// the packet's leading target. Value is carried by tags (KAD is not a KV store).
+    pub source_id: KadId,
+    pub tags: Vec<Tag>,
+}
+
+pub fn publish_key_req(key: &KadId, entries: &[IndexEntry]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(key);
+    b.u16(entries.len() as u16);
+    for e in entries {
+        b.id(&e.source_id);
+        write_tags(&mut b, &e.tags).expect("tag encode is infallible for these types");
+    }
+    frame(op::PUBLISH_KEY_REQ, &b.0)
+}
+
+pub struct PublishKeyReq {
+    pub key: KadId,
+    pub entries: Vec<IndexEntry>,
+}
+
+pub fn parse_publish_key_req(payload: &[u8]) -> Result<PublishKeyReq, String> {
+    let mut c = Cur::new(payload);
+    let key = c.id()?;
+    let n = c.u16()? as usize;
+    let mut entries = Vec::with_capacity(n);
+    for _ in 0..n {
+        let source_id = c.id()?;
+        let tags = read_tags(&mut c)?;
+        entries.push(IndexEntry { source_id, tags });
+    }
+    Ok(PublishKeyReq { key, entries })
+}
+
+/// `PUBLISH_RES`: `<key 16><load 1>` (+ optional options byte for ACK request).
+pub fn publish_res(key: &KadId, load: u8) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(key);
+    b.u8(load);
+    frame(op::PUBLISH_RES, &b.0)
+}
+
+pub struct PublishRes {
+    pub key: KadId,
+    pub load: u8,
+}
+
+pub fn parse_publish_res(payload: &[u8]) -> Result<PublishRes, String> {
+    let mut c = Cur::new(payload);
+    Ok(PublishRes { key: c.id()?, load: c.u8()? })
+}
+
+/// `SEARCH_KEY_REQ`: `<target 16><startPosition 2>`; bit 0x8000 marks a
+/// restrictive search followed by an expression tree. We always send 0.
+pub fn search_key_req(key: &KadId) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(key);
+    b.u16(0);
+    frame(op::SEARCH_KEY_REQ, &b.0)
+}
+
+pub fn parse_search_key_req(payload: &[u8]) -> Result<KadId, String> {
+    let mut c = Cur::new(payload);
+    let key = c.id()?;
+    let start = c.u16()?;
+    if start & 0x8000 != 0 {
+        return Err("restrictive search expression tree: unsupported by this probe".into());
+    }
+    Ok(key)
+}
+
+/// `SEARCH_RES` (KAD2): `<senderID 16><target 16><count 2>[<answer 16><tags>]*`.
+pub fn search_res(sender: &KadId, key: &KadId, answers: &[IndexEntry]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(sender);
+    b.id(key);
+    b.u16(answers.len() as u16);
+    for a in answers {
+        b.id(&a.source_id);
+        write_tags(&mut b, &a.tags).expect("tag encode is infallible for these types");
+    }
+    frame(op::SEARCH_RES, &b.0)
+}
+
+pub struct SearchRes {
+    pub sender: KadId,
+    pub target: KadId,
+    pub answers: Vec<IndexEntry>,
+}
+
+pub fn parse_search_res(payload: &[u8]) -> Result<SearchRes, String> {
+    let mut c = Cur::new(payload);
+    let sender = c.id()?;
+    let target = c.id()?;
+    let n = c.u16()? as usize;
+    let mut answers = Vec::with_capacity(n);
+    for _ in 0..n {
+        let source_id = c.id()?;
+        let tags = read_tags(&mut c)?;
+        answers.push(IndexEntry { source_id, tags });
+    }
+    Ok(SearchRes { sender, target, answers })
+}
+
+pub fn id_hex(id: &KadId) -> String {
+    hex(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_roundtrip() {
+        let f = frame(op::BOOTSTRAP_REQ, &[]);
+        assert_eq!(f, vec![0xE4, 0x01]);
+        let (op, payload) = parse_frame(&f).unwrap();
+        assert_eq!(op, op::BOOTSTRAP_REQ);
+        assert!(payload.is_empty());
+        assert!(parse_frame(&[0xE5, 0x01]).is_err());
+        assert!(parse_frame(&[0xC5, 0x01]).is_err());
+    }
+
+    #[test]
+    fn contact_roundtrip_is_25_bytes() {
+        let c = Contact {
+            id: node_id("A"),
+            ip: [127, 0, 0, 1],
+            udp: 4672,
+            tcp: 4662,
+            version: KAD_VERSION,
+        };
+        let mut b = Buf::new();
+        c.encode(&mut b);
+        assert_eq!(b.0.len(), 25);
+        assert_eq!(Contact::decode(&mut Cur::new(&b.0)).unwrap(), c);
+    }
+
+    #[test]
+    fn tag_roundtrip_all_types() {
+        let tags = vec![
+            Tag::int2(TAG_SOURCEUPORT, 4672),
+            Tag::int1(TAG_KADMISCOPTIONS, 0),
+            Tag::int4(TAG_FILESIZE, 262_144),
+            Tag::str1(TAG_FILENAME, "ColdRevive_V1:probe"),
+            Tag { name: b"ColdRevive_V1:descriptor".to_vec(), value: TagValue::Str("node=A;port=4672".into()) },
+        ];
+        let mut b = Buf::new();
+        write_tags(&mut b, &tags).unwrap();
+        assert_eq!(read_tags(&mut Cur::new(&b.0)).unwrap(), tags);
+    }
+
+    #[test]
+    fn all_message_roundtrips() {
+        let a = Contact { id: node_id("A"), ip: [127, 0, 0, 1], udp: 14672, tcp: 14662, version: KAD_VERSION };
+        let b = Contact { id: node_id("B"), ip: [127, 0, 0, 1], udp: 15672, tcp: 15662, version: KAD_VERSION };
+        let key = namespaced_key("coldrevive:t0:sample");
+
+        let packet = bootstrap_res(&b, &[a.clone(), b.clone()]);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::BOOTSTRAP_RES);
+        let r = parse_bootstrap_res(p).unwrap();
+        assert_eq!(r.self_id, b.id);
+        assert_eq!(r.version, KAD_VERSION);
+        assert_eq!(r.contacts.len(), 2);
+
+        let packet = hello(op::HELLO_REQ, &a, &[]);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::HELLO_REQ);
+        assert_eq!(parse_hello(p).unwrap().udp_from_tag, Some(14672));
+
+        let packet = find_node_req(&key, &b.id, 2);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::REQ);
+        assert_eq!(parse_find_node_req(p).unwrap().target, key);
+
+        let packet = find_node_res(&key, &[a.clone(), b.clone()]);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::RES);
+        assert_eq!(parse_find_node_res(p).unwrap().contacts.len(), 2);
+
+        let entries = vec![IndexEntry {
+            source_id: node_id("descriptor-1"),
+            tags: vec![Tag::str1(TAG_FILENAME, "ColdRevive_V1:probe")],
+        }];
+        let packet = publish_key_req(&key, &entries);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::PUBLISH_KEY_REQ);
+        assert_eq!(parse_publish_key_req(p).unwrap().entries, entries);
+
+        let packet = publish_res(&key, 0);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::PUBLISH_RES);
+        assert_eq!(parse_publish_res(p).unwrap().load, 0);
+
+        let packet = search_key_req(&key);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::SEARCH_KEY_REQ);
+        assert_eq!(parse_search_key_req(p).unwrap(), key);
+
+        let packet = search_res(&b.id, &key, &entries);
+        let (op, p) = parse_frame(&packet).unwrap();
+        assert_eq!(op, op::SEARCH_RES);
+        assert_eq!(parse_search_res(p).unwrap().answers, entries);
+    }
+
+    #[test]
+    fn namespace_changes_key_id() {
+        let logical = "coldrevive:t0:sample";
+        assert_ne!(namespaced_key(logical), plain_key(logical));
+        assert_eq!(namespaced_key(logical).len(), 16);
+    }
+
+    #[test]
+    fn tolerance_zone_and_lan_bypass() {
+        let key = namespaced_key("x");
+        // Exact match: XOR distance 0 -> always inside the tolerance zone.
+        assert_eq!(top_chunk(&key, &key), 0);
+        assert!(publish_allowed(&key, &key, false));
+
+        // Flip the most significant byte: top chunk is guaranteed > 2^24.
+        let mut far = key;
+        far[0] ^= 0xFF;
+        assert!(top_chunk(&far, &key) > SEARCHTOLERANCE);
+        // aMule silently drops such a publish from a non-LAN peer...
+        assert!(!publish_allowed(&far, &key, false));
+        // ...but LAN sources bypass the tolerance check entirely.
+        assert!(publish_allowed(&far, &key, true));
+    }
+}

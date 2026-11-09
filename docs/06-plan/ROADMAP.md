@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.2
+version: 2.3
 status: 持续维护
 owner: 项目组
 updated: 2026-11-09
@@ -10,7 +10,7 @@ updated: 2026-11-09
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.2 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-09
+> 编号 DOC-14 · 版本 2.3 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-09
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -103,15 +103,16 @@ ColdRevive
 
 ## 6. 当前状态（2026-11-09）
 
-- 阶段：**设计冻结候选，M0 未开始（实验包已就位，实验未执行）**。
+- 阶段：**设计冻结候选，M0 进行中（Spike 首批观测已产出，G0 未通过）**。
 - 已完成：文档体系工程化（v2.4 自包含索引页，21 份 DOC + 10 份 ADR）、项目目录骨架、风险登记册、测试与计划基线。
 - 已就位：**[T0 双节点验收骨架](../../tests/e2e/t0/README.md)**（21 条用例、断言引擎、双实例编排、JSON 报告）+ **CLI v1 契约与 20 条真实观测映射**（`t0_cli.py` / `t0_cli_selftest.py`）+ **[M0 Spike 实验包](../../tests/spikes/README.md)**（S1–S8 判据、`spikes.json` 状态登记、`m0_preflight.py` 就绪度检查）。
 - 当前 `CliAdapter.wired = False`：`--mode real` 仍 `BLOCKED`（1 PASS / 20 BLOCKED，退出码 2），**不构成 G1 门禁证据**。接线清单见骨架 README §5，用例判据见 [TEST §2.1](../05-quality/TEST.md)。
 - 工具链：`rustc` / `cargo` 1.99.1 已在本机安装（2026-11-09），`m0_preflight.py` 的工具链检查已转为 `[OK]`，S1 最小 Demo 具备执行条件。
 - 决策：S8 法务评审由项目所有者于 2026-11-09 决定豁免，登记为 `pass`（**未取得法务书面意见**，R-11 风险保留，M4 公测前复核）；S2 实网实验的人工批准已写入 `spikes.json` 的 `public_kad_approval`。
-- 已产出首批观测（2026-11-09）：[S1 最小 Demo](../../tests/spikes/s1/README.md)（握手拦截、按需实例化 `verified`；Pause-Resume、真实分片传输 `partial`）+ [S2 回环预演](../../tests/spikes/s2/README.md)（发布 5/5、`FIND_VALUE` 命中 5/5，按判据**不得判 `pass`**）；证据路径登记在 `spikes.json` 的 `observations`。S1 / S2 状态仍为 `not_run`。
+- 已产出首批观测（2026-11-09）：[S1 最小 Demo](../../tests/spikes/s1/README.md)（握手拦截、按需实例化 `verified`；Pause-Resume、真实分片传输 `partial`）+ [S2 三层实验](../../tests/spikes/s2/README.md)（L1 逻辑预演发布 5/5、命中 5/5；L2 [最小 eMule KAD 客户端](../../tests/spikes/s2/kad-mini/README.md) 用真实 `0xE4` Kademlia2 报文完成发布 5/5 被 ACK、查询命中 5/5、84 条逐包原始记录、0 协议错误）。按判据**均不得判 `pass`**；证据路径登记在 `spikes.json` 的 `observations.real_wire`。S1 / S2 状态仍为 `not_run`。
+- **S2 实网排期**：[PLAN.md](../../tests/spikes/s2/PLAN.md) 的 P0 协议核实 / P1 wire codec / P2 本地真实报文闭环已完成；P3/P4 被门禁阻断，缺 G0 确认的最小样本量与限速阈值、用户提供的 bootstrap 清单、实网逐次原始记录。`kad-mini live --check` 当前拒绝并列出 5 项阻塞，未发送任何非回环报文。协议核实还发现 eMule KAD 无 `FIND_VALUE`、ID 空间 128-bit 与 PROTO §1 的 160-bit 不符、`SEARCHTOLERANCE` 会静默丢弃越界发布 —— 需回写 ADR-001 / PROTO / `S2.criteria`，本阶段只登记发现。
 - 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1–S7 的完整/实网实验。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：S1（否决架构）与 S2（否决产品定位）并行推进，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：S1（否决架构）与 S2（否决产品定位）并行推进，其中 S2 先完成 P3 门禁参数确认再执行 P4 实网小样本；S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 

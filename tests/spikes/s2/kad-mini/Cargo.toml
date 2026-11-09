@@ -1,0 +1,15 @@
+[package]
+name = "coldrevive-kad-mini"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "S2 spike: minimal eMule Kademlia v2 wire client (protocol probe only, NOT production code)"
+
+[[bin]]
+name = "kad-mini"
+path = "src/main.rs"
+
+# Intentionally zero dependencies: the probe must be fully offline-buildable and
+# its wire format must be auditable line by line. SHA-1 is implemented in-tree
+# with known-answer tests in `selftest`.
+[dependencies]

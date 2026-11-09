@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准；仍缺第三方 BT 客户端与 M1 二进制。",
+  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网仍被 G0 参数与 bootstrap 门禁阻断（见 PLAN.md），仍缺第三方 BT 客户端与 M1 二进制。",
   "conclusion_values": ["not_run", "pass", "fail", "fallback"],
   "spikes": [
     {
@@ -71,17 +71,50 @@
       },
       "observations": {
         "recorded_at": "2026-11-09",
+        "report_note": "reports/ 由 .gitignore 排除，下列 JSON 为本机运行产物、未纳入版本控制；用各自的 reproduce 命令可重新生成。",
         "loopback_preview": {
           "script": "tests/spikes/s2/s2_loopback.py",
           "report": "tests/spikes/s2/reports/s2-loopback-20261109T105456Z.json",
+          "reproduce": "python3 tests/spikes/s2/s2_loopback.py",
           "publishes": "5/5",
           "find_value_hits": "5/5",
           "rtt_ms_p50": 0.3346,
           "namespace_isolation": "ids_differ=true, 带前缀值未被无前缀 Key 覆盖",
+          "protocol": "自定义 JSON 消息，非 eMule KAD 真实报文",
           "public_kad_contacted": false,
           "evidence_valid_for_pass": false
         },
-        "real_network": "not_run — 尚缺真实 eMule KAD 协议实现、G0 确认的最小样本量/限速阈值、实网逐次原始记录"
+        "real_wire": {
+          "client": "tests/spikes/s2/kad-mini/",
+          "plan": "tests/spikes/s2/PLAN.md",
+          "report": "tests/spikes/s2/reports/kad-wire-loopback-20261109131905.json",
+          "reproduce": "cd tests/spikes/s2/kad-mini && cargo run -- loopback",
+          "protocol": "eMule Kademlia v2 真实 0xE4 帧（aMule master @ 6a1105634d81242a581a0f36a7e00379b12a83f3）",
+          "scope": "127.0.0.1 UDP 回环，3 端点（发布者 A / 索引节点 / 查询者 B）",
+          "flow": "BOOTSTRAP_REQ/RES -> HELLO_REQ/RES -> KADEMLIA2_REQ/RES -> PUBLISH_KEY_REQ/RES -> SEARCH_KEY_REQ/RES",
+          "selftest": "29/29 passed（cargo run -- selftest），cargo test 7/7",
+          "publishes": "5/5",
+          "publish_acked": "5/5",
+          "find_hits": "5/5",
+          "descriptor_tag_matches": "5/5",
+          "rtt_ms_p50": 0.2318,
+          "raw_wire_records": 84,
+          "protocol_errors": 0,
+          "namespace_isolation": "前缀/无前缀 Key ID 不同；无前缀控制条目未泄漏到带前缀查询",
+          "public_kad_contacted": false,
+          "evidence_valid_for_pass": false,
+          "live_gate": "live --check 拒绝，5 项阻塞见 PLAN.md §2/§3；未发送任何非回环报文"
+        },
+        "protocol_findings": [
+          "KAD ID 空间为 128-bit，PROTO §1 的 Target_Key=SHA1(...) 为 160-bit；本探针取 SHA-1 前 16 字节，截断规则待 ADR 决策",
+          "eMule KAD 无 FIND_VALUE；判据应映射为 SEARCH_KEY_REQ(0x33)/SEARCH_RES(0x3B)，发布为 PUBLISH_KEY_REQ(0x43)",
+          "KAD 非通用 KV：Value 只能编码为 (fileID, Tag 列表)，Node_Descriptor 已映射为 ColdRevive_V1: 命名空间 Tag",
+          "前缀只作用于本地哈希输入，线上仅传输 128-bit ID，公共节点看不到字符串前缀；S2-C3 观测口径需重定义",
+          "Process2PublishKeyRequest 有 SEARCHTOLERANCE=2^24 距离校验，越界静默丢弃；实测 5 个 Key 的 xor_top32 全部远超阈值，WAN 下会被丢弃，实网须先多跳迭代查找收敛到 Key 邻域",
+      "二手资料 DeepWiki 将 PUBLISH_KEY_REQ 误记为 0x35（实为 SEARCH_NOTES_REQ），源码真值 0x43；本探针常量全部取自 aMule 源码",
+      "L1 逻辑预演取 SHA-256 前 16 字节、L2 真实 wire 探针取 SHA-1 前 16 字节派生 Key ID，同一逻辑 Key 在两层得到不同 ID，结果不可直接比较；最终 160-bit 到 128-bit 映射规则待 ADR / PROTO 定稿"
+    ],
+        "real_network": "not_run — 协议实现已由 real_wire 补齐；仍缺 G0 确认的最小样本量/限速阈值、用户提供的 bootstrap 清单、实网逐次原始记录"
       },
       "blocked_by": ["s2.real_network_conclusion"]
     },

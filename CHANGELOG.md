@@ -2,6 +2,56 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.4] - 2026-11-09 — S2 实网排期与最小 eMule KAD 客户端（真实 wire 回环）
+
+### 新增
+
+- `tests/spikes/s2/PLAN.md`：S2 实网**实施排期与门禁**。P0 协议核实 / P1 wire codec /
+  P2 本地真实报文闭环**已完成**，P3 实网门禁参数 / P4 实网小样本**未执行**。协议依据固定为
+  aMule `master` @ `6a1105634d81242a581a0f36a7e00379b12a83f3`，不采用二手 opcode 表。
+- `tests/spikes/s2/kad-mini/`：**零第三方依赖**的独立 Rust Cargo 工程（项目根仍无 `Cargo.toml`、
+  `src/` 未动）。实现真实 `0xE4` Kademlia2 帧编解码、128-bit ID / XOR 距离 / `SEARCHTOLERANCE`、
+  Tag 与 Contact 编解码、命名空间 Key 派生、树内 SHA-1（含 FIPS 已知答案向量）、三端点本地索引节点、
+  令牌桶限速、逐包十六进制原始记录与 `live` 模式门禁。
+- `tests/spikes/s2/README.md` 改述为三层结构：L1 逻辑预演 / L2 真实 wire 闭环 / L3 实网小样本。
+- `spikes.json` 为 S2 回填 `observations.real_wire`、`protocol_findings` 与报告路径；
+  **`status` 仍为 `not_run`**，`public_kad_approval.pending` 仍保留。
+
+### 验证（全部 `127.0.0.1` 回环）
+
+- `cargo test` 7/7；`kad-mini selftest` 29/29（协议常量、帧轮编、SHA-1 已知答案向量）。
+- `kad-mini loopback`：发布 5/5 被 ACK、查询命中 5/5 且描述符 Tag 匹配、RTT p50 0.2318 ms、
+  命名空间隔离通过、**84 条收发报文完整十六进制逐次记录**、0 协议错误。报告固定写
+  `public_kad_contacted=false` 与 `evidence_valid_for_pass=false`。
+- `kad-mini live --check`：退出码 2 拒绝，列出 5 项阻塞（`pending` 未清除、缺 `--bootstrap`、
+  缺 `--sample-size`、缺 `--rate-limit`、缺操作者声明），**未发送任何非回环报文**，
+  未向公共 KAD 发布任何测试 Key。
+
+### 观测结论（发现，本次不擅改设计基线）
+
+- eMule KAD **无 `FIND_VALUE`**：判据应映射为 `SEARCH_KEY_REQ (0x33) / SEARCH_RES (0x3B)`，
+  发布为 `PUBLISH_KEY_REQ (0x43)`。核查发现 DeepWiki 把 `PUBLISH_KEY_REQ` 误记为 `0x35`
+  （源码中 `0x35` 是 `SEARCH_NOTES_REQ`），本工程常量全部取自 aMule 源码。
+- KAD ID 空间为 **128-bit**，[PROTO §1](docs/04-protocol/PROTO.md) 的 `Target_Key = SHA1(...)`
+  是 **160-bit**；探针暂取 SHA-1 前 16 字节，截断规则待 ADR 决策。L1 预演用的是
+  SHA-256 前 16 字节，两层 Key ID **不可直接比较**，均为临时映射。
+- `ColdRevive_V1:` 前缀只作用于本地哈希输入，线上仅传输 128-bit ID，公共节点看不到字符串前缀；
+  S2-C3「前缀是否被接纳」的观测口径需重定义。
+- KAD 不是通用 KV，Value 只能编码为 `(fileID, Tag 列表)`；`Node_Descriptor` 已映射为命名空间 Tag。
+- `Process2PublishKeyRequest` 有 `SEARCHTOLERANCE = 2^24` 距离校验：实测 5 个 Key 的
+  `xor_top32` 全部远超阈值，回环靠 LAN 豁免通过；WAN 下会被**静默丢弃且无响应**，
+  实网必须先多跳迭代查找收敛到 Key 邻域。
+- 明文 UDP 未实现 aMule ≥ v6 的 sender/receiver UDP key 与 RC4 混淆，真实节点可能静默丢弃 ——
+  这是 S2-C2 待观测项，也是 P3 是否需追加 P1 工作的决策点。
+
+### 不变
+
+- S1–S7 仍 `not_run`，S8 仍为所有者豁免 `pass`（无书面法务意见，R-11 保留）。
+- 未接触公共 KAD；仓库不含任何默认 bootstrap 节点；`CliAdapter.wired` 仍 `False`，
+  `--mode real` 仍 `BLOCKED`，T0 不构成 G1 证据；不创建根 `Cargo.toml`、不动 `src/`。
+- 上述错配需回写 ADR-001、PROTO §1/§2、`S2.criteria` 与 RISK R-02，本次只登记发现。
+- `2.4.3` 及之前的改动已作为 `eccec2e` 推送至 GitHub。
+
 ## [2.4.3] - 2026-11-09 — M0 首批实验产出：S1 最小 Demo 与 S2 回环预演
 
 ### 新增

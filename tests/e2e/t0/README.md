@@ -90,7 +90,7 @@ python3 tests/spikes/m0_preflight.py
 
 | # | 动作 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| 1 | **S2 先行**：确认公共 KAD 接纳 `ColdRevive_V1:` 命名空间 | ⏳ | 实验方案与判据见 [tests/spikes/README.md](../../spikes/README.md)；`cargo` 已可用、实网批准已登记，仍待实网小样本结论。T0 只用本地双节点私有 KAD 子网，**不得向公共网络发布测试数据** |
+| 1 | **S2 先行**：确认公共 KAD 接纳 `ColdRevive_V1:` 命名空间 | ⏳ | 实验方案与判据见 [tests/spikes/README.md](../../spikes/README.md)；`cargo` 已可用、实网批准已登记，真实 wire 本地回环已跑通（排期见 [PLAN.md](../../spikes/s2/PLAN.md)），仍待实网小样本结论。T0 只用本地双节点私有 KAD 子网，**不得向公共网络发布测试数据** |
 | 2 | **S1 并行**：`rqbit` 按需实例化 / Pause-Resume / 握手拦截 | ⏳ | 决定 `T0-07` 的观测方式；实验方案同上 |
 | 3 | 定稿 CLI 启动参数，替换 `launch` 占位契约 | ✅ | 已落为 `coldrevive.t0.cli-contract/v1`（`t0_config.json` + §5.1），状态为 `proposed-v1`，M1 定稿时确认 |
 | 4 | 实现 `observe_t0_01`～`observe_t0_20` | ✅ | 20 条映射在 `t0_cli.OBSERVE_PLAN`；`t0_cli_selftest.py` 验证其不合成值 |
