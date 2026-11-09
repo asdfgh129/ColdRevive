@@ -167,7 +167,15 @@ impl Record {
 }
 
 fn rec(endpoint: &str, dir: &str, peer: &str, data: &[u8], detail: &str) -> Record {
-    let (opcode, _) = parse_frame(data).unwrap_or((0xFF, &[]));
+    // 0xE5 packed frames keep the opcode at byte 1 even though the payload is
+    // zlib-compressed; record it instead of collapsing everything to 0xFF.
+    let opcode = if data.len() >= 2
+        && (data[0] == PROTO_KAD || data[0] == PROTO_KAD_PACKED)
+    {
+        data[1]
+    } else {
+        parse_frame(data).map(|(o, _)| o).unwrap_or(0xFF)
+    };
     Record {
         at_ms: unix_ms(),
         endpoint: endpoint.into(),
@@ -228,6 +236,14 @@ impl Client {
         sock.set_read_timeout(Some(Duration::from_secs(2)))?;
         Ok(Client { name: name.into(), sock, id, records: Vec::new() })
     }
+    /// Only used by `lan-probe`: binding to 0.0.0.0 is required for replies from
+    /// a LAN peer to reach us (a 127.0.0.1-bound socket would advertise itself
+    /// as the source address and the peer would answer itself).
+    fn bind_any(name: &str, id: KadId) -> io::Result<Self> {
+        let sock = UdpSocket::bind("0.0.0.0:0")?;
+        sock.set_read_timeout(Some(Duration::from_secs(3)))?;
+        Ok(Client { name: name.into(), sock, id, records: Vec::new() })
+    }
     fn addr(&self) -> SocketAddr {
         self.sock.local_addr().expect("bound")
     }
@@ -260,7 +276,18 @@ impl Client {
         let t0 = Instant::now();
         let (_, data) = self.recv(recv_detail)?;
         let rtt = t0.elapsed().as_secs_f64() * 1000.0;
-        let (op, payload) = parse_frame(&data).map_err(io::Error::other)?;
+        let (op, payload) = parse_frame(&data).map_err(|e| {
+            if data.first() == Some(&PROTO_KAD_PACKED) {
+                io::Error::other("packed 0xE5 response (zlib); kad-mini has no zlib decoder")
+            } else if data.first().is_some_and(|p| *p != PROTO_KAD) {
+                io::Error::other(format!(
+                    "non-KAD frame 0x{:02x} (likely RC4 obfuscated)",
+                    data.first().copied().unwrap_or(0)
+                ))
+            } else {
+                io::Error::other(e)
+            }
+        })?;
         if op != expected {
             return Err(io::Error::other(format!(
                 "expected opcode 0x{expected:02x} ({}), got 0x{op:02x} ({})",
@@ -764,6 +791,114 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
     Ok(report)
 }
 
+// -------------------------------------------------------------- lan probe --
+
+#[derive(Default)]
+struct LanArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    rate: f64,
+}
+
+/// RFC1918 + loopback only. `lan-probe` must be physically incapable of
+/// reaching a public KAD node, even if the operator mistypes an address.
+fn is_private_ipv4(ip: Ipv4Addr) -> bool {
+    let o = ip.octets();
+    o[0] == 10
+        || (o[0] == 172 && (16..=31).contains(&o[1]))
+        || (o[0] == 192 && o[1] == 168)
+        || o[0] == 127
+}
+
+/// Interoperability probe against a real eMule client on the local LAN.
+/// Sends BOOTSTRAP_REQ + HELLO_REQ only. Never publishes a Key: if that client
+/// is also connected to public KAD, a publish could propagate test data out.
+fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <RFC1918 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：lan-probe 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 {
+        return Err("--port 必须 > 0".into());
+    }
+    let dest = SocketAddr::from((ip, port));
+    let rate = if args.rate > 0.0 && args.rate <= 1.0 { args.rate } else { 0.2 };
+
+    let mut client = Client::bind_any("lan-probe", node_id("lan-probe"))
+        .map_err(|e| format!("bind lan socket: {e}"))?;
+    let local = client.addr().port();
+    let contact = Contact {
+        id: client.id,
+        ip: [127, 0, 0, 1],
+        udp: local,
+        tcp: local,
+        version: KAD_VERSION,
+    };
+    let mut limiter = Limiter::new(rate);
+
+    let probes: Vec<(&str, Vec<u8>, u8)> = vec![
+        ("BOOTSTRAP_REQ", bootstrap_req(), op::BOOTSTRAP_RES),
+        ("HELLO_REQ", hello(op::HELLO_REQ, &contact, &[]), op::HELLO_RES),
+    ];
+    let mut attempts = Vec::new();
+    for (label, frame, expected) in probes {
+        let t0 = Instant::now();
+        client.send(dest, &frame, &format!("lan-probe: {label}"), &mut limiter)
+            .map_err(|e| format!("send {label}: {e}"))?;
+        let sent_hex = sha1::hex(&frame);
+        let reply = client.recv("lan-probe: response");
+        let rtt = t0.elapsed().as_secs_f64() * 1000.0;
+        let (class, opcode, recv_hex, recv_len, from) = match reply {
+            Ok((from, data)) => {
+                let proto = data.first().copied().unwrap_or(0x00);
+                let op = data.get(1).copied().unwrap_or(0xFF);
+                let cls = if proto == PROTO_KAD {
+                    if op == expected { "plaintext_expected_response" }
+                    else { "plaintext_other_opcode" }
+                } else if proto == PROTO_KAD_PACKED {
+                    // aMule SendPacket() calls PackPacket() above 200 bytes:
+                    // 0xE5 + opcode + zlib stream (0x78 0xda ...).
+                    if op == expected { "packed_0xE5_expected_response" }
+                    else { "packed_0xE5_other_opcode" }
+                } else {
+                    "non_kad_likely_rc4_obfuscated"
+                };
+                (cls, op, sha1::hex(&data), data.len(), from.to_string())
+            }
+            Err(_) => ("timeout_no_datagram", 0xFF, String::new(), 0, dest.to_string()),
+        };
+        attempts.push(J::Obj(vec![
+            ("probe".to_string(), s(label)),
+            ("sent_hex".to_string(), s(sent_hex)),
+            ("expected_opcode".to_string(), s(format!("0x{expected:02X}"))),
+            ("response_class".to_string(), s(class)),
+            ("response_opcode".to_string(), s(format!("0x{opcode:02X}"))),
+            ("response_bytes".to_string(), n(recv_len as f64)),
+            ("response_hex".to_string(), s(recv_hex)),
+            ("rtt_ms".to_string(), n(rtt)),
+            ("peer".to_string(), s(from)),
+        ]));
+    }
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-lan-probe/v1")),
+        ("generated_at", s(utc_iso(unix_ms()))),
+        ("mode", s("lan-interop-probe")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("public_kad_contacted", b(false)),
+        ("evidence_valid_for_pass", b(false)),
+        ("s2_status", s("not_run")),
+        ("publish_sent", b(false)),
+        ("rate_limit_pps", n(rate)),
+        ("attempts", J::Arr(attempts)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s("只用 BOOTSTRAP/HELLO 探测真实 eMule 客户端的报文可解析性；不发布任何 Key，不能作为 S2 公共 KAD 结论证据。")),
+    ]))
+}
+
 // ---------------------------------------------------------------- live gate --
 
 #[derive(Default)]
@@ -799,6 +934,26 @@ fn live_gate(args: &LiveArgs) -> (bool, Vec<String>, Vec<String>) {
             let block = &compact[start..end];
             if block.contains("\"pending\"") {
                 blockers.push("S2.public_kad_approval.pending 未清除：G0 尚未确认最小样本量与限速阈值".into());
+            }
+            // G0-confirmed parameters are authoritative: CLI values may not
+            // exceed them, otherwise the approval record would be decorative.
+            let cs = extract_number(block, "sample_size");
+            let cr = extract_float(block, "rate_limit_pps");
+            match (cs, cr) {
+                (Some(cs), Some(cr)) => {
+                    info.push(format!("g0_confirmed: sample_size={cs} rate_limit_pps={cr}"));
+                    if let Some(n_) = args.sample_size {
+                        if n_ as u64 != cs {
+                            blockers.push(format!("--sample-size={n_} 与 G0 确认值 {cs} 不一致"));
+                        }
+                    }
+                    if let Some(r) = args.rate_limit {
+                        if (r - cr).abs() > 1e-9 {
+                            blockers.push(format!("--rate-limit={r} 与 G0 确认值 {cr} 不一致"));
+                        }
+                    }
+                }
+                _ => blockers.push("S2.public_kad_approval 缺少 G0 确认的 sample_size / rate_limit_pps".into()),
             }
             info.push(format!("approval_file={}", path.display()));
         }
@@ -862,7 +1017,7 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
             ("evidence_valid_for_pass", b(false)),
             ("s2_status", s("not_run")),
             ("gate", gate),
-            ("note", s("门禁未全部通过或仅 --check：未发送任何报文，未接触公共 KAD。")),
+            ("note", s("仅 --check 或门禁未全部通过：未发送任何报文，未接触公共 KAD。")),
         ]));
     }
 
@@ -1006,6 +1161,22 @@ fn extract_number(body: &str, key: &str) -> Option<u64> {
     digits.parse().ok()
 }
 
+fn extract_float(body: &str, key: &str) -> Option<f64> {
+    let pat = format!("\"{key}\"");
+    let i = body.find(&pat)? + pat.len();
+    let rest = &body[i..];
+    let start = rest.find(|c: char| c.is_ascii_digit() || c == '.')?;
+    let mut end = start;
+    for c in rest[start..].chars() {
+        if c.is_ascii_digit() || matches!(c, '.' | '-' | '+' | 'e' | 'E') {
+            end += c.len_utf8();
+        } else {
+            break;
+        }
+    }
+    rest[start..end].parse().ok()
+}
+
 // --------------------------------------------------------------------- main --
 
 fn write_report(report: &J, prefix: &str) -> Result<PathBuf, String> {
@@ -1023,6 +1194,7 @@ fn print_usage() {
     println!("kad-mini — S2 minimal eMule KAD v2 wire client\n");
     println!("  kad-mini selftest                  codec / hash assertions, no sockets");
     println!("  kad-mini loopback [--keys N] [--rate R]   real 0xE4 frames on 127.0.0.1");
+    println!("  kad-mini lan-probe --ip IP --port UDP     RFC1918-only real-client probe, no publish");
     println!("  kad-mini live --check             inspect the real-network gate, send nothing");
     println!("  kad-mini live --bootstrap FILE --sample-size N --rate-limit R \\");
     println!("            --attest-i-am-the-experiment-operator\n");
@@ -1041,6 +1213,14 @@ fn main() {
             let keys = arg_value(&argv, "--keys").and_then(|v| v.parse().ok()).unwrap_or(5).min(SAMPLE_KEYS.len());
             let rate = arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(50.0);
             run_loopback(keys, rate).map(|r| (r, "kad-wire-loopback", 0))
+        }
+        "lan-probe" => {
+            let args = LanArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+            };
+            run_lan_probe(&args).map(|r| (r, "kad-lan-probe", 0))
         }
         "live" => {
             let args = LiveArgs {

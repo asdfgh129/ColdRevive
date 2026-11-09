@@ -10,15 +10,20 @@
 | :--- | :--- | :--- |
 | L1 逻辑预演 | [`s2_loopback.py`](s2_loopback.py) | JSON 消息的私有子网双节点，只验流程与命名空间概念，**不是真实协议** |
 | L2 **真实 wire 闭环** | [`kad-mini/`](kad-mini/README.md) | 独立 Rust Cargo 工程，真实 `0xE4` Kademlia2 报文，BOOTSTRAP / HELLO / 迭代查找 / PUBLISH_KEY / SEARCH_KEY |
-| L3 实网小样本 | `kad-mini live` | **未执行**，被 [PLAN.md §2](PLAN.md) 的门禁拒绝 |
+| L2.5 **真实客户端 LAN 互操作** | `kad-mini lan-probe` | RFC1918 内真实 eMule，只发 BOOTSTRAP / HELLO，验报文可解析性，**不发布 Key** |
+| L3 实网小样本 | `kad-mini live` | **未执行**；[PLAN.md](PLAN.md) 的 P0–P3 已完成，只差实验执行人显式执行 P4 |
 
 ```bash
 python3 tests/spikes/s2/s2_loopback.py                    # L1
 cd tests/spikes/s2/kad-mini && cargo test                 # L2 单测 7/7
 cd tests/spikes/s2/kad-mini && cargo run -- selftest      # L2 常量/编解码断言 29/29
 cd tests/spikes/s2/kad-mini && cargo run -- loopback      # L2 真实报文闭环
-cd tests/spikes/s2/kad-mini && cargo run -- live --check  # L3 门禁检查（当前退出码 2）
+cd tests/spikes/s2/kad-mini && cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>   # L2.5
+cd tests/spikes/s2/kad-mini && cargo run -- live --check  # L3 门禁检查（不发包）
 ```
+
+用户提供的 `nodes.dat` / `server.met` 由 [`nodes_dat_to_bootstrap.py`](nodes_dat_to_bootstrap.py)
+只读解析，输出到 `reports/*.local.json`（已忽略，**仓库不含任何节点 IP**）。
 
 报告落在 `reports/`（不纳入版本控制），固定标注
 `public_kad_contacted: false`、`evidence_valid_for_pass: false`、`s2_status: "not_run"`。
@@ -56,13 +61,15 @@ BOOTSTRAP_REQ/RES → HELLO_REQ/RES → KADEMLIA2_REQ/RES (迭代查找)
 
 ## 4. 为什么还没有实网结论
 
-`spikes.json` 的 `S2.public_kad_approval` 已登记项目所有者的人工批准，但这只是**允许做实网实验**，
-不等于实验已完成。L2 已补齐了原先缺的第 1 项（协议实现），仍缺：
+**P0–P3 已全部完成**（协议核实、wire 闭环、LAN 互操作、G0 参数与 bootstrap 清单），
+`S2.public_kad_approval.pending` 已清除并写入 `confirmed`（`sample_size=3`、`rate_limit_pps=0.2`）。
+仍缺的只有 **P4 本身**：逐次实网原始记录（发布成功率、查询时延分布、被现有节点丢弃/拒绝的观测）。
 
-1. **G0 评审确认的样本量与限速阈值**：批准记录中的 `pending` 项，未确认前不得向公共网络发布测试 Key。
-2. **用户提供的 bootstrap 节点清单**：[OPS §6](../../../docs/07-operations/OPS.md) 禁止内置默认
-   bootstrap 资源列表，仓库不含任何公共节点 IP。
-3. **逐次实网原始记录**：发布成功率、查询时延分布、被现有节点丢弃/拒绝的观测。
+`kad-mini live --check` 带齐参数后现在会返回 `gate.passed=true`，但 **`--check` 永不发包**；
+只有实验执行人显式去掉 `--check` 并给出 `--attest-i-am-the-experiment-operator` 才会执行 P4。
+在此之前 `S2.status` 保持 `not_run`，公共 KAD 未被接触。
 
-`kad-mini live --check` 当前明确列出 5 项阻塞并拒绝发送任何报文。三者齐备前
-S2 状态保持 `not_run`。合规红线：人工批准、最小样本、限速、禁止批量发布测试 Key。
+合规红线不变：人工批准、最小样本、限速、禁止批量发布测试 Key、bootstrap 由用户提供且仓库不内置。
+观测口径已按 [PROTO §2.0](../../../docs/04-protocol/PROTO.md) 与
+[RISK R-02](../../../docs/05-quality/RISK.md) 拆成「协议层不可解析 / 索引层拒绝 / 成功」三桶，
+避免把压缩帧或超时误判成「公共网络不接纳」。

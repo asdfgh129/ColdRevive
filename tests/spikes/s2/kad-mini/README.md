@@ -33,8 +33,12 @@ cd tests/spikes/s2/kad-mini
 cargo test                    # 7 个单测：SHA-1 向量、Tag/Contact/报文轮编、容差语义
 cargo run -- selftest         # 29 项协议常量与编解码断言，输出 JSON
 cargo run -- loopback         # 真实报文回环闭环，输出 JSON 报告
-cargo run -- live --check     # 只检查实网门禁，不发送任何报文（当前退出码 2）
+cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>   # 真实客户端互操作探测，不发布 Key
+cargo run -- live --check     # 只检查实网门禁，不发送任何报文
 ```
+
+`lan-probe` 硬编码拒绝非私有地址（10/8、172.16/12、192.168/16、127/8），只发
+`BOOTSTRAP_REQ` / `HELLO_REQ`，报告固定 `public_kad_contacted=false` 与 `publish_sent=false`。
 
 `loopback` 可选 `--keys N`（默认 5，上限 5）与 `--rate R`（默认 50 包/秒）。
 
@@ -68,31 +72,56 @@ cargo run -- live --check     # 只检查实网门禁，不发送任何报文（
 
 | 未实现 | 影响 |
 | :--- | :--- |
-| sender/receiver UDP key、RC4 混淆 | aMule ≥ v6 节点可能静默丢弃明文包 —— 这正是 S2-C2 待观测项 |
-| `0xE5` zlib 压缩帧 | >200 字节的响应可能无法解析；本探针报文均 <200 字节 |
-| 完整 routing zone 二叉树 / `nodes.dat` / 防火墙检测 | 只有单索引节点，迭代查找只有一跳 |
+| sender/receiver UDP key、RC4 混淆 | **刻意不实现**：源码核实表明 `0xE4` 明文帧不会被「因未加密」丢弃；key 只用于反 IP 欺骗与「已验证联系人」标记且绑定源 IP。`HELLO_RES` 对 kadVersion ≥ 6 才用 RC4，P4 流程跳过 HELLO |
+| `0xE5` zlib 压缩帧解码 | >200 字节响应会变成 `0xE5` + zlib；探针**能分类但不能解压**。LAN 实测同一节点会交替回 `0xE4` / `0xE5`；若 P4 中该桶占比过高，再追加 zlib 解码 |
+| 完整 routing zone 二叉树 / `nodes.dat` 持久化 / 防火墙检测 | 只有单索引节点，迭代查找只有一跳 |
 | `KADEMLIA_FIND_VALUE_MORE` 扩展查询 | 不支持扩大搜索宽度 |
 | 真实 KAD 节点身份校验、IP 反欺骗 | 回环环境不需要 |
 
-## 5. 协议与设计基线的错配（发现，不擅自改）
+## 5. 协议与设计基线的错配（v2.4.6 已按项目所有者指示回写）
 
-1. **ID 位宽**：[PROTO §1](../../../../docs/04-protocol/PROTO.md) 的 `Target_Key = SHA1(...)` 是 160-bit，
-   eMule KAD 是 128-bit。本探针取 SHA-1 前 16 字节，**截断规则仍待 ADR 决策**。
+1. **ID 位宽**：[PROTO §1](../../../../docs/04-protocol/PROTO.md) 原 `Target_Key = SHA1(...)` 是 160-bit，
+   eMule KAD 是 128-bit。✅ 已定义 `KAD_ID(x) = x[0..16]`，**截断规则仍标「暂定待 ADR」**。
 2. **`FIND_VALUE` 不存在**：判据里的术语在 KAD 里对应
    `SEARCH_KEY_REQ (0x33) → SEARCH_RES (0x3B)`，发布对应 `PUBLISH_KEY_REQ (0x43)`。
+   ✅ `S2.criteria` 与 PROTO §2.1 已改。
 3. **KAD 不是 KV 存储**：Value 只能是 `(fileID, Tag 列表)`；`Node_Descriptor` 已映射为
-   Tag（`ColdRevive_V1:descriptor` / `:namespace`），符合 ADR-006「不写种子本体」。
+   Tag（`ColdRevive_V1:descriptor` / `:namespace`）。✅ PROTO §2 已改。
 4. **前缀在线上不可见**：`ColdRevive_V1:` 只影响本地哈希输入，线上只有 128-bit ID。
-   因此「公共节点因前缀而拒绝」这一观测口径不成立，S2-C3 应改为「不同哈希空间不互相覆盖」。
+   ✅ 观测口径已改为「不同哈希空间不互相覆盖」。
 5. **发布必须先收敛到 tolerance zone**：回环靠 LAN 豁免通过；实测 5 个 Key 的
-   `xor_top32` 全部远超 2^24，在 WAN 上会被静默丢弃。实网必须先做多跳迭代查找，
-   找到 ID 落在 Key 邻域的节点再发布 —— 这是 P4 的关键步骤。
+   `xor_top32` 全部远超 2^24，在 WAN 上会被静默丢弃。✅ 已写入 `S2.criteria` 第 2 条
+   （发布前 `KADEMLIA2_REQ/RES` 多跳迭代）。
+6. **明文 / UDP key / RC4（新增核实）**：`ClientUDPSocket.cpp::DecryptReceivedClient` 对首字节
+   `0xE4` 直接放行；`PacketTracking.cpp::InTrackListIsAllowedPacket` 的 key 形参是
+   `bool /*bValidSenderkey*/`，实际未启用。`CKadUDPKey` 为 `(m_key, m_ip)`，
+   `GetKeyValue(myIP)` 只在 IP 匹配时返回，**绑定原机器公网 IP、不能从 `nodes.dat` 复制**。
+   `BOOTSTRAP_RES` / `KADEMLIA2_RES` / `PUBLISH_RES` / `SEARCH_RES` 的发送端都传
+   `cryptTargetID = NULL`（明文）；只有 `SendMyDetails`（`HELLO_RES`）对 kadVersion ≥ 6 用 RC4。
+   → **结论：保持明文、跳过 HELLO，不实现 key / RC4**。
 
 ## 6. 实网门禁
 
 `live` 模式在发任何非回环报文前，要求全部通过：
 
-`spikes.json` 的 `approved=true` 且 `pending` 已清除 · 用户提供 `--bootstrap FILE`（仓库不内置任何节点）·
-`--sample-size 1..=10` · `--rate-limit (0, 1.0]` 包/秒 · `--attest-i-am-the-experiment-operator`。
+`spikes.json` 的 `approved=true`、`pending` 已清除、`confirmed.sample_size` / `rate_limit_pps` 存在 ·
+用户提供 `--bootstrap FILE`（仓库不内置任何节点） · `--sample-size` / `--rate-limit`
+**必须与 G0 确认值逐项一致**（当前 3 / 0.2） · 硬上限 1..=10 与 (0, 1.0] 包/秒 ·
+`--attest-i-am-the-experiment-operator`。
 
-当前 `live --check` 会拒绝并列出 5 项阻塞。详见 [../PLAN.md §2/§3](../PLAN.md)。
+P3 已完成，因此带齐参数运行 `live --check` 会返回 `gate.passed=true`（**仍不发包**）；
+只有去掉 `--check` 才会真正执行 P4。详见 [../PLAN.md §2/§3](../PLAN.md)。
+
+## 7. LAN 真实客户端互操作探测（2026-11-09）
+
+`lan-probe` 对 RFC1918 内的真实 eMule 客户端（IP / 端口由 `--ip` / `--port` 传入，不写进仓库）只发两个握手包：
+
+| 探测 | 结果 |
+| :--- | :--- |
+| `BOOTSTRAP_REQ (0x01)` | 一次 `0xE4 0x09` 明文 523 B（RTT ≈ 13 ms），另一次 `0xE5 0x09` zlib 压缩 519 B；节点可达、KAD 在线，响应形态不稳定 |
+| `HELLO_REQ (0x11)`，v8 / v7 | 均无响应（超时） |
+
+这直接支持第 6 条的决策：明文能被接受，问题在压缩帧与 HELLO 路径，而非 UDP key。
+报告落在 `../reports/kad-lan-probe-*.json`（已忽略），固定
+`public_kad_contacted=false`、`evidence_valid_for_pass=false`、`publish_sent=false`。
+LAN 节点**不是公共 KAD 证据**，也禁止在其上发布测试 Key。

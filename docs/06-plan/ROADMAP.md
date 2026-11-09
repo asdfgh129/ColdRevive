@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.3
+version: 2.4
 status: 持续维护
 owner: 项目组
 updated: 2026-11-09
@@ -10,7 +10,7 @@ updated: 2026-11-09
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.3 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-09
+> 编号 DOC-14 · 版本 2.4 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-09
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -110,9 +110,10 @@ ColdRevive
 - 工具链：`rustc` / `cargo` 1.99.1 已在本机安装（2026-11-09），`m0_preflight.py` 的工具链检查已转为 `[OK]`，S1 最小 Demo 具备执行条件。
 - 决策：S8 法务评审由项目所有者于 2026-11-09 决定豁免，登记为 `pass`（**未取得法务书面意见**，R-11 风险保留，M4 公测前复核）；S2 实网实验的人工批准已写入 `spikes.json` 的 `public_kad_approval`。
 - 已产出首批观测（2026-11-09）：[S1 最小 Demo](../../tests/spikes/s1/README.md)（握手拦截、按需实例化 `verified`；Pause-Resume、真实分片传输 `partial`）+ [S2 三层实验](../../tests/spikes/s2/README.md)（L1 逻辑预演发布 5/5、命中 5/5；L2 [最小 eMule KAD 客户端](../../tests/spikes/s2/kad-mini/README.md) 用真实 `0xE4` Kademlia2 报文完成发布 5/5 被 ACK、查询命中 5/5、84 条逐包原始记录、0 协议错误）。按判据**均不得判 `pass`**；证据路径登记在 `spikes.json` 的 `observations.real_wire`。S1 / S2 状态仍为 `not_run`。
-- **S2 实网排期**：[PLAN.md](../../tests/spikes/s2/PLAN.md) 的 P0 协议核实 / P1 wire codec / P2 本地真实报文闭环已完成；P3/P4 被门禁阻断，缺 G0 确认的最小样本量与限速阈值、用户提供的 bootstrap 清单、实网逐次原始记录。`kad-mini live --check` 当前拒绝并列出 5 项阻塞，未发送任何非回环报文。协议核实还发现 eMule KAD 无 `FIND_VALUE`、ID 空间 128-bit 与 PROTO §1 的 160-bit 不符、`SEARCHTOLERANCE` 会静默丢弃越界发布 —— 需回写 ADR-001 / PROTO / `S2.criteria`，本阶段只登记发现。
-- 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1–S7 的完整/实网实验。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：S1（否决架构）与 S2（否决产品定位）并行推进，其中 S2 先完成 P3 门禁参数确认再执行 P4 实网小样本；S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+- **S2 实网排期**：[PLAN.md](../../tests/spikes/s2/PLAN.md) 的 **P0–P3 已完成**（协议核实 / wire codec / 本地真实报文闭环 / G0 参数与 bootstrap 清单），**P4 实网小样本未执行**。`S2.public_kad_approval.pending` 已清除并写入 `confirmed`（`sample_size=3`、`rate_limit_pps=0.2`）；用户提供 `nodes.dat`（200 个 KAD contacts）转成本地 bootstrap，仓库不含节点 IP；LAN 真实 eMule 的互操作探测已跑通（`BOOTSTRAP_REQ` 得明文/压缩响应）。`live --check` 现报门禁通过但**永不发包**，须显式去掉 `--check` 才执行 P4。
+- **判据口径已回写（v2.4.6）**：按 aMule 源码修正 `S2.criteria`、`S2.assumption`、[PROTO §1/§2.0/§2.1](../04-protocol/PROTO.md)、[ADR-001](../02-architecture/adr/ADR-001-kad-network.md)、[ADR-002](../02-architecture/adr/ADR-002-bt-engine.md)、[RISK R-02](../05-quality/RISK.md)：eMule KAD 无 `FIND_VALUE`（映射为 `SEARCH_KEY_REQ/RES`）、ID 空间 128-bit、前缀线上不可见、`Node_Descriptor` 须编码为 Tag、`SEARCHTOLERANCE` 越界静默丢弃；「发布失败率」拆成协议层/索引层/成功三桶。只改 KAD 集成映射，`PROTOCOL_VERSION` 保持 1、T0 golden 不变。
+- 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1 的双 peer 真实分片传输、S3–S7 全部实验、S2 的 P4 实网小样本。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
+- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：由实验执行人显式执行 **S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`；S1 补齐双 peer 传输，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 

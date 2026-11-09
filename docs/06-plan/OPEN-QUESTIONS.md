@@ -38,7 +38,7 @@ updated: 2026-11-09
 
 ## 3. 立即下一步（M0 Spike 清单）
 
-1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。其中 S2 已完成协议核实与真实 wire 本地回环，下一步是 [tests/spikes/s2/PLAN.md](../../tests/spikes/s2/PLAN.md) 的 P3 门禁参数确认（G0 样本量 / 限速阈值、用户 bootstrap 清单）与 P4 实网小样本；协议核实发现的 KAD 报文映射与 128/160-bit ID 错配需回写 ADR-001、PROTO 与 `S2.criteria`。
+1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。其中 S2 的 [PLAN.md](../../tests/spikes/s2/PLAN.md) P0–P3 已完成（协议核实、真实 wire 回环、LAN 互操作、G0 确认 `sample_size=3` / `rate_limit_pps=0.2`、用户 bootstrap 清单），**只差 P4 实网小样本由实验执行人显式执行**；KAD 报文映射与 128/160-bit ID 错配已于 v2.4.6 回写 ADR-001 / PROTO §2.0 / `S2.criteria` / RISK R-02。
 2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
 3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。

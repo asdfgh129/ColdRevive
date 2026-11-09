@@ -34,6 +34,7 @@
           "S1-C4": "partial — 逐片 SHA-1 16/16 匹配；未建立双 peer 真实分片传输"
         },
         "api_probe": "rqbit 9.1.0 SessionOptions 无握手回调字段，握手拦截器须自实现或加代理层；影响 ADR-002",
+    "adr_002_impact": "已回写 ADR-002 §S1 Demo 观测：握手拦截能力不是 rqbit 现成接口，选型门禁须改为「自实现拦截层 / 代理层是否可行」，不能按「引擎是否暴露回调」判 S1 通过；ADR 状态仍为待定",
         "scope": "127.0.0.1 回环，DHT/tracker/LSD/监听/外连全部禁用"
       },
       "blocked_by": ["crate.rqbit"]
@@ -41,17 +42,20 @@
     {
       "id": "S2",
       "title": "公共 eMule KAD 接纳专属命名空间",
-      "assumption": "可接入公共 eMule KAD，且 ColdRevive_V1: 命名空间不与现有流量冲突",
+      "assumption": "可接入公共 eMule KAD，且专属命名空间不与现有 KAD Key 空间互相覆盖（前缀只作用于本地哈希输入，线上仅传输 128-bit ID）",
       "priority": "P0",
       "parallel_with": "S1",
       "risk": "R-02",
       "status": "not_run",
       "criteria": [
-        "双节点闭环：A 发布带前缀 Key，B 用 FIND_VALUE 命中 A",
-        "记录发布成功率、查询时延分布、被现有节点丢弃或拒绝的观测",
-        "专属命名空间前缀不覆盖 / 不干扰现有 KAD Key 空间",
-        "结论须基于实网小样本；本地回环私有子网模拟只能作为预演，不得判为 pass"
-      ],
+    "双节点闭环：A 用 PUBLISH_KEY_REQ (0x43) 发布命名空间 Key，B 用 SEARCH_KEY_REQ (0x33) / SEARCH_RES (0x3B) 命中 A 的描述符 Tag；eMule KAD 无 FIND_VALUE 操作",
+    "发布前先以 KADEMLIA2_REQ/RES (0x21/0x29) 多跳迭代查找，收敛到 SEARCHTOLERANCE = 2^24 邻域内节点再发布，否则 WAN 侧会静默丢弃",
+    "记录发布成功率、查询时延分布、被现有节点丢弃或拒绝的观测；必须把协议层无响应（0xE5 压缩帧 / RC4 混淆 / 超时 / 未经 HELLO 验证）与索引层拒绝分开计数，二者不得混为命名空间接纳性结论",
+    "隔离口径：命名空间前缀只作用于本地哈希输入，线上仅传输 128-bit ID；观测「专属 Key 空间不与既有 KAD Key 互相覆盖」，不观测「公共节点是否看见字符串前缀」",
+    "结论须基于实网小样本；本地回环私有子网与局域网真实客户端互操作探测都只作预演，不得判为 pass",
+    "实网小样本须使用 G0 确认的样本量与限速阈值并逐次留原始报文；bootstrap 节点由实验执行人提供，仓库不内置"
+  ],
+  "criteria_basis": "2026-11-09 按 aMule master @ 6a1105634d81242a581a0f36a7e00379b12a83f3 源码核实后重写；详见 tests/spikes/s2/PLAN.md §0 与 PROTO §2.0",
       "quantitative_note": "判据阈值沿用 RISK 中 R-02 的预警线，由 G0 评审确认后写入本文件；当前不硬编码任何未确认数字。",
       "evidence_required": ["双节点 Demo 源码与版本", "逐次发布/查询原始记录", "限速与样本量说明", "实网实验批准记录"],
       "fallback": "切换 bootstrap_mode = private 自建命名空间，并重估 ADR-001 与冷启动论证",
@@ -66,9 +70,26 @@
           "限速发布，禁止批量发布测试 Key",
           "本地回环私有子网结果只作预演，不得据此判 pass"
         ],
-        "pending": "具体样本量与限速阈值由 G0 评审确认后方可执行实网发布",
-        "note": "由项目所有者在 2026-11-09 会话中明确批准，人工回填本字段；脚本不得代填。"
+    "confirmed": {
+      "confirmed_by": "项目所有者",
+      "confirmed_at": "2026-11-09",
+      "basis": "按会话确认采用建议区间的最保守值（建议样本 3～5 条、限速 0.2～1.0 包/秒）",
+      "sample_size": 3,
+      "rate_limit_pps": 0.2,
+      "hard_caps": {
+        "sample_size_max": 10,
+        "rate_limit_pps_max": 1.0
       },
+      "bootstrap_source": "项目所有者 2026-11-09 提供的 nodes.dat（fileVersion=2，200 contacts，全部 verified）；由 tests/spikes/s2/nodes_dat_to_bootstrap.py 转为本地 JSON",
+      "bootstrap_local_files": [
+        "tests/spikes/s2/reports/bootstrap.public.local.json",
+        "tests/spikes/s2/reports/bootstrap.lan.local.json"
+      ],
+      "bootstrap_note": "两个本地文件均被 .gitignore 排除，仓库不含任何公共节点 IP；LAN 节点只用于互操作探测，禁止用于 live 发布",
+      "protocol_scope": "保持明文 0xE4，跳过 HELLO 路径；BOOTSTRAP/PUBLISH/SEARCH 的响应为明文或 0xE5 压缩帧，sender/receiver UDP key 与 RC4 不实现（见 PLAN.md §5）"
+    },
+    "note": "由项目所有者在 2026-11-09 会话中明确批准并确认参数，人工回填本字段；脚本不得代填。kad-mini live_gate 会校验 CLI 参数必须与本 confirmed 值一致。"
+  },
       "observations": {
         "recorded_at": "2026-11-09",
         "report_note": "reports/ 由 .gitignore 排除，下列 JSON 为本机运行产物、未纳入版本控制；用各自的 reproduce 命令可重新生成。",
@@ -114,8 +135,30 @@
       "二手资料 DeepWiki 将 PUBLISH_KEY_REQ 误记为 0x35（实为 SEARCH_NOTES_REQ），源码真值 0x43；本探针常量全部取自 aMule 源码",
       "L1 逻辑预演取 SHA-256 前 16 字节、L2 真实 wire 探针取 SHA-1 前 16 字节派生 Key ID，同一逻辑 Key 在两层得到不同 ID，结果不可直接比较；最终 160-bit 到 128-bit 映射规则待 ADR / PROTO 定稿"
     ],
-        "real_network": "not_run — 协议实现已由 real_wire 补齐；仍缺 G0 确认的最小样本量/限速阈值、用户提供的 bootstrap 清单、实网逐次原始记录"
-      },
+    "lan_interop_probe": {
+      "command": "cd tests/spikes/s2/kad-mini && cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>",
+      "target_scope": "局域网真实 eMule 客户端，RFC1918 私有地址，仅 BOOTSTRAP_REQ / HELLO_REQ，publish_sent=false",
+      "bootstrap_res": "0xE4 0x09 明文 523 字节；同一目标另一次观测为 0xE5 0x09 zlib 压缩 519 字节 —— 响应形态不稳定，探针已能分类但不支持解压",
+      "hello_res": "v8 与 v7 两种声明版本均无响应（3～5 s 超时）；对应 aMule SendMyDetails 对 kadVersion >= 6 启用 RC4，以及未验证联系人的处理路径",
+      "public_kad_contacted": false,
+      "evidence_valid_for_pass": false,
+      "note": "LAN 节点可用作真实客户端互操作探测，但它是私有子网单机，不构成公共 KAD 接纳性证据；若该客户端同时连着公共 KAD，向其发布测试 Key 可能外泄，故禁止在 LAN 上发布"
+    },
+    "design_baseline": {
+      "updated_at": "2026-11-09",
+      "version": "v2.4.6",
+      "files": [
+        "tests/spikes/spikes.json (S2.criteria / S2.assumption / public_kad_approval.confirmed)",
+        "docs/04-protocol/PROTO.md (§1 / §2.0 / §2 / §2.1 / §4)",
+        "docs/02-architecture/adr/ADR-001-kad-network.md",
+        "docs/02-architecture/adr/ADR-002-bt-engine.md",
+        "docs/05-quality/RISK.md (R-02)",
+        "tests/spikes/s2/PLAN.md"
+      ],
+      "note": "只按源码核实结果修正 KAD 集成映射与观测口径，不改 §3 私有控制面 v1 字段，PROTOCOL_VERSION 保持 1，T0 golden 不变"
+    },
+    "real_network": "not_run — P0–P3 已完成（协议实现、G0 确认参数、bootstrap 清单、明文口径决策齐备）；仅剩 P4 由实验执行人显式执行 live（不带 --check）并产出逐次原始记录"
+  },
       "blocked_by": ["s2.real_network_conclusion"]
     },
     {

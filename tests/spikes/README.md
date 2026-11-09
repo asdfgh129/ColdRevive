@@ -69,7 +69,7 @@ python3 tests/spikes/m0_preflight.py --json
 | :--- | :--- |
 | 前置 | `cargo` 可用；**实网实验人工批准记录**（写入 `spikes.json` 的 `S2.public_kad_approval`）；限速配置 |
 | 预演 | L1 逻辑预演 [`s2_loopback.py`](s2/s2_loopback.py) + L2 真实 wire 回环 [`kad-mini/`](s2/kad-mini/README.md)（真实 `0xE4` Kademlia2 报文）均已在 `127.0.0.1` 跑通发布/查询闭环，此步只验协议实现，**不产生 S2 结论** |
-| 实网 | **未执行**，门禁见 [PLAN.md §2/§3](s2/PLAN.md)：须先由 G0 确认最小样本量与限速阈值、由用户提供 bootstrap 清单；`kad-mini live --check` 当前拒绝。执行时按最小样本逐条记录发布成功率与查询时延分布、观察是否被现有节点丢弃 / 视为污染，禁止批量发布测试 Key |
+| 实网 | **P4 未执行**：[PLAN.md §3](s2/PLAN.md) 的 P3 已完成（G0 确认 `sample_size=3` / `rate_limit_pps=0.2`、用户提供 `nodes.dat` 转成本地 bootstrap、明文口径已定）。`live --check` 现在报门禁通过但**永不发包**；执行须显式去掉 `--check` 并加操作者声明。按最小样本逐条记录发布成功率与查询时延分布，观测按协议层 / 索引层 / 成功三桶分类，禁止批量发布测试 Key |
 | 判据 | 见 `spikes.json` 的 `S2.criteria`；量化阈值由 G0 评审确认后写入，当前不硬编码 |
 | 失败替代 | `bootstrap_mode = private` 自建命名空间，并重估 [ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md) 与冷启动论证 |
 | 影响 | 唯一能否决**产品定位**的 Spike；T0-03 只能在私有子网验证，不得向公共网络发布测试数据 |

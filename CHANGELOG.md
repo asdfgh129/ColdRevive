@@ -2,6 +2,67 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.6] - 2026-11-09 — 判据口径回写 + G0 参数确认 + LAN 互操作探测
+
+### 变更：把判据口径改对（A）
+
+按 aMule 源码核实结果回写设计基线，**只改 KAD 集成映射与观测语义，不动私有控制面 v1 字段**，
+`PROTOCOL_VERSION` 保持 1、T0 golden files 不变（PROTO 文档版本 2.0 → 2.1）。
+
+- `spikes.json`：`S2.criteria` 从「`FIND_VALUE` 命中带前缀 Key」改为
+  `PUBLISH_KEY_REQ (0x43)` / `SEARCH_KEY_REQ (0x33)` / `SEARCH_RES (0x3B)`；
+  新增「发布前须 `KADEMLIA2_REQ/RES` 多跳迭代收敛到 `SEARCHTOLERANCE` 邻域」、
+  「协议层无响应与索引层拒绝必须分开计数」、「前缀线上不可见，隔离口径为 Key 空间不互相覆盖」、
+  「实网参数须与 G0 确认值一致」。同步修正 `S2.assumption` 并登记 `S1.adr_002_impact`。
+- [PROTO §1/§2.0/§2/§2.1/§4](docs/04-protocol/PROTO.md)：新增 §2.0「KAD 集成映射基线」，
+  定义 `KAD_ID(x) = SHA1(x)[0..16]`（截断规则仍标「暂定待 ADR」）、Tag 值模型、
+  `0xE4` / `0xE5` / RC4 帧形态、UDP key 的真实作用；§4 增加「映射修订例外」条款。
+- [ADR-001](docs/02-architecture/adr/ADR-001-kad-network.md)：新增「协议核实结论」5 条；
+  20/s 发布限速标注须按 tolerance zone 复核；复核时点明确为 **P4 实网小样本之后**（1.0 → 1.1）。
+- [ADR-002](docs/02-architecture/adr/ADR-002-bt-engine.md)：登记 rqbit 9.1.0 无握手回调的
+  S1 观测，选型门禁改为「评估自实现拦截层 / 代理层」，不再以「引擎是否暴露回调」判 S1（1.0 → 1.1）。
+- [RISK R-02](docs/05-quality/RISK.md)：预警线从笼统的「发布失败率 > 20%」改为
+  **「索引层拒绝率 > 20%（须先排除协议层不可解析 / 静默丢弃 / 未收敛）」**，并给出三桶计数表。
+- `PLAN.md` §0/§1/§4 由「需回写」改为「已回写」，P3 标记完成。
+
+### 变更：G0 参数确认与门禁收紧（B）
+
+- 项目所有者确认采用建议区间的最保守值：
+  **`sample_size = 3`**、**`rate_limit_pps = 0.2`**（每 5 秒 1 个包），
+  写入 `S2.public_kad_approval.confirmed` 并**清除 `pending`**。
+- `kad-mini live_gate` 增加一致性校验：CLI 的 `--sample-size` / `--rate-limit`
+  必须与 `confirmed` 逐项相等，否则拒绝；防止批准记录沦为装饰。
+- 新增 `kad-mini lan-probe`：只发 `BOOTSTRAP_REQ` / `HELLO_REQ`、**不发任何 PUBLISH**，
+  硬编码拒绝非 RFC1918 地址，报告固定 `public_kad_contacted=false` / `publish_sent=false`。
+  `rec()` 现在能正确标注 `0xE5` 帧的 opcode；`exchange()` 对 `0xE5` / 非 KAD 帧给出明确错误。
+- 新增 [`nodes_dat_to_bootstrap.py`](tests/spikes/s2/nodes_dat_to_bootstrap.py)：
+  只读解析 aMule/eMule `nodes.dat`（fileVersion 1–3），输出 gitignored 的本地 bootstrap JSON；
+  刻意**不导出 `CKadUDPKey`**（绑定原机器公网 IP，跨主机不可用）。
+
+### 观测结论：节点文件与 LAN 真实客户端
+
+| 项 | 结论 |
+| :--- | :--- |
+| `nodes.dat` | `fileVersion=2`，**200 个 KAD contacts 全部 verified**，版本 8/9/10 为主；可作公共 bootstrap 来源 |
+| `server.met` | magic `0xE0`、17 个 **eD2K 服务器**条目，不是 KAD 路由表，**对 bootstrap 无用** |
+| LAN 真实 eMule（RFC1918 私有地址，具体 IP/端口只存于本地 bootstrap 文件） | KAD 在线。`BOOTSTRAP_REQ` 一次回 `0xE4 0x09` 明文 523 B（RTT ≈ 13 ms），另一次回 `0xE5 0x09` zlib 压缩 519 B；`HELLO_REQ` v7/v8 均超时 |
+
+**明文 vs sender/receiver UDP key 的真实区别**：`ClientUDPSocket.cpp::DecryptReceivedClient`
+对首字节 `0xE4` 直接放行，`PacketTracking.cpp::InTrackListIsAllowedPacket` 的 key 形参
+（`bool /*bValidSenderkey*/`）实际未启用 —— **明文不会被「因未加密」而静默丢弃**。
+key 是 `(m_key, m_ip)`、绑定源 IP 的反欺骗 / 联系人验证标记，补它并不能解决压缩帧与 RC4；
+而 `BOOTSTRAP_RES` / `KADEMLIA2_RES` / `PUBLISH_RES` / `SEARCH_RES` 发送端都传
+`cryptTargetID = NULL`（明文），只有 `HELLO_RES` 对 kadVersion ≥ 6 才 RC4。
+→ **决策：保持明文、P4 跳过 HELLO、不实现 key / RC4**；若 P4 中 `0xE5` 桶占比过高再追加 zlib 解码。
+
+### 不变 / 红线
+
+- **P4 实网小样本未执行**：`live --check` 现在报门禁通过但永不发包；须显式去掉 `--check`
+  并给出操作者声明才会发布。`S2.status` 仍 `not_run`，公共 KAD 未被接触。
+- LAN 节点只作互操作预演，不是公共 KAD 证据；若它连着公共 KAD，向其发布测试 Key 可能外泄，故禁止。
+- 仓库不含任何节点 IP：两个 `*.local.json` 均在 `reports/` 下被 `.gitignore` 排除。
+- 项目根仍无 `Cargo.toml`、`src/` 未动；S1–S7 仍 `not_run`，S8 仍为所有者豁免（R-11 保留）。
+
 ## [2.4.5] - 2026-11-09 — 修复 T0 skeleton CI 断言与 S8 豁免的冲突
 
 ### 变更
