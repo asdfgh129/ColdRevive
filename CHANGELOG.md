@@ -2,6 +2,59 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.12] - 2026-11-10 — `Kad 网络` 面板证据：否证 firewalled 假设，但「打开」是入站测试
+
+项目所有者补上 2.4.11 要求的第 ① 项：LAN eMule 主机 `Kad 网络` 面板完整截图，
+`状态: 打开`、`UDP 状态: 打开`、`IP:端口: <公网 IPv4>:<端口被裁切>`、`ID: <数字 ID>`，
+**无 `防火墙` / `Buddy` 行**（公共文档已脱敏）。eMule 官方帮助把 KAD 状态区分为「打开」与
+「通过防火墙」，aMule 官方手册把 `Connection State` / `UDP Connection State` 定义为
+`OK` / `Firewalled` 且两者均 OK 时不显示 Buddy 行。
+
+### 否证与更正
+
+- §8.6.2 假设 ②「该机 KAD 已 firewalled / 有 Buddy、432 条为陈旧路由表」**被否证**；
+  v2.4.10「更可能是 LowID / firewalled」的推测撤回；[PLAN.md §8.2](tests/spikes/s2/PLAN.md)
+  对应表述同步改写。
+- v2.4.10 的「整网无主机可跑 P4」仍维持 2.4.11 的降级结论，**不因面板而回升**。
+
+### 源码级复核：为什么「打开」不等于能跑 P4
+
+按 §0 同一 aMule 源码族逐处核实（详见 [PLAN.md §9](tests/spikes/s2/PLAN.md)）：
+
+| 位置 | 事实 |
+| :--- | :--- |
+| `ClientList.cpp::DoRequestFirewallCheckUDP` | 只用联系人 **TCP 端口**建连（`KS_QUEUED_FWCHECK_UDP` → `TryToConnect`），**不发** UDP 到其 KAD 端口 |
+| `OP_KAD_FWCHECKUDP_REQ` 处理 | 远端把一个**无载荷入站 UDP 包** `KADEMLIA_FWCHECKUDP_RES` 发到请求方 `GetIP():GetKadPort()` |
+| `KademliaUDPListener.cpp::Process2FirewallUDP` | 端口匹配即 `SetUDPFWCheckResult(true, false, ...)` |
+| `UDPFirewallTester.cpp` | `m_firewalledUDP` **初值即 `false`**；全失败才置 `true`；6 分钟超时降级还要求 `CKademlia::IsFirewalled()` |
+
+→ KAD UDP「打开」测的是**入站可达性**，由入站 DNAT 即可满足，协调走 TCP，**无需任何出站
+高位 UDP**。因此「该机 STUN 高位 UDP 全超时」与「KAD UDP 打开」并不矛盾，不必引入按应用 /
+DPI 放行；「打开」也可能是未核实的乐观默认值或历史状态残留。432 条联系人是路由表而非流量
+计数，面板公网 IP 亦可由 eD2K HighID 提供，均不证明发生过公网 KAD UDP 往返。
+
+### 假设表与决定性核实
+
+[PLAN.md §9.2](tests/spikes/s2/PLAN.md) 更新为：① KAD 真活（仍开放）、② firewalled/Buddy
+（**否证**）、③ 另一条出口 / 代理（仍开放）、④ 新增：出口统一过滤出站高位 UDP + 入站 DNAT
+产生「打开」（无法排除，与全部观测一致）。
+
+仍需项目所有者：① 在 LAN eMule 机器运行
+[`kad_egress_probe.py`](tests/spikes/s2/kad_egress_probe.py)（退出码 `0` = 充分证据；`2` 在存在
+按应用放行时**不是充分否证**）；② 查看 `统计信息` 中 KAD 收发包计数是否增长。计数增长 +
+探针 `2` 表示按应用 / DPI 放行；计数不增长 + 探针 `2` 才支持本网无可用出口。
+
+### 变更与状态
+
+`PLAN.md` 新增 §9（面板转录、源码表、假设表、核实步骤），修订顶部状态 / §8.2 / §8.6.2；
+`spikes.json` 新增 `observations.p4_environment_diagnosis.kad_panel_evidence_2026_11_10`，
+修订 `status_note` / `conclusion` / `cross_host_result.implications` /
+`kad_specific_egress_2026_11_10` 的假设表与决定性核实 / `required_next_step`；RISK R-02、
+OPEN-QUESTIONS、ROADMAP、各 README 同步；`docs/index.html` 重建。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+三桶计数整体作废、未发布任何测试 Key；本面板为环境诊断证据，`evidence_valid_for_pass = false`。
+
 ## [2.4.11] - 2026-11-10 — 新证据：STUN ≠ KAD，归因收窄并新增 KAD 专用探针
 
 项目所有者提供 LAN eMule 主机截图：eD2K 服务器连接为 **HighID**，Kad 页签 **节点 (432)**、

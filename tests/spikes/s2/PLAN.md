@@ -1,6 +1,6 @@
 # S2 实网实施排期（最小 eMule KAD 客户端）
 
-> 状态：**P0–P3 已完成；P4 已于 2026-11-10 按 G0 参数显式执行但零响应，结论不可用**；本机已由 KAD 专用探针确证不可达，LAN eMule 主机是否可用仍待 §8.6 核实（见 §7 / §8.4 / §8.6）。
+> 状态：**P0–P3 已完成；P4 已于 2026-11-10 按 G0 参数显式执行但零响应，结论不可用**；本机已由 KAD 专用探针确证不可达，LAN eMule 主机仍待 §8.6.3 的 KAD 专用探针核实（其 `Kad 网络` 面板证据与源码级复核见 §9）。
 > 本文件是「排期 + 门禁」，不是实验结论。S2 的 `status` 仍为 `not_run`，唯一结论入口是 `spikes.json`。
 > 判据来源：`spikes.json` 的 `S2.criteria`；合规红线：[OPS §6](../../../docs/07-operations/OPS.md)。
 
@@ -234,9 +234,11 @@ eMule 开了入站映射**。这对 §7「网络统一过滤公网高位 UDP」�
 - **请求/响应模式（P4 探针）不需要入站映射**，开 DNAT 也不能让出站高位包出去。
 - 入站映射决定的是**能否作为可被其他节点主动联系的路由节点**（eMule 的 firewalled 状态），
   这是 eMule 维持公共 KAD 路由表所必需的，但不是 bootstrap 响应能否回来的原因。
-- 该假设已由 §8.4 的跨主机实验否证：那台 eMule 的高位 UDP 同样被挡，入站映射**没有**
-  带来出站例外。它若显示连着公共 KAD，更可能是 firewalled / LowID 状态或路由表陈旧，
-  不能作为本网可跑 P4 的证据；给本机申请入站映射也不起作用。
+- 该假设已由 §8.4 的跨主机实验否证：那台 eMule 的高位 UDP（STUN 口径）同样被挡，入站映射
+  **没有**带来 STUN 出站例外；给本机申请入站映射也不起作用。
+- **v2.4.12 更正**：本条原先推测「该机若连着公共 KAD，更可能是 firewalled / LowID」，已被
+  §9 的完整 `Kad 网络` 面板否证（状态与 UDP 状态均为「打开」、无 Buddy 行）。但「打开」
+  是**入站可达性**结论，仍不能推出该机具备公网 KAD 出站能力，见 §9.1。
 
 ### 8.3 LAN 对照的逻辑边界（原归因的漏洞）
 
@@ -319,18 +321,20 @@ IPv4**（多条使用标准 eMule UDP 端口 `4672`），与 `nodes.dat`（2026-
 
 #### 8.6.2 仍未判定的是 LAN eMule 主机
 
-三种可能尚未排除：
+**v2.4.12 更新**：此处的第 ① 项核实（`Kad 网络` 面板完整截图）已由项目所有者提供，
+见 §9；假设表已据此改写。第 ② 项（在该机跑 KAD 专用探针）与统计信息计数**仍待执行**。
+
+原有三种可能：
 
 1. KAD 真的活着 → 出口按应用 / 按「该机 IP + 源端口」放行，STUN 与临时端口探针都是假阴性；
 2. KAD 已 firewalled、有 Buddy，432 条为陈旧路由表，靠 DNAT 接收入站请求 + 状态化 NAT
-   回包维持 → v2.4.10 的整网结论成立；
+   回包维持 → v2.4.10 的整网结论成立（**已被 §9 面板否证**）；
 3. eMule 走了另一条出口 / 代理。
 
-决定性核实需项目所有者提供：① `Kad 网络` 面板完整截图（状态 / 防火墙 / Buddy / 节点数 /
-IP:端口）与 `统计信息` 里 KAD 收发包计数是否增长；② 把
-[`kad_egress_probe.py`](kad_egress_probe.py) 与本地 `bootstrap.live.local.json` 拷到该机
-运行，看退出码 `0` / `2`（命令见 §8.6.3）。若 `0`，P4 可从该机重跑；若 `2` 且面板显示
-firewalled，则整网结论坐实。
+决定性核实：① 面板截图（已到，见 §9）与 `统计信息` 里 KAD 收发包计数是否增长（仍缺）；
+② 把 [`kad_egress_probe.py`](kad_egress_probe.py) 与本地 `bootstrap.live.local.json` 拷到该机
+运行，看退出码 `0` / `2`（命令见 §8.6.3）。`0` → 可从该机重跑 P4；`2` → 还须结合计数增长与否
+再判断，**不得**直接推出整网结论。
 
 #### 8.6.3 跨主机 KAD 专用探测命令
 
@@ -347,3 +351,74 @@ echo %ERRORLEVEL%
 
 **状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、三桶整体作废、未发布任何测试 Key。
 v2.4.10 的「整网无主机可跑 P4」降级为「本机已确证不可跑；LAN eMule 主机待 §8.6.2 核实」。
+
+## 9. LAN eMule 主机 `Kad 网络` 面板证据与源码级复核（2026-11-10，v2.4.12）
+
+项目所有者补上 §8.6.2 要求的第 ① 项：`Kad 网络` 面板完整截图（右缘仍裁掉了 `IP:端口` 的
+端口部分）。逐字转录（公网 IP 与 ID 已脱敏）：
+
+```text
+Kad 网络
+状态:        打开
+UDP 状态:    打开
+IP:端口:     112.5.x.x:<端口被裁切>
+ID:          <数字 ID，已脱敏>
+```
+
+面板中**没有** `防火墙` / `Buddy` 行。eMule 官方帮助把 KAD 状态区分为「打开」与
+「通过防火墙 / 被防火墙阻挡」；[aMule 官方手册 Networks / Kad Info](https://amule-org.github.io/docs/manual/interfaces/gui/networks)
+把 `Connection State` 与 `UDP Connection State` 定义为 `OK` 或 `Firewalled`，并明确「两者均 OK
+时不显示 Firewalled/Buddy 行」。结合 eD2K HighID 与 Kad 页签 432 个联系人，可判定该客户端
+**自报 KAD 与 KAD UDP 均非 firewalled**。
+
+→ §8.6.2 的假设 ②（KAD 已 firewalled、靠 Buddy 与陈旧路由表维持）**被否证**；v2.4.10 里
+「该机更可能是 LowID / firewalled」的推测同样撤回。
+
+### 9.1 但「打开」不等于「能跑 P4」：KAD UDP 防火墙检测是入站测试
+
+按 §0 同一源码族（aMule master）逐处核实，结论见表：
+
+| 源码位置 | 事实 |
+| :--- | :--- |
+| `src/ClientList.cpp::DoRequestFirewallCheckUDP` | 只用 `contact.GetTCPPort()` 构造客户端并置 `KS_QUEUED_FWCHECK_UDP`；状态机 `TryToConnect(true)` 走 **TCP**，**不发** UDP 到联系人的 KAD 端口 |
+| `OP_KAD_FWCHECKUDP_REQ` 处理 | 远端回一个**无载荷 UDP 包** `KADEMLIA_FWCHECKUDP_RES`，目的 = 请求方 `client->GetIP()` : `client->GetKadPort()`（未经请求的入站包） |
+| `src/kademlia/net/KademliaUDPListener.cpp::Process2FirewallUDP` | 收到且 `incomingPort` 等于本机内 / 外 KAD 端口 → `SetUDPFWCheckResult(true, false, ...)` |
+| `src/kademlia/kademlia/UDPFirewallTester.cpp` | `m_firewalledUDP` **初值即 `false`**；成功置 `false` + `m_isFWVerifiedUDP=true`；只有全部测试失败才置 `true`；6 分钟超时降级还要求 `CKademlia::IsFirewalled()` 为真 |
+| `KademliaUDPListener.cpp::ProcessFirewalledResponse` / `Process2Pong` | 外部 IP 来自 `KADEMLIA_FIREWALLED_RES`（4 B），外部端口来自 `KADEMLIA2_PONG`（2 B）；eD2K HighID 也能提供公网 IP |
+
+由此：
+
+1. **该检测测的是「入站可达性」**：远端从公网向本机公网 IP:KAD 端口发一个未经请求的 UDP
+   包，收到即「打开」。这正是**入站映射 / DNAT 提供的能力**，协调与触发走 TCP，**不需要本机
+   向公网高位 UDP 端口发出任何报文**。
+2. 所以「该机 STUN 高位 UDP 全超时」与「该机 KAD UDP 状态打开」**并不矛盾**，二者可同时成立：
+   出站高位 UDP 被过滤、入站 DNAT 通行。§8.4 的观测无需用「按应用 / DPI 放行」解释。
+3. `m_firewalledUDP` 初值为 `false`，且 HighID（TCP 非 firewalled）下超时降级路径可能不触发；
+   若 UDP 检测从未收到结果，「打开」也可能是**未经核实的乐观默认值或上次连接残留**。
+4. 432 条是路由表联系人（`nodes.dat` 载入 + 入站请求学习），不是流量计数；面板显示公网
+   `IP:端口` 也可由 eD2K HighID 提供，均不能单独证明发生过公网 KAD UDP 往返。
+
+### 9.2 假设表更新
+
+| §8.6.2 假设 | v2.4.12 判定 |
+| :--- | :--- |
+| ① KAD 真活 → 出口按应用 / 按「该机 IP + 源端口」放行 | **仍开放**，但不再是唯一解释；须由该机 KAD 专用探针 + 统计计数判定 |
+| ② KAD 已 firewalled / 有 Buddy、432 条为陈旧路由表 | **否证**：面板两行均「打开」、无 Buddy 行 |
+| ③ eMule 走另一条出口 / 代理 | **仍开放** |
+| ④ 新增：出口统一过滤出站高位 UDP，而「打开」由入站 DNAT + 乐观默认状态产生 | **无法排除**，且与目前全部观测一致 |
+
+### 9.3 决定性核实（不变，且必要性更强）
+
+1. 在 LAN eMule 机器运行 §8.6.3 命令 → `0` = 该机可完成公网 KAD 往返，可按 G0 参数从该机
+   重跑 P4；`2` = 该机通用 KAD 报文亦无响应。
+2. 同机查看 `统计信息` 中 **KAD 收发包计数是否随时间增长**（本次最关键的补充证据）：
+   - 计数增长 + 探针 `0` → ① 成立，出口对 KAD 有选择性放行；
+   - 计数增长 + 探针 `2` → 出口按应用 / 进程 / DPI 放行，Python 探针是假阴性，须查差异
+     （含停掉 eMule 后 `--source-port <该机 KAD 端口>` 复测）；
+   - 计数不增长 + 探针 `2` → ④ / ③ 更可能，本网无可用 P4 出口，换网并刷新 `nodes.dat`。
+3. 判据边界：探针 `0` 是**充分证据**；探针 `2` 在存在按应用放行时**不是充分否证**。
+   不得再用一次 `2` 推出「整网无主机可跑 P4」。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+RISK R-02 三桶整体作废、未发布任何测试 Key。本节的面板截图属**环境诊断证据**，
+`evidence_valid_for_pass = false`，不进入 S2 判据。

@@ -86,8 +86,12 @@ v2.4.11 更正：该白名单结论只对 STUN 成立，真实 KAD 报文须用 
 eMule 机器（开了入站映射）上同样 `BLOCKED` / 退出码 2。**v2.4.11 收窄**：STUN 不等于 KAD ——
 项目所有者提供该机 eD2K HighID 与 Kad 页签 432 个联系人的截图，本机则用新增的
 [`kad_egress_probe.py`](kad_egress_probe.py)（真实 `0xE4 0x01`、3 条 / 0.2 包每秒、不发布 Key）
-确证本机 0/3 无响应，但该机 KAD 是否真正存活仍待核实。请先看 [PLAN.md §8.6](PLAN.md)：
-补 `Kad 网络` 面板状态，并把该探针拷到该机跑一次，退出码 0 / 2 决定后续。
+确证本机 0/3 无响应，但该机 KAD 是否真正存活仍待核实。**v2.4.12**：`Kad 网络` 面板已补
+（`状态` / `UDP 状态` 均「打开」、无 Buddy 行），firewalled / 陈旧路由表假设被否证；但按
+aMule 源码，KAD UDP「打开」是**入站可达性**测试（远端向本机公网 IP:KAD 端口发无载荷 UDP
+包，入站 DNAT 即可满足，协调走 TCP），`m_firewalledUDP` 初值还是 `false`，故与「出站高位
+UDP 被过滤」不矛盾，也不能证明该机可跑 P4。详见 [PLAN.md §9](PLAN.md)：把该探针拷到该机
+跑一次（退出码 `0` 是充分证据、`2` 不是充分否证），并查看 `统计信息` KAD 收发包计数是否增长。
 
 **v2.4.7 已补齐 P4 前置实现**（详见 [PLAN.md §6](PLAN.md)）：`live` 发布前先迭代收敛到
 `SEARCHTOLERANCE` 邻域、跳过 HELLO、用 `bind_any()` 绑定公网 socket、解码 `0xE5` 压缩帧；

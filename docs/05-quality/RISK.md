@@ -75,8 +75,15 @@ v2.4.9 复核把归因细化为「出口按目标端口/应用白名单丢弃高
 条件失败成立；LAN eMule 主机显示 HighID 与 432 个 KAD 联系人，其 KAD 是否存活、出口是否
 按应用或按 IP+源端口放行仍未判定，须补 `Kad 网络` 面板状态并在该机运行
 [`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)。详见
-[PLAN.md §8.6](../../tests/spikes/s2/PLAN.md)。无论哪种情况都不得重试计数或据此判定 S2；
-换网后仍须刷新 `nodes.dat`。
+[PLAN.md §8.6](../../tests/spikes/s2/PLAN.md)。
+**v2.4.12 面板证据 + 源码复核**：该机 `Kad 网络` 面板 `状态` / `UDP 状态` 均为「打开」、无
+Buddy 行，firewalled / 陈旧路由表假设被否证；但 aMule 源码显示 KAD UDP 防火墙检测是
+「远端向本机公网 IP:KAD 端口发无载荷入站 UDP 包」，由入站 DNAT 即可通过，协调走 TCP，
+`m_firewalledUDP` 初值还是 `false` —— 因此「打开」是**入站可达性**结论，与「出站高位 UDP
+被过滤」可同时成立，**不证明该机能跑 P4**。新假设「出口统一过滤出站 + DNAT 产生打开」
+无法排除。决定性核实仍为在该机运行 KAD 专用探针（退出码 `0` 是充分证据、`2` 不是充分
+否证）并查看 KAD 收发包计数是否增长；详见 [PLAN.md §9](../../tests/spikes/s2/PLAN.md)。
+无论哪种情况都不得重试计数或据此判定 S2；换网后仍须刷新 `nodes.dat`。
 详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
 

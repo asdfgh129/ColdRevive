@@ -124,10 +124,12 @@ LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、
 过滤公网高位 UDP，而非报文格式或节点拒绝；LAN 真实 eMule 对同一帧正常回 523 B / 20 contacts。
 结论 `inconclusive_environment_blocked`，`S2.status` 保持 `not_run`。重跑前先执行
 [`udp_egress_check.py`](../udp_egress_check.py)（v2.4.9 升级，退出码 0 才跑）。
-详见 [PLAN.md §7/§8.6](../PLAN.md)：LAN 探测不经过公网出口、不能证明公网可达；v2.4.10 的
+详见 [PLAN.md §7/§8.6/§9](../PLAN.md)：LAN 探测不经过公网出口、不能证明公网可达；v2.4.10 的
 跨主机 **STUN** 对照在 LAN eMule 机器上同样 `BLOCKED`，但 v2.4.11 指出 STUN 不等于 KAD ——
 新增 [`kad_egress_probe.py`](../kad_egress_probe.py) 用真实 `0xE4 0x01` 复测，本机 0/3 确证
-不可达，该机 432 个 KAD 联系人是否存活仍待核实，详见 §8.6。
+不可达。v2.4.12 该机 `Kad 网络` 面板两行均「打开」否证 firewalled 假设，但 aMule 源码显示
+「打开」是入站 DNAT 即可满足的入站测试，仍不证明该机可跑 P4；须在该机跑该探针并核对 KAD
+收发包计数，详见 §9。
 
 ## 7. LAN 真实客户端互操作探测（2026-11-09）
 

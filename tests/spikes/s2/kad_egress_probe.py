@@ -27,6 +27,21 @@ Usage
     python3 kad_egress_probe.py --targets <file> --attest-i-am-the-experiment-operator
     python3 kad_egress_probe.py --targets <file> --attest-i-am-the-experiment-operator --json
     echo $?   # 0 = at least one KAD reply, 2 = no reply, 1 = diagnostic error
+
+Interpretation (v2.4.12)
+------------------------
+Exit 0 is SUFFICIENT evidence that this host can complete a public KAD UDP
+round trip. Exit 2 is NOT a sufficient falsification: the egress policy may
+whitelist a specific application/process or a specific IP+source-port, in
+which case a bare Python probe is another false negative. Corroborate with the
+client's KAD packet counters (are they increasing?) and, if needed, retry with
+--source-port after stopping the local eMule client.
+
+Also note: eMule/aMule's "UDP state: open" is an INBOUND reachability test --
+a remote node sends an unsolicited UDP packet to your public IP:Kad port,
+coordinated over TCP. An inbound DNAT mapping satisfies it without any
+outbound high-port UDP. So a client showing "open" does not prove P4 can run.
+See tests/spikes/s2/PLAN.md section 9.
 """
 
 from __future__ import annotations

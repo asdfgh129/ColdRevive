@@ -46,6 +46,13 @@ updated: 2026-11-09
 仍未判定。须补 `Kad 网络` 面板状态，并在该机运行
 [`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)。详见
 [PLAN.md §8.6](../../tests/spikes/s2/PLAN.md)。
+**v2.4.12 已答一半**：`Kad 网络` 面板 `状态` / `UDP 状态` 均为「打开」、无 Buddy 行 →
+firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「打开」是**入站可达性**测试
+（远端向本机公网 IP:KAD 端口发无载荷 UDP 包，由入站 DNAT 满足，协调走 TCP），
+`m_firewalledUDP` 初值还是 `false`，故不推出该机具备公网 KAD 出站能力，也不与 STUN 超时
+矛盾。剩余决定性核实：在该机运行 [`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)
+（退出码 `0` = 充分证据；`2` 在按应用放行时不是充分否证）+ 查看 `统计信息` KAD 收发包计数是否
+增长。详见 [PLAN.md §9](../../tests/spikes/s2/PLAN.md)。
 2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
 3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。

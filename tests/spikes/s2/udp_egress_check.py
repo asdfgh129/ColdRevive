@@ -18,21 +18,30 @@ high-port UDP is filtered here". A broader re-probe on 2026-11-10 refined that:
     LAN real eMule on its high UDP port: OK, 523 B / 10 ms
     Windows Firewall outbound block rules: 0
 
-So the filter is at the network egress boundary and is destination-port /
-application based (well-known low ports allowed, unknown high ports dropped),
-NOT "UDP disabled", NOT source-port policy, NOT the local host firewall.
+So, FOR STUN DATAGRAMS, the filter is at the network egress boundary and is
+destination-port / application based (well-known low ports allowed, unknown
+high ports dropped), NOT "UDP disabled", NOT source-port policy, NOT the local
+host firewall.
 
-RESOLVED (2026-11-10 cross-host run): the LAN eMule host is on the same network
-and HAS an inbound port mapping. Running this exact file there produced the same
+IMPORTANT LIMIT (v2.4.11 / v2.4.12): STUN IS NOT KAD. STUN timeouts prove only
+that STUN datagrams are filtered; an egress policy may still admit real KAD
+traffic by application/DPI, by destination port, or by host IP + source port.
+Use kad_egress_probe.py (a real 0xE4 0x01 BOOTSTRAP_REQ) for that question.
+Also note eMule/aMule's "UDP state: open" is an INBOUND reachability test that
+an inbound DNAT alone can satisfy -- it does not prove P4 can run. See
+tests/spikes/s2/PLAN.md sections 8.6 and 9.
+
+CROSS-HOST RESULT (2026-11-10): the LAN eMule host is on the same network and
+HAS an inbound port mapping. Running this exact file there produced the same
 BLOCKED result (low-port 4/4 OK, high-port 0/3 OK, exit 2). So there is no
-per-host egress exception here and an inbound DNAT does not grant outbound
-high-port UDP. No host on this network can run P4.
+per-host STUN egress exception and an inbound DNAT does not grant outbound
+STUN high-port UDP. This does NOT prove "no host on this network can run P4".
 
     -> Move to an unrestricted network, re-run this check there (must exit 0),
        refresh nodes.dat (a 2-day-old contact list may be entirely dead), then
        re-run P4 with the G0-confirmed parameters.
     -> When diagnosing a DIFFERENT host/network, copy this single file there and
-       repeat: 0 = P4 may run, 2 = environment-blocked, not an S2 finding.
+       repeat: 0 = high-port UDP works, 2 = STUN blocked, not an S2 finding.
 
 Usage
 -----
@@ -198,10 +207,11 @@ def main() -> int:
     if lan and lan[0]["ok"]:
         print("        LAN high-port control OK -> local host + LAN path are fine;")
         print("        the filter sits at the internet egress boundary.")
-    print("        Do NOT run P4 from this network; a KAD timeout here is an")
-    print("        environment failure, NOT an S2 finding.")
+    print("        STUN is blocked here; do NOT treat this alone as proof that")
+    print("        P4 is impossible. A KAD timeout is an environment failure,")
+    print("        NOT an S2 finding -- but confirm with kad_egress_probe.py.")
     print("        Cross-host check: repeat on any other candidate host/network;")
-    print("        egress policy can be per-host (0 = P4 may run from there).")
+    print("        egress policy can be per-host (0 = high-port UDP works there).")
     return 2
 
 

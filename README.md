@@ -11,7 +11,7 @@
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
 | 文档版本 | v2.4（索引页自包含 + T0 验收骨架 + CLI 契约与 M0 实验包） |
 | 验收骨架 | [T0 双节点 Demo](tests/e2e/t0/README.md) 已就位：CLI v1 契约与 20 条真实观测映射已落地，真实链路未接线，非 G1 证据 |
-| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1–S7 `not_run`、S8 已豁免 `pass`；`cargo` 已就绪，[S1 Demo](tests/spikes/s1/README.md)、[S2 实验](tests/spikes/s2/README.md) 与[最小 eMule KAD 客户端](tests/spikes/s2/kad-mini/README.md)（真实 `0xE4` wire 回环 5/5、LAN 真实 eMule 互操作探测）已产出观测，均不构成 G0 结论；判据口径已按源码回写至 [PROTO §2.0](docs/04-protocol/PROTO.md)，[S2 实网排期](tests/spikes/s2/PLAN.md) P0–P3 完成；P4 已于 2026-11-10 显式执行（3 × `BOOTSTRAP_REQ`、0 响应、0 发布），被执行环境公网高位 UDP 过滤阻断、结论不可用，须换网络重跑；`S2.status` 仍 `not_run`；剩余阻塞见 `m0_preflight.py` |
+| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1–S7 `not_run`、S8 已豁免 `pass`；`cargo` 已就绪，[S1 Demo](tests/spikes/s1/README.md)、[S2 实验](tests/spikes/s2/README.md) 与[最小 eMule KAD 客户端](tests/spikes/s2/kad-mini/README.md)（真实 `0xE4` wire 回环 5/5、LAN 真实 eMule 互操作探测）已产出观测，均不构成 G0 结论；判据口径已按源码回写至 [PROTO §2.0](docs/04-protocol/PROTO.md)，[S2 实网排期](tests/spikes/s2/PLAN.md) P0–P3 完成；P4 已于 2026-11-10 显式执行（3 × `BOOTSTRAP_REQ`、0 响应、0 发布），本机已由 KAD 专用探针确证公网高位 UDP 被环境过滤、结论不可用；LAN eMule 主机 `Kad 网络` 面板虽显示「打开」，但源码复核表明那是入站可达性结论，仍须在该机跑 KAD 专用探针或换网重跑（见 [PLAN.md §9](tests/spikes/s2/PLAN.md)）；`S2.status` 仍 `not_run`；剩余阻塞见 `m0_preflight.py` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
 | 原始想法 | [docs/09-archive/chat.md](docs/09-archive/chat.md) |
 | 历史基线 | [docs/09-archive/ColdRevive-项目开发文档-v2.0.md](docs/09-archive/ColdRevive-项目开发文档-v2.0.md)（已废止，勿作为依据） |
