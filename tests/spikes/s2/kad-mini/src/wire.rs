@@ -668,6 +668,285 @@ pub fn id_hex(id: &KadId) -> String {
     hex(id)
 }
 
+// ------------------------------------------------- KAD UDP obfuscation ----
+//
+// aMule wraps every KAD UDP datagram in a "basic obfuscation" envelope
+// (src/EncryptedDatagramSocket.cpp EncryptSendClient / DecryptReceivedClient).
+// For KAD an 8-byte crypt header (no padding) precedes the plain Kademlia
+// frame `[0xE4][opcode][payload]`. The whole datagram is RC4-encrypted under a
+// key derived from the *receiver's* KadID (try-0) on the way out, or from the
+// receiver-verify key (try-2) on the way back.
+//
+// Admission reality (verified against aMule master @ 6a110563):
+// KademliaUDPListener's `Process2PublishKeyRequest` only *logs* the received
+// `validReceiverKey` — it does NOT gate publish/search on it. The real
+// admission check is the decryption layer: `DecryptReceivedClient` silently
+// drops any datagram that does not decrypt to the obfuscation magic. A
+// CLEARTEXT KAD frame is still accepted (its first byte 0xE4 is a known
+// protocol byte), but an *obfuscated* request the peer cannot decrypt is
+// dropped. We therefore send every live request obfuscated with the peer's own
+// KadID (try-0) so the peer decrypts and processes it normally.
+//
+// Replies: aMule encrypts its reply to us either with try-0 using OUR KadID (if
+// it learned it) or with try-2 using the verify key we declared as
+// `senderVerifyKey`. `deobfuscate` tries both and accepts whichever yields the
+// magic.
+
+/// Our constant UDP verify key. Non-zero + consistent across all packets so
+/// every peer that decrypts one of our packets stores it and thereafter admits
+/// our publish/search. Not security-sensitive for this probe.
+pub const OUR_UDP_KEY: u32 = 0x0A0B0C0D;
+
+/// aMule `MAGICVALUE_UDP_SYNC_CLIENT` (the obfuscated-packet marker).
+pub const KAD_MAGIC: u32 = 0x395F2EC1;
+
+/// aMule `CUInt128::StoreCryptValue` (src/kademlia/utils/UInt128.cpp):
+/// writes the 128-bit ID as four uint32 words `m_data.u32_data[3..0]`, where
+/// word 3 is the MOST significant, each word stored little-endian. For wire
+/// bytes `B=[b0..b15]` (b0 most significant), aMule's internal words are
+/// u32_data[3]=BE(b0..b3), [2]=BE(b4..b7), [1]=BE(b8..b11), [0]=BE(b12..b15),
+/// and StoreCryptValue emits each word little-endian, so the result is
+/// `[b3,b2,b1,b0, b7,b6,b5,b4, b11,b10,b9,b8, b15,b14,b13,b12]`.
+/// This is the value aMule feeds into the obfuscation MD5 key, so it MUST match
+/// byte-for-byte or the peer cannot decrypt our datagram.
+fn store_crypt_value(kad_id_be: &[u8; 16]) -> [u8; 16] {
+    let mut out = [0u8; 16];
+    for w in 0..4 {
+        let word = u32::from_be_bytes([
+            kad_id_be[4 * w],
+            kad_id_be[4 * w + 1],
+            kad_id_be[4 * w + 2],
+            kad_id_be[4 * w + 3],
+        ]);
+        out[4 * w..4 * w + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
+/// Build an obfuscated KAD datagram. `target_kad_id` is the RECEIVER's 16-byte
+/// KAD ID (known from BOOTSTRAP_RES / KADEMLIA2_RES contacts); `inner` is the
+/// plaintext `[0xE4][opcode][payload]`.
+pub fn obfuscate(target_kad_id: &[u8; 16], our_key: u32, inner: &[u8]) -> Vec<u8> {
+    // aMule uses a random 16-bit part; deterministic here for reproducibility.
+    let random_key_part: u16 = 0x1234;
+    let mut buf = vec![0u8; 1 + 2 + 4 + 1 + 4 + 4 + inner.len()];
+    // byte 0: kad marker, low 2 bits cleared, never a protocol byte.
+    buf[0] = 0x40;
+    buf[1..3].copy_from_slice(&random_key_part.to_le_bytes());
+    // RC4 key = MD5(StoreCryptValue(target_kad_id) [16] || randomKeyPart [2])
+    let mut keydata = [0u8; 18];
+    keydata[..16].copy_from_slice(&store_crypt_value(target_kad_id));
+    keydata[16..18].copy_from_slice(&random_key_part.to_le_bytes());
+    let key = md5(&keydata);
+    let mut rc4 = Rc4::new(&key);
+    // magic value (ENDIAN_SWAP_32(MAGIC) on x86 => big-endian bytes)
+    let mut magic = KAD_MAGIC.to_be_bytes();
+    rc4.crypt(&mut magic);
+    buf[3..7].copy_from_slice(&magic);
+    // padLen = 0
+    let mut pad = [0u8; 1];
+    rc4.crypt(&mut pad);
+    buf[7] = pad[0];
+    // receiverVerifyKey = 0 (we do not yet know the peer's verify key); the
+    // packet still decrypts on the peer via the KadID-based (try-0) RC4 key.
+    // senderVerifyKey carries OUR_UDP_KEY so the peer locks its reply to it and
+    // we can decrypt the response.
+    let kb = our_key.to_be_bytes();
+    let mut rvk = [0u8; 4];
+    rc4.crypt(&mut rvk);
+    let mut svk = kb;
+    rc4.crypt(&mut svk);
+    buf[8..12].copy_from_slice(&rvk);
+    buf[12..16].copy_from_slice(&svk);
+    // payload
+    let mut payload = inner.to_vec();
+    rc4.crypt(&mut payload);
+    buf[16..].copy_from_slice(&payload);
+    buf
+}
+
+/// Reverse `obfuscate` for inbound packets. aMule may have encrypted the reply
+/// to us with try-0 (our own KadID, if it learned it) or try-2 (our UDP verify
+/// key, which it stored from the `senderVerifyKey` we declared). We try both
+/// candidate RC4 bases and accept the first that decrypts to the obfuscation
+/// magic. On success returns `(inner_frame, peer_sender_verify_key)`.
+pub fn deobfuscate(data: &[u8], our_key: u32, our_node_id: &KadId) -> Option<(Vec<u8>, u32)> {
+    if data.len() < 16 {
+        return None;
+    }
+    let random_key_part = u16::from_le_bytes([data[1], data[2]]);
+    // Candidate obfuscation bases, in priority order:
+    //   1. try-0: our own KadID (StoreCryptValue layout) — peer learned it.
+    //   2. try-2: our UDP verify key — peer locked the reply to it.
+    let bases: [Vec<u8>; 2] = [
+        store_crypt_value(our_node_id).to_vec(),
+        // try-2: aMule derives the key with PokeUInt32(verifyKey) -> big-endian
+        // bytes, so we must mirror that here.
+        our_key.to_be_bytes().to_vec(),
+    ];
+    for base in &bases {
+        let mut keydata = Vec::with_capacity(base.len() + 2);
+        keydata.extend_from_slice(base);
+        keydata.extend_from_slice(&random_key_part.to_le_bytes());
+        let key = md5(&keydata);
+        let mut rc4 = Rc4::new(&key);
+        let mut buf = data.to_vec();
+        rc4.crypt(&mut buf[3..]);
+        let v = u32::from_be_bytes([buf[3], buf[4], buf[5], buf[6]]);
+        if v != KAD_MAGIC {
+            continue;
+        }
+        let pad_len = buf[7] as usize;
+        let start = 16 + pad_len;
+        if buf.len() < start {
+            continue;
+        }
+        // senderVerifyKey sits at offset 12..16 of the decrypted crypt header.
+        let svk_off = 12 + pad_len;
+        let sender_verify_key = if buf.len() >= svk_off + 4 {
+            u32::from_be_bytes([buf[svk_off], buf[svk_off + 1], buf[svk_off + 2], buf[svk_off + 3]])
+        } else {
+            0
+        };
+        let inner = buf[start..].to_vec();
+        return Some((inner, sender_verify_key));
+    }
+    None
+}
+
+/// Obfuscated KAD datagram using the RECEIVER's verify key (aMule `try 2`):
+/// RC4 key = `MD5(receiverVerifyKey[4 LE] || randomKeyPart[2 LE])`. Used for
+/// publish/search once we have learned the peer's verify key from a prior
+/// response's `senderVerifyKey` field, so `validReceiverKey` validates true.
+pub fn obfuscate_verify(receiver_verify_key: u32, our_sender_key: u32, inner: &[u8]) -> Vec<u8> {
+    let random_key_part: u16 = 0x1234;
+    let mut buf = vec![0u8; 1 + 2 + 4 + 1 + 4 + 4 + inner.len()];
+    buf[0] = 0x42; // KAD, try-2 (receiver-key) marker: bit0=0, bit1=1
+    buf[1..3].copy_from_slice(&random_key_part.to_le_bytes());
+    let mut keydata = [0u8; 6];
+    // aMule derives the try-2 key with PokeUInt32(verifyKey) -> big-endian bytes.
+    keydata[..4].copy_from_slice(&receiver_verify_key.to_be_bytes());
+    keydata[4..6].copy_from_slice(&random_key_part.to_le_bytes());
+    let key = md5(&keydata);
+    let mut rc4 = Rc4::new(&key);
+    let mut magic = KAD_MAGIC.to_be_bytes();
+    rc4.crypt(&mut magic);
+    buf[3..7].copy_from_slice(&magic);
+    let mut pad = [0u8; 1];
+    rc4.crypt(&mut pad);
+    buf[7] = pad[0];
+    let mut rvk = receiver_verify_key.to_be_bytes();
+    rc4.crypt(&mut rvk);
+    buf[8..12].copy_from_slice(&rvk);
+    let mut svk = our_sender_key.to_be_bytes();
+    rc4.crypt(&mut svk);
+    buf[12..16].copy_from_slice(&svk);
+    let mut payload = inner.to_vec();
+    rc4.crypt(&mut payload);
+    buf[16..].copy_from_slice(&payload);
+    buf
+}
+
+// --- RC4 (aMule uses the standard PRGA, no keystream drop) ----------------
+pub struct Rc4 {
+    i: u8,
+    j: u8,
+    s: [u8; 256],
+}
+
+impl Rc4 {
+    pub fn new(key: &[u8]) -> Self {
+        let mut s = [0u8; 256];
+        for (n, b) in s.iter_mut().enumerate() {
+            *b = n as u8;
+        }
+        let mut j = 0u16;
+        for n in 0..256 {
+            j = (j + s[n] as u16 + key[n % key.len()] as u16) & 0xFF;
+            s.swap(n, j as usize);
+        }
+        Rc4 { i: 0, j: 0, s }
+    }
+    pub fn crypt(&mut self, data: &mut [u8]) {
+        for x in data.iter_mut() {
+            self.i = self.i.wrapping_add(1);
+            self.j = self.j.wrapping_add(self.s[self.i as usize]);
+            self.s.swap(self.i as usize, self.j as usize);
+            let k = self.s
+                [(self.s[self.i as usize] as usize + self.s[self.j as usize] as usize) & 0xFF];
+            *x ^= k;
+        }
+    }
+}
+
+// --- MD5 (RFC 1321) -------------------------------------------------------
+pub fn md5(message: &[u8]) -> [u8; 16] {
+    const S: [u32; 64] = [
+        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
+        14, 20, 5, 9, 14, 20, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 6, 10, 15,
+        21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21,
+    ];
+    let mut k = [0u32; 64];
+    for (i, slot) in k.iter_mut().enumerate() {
+        *slot = (f64::from(i as u32 + 1).sin().abs() * 4294967296.0).floor() as u32;
+    }
+    let mut h = [0x67452301u32, 0xEFCDAB89, 0x98BADCFE, 0x10325476];
+    let mut msg = message.to_vec();
+    let bit_len = (message.len() as u64).wrapping_mul(8);
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&bit_len.to_le_bytes());
+    for chunk in msg.chunks(64) {
+        let mut w = [0u32; 16];
+        for (i, word) in w.iter_mut().enumerate() {
+            *word = u32::from_le_bytes([
+                chunk[4 * i],
+                chunk[4 * i + 1],
+                chunk[4 * i + 2],
+                chunk[4 * i + 3],
+            ]);
+        }
+        let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
+        for i in 0..64 {
+            let (f, g) = match i {
+                0..=15 => ((b & c) | ((!b) & d), i),
+                16..=31 => ((d & b) | ((!d) & c), (5 * i + 1) % 16),
+                32..=47 => (b ^ c ^ d, (3 * i + 5) % 16),
+                _ => (c ^ (b | !d), (7 * i) % 16),
+            };
+            let g = if i < 16 {
+                i
+            } else if i < 32 {
+                (5 * i + 1) % 16
+            } else if i < 48 {
+                (3 * i + 5) % 16
+            } else {
+                (7 * i) % 16
+            };
+            let f = f
+                .wrapping_add(a)
+                .wrapping_add(k[i])
+                .wrapping_add(w[g]);
+            let f = f.rotate_left(S[i]);
+            a = d;
+            d = c;
+            c = b;
+            b = b.wrapping_add(f);
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+    }
+    let mut out = [0u8; 16];
+    for (i, word) in h.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -811,5 +1090,86 @@ mod tests {
         assert!(!publish_allowed(&far, &key, false));
         // ...but LAN sources bypass the tolerance check entirely.
         assert!(publish_allowed(&far, &key, true));
+    }
+}
+
+#[cfg(test)]
+mod crypto_tests {
+    use super::*;
+
+    #[test]
+    fn md5_known_vectors() {
+        assert_eq!(
+            hex(&md5(b"")),
+            "d41d8cd98f00b204e9800998ecf8427e"
+        );
+        assert_eq!(
+            hex(&md5(b"abc")),
+            "900150983cd24fb0d6963f7d28e17f72"
+        );
+        assert_eq!(
+            hex(&md5(b"The quick brown fox jumps over the lazy dog")),
+            "9e107d9d372bb6826bd81d3542a419d6"
+        );
+    }
+
+    #[test]
+    fn rc4_is_reciprocal() {
+        let key = [0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04];
+        let mut data = b"Kademlia UDP obfuscation test".to_vec();
+        let orig = data.clone();
+        let mut a = Rc4::new(&key);
+        a.crypt(&mut data);
+        assert_ne!(data, orig); // actually encrypted
+        let mut b = Rc4::new(&key);
+        b.crypt(&mut data);
+        assert_eq!(data, orig); // decrypts back
+    }
+
+    #[test]
+    fn store_crypt_value_zero_and_known() {
+        assert_eq!(store_crypt_value(&[0u8; 16]), [0u8; 16]);
+        // kad_id == 1 (big-endian, LSB bit set at byte 15): word3 = BE(b12..b15)
+        // = 0x00000001, emitted little-endian at out[12..16] => [1,0,0,0]; the
+        // high words stay zero. Matches aMule UInt128.cpp StoreCryptValue.
+        let mut one = [0u8; 16];
+        one[15] = 1;
+        assert_eq!(
+            store_crypt_value(&one),
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn obfuscate_roundtrip() {
+        let target = node_id("some-kad-peer");
+        let inner = frame(op::BOOTSTRAP_REQ, &[]);
+        let env = obfuscate(&target, OUR_UDP_KEY, &inner);
+        assert!(env.len() > inner.len());
+        // byte 0 must not be a KAD protocol byte
+        assert_ne!(env[0], PROTO_KAD);
+        // The recipient decrypts with its own KadID (try-0). We emulate the
+        // recipient by passing `target` as our_node_id: obfuscate used
+        // StoreCryptValue(target), so deobfuscate's try-0 branch recovers it.
+        let back = deobfuscate(&env, OUR_UDP_KEY, &target).expect("deobfuscate (try-0) must succeed");
+        assert_eq!(back, inner);
+        // A genuinely wrong recipient id AND wrong verify key must fail.
+        let wrong = node_id("not-the-recipient");
+        assert!(deobfuscate(&env, 0x12345678, &wrong).is_none());
+    }
+
+    #[test]
+    fn obfuscate_verify_roundtrip() {
+        // Peer's receiver verify key we learned earlier; we are the sender.
+        let rvk = 0x0A0B0C0D;
+        let inner = frame(op::PUBLISH_KEY_REQ, &[]);
+        let env = obfuscate_verify(rvk, OUR_UDP_KEY, &inner);
+        assert_ne!(env[0], PROTO_KAD);
+        // Reply-side decode: aMule encrypts its reply with try-2 using the
+        // verify key it stored for us. Our own deobfuscate with try-2 (our_key)
+        // recovers it; the try-0 branch (wrong id) is simply skipped.
+        let back = deobfuscate(&env, rvk, &node_id("whatever"))
+            .expect("deobfuscate (try-2) must succeed");
+        assert_eq!(back, inner);
     }
 }

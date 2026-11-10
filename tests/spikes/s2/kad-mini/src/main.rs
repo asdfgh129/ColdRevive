@@ -30,6 +30,18 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use wire::*;
 
 const MANIFEST: &str = env!("CARGO_MANIFEST_DIR");
+
+/// Iterative-routing depth ceiling for the tolerance-zone lookup (S2 P4).
+/// Public KAD converges to the SEARCHTOLERANCE zone well within this; 3 was
+/// far too shallow (only 2 candidates × 3 hops => ~20-34 contacts, never in
+/// zone). 10 matches aMule's own lookup horizon and stays well under G0 caps.
+const MAX_FIND_HOPS: usize = 10;
+/// Publish/search fan-out: KAD stores a key on the K closest nodes, so we must
+/// send PUBLISH/SEARCH to several near-key contacts -- not one. A single
+/// contact's *reported* KadID can be stale vs its live KadID and aMule will then
+/// silently drop the request (observed: node answered KADEMLIA2_REQ but timed out
+/// on PUBLISH/SEARCH). Fanning out gives at least one genuine store a chance.
+const PUBLISH_FANOUT: usize = 10;
 const SAMPLE_KEYS: &[&str] = &[
     "coldrevive:t0:coldrevive-t0-sample.bin",
     "coldrevive:t0:wakeup_req.v1",
@@ -168,14 +180,17 @@ impl Record {
 }
 
 fn rec(endpoint: &str, dir: &str, peer: &str, data: &[u8], detail: &str) -> Record {
-    // 0xE5 packed frames keep the opcode at byte 1 even though the payload is
-    // zlib-compressed; record it instead of collapsing everything to 0xFF.
-    let opcode = if data.len() >= 2
-        && (data[0] == PROTO_KAD || data[0] == PROTO_KAD_PACKED)
-    {
-        data[1]
-    } else {
-        parse_frame(data).map(|(o, _)| o).unwrap_or(0xFF)
+    // Label by the logical opcode: plaintext 0xE4/0xE5 carry it at byte 1, and
+    // an obfuscated envelope is peeled to its inner frame by decode_wire.
+    let (opcode, obf) = match decode_wire(data) {
+        Ok((op, _)) => (op, data.first().copied() != Some(PROTO_KAD) && data.first().copied() != Some(PROTO_KAD_PACKED)),
+        Err(_) => {
+            if data.len() >= 2 && (data[0] == PROTO_KAD || data[0] == PROTO_KAD_PACKED) {
+                (data[1], false)
+            } else {
+                (0xFF, false)
+            }
+        }
     };
     Record {
         at_ms: unix_ms(),
@@ -186,7 +201,11 @@ fn rec(endpoint: &str, dir: &str, peer: &str, data: &[u8], detail: &str) -> Reco
         opcode_name: opcode_name(opcode).into(),
         bytes: data.len(),
         hex: sha1::hex(data),
-        detail: detail.into(),
+        detail: if obf {
+            format!("{detail} [obfuscated KAD envelope]")
+        } else {
+            detail.into()
+        },
     }
 }
 
@@ -209,8 +228,21 @@ fn decode_wire(data: &[u8]) -> Result<(u8, Vec<u8>), String> {
                 .map_err(|e| format!("0xE5 inflate failed: {e}"))?;
             Ok((op, payload))
         }
-        Some(p) => Err(format!("non-KAD frame 0x{p:02x} (likely RC4 obfuscated)")),
-        None => Err("empty datagram".into()),
+        // KAD obfuscation envelope: first byte is randomized (not 0xE4/0xE5), so
+        // recover the inner `[0xE4][opcode][payload]` via the obfuscation layer.
+        // aMule may have used try-0 (our KadID) or try-2 (our verify key); the
+        // live probe's KadID is `node_id("live-probe")`, matching Client::bind_any.
+        _ => {
+            if let Some((inner, _svk)) =
+                wire::deobfuscate(data, wire::OUR_UDP_KEY, &node_id("live-probe"))
+            {
+                return decode_wire(&inner);
+            }
+            match data.first().copied() {
+                Some(p) => Err(format!("non-KAD frame 0x{p:02x} (likely RC4 obfuscated)")),
+                None => Err("empty datagram".into()),
+            }
+        }
     }
 }
 
@@ -332,11 +364,19 @@ impl Client {
     fn addr(&self) -> SocketAddr {
         self.sock.local_addr().expect("bound")
     }
-    fn send(&mut self, to: SocketAddr, frame: &[u8], detail: &str, limiter: &mut Limiter) -> io::Result<()> {
+    fn send(&mut self, to: SocketAddr, frame: &[u8], detail: &str, limiter: &mut Limiter, target_kad: Option<&KadId>) -> io::Result<()> {
         limiter.wait();
-        let r = rec(&self.name, "send", &to.to_string(), frame, detail);
+        // Wrap in the KAD obfuscation envelope when we know the peer's KadID, so
+        // the peer can DECRYPT and process the request (the obfuscation layer is
+        // the real admission gate; it silently drops anything it can't decrypt).
+        // Our senderVerifyKey=OUR_UDP_KEY lets the peer lock its reply to us.
+        let wire = match target_kad {
+            Some(k) => wire::obfuscate(k, wire::OUR_UDP_KEY, frame),
+            None => frame.to_vec(),
+        };
+        let r = rec(&self.name, "send", &to.to_string(), &wire, detail);
         self.records.push(r);
-        self.sock.send_to(frame, to)?;
+        self.sock.send_to(&wire, to)?;
         Ok(())
     }
     fn recv(&mut self, detail: &str) -> io::Result<(SocketAddr, Vec<u8>)> {
@@ -356,14 +396,15 @@ impl Client {
         send_detail: &str,
         recv_detail: &str,
         limiter: &mut Limiter,
+        target_kad: Option<&KadId>,
     ) -> Result<(Vec<u8>, f64), io::Error> {
-        self.send(to, frame, send_detail, limiter)?;
+        self.send(to, frame, send_detail, limiter, target_kad)?;
         let t0 = Instant::now();
         let (_, data) = self.recv(recv_detail)?;
         let rtt = t0.elapsed().as_secs_f64() * 1000.0;
-        // Both 0xE4 plaintext and 0xE5 zlib-packed responses are valid KAD
-        // replies. Misclassifying a packed frame as a protocol failure would
-        // corrupt the RISK R-02 three-bucket observation semantics.
+        // Both 0xE4 plaintext and 0xE5 zlib-packed (and obfuscated) responses are
+        // valid KAD replies. Misclassifying a packed frame as a protocol failure
+        // would corrupt the RISK R-02 three-bucket observation semantics.
         let (op, payload) = decode_wire(&data).map_err(io::Error::other)?;
         if op != expected {
             return Err(io::Error::other(format!(
@@ -579,6 +620,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "A -> index: bootstrap request",
             "A <- index: bootstrap response",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("bootstrap A: {e}"))?;
     let br = parse_bootstrap_res(&boot.0).map_err(|e| format!("bootstrap parse: {e}"))?;
@@ -607,6 +649,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "A -> index: hello request",
             "A <- index: hello response",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("hello A: {e}"))?;
 
@@ -619,6 +662,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "B -> index: bootstrap request",
             "B <- index: bootstrap response",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("bootstrap B: {e}"))?;
     let hello_b = hello(
@@ -640,6 +684,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "B -> index: hello request",
             "B <- index: hello response",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("hello B: {e}"))?;
 
@@ -657,6 +702,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
                 "A -> index: KADEMLIA2_REQ (find nodes near Key)",
                 "A <- index: KADEMLIA2_RES",
                 &mut limiter,
+                None,
             )
             .map_err(|e| format!("find_node {logical}: {e}"))?;
         let fres = parse_find_node_res(&res_payload).map_err(|e| format!("RES parse: {e}"))?;
@@ -675,9 +721,10 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
                 op::PUBLISH_RES,
                 "A -> index: PUBLISH_KEY_REQ (namespaced Key)",
                 "A <- index: PUBLISH_RES",
-                &mut limiter,
-            )
-            .map_err(|e| format!("publish {logical}: {e}"))?;
+            &mut limiter,
+            None,
+        )
+        .map_err(|e| format!("publish {logical}: {e}"))?;
         let pres = parse_publish_res(&pub_payload).map_err(|e| format!("PUBLISH_RES parse: {e}"))?;
         let publish_ok = pres.key == key;
         publishes.push(obj(vec![
@@ -705,9 +752,10 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
                 op::SEARCH_RES,
                 "B -> index: SEARCH_KEY_REQ (aMule's closest thing to FIND_VALUE)",
                 "B <- index: SEARCH_RES",
-                &mut limiter,
-            )
-            .map_err(|e| format!("search {logical}: {e}"))?;
+            &mut limiter,
+            None,
+        )
+        .map_err(|e| format!("search {logical}: {e}"))?;
         let sres = parse_search_res(&search_payload).map_err(|e| format!("SEARCH_RES parse: {e}"))?;
         let hit = sres.target == key
             && sres.answers.iter().any(|a| a.source_id == descriptor_id);
@@ -745,6 +793,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "A -> index: PUBLISH_KEY_REQ (unprefixed control Key)",
             "A <- index: PUBLISH_RES (control)",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("control publish: {e}"))?;
     let (ctrl, _) = querier
@@ -755,6 +804,7 @@ fn run_loopback(key_count: usize, rate: f64) -> Result<J, String> {
             "B -> index: SEARCH_KEY_REQ (namespaced Key, control check)",
             "B <- index: SEARCH_RES (control check)",
             &mut limiter,
+            None,
         )
         .map_err(|e| format!("control search: {e}"))?;
     let ctrl_res = parse_search_res(&ctrl).map_err(|e| format!("control SEARCH_RES: {e}"))?;
@@ -922,7 +972,7 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
     let mut attempts = Vec::new();
     for (label, frame, expected) in probes {
         let t0 = Instant::now();
-        client.send(dest, &frame, &format!("lan-probe: {label}"), &mut limiter)
+        client.send(dest, &frame, &format!("lan-probe: {label}"), &mut limiter, None)
             .map_err(|e| format!("send {label}: {e}"))?;
         let sent_hex = sha1::hex(&frame);
         let reply = client.recv("lan-probe: response");
@@ -997,6 +1047,13 @@ struct LiveArgs {
     rate_limit: Option<f64>,
     attest: bool,
     check_only: bool,
+    /// When true, live requests are wrapped in the aMule UDP obfuscation
+    /// envelope (try-0 KadID key). Default false: send cleartext `0xE4` frames,
+    /// which these public KAD peers demonstrably accept (aMule's
+    /// first-byte-is-protocol-byte path). Our obfuscation envelope is now
+    /// byte-accurate vs aMule master, but live interop still returned no
+    /// responses in P4; cleartext is the proven path for this experiment.
+    obfuscate: bool,
 }
 
 fn spikes_json_path() -> PathBuf {
@@ -1145,6 +1202,7 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
     }
     let sample = args.sample_size.unwrap();
     let rate = args.rate_limit.unwrap();
+    let obf = args.obfuscate;
     // A 127.0.0.1-bound socket cannot send to public peers; bind_any() also
     // sets the 3 s read timeout. (Client::bind is loopback-only by design.)
     let mut client = Client::bind_any("live-probe", node_id("live-probe"))
@@ -1167,7 +1225,7 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
         // BOOTSTRAP_REQ -> BOOTSTRAP_RES (plaintext 0xE4 or zlib-packed 0xE5).
         let boot = client.exchange(
             dest, &bootstrap_req(), op::BOOTSTRAP_RES,
-            "live: bootstrap request", "live: bootstrap response", &mut limiter,
+            "live: bootstrap request", "live: bootstrap response", &mut limiter, None,
         );
         fields.push(("bootstrap_res", b(boot.is_ok())));
         let mut known: Vec<Contact> = Vec::new();
@@ -1192,18 +1250,28 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
         // KADEMLIA2_REQ/RES (0x21/0x29) BEFORE publishing. A publish sent to an
         // arbitrary bootstrap node outside the zone is silently dropped by
         // Process2PublishKeyRequest, which would produce a false "rejection".
-        let zone_candidate = |contacts: &[Contact]| -> Option<Contact> {
-            contacts.iter().find(|c| {
+        let zone_contacts = |contacts: &[Contact]| -> Vec<Contact> {
+            contacts.iter().filter(|c| {
                 c.udp != 0
                     && top_chunk(&c.id, &key) <= SEARCHTOLERANCE
                     && is_global_ipv4(contact_addr(c).ip())
-            }).cloned()
+            }).cloned().collect()
         };
         let mut seen: HashSet<SocketAddr> = HashSet::new();
         let mut hops = 0usize;
-        let mut in_zone = zone_candidate(&known);
-        while in_zone.is_none() && hops < 3 {
-            let candidates: Vec<Contact> = closest(&key, &known, 2)
+        let mut in_zone: Vec<Contact> = zone_contacts(&known);
+        // Keep walking the table until we have enough in-zone candidates OR the
+        // walk plateaus (a full hop adds no new in-zone contact). A single
+        // in-zone contact is insufficient: its *reported* KadID may be stale vs
+        // its live KadID, and aMule's Process2Publish/SearchKeyRequest then
+        // silently drops the request (observed: a node answered KADEMLIA2_REQ but
+        // timed out on PUBLISH/SEARCH at the same UDP address).
+        while hops < MAX_FIND_HOPS && in_zone.len() < PUBLISH_FANOUT {
+            let before = in_zone.len();
+            // Query the ALPHA_QUERY closest known contacts each hop (aMule
+            // routing), not just 2 -- otherwise the table cannot close in on
+            // the key's SEARCHTOLERANCE zone.
+            let candidates: Vec<Contact> = closest(&key, &known, ALPHA_QUERY)
                 .into_iter().cloned().collect();
             if candidates.is_empty() {
                 break;
@@ -1214,11 +1282,16 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
                 if c.udp == 0 || !is_global_ipv4(addr.ip()) || !seen.insert(addr) {
                     continue;
                 }
-                let req = find_node_req(&key, &c.id, ALPHA_QUERY as u8);
+                // KADEMLIA2_REQ (0x21) wire layout is <type=count 1><target 16><check 16>.
+                // `check` MUST equal the *recipient's* own KAD ID, or aMule's
+                // ProcessKademlia2Request drops the packet silently (no 0x29).
+                // `type` is masked with 0x1F and used as the requested contact
+                // count; 0x0B (FIND_NODE) asks for up to 11 closest contacts.
+                let req = find_node_req(&key, &c.id, 0x0B);
                 match client.exchange(
                     addr, &req, op::RES,
                     "live: KADEMLIA2_REQ (tolerance iteration)",
-                    "live: KADEMLIA2_RES", &mut limiter,
+                    "live: KADEMLIA2_RES", &mut limiter, if obf { Some(&c.id) } else { None },
                 ) {
                     Ok((p, _)) => {
                         if let Ok(r) = parse_find_node_res(&p) {
@@ -1236,14 +1309,23 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
                     known.push(c);
                 }
             }
-            in_zone = zone_candidate(&known);
+            in_zone = zone_contacts(&known);
+            // Plateau: two full hops added no new in-zone contact -> stop walking.
+            if hops >= 2 && in_zone.len() == before {
+                break;
+            }
         }
-        let tolerance_reached = in_zone.is_some();
-        let publish_target = in_zone.as_ref().map(contact_addr).unwrap_or(dest);
+        let tolerance_reached = !in_zone.is_empty();
+        // KAD publish/search semantics: store the key on the K closest nodes we
+        // know (not just the first in-zone contact). Among these, at least one is
+        // likely to have a live KadID genuinely inside the tolerance zone.
+        let publish_targets: Vec<Contact> = closest(&key, &known, PUBLISH_FANOUT)
+            .into_iter().cloned().collect();
         fields.push(("iteration_hops", n(hops as f64)));
         fields.push(("known_contacts", n(known.len() as f64)));
+        fields.push(("zone_contacts", n(in_zone.len() as f64)));
         fields.push(("tolerance_reached", b(tolerance_reached)));
-        fields.push(("publish_target", s(publish_target.to_string())));
+        fields.push(("publish_targets", J::Arr(publish_targets.iter().map(|c| s(contact_addr(c).to_string())).collect())));
 
         if !tolerance_reached {
             fields.push(("publish_res", b(false)));
@@ -1253,39 +1335,79 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
             continue;
         }
 
-        // PUBLISH_KEY_REQ -> PUBLISH_RES, targeted at the tolerance-zone node.
+        // PUBLISH_KEY_REQ -> PUBLISH_RES, fanned out to the closest known nodes.
         let entry = IndexEntry {
             source_id: node_id(&format!("live-descriptor-{i}")),
             tags: descriptor_tags(logical, "live-probe", client.addr().port()),
         };
-        let publ = client.exchange(
-            publish_target, &publish_key_req(&key, &[entry.clone()]), op::PUBLISH_RES,
-            "live: publish namespaced Key", "live: publish response", &mut limiter,
-        );
-        fields.push(("publish_res", b(publ.is_ok())));
-        if let Ok((p, rtt)) = &publ {
-            fields.push(("publish_rtt_ms", n(*rtt)));
-            fields.push(("publish_load", n(parse_publish_res(p).map(|r| r.load).unwrap_or(0) as f64)));
-        } else {
-            fields.push(("publish_error_or_drop", s(publ.as_ref().err().unwrap().to_string())));
+        let mut publish_detail: Vec<J> = Vec::new();
+        let mut publish_ok = 0usize;
+        let mut publish_rtt: Option<f64> = None;
+        for t in &publish_targets {
+            let addr = contact_addr(t);
+            let publ = client.exchange(
+                addr, &publish_key_req(&key, &[entry.clone()]), op::PUBLISH_RES,
+                "live: publish namespaced Key", "live: publish response", &mut limiter,
+                if obf { Some(&t.id) } else { None },
+            );
+            let ok = publ.is_ok();
+            if ok { publish_ok += 1; }
+            let mut o: Vec<(&str, J)> = vec![
+                ("addr", s(addr.to_string())),
+                ("publish_ok", b(ok)),
+            ];
+            if let Ok((p, rtt)) = &publ {
+                if publish_rtt.is_none() { publish_rtt = Some(*rtt); }
+                o.push(("publish_rtt_ms", n(*rtt)));
+                o.push(("publish_load", n(parse_publish_res(p).map(|r| r.load).unwrap_or(0) as f64)));
+            } else {
+                o.push(("error", s(publ.as_ref().err().unwrap().to_string())));
+            }
+            publish_detail.push(J::Obj(o.into_iter().map(|(k, v)| (k.to_string(), v)).collect()));
+        }
+        let published_any = publish_ok > 0;
+        fields.push(("publish_targets_count", n(publish_targets.len() as f64)));
+        fields.push(("publish_ok_count", n(publish_ok as f64)));
+        fields.push(("publish_res", b(published_any)));
+        fields.push(("publish_detail", J::Arr(publish_detail)));
+        if let Some(rtt) = publish_rtt {
+            fields.push(("publish_rtt_ms", n(rtt)));
         }
 
-        // SEARCH_KEY_REQ -> SEARCH_RES
-        let srch = client.exchange(
-            publish_target, &search_key_req(&key), op::SEARCH_RES,
-            "live: search namespaced Key", "live: search response", &mut limiter,
-        );
-        let hit = match &srch {
-            Ok((p, _)) => parse_search_res(p)
-                .map(|r| r.answers.iter().any(|a| a.source_id == entry.source_id))
-                .unwrap_or(false),
-            Err(_) => false,
-        };
-        fields.push(("search_res", b(srch.is_ok())));
-        fields.push(("hit", b(hit)));
-        if let Err(e) = &srch {
-            fields.push(("search_error_or_drop", s(e.to_string())));
+        // SEARCH_KEY_REQ -> SEARCH_RES, fanned out to the same closest nodes.
+        let mut search_detail: Vec<J> = Vec::new();
+        let mut search_ok = 0usize;
+        let mut hit = false;
+        for t in &publish_targets {
+            let addr = contact_addr(t);
+            let srch = client.exchange(
+                addr, &search_key_req(&key), op::SEARCH_RES,
+                "live: search namespaced Key", "live: search response", &mut limiter,
+                if obf { Some(&t.id) } else { None },
+            );
+            let ok = srch.is_ok();
+            if ok { search_ok += 1; }
+            let mut o: Vec<(&str, J)> = vec![
+                ("addr", s(addr.to_string())),
+                ("search_ok", b(ok)),
+            ];
+            if let Ok((p, _)) = &srch {
+                if let Ok(r) = parse_search_res(p) {
+                    let found = r.answers.iter().any(|a| a.source_id == entry.source_id);
+                    if found { hit = true; }
+                    o.push(("answers", n(r.answers.len() as f64)));
+                    o.push(("hit", b(found)));
+                }
+            } else {
+                o.push(("error", s(srch.as_ref().err().unwrap().to_string())));
+            }
+            search_detail.push(J::Obj(o.into_iter().map(|(k, v)| (k.to_string(), v)).collect()));
         }
+        fields.push(("search_targets_count", n(publish_targets.len() as f64)));
+        fields.push(("search_ok_count", n(search_ok as f64)));
+        fields.push(("search_res", b(search_ok > 0)));
+        fields.push(("search_detail", J::Arr(search_detail)));
+        fields.push(("hit", b(hit)));
         attempts.push(J::Obj(
             fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         ));
@@ -1301,9 +1423,14 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
         ("gate", gate),
         ("sample_size", n(sample as f64)),
         ("rate_limit_pps", n(rate)),
+        ("obfuscation_mode", s(if obf { "kad_udp_obfuscation_try0" } else { "cleartext_0xE4" })),
         ("attempts", J::Arr(attempts)),
         ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
-        ("protocol_scope", s("plaintext 0xE4 / zlib-packed 0xE5 decoded; HELLO skipped; no UDP key / RC4")),
+        ("protocol_scope", s(if obf {
+            "0xE4 frames obfuscated per aMule EncryptedDatagramSocket: live requests use KadID-based (try-0) RC4 key with the peer's KadID, senderVerifyKey=OUR_UDP_KEY, receiverVerifyKey=0 (HELLO skipped); bootstrap stays cleartext; replies decoded via deobfuscate trying both try-0 (our KadID) and try-2 (our verify key); validReceiverKey is NOT a publish/search gate (only logged)"
+        } else {
+            "0xE4 frames sent CLEARTEXT (aMule accepts cleartext KAD via its first-byte-is-protocol-byte path); HELLO skipped; publish/search targeted at a tolerance-zone contact learned via KADEMLIA2_REQ/RES; validReceiverKey is NOT a publish/search gate (only logged). Obfuscation envelope implemented + byte-verified vs aMule master but not required by these peers."
+        })),
         ("note", s("发布前先做 KADEMLIA2_REQ/RES 迭代收敛到 SEARCHTOLERANCE 邻域；未收敛则跳过该样本而不发布。程序不自动置 pass；结论由实验执行人依据逐次原始记录手工回填 spikes.json。")),
     ]))
 }
@@ -1414,6 +1541,7 @@ fn main() {
                 rate_limit: arg_value(&argv, "--rate-limit").and_then(|v| v.parse().ok()),
                 attest: argv.iter().any(|a| a == "--attest-i-am-the-experiment-operator"),
                 check_only: argv.iter().any(|a| a == "--check"),
+                obfuscate: argv.iter().any(|a| a == "--obfuscate"),
             };
             let check_only = args.check_only;
             run_live(&args).map(|r| {
