@@ -123,7 +123,9 @@ LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、
 0 响应、0 发布、3 个样本全部 `skipped`（未收敛到 tolerance zone）。对照实验确认是执行环境
 过滤公网高位 UDP，而非报文格式或节点拒绝；LAN 真实 eMule 对同一帧正常回 523 B / 20 contacts。
 结论 `inconclusive_environment_blocked`，`S2.status` 保持 `not_run`。重跑前先执行
-[`udp_egress_check.py`](../udp_egress_check.py)（退出码 0 才跑）。详见 [PLAN.md §7](../PLAN.md)。
+[`udp_egress_check.py`](../udp_egress_check.py)（v2.4.9 升级，退出码 0 才跑）。
+详见 [PLAN.md §7/§8](../PLAN.md)：归因已细化为出口按目标端口白名单，且 LAN 探测不经过公网
+出口、不能证明公网可达；需在准备跑 P4 的那台主机上实测，必要时做跨主机对照。
 
 ## 7. LAN 真实客户端互操作探测（2026-11-09）
 

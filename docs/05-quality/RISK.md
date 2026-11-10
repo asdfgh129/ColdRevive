@@ -62,6 +62,11 @@ updated: 2026-11-09
 三桶计数全部不适用。判据是「与 KAD 无关的公网高位 UDP 往返也失败」（STUN/19302、
 STUN/3478），同时 DNS/UDP-53 正常、LAN 真实 eMule 对同一份 `0xE4 0x01` 能正常应答。
 重跑前须先执行 [udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)（退出码 0）。
+该判定是**逐主机**的：同一网络内不同主机可能有不同出口策略，必须在准备跑 P4 的那台机器上
+实测；LAN 内真实 eMule 探测是纯 LAN 流量、未经过公网出口，**不构成**公网可达性证据。
+v2.4.9 复核把归因细化为「出口按目标端口/应用白名单丢弃高位未知端口」（53/123 通、
+3478/19302 不通），并新增跨主机对照与 `nodes.dat` 新鲜度检查；详见
+[PLAN.md §8](../../tests/spikes/s2/PLAN.md)。
 详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
 

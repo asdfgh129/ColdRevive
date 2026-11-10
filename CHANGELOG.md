@@ -2,6 +2,48 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.9] - 2026-11-10 — 环境归因复核：按端口白名单 + 跨主机待验证
+
+项目所有者指出 LAN 内那台 eMule 与本机同一网络、没有额外设置，唯一差异是 eMule 开了
+入站映射，据此质疑 v2.4.8「网络统一过滤公网高位 UDP」的归因。补做更宽的对照实验后
+**修正归因并升级诊断脚本**；协议设计基线、`S2.status` 与三桶作废结论均不变。
+
+### 复核观测
+
+| 探测 | 结果 | 排除项 |
+| :--- | :--- | :--- |
+| UDP/53 DNS、UDP/123 NTP（Cloudflare / pool.ntp.org） | OK，42～190 ms | 「UDP 全封」「整张网只走 HTTP 代理」不成立 |
+| UDP/3478 / 19302 STUN（Cloudflare、ekiga、Google） | 全超时 | 非 Google 单一来源混淆；高位未知端口不通 |
+| 同批 STUN 固定源端口（含 LAN eMule 端口与 4672） | 仍全超时 | 按源端口放行 |
+| Windows 防火墙出站阻断规则 | 0 条，默认允许 | 本机防火墙 |
+| LAN eMule 高位 UDP，同一帧 `e401` | OK 523 B / 9 ms | 本机 socket 栈与 LAN 路径 |
+
+**修正后的归因**：公网出口按目标端口/应用白名单放行低位知名端口、丢弃高位未知端口，
+不是 UDP 被整体过滤。撤回 §7「整张网只走 HTTP 代理出网」的绝对措辞。
+
+### 三点更正
+
+1. **LAN 探测不经过公网出口**，只证明报文格式与 LAN 路径正确，**不能**作为公网 UDP 可达性证据 —— 这是原归因的逻辑漏洞。
+2. **入站映射不是请求/响应的必要条件**：aMule `Process2BootstrapRequest` 把响应发回请求的 `ip, port`，状态化 NAT 自动放行；`ProcessPacket` 唯一源端口检查是拒绝来自 53 的未加密包。映射决定的是「能否被外部主动联系」，且很可能是同一条按 IP 出口策略的**表征**而非机制。
+3. **`nodes.dat`（2026-11-08）新鲜度是独立次要风险**：3 个随机联系人在健康网络上也可能全部离线，原先判为「非主因」证据不足。
+
+### 新增 / 变更
+
+- [udp_egress_check.py](tests/spikes/s2/udp_egress_check.py) 升级为可搬运的单文件诊断：
+  新增 NTP/123 低位对照、非 Google STUN 目标、`--source-port`、`--lan-ip/--lan-port`
+  （RFC1918/loopback 硬校验、绝不向公网发 KAD 包）、`--json`；退出码 `0`/`2`/`1` 语义不变。
+  本机复验：低位 **4/4 OK**、高位 **0/3 OK**、LAN 对照 OK、退出码 **2**。
+- [PLAN.md §8](tests/spikes/s2/PLAN.md) 记录复核与**决定性跨主机实验**：把该脚本拷到 LAN
+  eMule 机器运行；退出码 0 → 出口例外按主机，可从该机重跑 P4 或为本机申请同策略；
+  退出码 2 → 整网无主机可跑，须换网并刷新 `nodes.dat`。
+- `spikes.json` 新增 `observations.p4_environment_diagnosis.refinement_2026_11_10` 并更新
+  `conclusion` / `precondition_check`；[RISK R-02](docs/05-quality/RISK.md) 补充「前置判定逐主机、
+  LAN 探测不构成公网证据」；S2 / kad-mini / tests-spikes README、ROADMAP、OPEN-QUESTIONS 同步；
+  `docs/index.html` 重建。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+三桶计数整体作废、未发布任何测试 Key、公共 KAD 未获得任何协议证据。
+
 ## [2.4.8] - 2026-11-10 — P4 首次执行：环境阻断，结论不可用
 
 项目所有者显式下达「执行 P4」。`live --check` 复验门禁 `passed=true` / 0 blocker 后，

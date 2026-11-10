@@ -129,7 +129,7 @@ ColdRevive
   三桶计数整体作废。新增可选前置诊断 [udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)
   （退出码 0 才可跑 P4）。详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。
 - 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1 的双 peer 真实分片传输、S3–S7 全部实验、S2 的 P4 **有效**实网小样本（首次执行被环境阻断）。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：先跑 `udp_egress_check.py` 换到无 UDP 过滤的网络，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`；S1 补齐双 peer 传输，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：先跑升级版 `udp_egress_check.py`，并在 LAN 那台 eMule 机器上做一次跨主机对照（判断出口例外是否按主机），再换到高位 UDP 未被过滤的主机/网络，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`；S1 补齐双 peer 传输，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 
