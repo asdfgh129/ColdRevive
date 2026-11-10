@@ -38,7 +38,15 @@ updated: 2026-11-09
 
 ## 3. 立即下一步（M0 Spike 清单）
 
-1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。其中 S2 的 [PLAN.md](../../tests/spikes/s2/PLAN.md) P0–P3 已完成（协议核实、真实 wire 回环、LAN 互操作、G0 确认 `sample_size=3` / `rate_limit_pps=0.2`、用户 bootstrap 清单），P4 已于 2026-11-10 显式执行但被环境公网高位 UDP 过滤阻断（0 响应、0 发布），**只差在无过滤网络上重跑一次有效的 P4**；KAD 报文映射与 128/160-bit ID 错配已于 v2.4.6 回写 ADR-001 / PROTO §2.0 / `S2.criteria` / RISK R-02；v2.4.7 又补齐了 `live` 与判据的一致性（`0xE5` 解包、tolerance 收敛、跳过 HELLO、公网 bootstrap 校验），详见 [PLAN.md §6/§7](../../tests/spikes/s2/PLAN.md)。重跑前置检查：[udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)（v2.4.9 升级，退出码 0）。
+> **⚠️ v2.4.14 更正：本节下方 v2.4.9–v2.4.13 的环境归因与「换网重跑」结论已被否证并撤回。**
+> 根因是 KAD 联系人 IP 字节序读反（线上为点分十进制反序），所有 0/N 都发往错误地址；
+> 修正后本机 10 目标探针 **9/10 收到真实 `BOOTSTRAP_RES`**，P4 两次重跑已连上公共 KAD。
+> **高位 UDP 一直是通的，不需要换网、不需要开防火墙。** 当前下一步是修 `kad-mini live`
+> 的 `SEARCHTOLERANCE` 收敛逻辑（每跳 `ALPHA_QUERY=5` 个候选、`KADEMLIA_FIND_NODE=0x0B`、
+> 提高跳数），改用实时 `BOOTSTRAP_RES` 目标清单，再按 G0 参数重跑 P4。
+> `S2.status` 仍 `not_run`。详见 [PLAN.md §11](../../tests/spikes/s2/PLAN.md)。
+
+1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。其中 S2 的 [PLAN.md](../../tests/spikes/s2/PLAN.md) P0–P3 已完成（协议核实、真实 wire 回环、LAN 互操作、G0 确认 `sample_size=3` / `rate_limit_pps=0.2`、用户 bootstrap 清单），P4 已于 2026-11-10 数度执行；早期 0 响应系 IP 字节序缺陷（v2.4.14 更正），修正后已真实连上公共 KAD，但 3/3 样本因未收敛到 `SEARCHTOLERANCE` 邻域而跳过发布，**只差修好客户端收敛逻辑后重跑一次有效的 P4**；KAD 报文映射与 128/160-bit ID 错配已于 v2.4.6 回写 ADR-001 / PROTO §2.0 / `S2.criteria` / RISK R-02；v2.4.7 又补齐了 `live` 与判据的一致性（`0xE5` 解包、tolerance 收敛、跳过 HELLO、公网 bootstrap 校验），详见 [PLAN.md §6/§7](../../tests/spikes/s2/PLAN.md)。重跑前置检查：[udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)（v2.4.9 升级，退出码 0）。
 跨主机 STUN 对照（v2.4.10）：LAN 那台 eMule 与本机同一网络、仅多一条入站映射；同一份脚本
 在它上面也 `BLOCKED` / 退出码 2（低位 4/4 OK、高位 0/3 OK），**按主机的 STUN 出站例外被否证**。
 **v2.4.11 重新开放**：该机截图显示 eD2K HighID 与 Kad 页签 432 个联系人，而 STUN 不等于 KAD；

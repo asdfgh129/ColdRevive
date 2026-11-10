@@ -31,17 +31,19 @@ Also note eMule/aMule's "UDP state: open" is an INBOUND reachability test that
 an inbound DNAT alone can satisfy -- it does not prove P4 can run. See
 tests/spikes/s2/PLAN.md sections 8.6 and 9.
 
-CROSS-HOST RESULT (2026-11-10): the LAN eMule host is on the same network and
-HAS an inbound port mapping. Running this exact file there produced the same
-BLOCKED result (low-port 4/4 OK, high-port 0/3 OK, exit 2). So there is no
-per-host STUN egress exception and an inbound DNAT does not grant outbound
-STUN high-port UDP. This does NOT prove "no host on this network can run P4".
+CORRECTION (v2.4.14): THIS CHECK IS NOT A VALID P4 PRECONDITION.
+The real root cause of every historical "0 replies" was a decoder defect:
+KAD contact IPs are stored host-order little-endian on the wire, i.e. the four
+bytes are the REVERSE of dotted-quad order. Our nodes.dat / BOOTSTRAP_RES
+parsers read them forwards, so every BOOTSTRAP_REQ went to a nonexistent host.
+After fixing the byte order, a 10-target KAD probe from this machine got 9/10
+real 523-byte BOOTSTRAP_RES replies -- public high-port UDP was never blocked.
+STUN 3478/19302 is blocked specifically and is NOT a proxy for KAD traffic.
 
-    -> Move to an unrestricted network, re-run this check there (must exit 0),
-       refresh nodes.dat (a 2-day-old contact list may be entirely dead), then
-       re-run P4 with the G0-confirmed parameters.
-    -> When diagnosing a DIFFERENT host/network, copy this single file there and
-       repeat: 0 = high-port UDP works, 2 = STUN blocked, not an S2 finding.
+    -> Do NOT use exit 2 here as a reason to skip, delay or relocate P4.
+    -> Use kad_egress_probe.py with CORRECTLY DECODED targets instead; generate
+       them with nodes_dat_to_bootstrap.py / bootstrap_res_to_targets.py.
+    -> This script remains useful only as a narrow STUN-port diagnostic.
 
 Usage
 -----
@@ -207,11 +209,10 @@ def main() -> int:
     if lan and lan[0]["ok"]:
         print("        LAN high-port control OK -> local host + LAN path are fine;")
         print("        the filter sits at the internet egress boundary.")
-    print("        STUN is blocked here; do NOT treat this alone as proof that")
-    print("        P4 is impossible. A KAD timeout is an environment failure,")
-    print("        NOT an S2 finding -- but confirm with kad_egress_probe.py.")
-    print("        Cross-host check: repeat on any other candidate host/network;")
-    print("        egress policy can be per-host (0 = high-port UDP works there).")
+    print("        STUN is blocked here. v2.4.14: that is NOT a P4 blocker and")
+    print("        NOT a KAD proxy -- correctly decoded KAD probes get 9/10 replies")
+    print("        from this host. Do NOT skip/relocate P4 because of this result.")
+    print("        Confirm with kad_egress_probe.py using correctly decoded targets.")
     return 2
 
 

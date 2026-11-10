@@ -384,6 +384,18 @@ pub fn read_tags(c: &mut Cur<'_>) -> Result<Vec<Tag>, String> {
 
 /// `<id 16><ip 4><udp 2><tcp 2><version 1>` = 25 bytes.
 /// src/kademlia/net/KademliaUDPListener.cpp `Process2BootstrapRequest`.
+///
+/// BYTE ORDER (v2.4.14): `Contact.ip` is the human dotted-quad order
+/// `[a,b,c,d]`, but KAD puts the address on the wire in REVERSED order
+/// `[d,c,b,a]`. aMule stores KAD IPs in *host order* (see
+/// `NetworkFunctions.h`: `KadIPToString` renders `ip>>24` first, and
+/// `KadDlg.cpp` notes "kad expects host order"), while
+/// `CFileDataIO::WriteUInt32` writes little-endian on x86. For a.b.c.d the
+/// host-order integer is `a<<24|b<<16|c<<8|d`, whose LE bytes are d,c,b,a.
+/// Confirmed empirically: all 200 contacts in a real nodes.dat decode to
+/// globally-routable ISP ranges only when reversed (reversed first octets
+/// cluster on 79/81/82/84/88/91/93/185); the un-reversed decode yields 19
+/// RFC1918 addresses and multicast/reserved first octets.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Contact {
     pub id: KadId,
@@ -396,7 +408,8 @@ pub struct Contact {
 impl Contact {
     pub fn encode(&self, b: &mut Buf) {
         b.id(&self.id);
-        b.raw(&self.ip);
+        // wire order is the reverse of dotted-quad order
+        b.raw(&[self.ip[3], self.ip[2], self.ip[1], self.ip[0]]);
         b.u16(self.udp);
         b.u16(self.tcp);
         b.u8(self.version);
@@ -405,6 +418,7 @@ impl Contact {
         let id = c.id()?;
         let mut ip = [0u8; 4];
         ip.copy_from_slice(c.raw(4)?);
+        ip.reverse(); // wire order -> dotted-quad order
         Ok(Contact { id, ip, udp: c.u16()?, tcp: c.u16()?, version: c.u8()? })
     }
     pub fn addr(&self) -> String {
@@ -681,6 +695,29 @@ mod tests {
         let mut b = Buf::new();
         c.encode(&mut b);
         assert_eq!(b.0.len(), 25);
+        assert_eq!(Contact::decode(&mut Cur::new(&b.0)).unwrap(), c);
+    }
+
+    /// aMule writes KAD IPs in host-order LE, i.e. the reverse of dotted quad.
+    /// Documentation address 203.0.113.5 has wire bytes 05 71 00 cb.
+    #[test]
+    fn contact_ip_wire_order_is_reversed() {
+        let c = Contact {
+            id: node_id("A"),
+            ip: [203, 0, 113, 5],
+            udp: 24575,
+            tcp: 24575,
+            version: 9,
+        };
+        let mut b = Buf::new();
+        c.encode(&mut b);
+        assert_eq!(&b.0[16..20], &[5, 113, 0, 203]);
+        assert_eq!(b.0[20..22], [0xFF, 0x5F]); // 24575 LE
+        let mut wire = [0u8; 25];
+        wire[16..20].copy_from_slice(&[5, 113, 0, 203]);
+        let decoded = Contact::decode(&mut Cur::new(&wire)).unwrap();
+        assert_eq!(decoded.ip, [203, 0, 113, 5]);
+        assert_eq!(decoded.addr(), "203.0.113.5:0");
         assert_eq!(Contact::decode(&mut Cur::new(&b.0)).unwrap(), c);
     }
 

@@ -16,6 +16,14 @@ Layout is taken from aMule ``src/kademlia/routing/RoutingZone.cpp::ReadFile``:
 ``server.met`` is the eD2K *server* list (magic 0xE0), not a KAD routing table.
 It cannot be used to bootstrap KAD and is deliberately not parsed here.
 
+BYTE ORDER (v2.4.14): the four IP bytes are stored in REVERSED dotted-quad
+order. aMule keeps KAD IPs in host order (``NetworkFunctions.h`` says
+``KadIPToString`` renders ``ip>>24`` first; ``KadDlg.cpp`` says "kad expects
+host order"), while ``CFileDataIO::WriteUInt32`` writes little-endian on x86.
+So a.b.c.d is on disk/wire as d.c.b.a and must be reversed when read. Before
+this fix every emitted bootstrap IP was wrong (e.g. d.c.b.a instead of
+a.b.c.d), which invalidated the P4 / KAD-probe "no reply" results.
+
 Usage::
 
     python3 tests/spikes/s2/nodes_dat_to_bootstrap.py \
@@ -41,6 +49,13 @@ from pathlib import Path
 MAGIC_SERVER_MET = 0xE0
 
 
+def decode_kad_ip(raw: bytes) -> str:
+    """KAD stores IPv4 in host-order LE, i.e. reversed vs dotted quad."""
+    if len(raw) != 4:
+        raise ValueError("KAD IPv4 field must be exactly 4 bytes")
+    return ".".join(str(b) for b in raw[::-1])
+
+
 def parse_contacts(raw: bytes) -> tuple[int, list[dict]]:
     if len(raw) < 12:
         raise ValueError("nodes.dat too short for a modern header")
@@ -63,9 +78,8 @@ def parse_contacts(raw: bytes) -> tuple[int, list[dict]]:
     for i in range(count):
         off = 12 + i * stride
         rec = raw[off : off + stride]
-        # aMule stores the IP as four network-order octets; reading them back
-        # as a dotted quad gives the address without any byte swapping.
-        ip = ".".join(str(b) for b in rec[16:20])
+        # host-order LE on disk -> reverse to get dotted quad (see module doc)
+        ip = decode_kad_ip(rec[16:20])
         udp, tcp = struct.unpack_from("<HH", rec, 20)
         version = rec[24]
         verified = rec[33] if stride == 34 else 0
@@ -94,6 +108,20 @@ def is_public(addr: str) -> bool:
 
 
 def main() -> int:
+    if "--selftest" in sys.argv:
+        # RFC 5737 documentation address: host-order LE bytes 05 71 00 cb
+        # decode to 203.0.113.5, not 5.113.0.203.
+        assert decode_kad_ip(bytes([5, 113, 0, 203])) == "203.0.113.5"
+        assert decode_kad_ip(bytes([1, 0, 0, 127])) == "127.0.0.1"
+        try:
+            decode_kad_ip(b"\x00\x01")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("short IP field must be rejected")
+        print("nodes_dat_to_bootstrap selftest: OK (KAD IP byte order reversed)")
+        return 0
+
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--nodes-dat", required=True, help="path to nodes.dat (read-only)")
     ap.add_argument("--out", required=True, help="output bootstrap JSON path (must be gitignored)")

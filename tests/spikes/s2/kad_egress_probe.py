@@ -22,6 +22,14 @@ Targets are never bundled. Supply them via --targets <json> (a list of
 BOOTSTRAP_RES. Any non-global IPv4 address is rejected (same rule as
 `kad-mini live_gate`). Reports go to the gitignored reports/ directory.
 
+CRITICAL (v2.4.14): targets MUST be decoded with the correct KAD IP byte order.
+aMule keeps KAD IPs in host order and writes them little-endian, so the four
+wire bytes are the REVERSE of dotted-quad order. A forwards read produces
+plausible-looking but nonexistent addresses (e.g. 19/200 RFC1918 and multicast
+first octets in a real nodes.dat). Use nodes_dat_to_bootstrap.py or
+bootstrap_res_to_targets.py -- both reverse the bytes and have --selftest.
+With corrected targets this host scored 9/10 real BOOTSTRAP_RES replies.
+
 Usage
 -----
     python3 kad_egress_probe.py --targets <file> --attest-i-am-the-experiment-operator
@@ -42,6 +50,13 @@ stale target list, those are NOT independent replicates. Use
 `bootstrap_res_to_targets.py` to harvest FRESH contacts from a live eMule
 client's LAN BOOTSTRAP_RES (no packets to public nodes), then re-run with
 --sample-size 10. See tests/spikes/s2/PLAN.md section 10.2.
+
+RESULT HISTORY (v2.4.14): all earlier 0/N runs (this host, three source ports,
+10 fresh targets; and the LAN eMule host) used byte-reversed target IPs and are
+VOID -- they were sent to nonexistent hosts, not blocked by an egress filter.
+After the decoder fix: 9/10 replies, exit 0, and two P4 reruns reached public
+KAD (compressed BOOTSTRAP_RES + KADEMLIA2_REQ/RES iteration). The remaining
+S2 blocker is client-side SEARCHTOLERANCE convergence, not networking.
 
 Also note: eMule/aMule's "UDP state: open" is an INBOUND reachability test --
 a remote node sends an unsolicited UDP packet to your public IP:Kad port,
@@ -236,9 +251,11 @@ def main() -> int:
             print("  A real KAD packet reached a public node and came back from this host.")
             print("  STUN-based egress checks were a false negative -> re-evaluate P4.")
         else:
-            print("  Cannot separate egress filtering from dead contacts; do NOT count as S2 evidence.")
-            print("  Reduce that confound: bootstrap_res_to_targets.py -> fresh LAN BOOTSTRAP_RES")
-            print("  contacts, then re-run with --sample-size 10 (diagnostic, hard caps allow it).")
+            print("  FIRST check target IP byte order: KAD stores IPv4 reversed")
+            print("  (host-order LE). Regenerate targets with nodes_dat_to_bootstrap.py")
+            print("  or bootstrap_res_to_targets.py -- both have --selftest.")
+            print("  Then reduce the dead-contact confound with fresh LAN BOOTSTRAP_RES")
+            print("  contacts and re-run with --sample-size 10. Do NOT count as S2 evidence.")
     return 0 if got else 2
 
 

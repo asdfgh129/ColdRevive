@@ -119,6 +119,16 @@ P3 已完成，因此带齐参数 + 公网清单运行 `live --check` 会返回 
 LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、退出码 2）；
 只有去掉 `--check` 才会真正执行 P4。详见 [../PLAN.md §2/§3](../PLAN.md)。
 
+> **⚠️ v2.4.14 更正（下方 P4 首次执行与 v2.4.9–v2.4.13 段落为已作废的历史归因）**：
+> `Contact::encode/decode` 曾按点分顺序读取 IP，但 KAD 线上 4 字节是**反序**（aMule
+> host-order 小端），导致所有公网目标地址错误。现已修复并加
+> `contact_ip_wire_order_is_reversed` 单测。修正后本机 10 目标探针 **9/10 收到 523 B
+> `BOOTSTRAP_RES`**；P4 按 G0 参数两度重跑均已 `public_kad_contacted=true`，收到 `0xE5`
+> 压缩 `BOOTSTRAP_RES` 与 `0x21/0x29` 迭代应答，但每跳 2 候选 × 3 跳仅 30–34 联系人、
+> `tolerance_reached=false`，3/3 样本跳过发布。**高位 UDP 一直可用，不需换网。**
+> 下一步：每跳 `ALPHA_QUERY=5` 个候选、`KADEMLIA_FIND_NODE=0x0B`、提高跳数上限，
+> 用实时 `BOOTSTRAP_RES` 目标清单重跑 P4。详见 [PLAN.md §11](../PLAN.md)。
+
 **P4 首次执行（2026-11-10）**：门禁通过、3 条 `0xE4 0x01` `BOOTSTRAP_REQ` 以 5 s 间隔发出、
 0 响应、0 发布、3 个样本全部 `skipped`（未收敛到 tolerance zone）。对照实验确认是执行环境
 过滤公网高位 UDP，而非报文格式或节点拒绝；LAN 真实 eMule 对同一帧正常回 523 B / 20 contacts。

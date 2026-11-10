@@ -2,6 +2,80 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.14] - 2026-11-10 — 根因归位：联系人 IP 字节序缺陷，高位 UDP 从未被阻断
+
+> **本条撤回 2.4.9–2.4.13 的主要环境结论。** 它们保留为审计轨迹，不再作为决策依据。
+
+### 触发证据
+
+项目所有者提供 LAN eMule 主机**运行时**三张截图：当日 11:12 新加的下载以 MB/s 传输、
+展开来源含多行 `Kad` 与 `eD2K Se...`；Kad 页签 `当前搜索 (1)` 关键字 `windows`、
+**数量 93 / 已发送包 7|2 / 回应总数 600**；`当前搜索 (2)` 两条 `节点查找` 回应总数 2 与 1。
+按 [eMule 官方 Kad 窗口](https://www.emule-project.com/home/perl/help.cgi?l=1&topic_id=1266&rm=show_topic)
+与[搜索详情图](https://www.emule-project.com/home/perl/help.cgi?l=1&rm=show_topic&topic_id=1552)，
+这些是远端节点经 UDP 送回的应答 —— 与「整网过滤高位 UDP」不相容。
+
+### 根因：把联系人变成 UDP 目的地时读反了 IP 字节序
+
+| 源码 | 事实 |
+| :--- | :--- |
+| `src/NetworkFunctions.h` | `KadIPToString(ip)` 以 `ip>>24` 为首字节 → KAD 内部 IP 为 **host order** |
+| `src/KadDlg.cpp` | 注释「StringIPtoUint32 returns anti-host and **kad expects host order**」 |
+| `src/SafeFile.cpp` | `WriteUInt32` / `ReadUInt32` 在 x86 上是**小端** |
+| `KademliaUDPListener.cpp` | `SendPacket` / `OnPacketReceived` 用 `wxUINT32_SWAP_ALWAYS` 双向转换 |
+
+故 `a.b.c.d` 的 host-order 整数以小端写出后，线上 4 字节是 **`d.c.b.a`**。真实
+`nodes.dat`（200 条）反序解码后 **200/200 全局可路由**、首字节集中在宽带 ISP 段；
+原样解码则有 19 条 RFC1918 与 225/236/246/253 等组播/保留首字节。自 P4 首次执行起，
+所有 0/N 都是把 `BOOTSTRAP_REQ` 发给了不存在的地址。
+
+另核实 `Process2BootstrapRequest` 不要求 payload / KAD ID / HELLO / UDP key，
+我们 2 字节 `0xE4 0x01` 报文**本身合法**，不是报文格式问题。
+
+### 修复与复验
+
+- `nodes_dat_to_bootstrap.py`、`bootstrap_res_to_targets.py` 新增 `decode_kad_ip()`
+  反转 4 字节并加 `--selftest`；`kad-mini/src/wire.rs` 的 `Contact::encode/decode`
+  统一「内存点分顺序 / 线上反序」，新增 `contact_ip_wire_order_is_reversed` 单测。
+- 重新生成三份 gitignored 目标清单；`cargo test` **8/8**、两个脚本 selftest 通过。
+- 修正后本机 `kad_egress_probe.py` 10 目标 / 0.2 pps：**9/10 收到 523 B `BOOTSTRAP_RES`**、
+  `RESULT: REACHABLE` 退出码 0（1 条 `WSAECONNRESET`）。**高位 UDP 一直是通的**；
+  STUN 3478/19302 超时只是 STUN 专属过滤，不能当 KAD 代理指标。
+- P4 按 G0 参数（`sample_size=3` / `rate_limit_pps=0.2`）**两度重跑**：
+  `public_kad_contacted=true`，收到 517 B `0xE5` zlib 压缩 `BOOTSTRAP_RES`、
+  20 联系人及 `0x21/0x29` 迭代应答，3 hops / 30–34 联系人；两次均
+  `tolerance_reached=false` → 3/3 样本按 criteria #2 跳过，**未发布、未搜索**。
+
+### 撤回与保留
+
+- **撤回**：「出口按目标端口/应用白名单过滤高位 UDP」「整网无主机可跑 P4」
+  「本机已确证不可达」「换网重跑 P4」；RISK R-02 中历史超时由「环境前置条件失败」
+  改判为**测错对象**，整体作废、不进入任何桶。
+- **保留**：STUN ≠ KAD；KAD UDP「打开」是入站可达性测试、入站 DNAT 即可满足；
+  eD2k 下载/服务器搜索走 TCP，与 KAD UDP 是不同判据。
+
+### 新的关键环节
+
+瓶颈转移到客户端的 **`SEARCHTOLERANCE` 路由收敛**。`live` 每跳只取 2 个候选、最多 3 跳，
+累计 30–34 联系人；aMule `SEARCHTOLERANCE = 2^24` 比较 XOR 距离**最高 32 位**
+（`UInt128.h` 的 `Get32BitChunk(0)` 为最高位），随机命中约 1/256。
+`Constants.h` 定义 `KADEMLIA_FIND_VALUE=0x02` / `STORE=0x04` / `FIND_NODE=0x0B`、
+`ALPHA_QUERY=5`；当前 `0x21` 首字节用了非标准的 5。修复方向：每跳 `ALPHA_QUERY`
+个最近候选 + `FIND_NODE=0x0B` + 提高跳数，再用实时 `BOOTSTRAP_RES` 目标重跑 P4。
+`nodes.dat` 已过期（3 条中 2 条无响应），不再作为首选清单。
+
+### 登记范围
+
+`PLAN.md` 新增 §11（含撤回表）并改顶部状态；`spikes.json` 新增
+`p4_environment_diagnosis.contact_ip_byte_order_defect_2026_11_10`，改写
+`conclusion` / `required_next_step`，并把 `p4_execution.result` 改为
+`inconclusive_targeting_defect`；RISK R-02、OPEN-QUESTIONS、ROADMAP、根 README、
+各 README、两个诊断脚本文档字符串与提示语、`docs/index.html` 重建。公共文档不含
+LAN IP / 端口 / 公网 bootstrap IP。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden 未动、
+两次 P4 重跑 `evidence_valid_for_pass=false`、**未发布任何测试 Key**、G0 仍 False。
+
 ## [2.4.13] - 2026-11-10 — 跨主机 KAD 探针 0/3 + eD2k/KAD 判据区分：工程决策改为换网重跑
 
 ### 新增证据

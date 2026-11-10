@@ -17,10 +17,18 @@ Wire layout (aMule Kademlia v2, KADEMLIA2_BOOTSTRAP_RES = 0x09):
     payload = <selfID 16><selfTCP u16 LE><kadVersion u8><count u16 LE>
               count * <id 16><ip 4><udpPort u16 LE><tcpPort u16 LE><version u8>
 
-0xE5 is zlib-compressed (aMule PackPacket above 200 B). IP octets are in
-network order; ports are little-endian. Only globally-routable IPv4 contacts
-with a usable UDP port are emitted -- the same rule as `kad-mini live_gate`
-and `kad_egress_probe.py`. Reports/targets are gitignored; never commit them.
+0xE5 is zlib-compressed (aMule PackPacket above 200 B). Ports are little-endian.
+
+BYTE ORDER (v2.4.14): the 4 IP octets are in REVERSED dotted-quad order. aMule
+keeps KAD IPs in host order (``NetworkFunctions.h``: ``KadIPToString`` renders
+``ip>>24`` first; ``KadDlg.cpp``: "kad expects host order") and
+``CFileDataIO::WriteUInt32`` writes little-endian, so a.b.c.d is on the wire as
+d.c.b.a. Early versions of this helper emitted unreversed IPs, which made every
+target bogus and produced the false "0 replies / egress blocked" chain.
+
+Only globally-routable IPv4 contacts with a usable UDP port are emitted -- the
+same rule as `kad-mini live_gate` and `kad_egress_probe.py`. Reports/targets are
+gitignored; never commit them.
 
 Usage
 -----
@@ -56,6 +64,13 @@ CONTACT_LEN = 25
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPORT_DIR = os.path.join(HERE, "reports")
 DEFAULT_OUT = os.path.join(REPORT_DIR, "bootstrap.fresh.local.json")
+
+
+def decode_kad_ip(raw: bytes) -> str:
+    """KAD stores IPv4 in host-order LE, i.e. reversed vs dotted quad."""
+    if len(raw) != 4:
+        raise ValueError("KAD IPv4 field must be exactly 4 bytes")
+    return ".".join(str(b) for b in raw[::-1])
 
 
 def is_global_ipv4(text: str) -> bool:
@@ -97,7 +112,7 @@ def parse_contacts(payload: bytes) -> list[dict]:
     for _ in range(count):
         if off + CONTACT_LEN > len(payload):
             raise ValueError("truncated contact list at offset %d" % off)
-        ip = ".".join(str(x) for x in payload[off + 16:off + 20])
+        ip = decode_kad_ip(payload[off + 16:off + 20])
         udp, tcp, version = struct.unpack_from("<HHB", payload, off + 20)
         contacts.append({"ip": ip, "port": udp, "tcp": tcp, "kad_version": version})
         off += CONTACT_LEN
@@ -127,6 +142,18 @@ def extract(report_path: str) -> list[dict]:
 
 
 def main() -> int:
+    if "--selftest" in sys.argv:
+        assert decode_kad_ip(bytes([5, 113, 0, 203])) == "203.0.113.5"
+        assert decode_kad_ip(bytes([1, 0, 0, 127])) == "127.0.0.1"
+        try:
+            decode_kad_ip(b"\x00\x01")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("short IP field must be rejected")
+        print("bootstrap_res_to_targets selftest: OK (KAD IP byte order reversed)")
+        return 0
+
     ap = argparse.ArgumentParser(description="Extract fresh public KAD contacts from a LAN BOOTSTRAP_RES")
     ap.add_argument("--report", help="kad-mini lan-probe report JSON (default: newest in reports/)")
     ap.add_argument("--out", default=DEFAULT_OUT, help="targets JSON to write")

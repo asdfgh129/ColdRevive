@@ -78,6 +78,17 @@ P4 已于 **2026-11-10** 按 G0 参数显式执行，但**没有产出可用结�
 python3 tests/spikes/s2/udp_egress_check.py   # v2.4.9：低位/高位对照 + 可选 --source-port / --lan-ip / --json；0 = 可跑 P4，2 = 被挡
 ```
 
+> **⚠️ v2.4.14 更正（以下 v2.4.9–v2.4.13 段落全部为已作废的历史归因，仅作审计轨迹）**：
+> 根因是 `nodes_dat_to_bootstrap.py` / `bootstrap_res_to_targets.py` / `kad-mini wire.rs`
+> 把 KAD 联系人的 4 字节 IP 按点分十进制顺序读取，而 aMule 以 host-order 小端写出、线上是
+> **反序**，所以所有 0/N 都是把包发给了不存在的地址。修正后本机 10 目标 KAD 探针
+> **9/10 收到 523 B `BOOTSTRAP_RES`**、退出码 0；P4 两度重跑 `public_kad_contacted=true`，
+> 收到 `0xE5` 压缩 `BOOTSTRAP_RES` 与 `0x21/0x29` 迭代应答，但 3/3 样本因未收敛到
+> `SEARCHTOLERANCE` 邻域而跳过发布。**高位 UDP 一直是通的；不需换网、不需开防火墙。**
+> STUN 3478/19302 超时只是 STUN 专属过滤，不构成 KAD 代理指标。当前下一步是修 `live`
+> 的收敛宽度（`ALPHA_QUERY=5` / `KADEMLIA_FIND_NODE=0x0B` / 更多跳数）并用实时
+> `BOOTSTRAP_RES` 目标重跑 P4。详见 [PLAN.md §11](PLAN.md)。
+
 本环境实测退出码 2（DNS/53 正常、STUN/19302 与 /3478 全超时、直连 TCP 超时），
 所以 P4 必须在**高位 UDP 未被过滤的主机/网络**上重跑。v2.4.9 复核进一步发现：UDP/53 与
 UDP/123 其实是通的，STUN 类高位未知端口被出口白名单丢弃；固定源端口、本机防火墙均已排除。
