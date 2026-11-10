@@ -55,7 +55,14 @@ updated: 2026-11-09
 | 成功 | `PUBLISH_RES` 确认且 `SEARCH_RES` 命中描述符 | 计入成功率分母 |
 
 只有第二桶占有效样本（三桶合计）的比例 > 20% 才触发预警线；第一桶占比过高说明探针能力不足，
-应先补协议实现而非判定公共网络不接纳。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
+应先补协议实现而非判定公共网络不接纳。
+
+**前置条件失败不是一个桶（2026-11-10 P4 实测补充）**：若实验执行环境本身过滤公网
+高位 UDP（出站或回程），整次实验应判 `inconclusive_environment_blocked` 并整批作废，
+三桶计数全部不适用。判据是「与 KAD 无关的公网高位 UDP 往返也失败」（STUN/19302、
+STUN/3478），同时 DNS/UDP-53 正常、LAN 真实 eMule 对同一份 `0xE4 0x01` 能正常应答。
+重跑前须先执行 [udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)（退出码 0）。
+详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
 
 ## 3. 顶层三项

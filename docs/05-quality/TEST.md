@@ -51,7 +51,7 @@ updated: 2026-11-09
 
 > T0 只在 `127.0.0.1` 运行，除 S2 专项外不接触公共 KAD。T1（局域网双机）通过后才与 T0 共同构成 G1 证据，见 [ROADMAP §3](../06-plan/ROADMAP.md)。
 
-**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。当前 S1–S7 为 `not_run`，S8 由项目所有者豁免登记为 `pass`（无书面意见）；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**仅剩 P4 实网小样本待实验执行人显式执行**（v2.4.7 已补齐 P4 前置实现：`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验，均只作预演复验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
+**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。当前 S1–S7 为 `not_run`，S8 由项目所有者豁免登记为 `pass`（无书面意见）；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**P4 已于 2026-11-10 显式执行但 inconclusive**（3 × `BOOTSTRAP_REQ`、0 响应、0 发布；执行环境过滤公网高位 UDP，`S2.status` 仍 `not_run`，须在无过滤网络重跑，详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)）；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
 
 ## 3. 兼容性矩阵（必须全绿）
 

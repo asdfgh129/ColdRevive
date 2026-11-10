@@ -1,6 +1,6 @@
 # S2 实网实施排期（最小 eMule KAD 客户端）
 
-> 状态：**P0–P3 已完成，P4（实网小样本）待实验执行人显式执行**。
+> 状态：**P0–P3 已完成；P4 已于 2026-11-10 按 G0 参数显式执行，但被执行环境的公网高位 UDP 过滤阻断，结论不可用，须换网络重跑**（见 §7）。
 > 本文件是「排期 + 门禁」，不是实验结论。S2 的 `status` 仍为 `not_run`，唯一结论入口是 `spikes.json`。
 > 判据来源：`spikes.json` 的 `S2.criteria`；合规红线：[OPS §6](../../../docs/07-operations/OPS.md)。
 
@@ -33,7 +33,7 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
 | **P1** Wire codec | `kad-mini/src/wire.rs` + `src/inflate.rs`（std-only zlib/DEFLATE）：Kademlia2 帧编解码、128-bit ID、XOR 距离、命名空间 Key 派生、Tag 编解码、`0xE5` 解包 | `kad-mini selftest` **37/37** 全绿，含三种 DEFLATE 块型与真实 `0xE5` 帧验证 | ✅ 2026-11-09（v2.4.7 补解码） |
 | **P2** 本地真实报文闭环 | `kad-mini loopback`：BOOTSTRAP → HELLO → 迭代查找 → PUBLISH_KEY/RES → SEARCH_KEY/RES，全程 `0xE4` 真实报文 | 报告 `public_kad_contacted=false`、命中率与逐次原始记录完整 | ✅ 2026-11-09 |
 | **P3** 实网门禁与参数 | 用户提供的 bootstrap 节点清单、G0 确认的最小样本量与限速阈值、`pending` 项清除 | `spikes.json` 的 `public_kad_approval` 不再含 `pending`；`kad-mini live --check` 通过 | ✅ 2026-11-09（见 §3） |
-| **P4** 实网小样本执行 | 逐次发布/查询原始记录、成功率、RTT 分布、丢弃/拒绝观测 | 由实验执行人依据证据人工回填 `S2.status` | ⏳ **未执行**；门禁已解锁且 v2.4.7 已补齐 P4 前置实现，须显式运行 `live`（不带 `--check`）才会发包 |
+| **P4** 实网小样本执行 | 逐次发布/查询原始记录、成功率、RTT 分布、丢弃/拒绝观测 | 由实验执行人依据证据人工回填 `S2.status` | ⚠️ **2026-11-10 已执行但 inconclusive**：3 × `BOOTSTRAP_REQ` 发出、0 响应、0 发布；环境过滤公网高位 UDP，`S2.criteria` 未被实际执行，须在无过滤网络重跑（§7） |
 
 ## 2. 红线（不可通过参数绕过）
 
@@ -66,7 +66,7 @@ S2 判据写的是「A 发布带前缀 Key，B 用 `FIND_VALUE` 命中 A」。�
       `0xE5` 压缩帧与 RC4 加密的 `HELLO_RES`，而发布/查询链路的响应均为明文（见 §0、§5）
 - [x] 清除 `S2.public_kad_approval.pending`，写入 `confirmed` 与上述阈值；`live_gate` 已加参数一致性校验
 
-> P3 完成**不等于** P4 已执行。`kad-mini live --check` 只报告门禁状态、不发包；
+> P3 完成**不等于** P4 已产出结论（P4 已于 2026-11-10 执行但被环境阻断，见 §7）。`kad-mini live --check` 只报告门禁状态、不发包；
 > 实网发布必须由实验执行人显式去掉 `--check` 并给出 `--attest-i-am-the-experiment-operator`。
 > 在此之前 `S2.status` 保持 `not_run`，公共 KAD 未被接触。
 
@@ -134,3 +134,60 @@ v2.4.6 把 `S2.criteria` 改对了，但复核 `kad-mini live` 实现时发现**
 复验结果：`cargo test` 7/7、`selftest` 37/37、`loopback` 5/5 发布 + 5/5 命中 + 84 条原始记录 + 0 协议错误、
 真实 LAN `BOOTSTRAP_RES` 解出 20 个联系人、公网清单 `live --check` 放行 / LAN 清单拒绝（均不发包）。
 **P4 仍未执行**，`S2.status` 仍为 `not_run`，公共 KAD 未被接触。
+
+## 7. P4 首次执行记录（2026-11-10）——环境阻断，结论不可用
+
+项目所有者于 2026-11-10 显式下达「执行 P4」。`live --check` 先复验门禁：
+`gate.passed=true`、0 blocker、G0 参数逐项一致、`public_kad_contacted=false`（不发包）。
+随后执行：
+
+```text
+kad-mini live --bootstrap <PUBLIC_LIST> --sample-size 3 --rate-limit 0.2 \
+              --attest-i-am-the-experiment-operator
+```
+
+### 原始观测
+
+| 项 | 结果 |
+| :--- | :--- |
+| 门禁 | passed，0 blockers；`approved=true`、`pending` 已清、`confirmed` 与 CLI 一致 |
+| 耗时 | 2026-11-10T00:26:52Z → 00:27:05Z（13 s） |
+| 发出报文 | **3** 条，均为 2 字节 `e401` `KADEMLIA2_BOOTSTRAP_REQ`，间隔严格 5.000 s（0.2 包/秒） |
+| 收到响应 | **0**（三条全部 WSAETIMEDOUT 10060 = 3 s 读窗口内无数据报） |
+| HELLO / 迭代 / PUBLISH / SEARCH | **0 / 0 / 0 / 0** |
+| `tolerance_reached` | 0/3；`known_contacts=0`，3 个样本全部按 `S2.criteria #2` 记 `skipped` 并跳过发布 |
+| 报告 | `tests/spikes/s2/reports/kad-live-20261110002705.json`（gitignored，含完整逐次原始报文） |
+| `evidence_valid_for_pass` | `false`；`s2_status` 仍为 `not_run` |
+
+### 归因对照实验（关键：区分环境与协议）
+
+| 对照 | 观测 | 说明 |
+| :--- | :--- | :--- |
+| DNS/UDP-53 → 8.8.8.8 / 1.1.1.1 | 成功，61 B，RTT ≈ 53～58 ms | 主机具备 UDP 出站与回程能力 |
+| STUN/UDP-19302 → `stun.l.google.com` / `stun1.l.google.com` | 3 s 超时 | 与 KAD 无关的公网高位 UDP 往返失败 |
+| STUN/UDP-3478 → 8.8.8.8 | 3 s 超时 | 同上 |
+| 直连 TCP → 1.1.1.1:443（绕过代理） | 6 s 超时 | 环境为 HTTP 代理出网（本机为 RFC1918 私网地址） |
+| **LAN 真实 eMule 对照** | 同一份 `e401` → `0xE4 0x09` 明文 **523 B / 20 contacts** | **报文格式与探针实现正确** |
+| aMule 源码复核 | `ProcessPacket` 对 `KADEMLIA2_BOOTSTRAP_REQ` 直接分发；请求无需 payload；仅 `InTrackListIsAllowedPacket` 每 IP 限流与 `port == 53` 特例 | 排除「报文不合法被丢弃」 |
+
+结论：**执行环境过滤了公网高位 UDP（出站或回程），不是 KAD 报文格式问题，不是节点拒绝，
+更不是命名空间被拒。** `nodes.dat`（2026-11-08 生成）联系人新鲜度是次要可能因素，
+但 STUN 对照完全不依赖 KAD，故不构成本次主因。按 RISK R-02 口径，这三次超时属于
+「环境前置条件失败 / 协议层无响应」，**不计入索引层拒绝**，也不得据此判定 S2。
+
+### 门禁表现得很好
+
+P4 没有产生任何测试 Key 发布：因为 `BOOTSTRAP_RES` 全超时导致学不到联系人，
+`live` 拒绝在 `SEARCHTOLERANCE` 邻域之外发布，3 个样本全部 `skipped`。
+这正是 v2.4.7 修复的目的——避免把「必然被静默丢弃」误记成「索引层拒绝」。
+
+### 重跑前置条件（新增）
+
+```bash
+python3 tests/spikes/s2/udp_egress_check.py   # 可选手动诊断，不发任何 KAD 报文
+echo $?   # 0 = 公网高位 UDP 往返正常，可跑 P4；2 = 被过滤，禁止在此网络跑
+```
+
+该脚本只做 DNS/53 与 STUN 往返对照，不内置也不接触任何 KAD bootstrap 节点，
+不参与 `kad-mini live`。**在退出码为 0 的网络上，按同样的 G0 参数重跑 P4**，
+再由实验执行人依据逐次原始记录手工回填 `S2.status`。在此之前 `S2.status` 保持 `not_run`。

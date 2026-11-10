@@ -2,6 +2,50 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.8] - 2026-11-10 — P4 首次执行：环境阻断，结论不可用
+
+项目所有者显式下达「执行 P4」。`live --check` 复验门禁 `passed=true` / 0 blocker 后，
+按 G0 确认参数执行 `kad-mini live`（不带 `--check`）。**只登记观测与前置检查，不改协议设计基线**：
+`PROTOCOL_VERSION` 仍为 1、T0 golden files 不变、`S2.status` 仍为 `not_run`。
+
+### 原始观测
+
+- 2026-11-10T00:26:52Z → 00:27:05Z（13 s）；`gate.passed=true`。
+- 发出 **3** 条报文，均为 2 字节 `0xE4 0x01` `KADEMLIA2_BOOTSTRAP_REQ`，间隔严格 5.000 s
+  （0.2 包/秒）；**收到 0 条响应**（WSAETIMEDOUT 10060，3 s 读窗口内无数据报）。
+- HELLO / 迭代 / PUBLISH / SEARCH 均为 **0**；`known_contacts=0`、`tolerance_reached=0/3`，
+  3 个样本全部按 `S2.criteria #2` 记 `skipped`，**未发布任何测试 Key**。
+- 报告 `tests/spikes/s2/reports/kad-live-20261110002705.json`（gitignored，逐次完整原始报文）；
+  `evidence_valid_for_pass=false`。
+
+### 归因（对照实验）
+
+| 对照 | 结果 |
+| :--- | :--- |
+| DNS/UDP-53 → 8.8.8.8 / 1.1.1.1 | 成功，61 B，≈53～58 ms |
+| STUN/UDP-19302、UDP-3478（与 KAD 无关） | 全部 3 s 超时 |
+| 直连 TCP → 1.1.1.1:443（绕过本地 HTTP 代理） | 6 s 超时 |
+| LAN 真实 eMule，同一份 `e401` | `0xE4 0x09` 明文 523 B / **20 contacts** |
+| aMule 源码 | `ProcessPacket` 直接分发 `KADEMLIA2_BOOTSTRAP_REQ`，请求无 payload 要求 |
+
+结论：`inconclusive_environment_blocked` —— **执行环境过滤公网高位 UDP（出站或回程）**，
+不是报文格式、不是节点拒绝、不是命名空间被拒。按 [RISK R-02](docs/05-quality/RISK.md) 口径，
+这三次超时属环境前置条件失败，**三桶计数整体作废**，不得判定 S2。
+`nodes.dat`（2026-11-08）联系人新鲜度为次要可能因素，STUN 对照已排除其为主因。
+
+### 新增与文档
+
+- 新增可选手动诊断 [udp_egress_check.py](tests/spikes/s2/udp_egress_check.py)：只做 DNS/53 与
+  STUN 往返对照，不发任何 KAD 报文、不内置 bootstrap；退出码 `0`=可跑 P4、`2`=被过滤。
+  本环境实测 **2**。重跑 P4 前须先通过。
+- [PLAN.md §7](tests/spikes/s2/PLAN.md) 记录完整执行与归因；`spikes.json` 新增
+  `observations.p4_execution` / `p4_environment_diagnosis` 并更新 `real_network`；
+  [RISK R-02](docs/05-quality/RISK.md) 补充「前置条件失败不入三桶」。
+- 同步 [S2 README](tests/spikes/s2/README.md)、[kad-mini README](tests/spikes/s2/kad-mini/README.md)、
+  [tests/spikes/README.md](tests/spikes/README.md)、[ROADMAP](docs/06-plan/ROADMAP.md)、
+  [TEST](docs/05-quality/TEST.md)、[OPEN-QUESTIONS](docs/06-plan/OPEN-QUESTIONS.md)、根 README，
+  `docs/index.html` 重建。
+
 ## [2.4.7] - 2026-11-09 — P4 前置一致性修正（补齐实现与判据的错配）
 
 推送 [v2.4.6](tests/spikes/s2/PLAN.md) 后复核 `kad-mini live` 实现，发现四处会让 P4 产出假结论的

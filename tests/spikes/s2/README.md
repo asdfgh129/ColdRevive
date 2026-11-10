@@ -11,7 +11,7 @@
 | L1 逻辑预演 | [`s2_loopback.py`](s2_loopback.py) | JSON 消息的私有子网双节点，只验流程与命名空间概念，**不是真实协议** |
 | L2 **真实 wire 闭环** | [`kad-mini/`](kad-mini/README.md) | 独立零依赖 Rust Cargo 工程，真实 `0xE4` Kademlia2 报文 + `0xE5` zlib 解包，BOOTSTRAP / HELLO / 迭代查找 / PUBLISH_KEY / SEARCH_KEY |
 | L2.5 **真实客户端 LAN 互操作** | `kad-mini lan-probe` | RFC1918 内真实 eMule，只发 BOOTSTRAP / HELLO，验报文可解析性，**不发布 Key** |
-| L3 实网小样本 | `kad-mini live` | **未执行**；[PLAN.md](PLAN.md) 的 P0–P3 已完成，只差实验执行人显式执行 P4 |
+| L3 实网小样本 | `kad-mini live` | ⚠️ **2026-11-10 已执行但 inconclusive**：3 × `BOOTSTRAP_REQ` 发出、0 响应、0 发布；环境过滤公网高位 UDP，须换网络重跑（[PLAN.md §7](PLAN.md)） |
 
 ```bash
 python3 tests/spikes/s2/s2_loopback.py                    # L1
@@ -63,19 +63,34 @@ BOOTSTRAP_REQ/RES → HELLO_REQ/RES → KADEMLIA2_REQ/RES (迭代查找)
 
 **P0–P3 已全部完成**（协议核实、wire 闭环、LAN 互操作、G0 参数与 bootstrap 清单），
 `S2.public_kad_approval.pending` 已清除并写入 `confirmed`（`sample_size=3`、`rate_limit_pps=0.2`）。
-仍缺的只有 **P4 本身**：逐次实网原始记录（发布成功率、查询时延分布、被现有节点丢弃/拒绝的观测）。
+P4 已于 **2026-11-10** 按 G0 参数显式执行，但**没有产出可用结论**：3 条 `BOOTSTRAP_REQ`
+发出后零响应，学不到任何联系人，`live` 按 `criteria #2` 正确跳过全部 3 个样本、未发布任何 Key。
+对照实验证明是执行环境过滤公网高位 UDP（详见 [PLAN.md §7](PLAN.md)），与 KAD 协议和命名空间无关。
+因此仍缺的依旧是**一次有效的 P4**：逐次实网原始记录（发布成功率、查询时延分布、丢弃/拒绝观测）。
 
-`kad-mini live --check` 带齐参数后现在会返回 `gate.passed=true`，但 **`--check` 永不发包**；
+`kad-mini live --check` 带齐参数后返回 `gate.passed=true`，但 **`--check` 永不发包**；
 只有实验执行人显式去掉 `--check` 并给出 `--attest-i-am-the-experiment-operator` 才会执行 P4。
-在此之前 `S2.status` 保持 `not_run`，公共 KAD 未被接触。
+`S2.status` 保持 `not_run`：已接触公网节点但未获得任何协议证据。
+
+**重跑前先做网络前置检查**（新增，v2.4.8）：
+
+```bash
+python3 tests/spikes/s2/udp_egress_check.py   # 退出码 0 = 公网高位 UDP 往返正常；2 = 被过滤
+```
+
+本环境实测退出码 2（DNS/53 正常、STUN/19302 与 /3478 全超时、直连 TCP 超时），
+所以 P4 必须在**无 UDP 过滤的网络**上重跑。
 
 **v2.4.7 已补齐 P4 前置实现**（详见 [PLAN.md §6](PLAN.md)）：`live` 发布前先迭代收敛到
 `SEARCHTOLERANCE` 邻域、跳过 HELLO、用 `bind_any()` 绑定公网 socket、解码 `0xE5` 压缩帧；
 `live_gate` 现在实际解析 bootstrap 并拒绝非公网 IPv4 / `lan-interop-probe-only` 清单。
 `cargo test` 7/7、`selftest` 37/37、`loopback` 5/5 发布 + 5/5 命中、0 协议错误均复验通过。
-**这些仍是预演，P4 未执行，公共 KAD 未被接触。**
+上述复验是预演；P4 已在 2026-11-10 真实执行过一次（3 个公网节点、3 个报文），
+但零响应且未发布任何 Key，`evidence_valid_for_pass=false`，结论不可用。
 
 合规红线不变：人工批准、最小样本、限速、禁止批量发布测试 Key、bootstrap 由用户提供且仓库不内置。
 观测口径已按 [PROTO §2.0](../../../docs/04-protocol/PROTO.md) 与
 [RISK R-02](../../../docs/05-quality/RISK.md) 拆成「协议层不可解析 / 索引层拒绝 / 成功」三桶，
-避免把压缩帧或超时误判成「公共网络不接纳」。
+避免把压缩帧或超时误判成「公共网络不接纳」。v2.4.8 进一步补充：
+**环境前置条件失败不属于这三个桶中的任何一个**，整次实验应判
+`inconclusive_environment_blocked` 并作废，详见 [RISK R-02](../../../docs/05-quality/RISK.md)。

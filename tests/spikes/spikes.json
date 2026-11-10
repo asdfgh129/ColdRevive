@@ -178,7 +178,44 @@
       },
       "evidence_valid_for_pass": false
     },
-    "real_network": "not_run — P0–P3 已完成（协议实现、G0 确认参数、bootstrap 清单、明文口径决策齐备）；仅剩 P4 由实验执行人显式执行 live（不带 --check）并产出逐次原始记录"
+    "p4_execution": {
+      "executed_at_utc": "2026-11-10T00:26:52Z/00:27:05Z",
+      "authorized_by": "项目所有者显式指令（2026-11-10 会话『执行P4』）",
+      "command": "kad-mini live --bootstrap <PUBLIC_LIST> --sample-size 3 --rate-limit 0.2 --attest-i-am-the-experiment-operator",
+      "gate": "passed, 0 blockers; G0 参数逐项一致",
+      "report": "tests/spikes/s2/reports/kad-live-20261110002705.json（gitignored，含逐次完整原始报文）",
+      "public_kad_contacted": true,
+      "public_kad_contacted_definition": "已向 3 个公网可路由 KAD 节点发送 UDP 报文；因零响应，无法确认对端是否实际收到",
+      "packets_sent": 3,
+      "packet_detail": "3 × 2 字节 0xE4 0x01 KADEMLIA2_BOOTSTRAP_REQ，发送间隔严格 5.000 s（0.2 包/秒）",
+      "responses_received": 0,
+      "hello_sent": 0,
+      "iteration_requests_sent": 0,
+      "publish_sent": 0,
+      "search_sent": 0,
+      "tolerance_reached": 0,
+      "skipped_samples": 3,
+      "skip_reason": "BOOTSTRAP_RES 全超时 → known_contacts=0 → 无法收敛到 SEARCHTOLERANCE 邻域；live 按 S2.criteria #2 正确跳过发布，未制造必然被静默丢弃的无效发布",
+      "criteria_exercised": [],
+      "result": "inconclusive_environment_blocked",
+      "s2_status_after": "not_run",
+      "evidence_valid_for_pass": false,
+      "note": "三次无响应全部归入『环境前置条件 / 协议层无响应』，不计入索引层拒绝，也不得据此判定命名空间接纳性；S2.criteria #1/#2/#3 均未被实际执行"
+    },
+    "p4_environment_diagnosis": {
+      "recorded_at": "2026-11-10",
+      "controls": [
+        "DNS/UDP-53 → 8.8.8.8、1.1.1.1：均成功，RTT ≈ 53～58 ms（证明主机有 UDP 出站与回程能力）",
+        "STUN/UDP-19302 → stun.l.google.com、stun1.l.google.com：均 3 s 超时；UDP-3478 → 8.8.8.8：超时",
+        "直连 TCP → 1.1.1.1:443（绕过本地 HTTP 代理）：6 s 超时；环境为 HTTP 代理出网",
+        "LAN 真实 eMule 对照：同一份 2 字节 0xE4 0x01 得到 0xE4 0x09 明文 523 B / 20 contacts（证明 wire 格式与探针实现正确）",
+        "aMule 源码：KademliaUDPListener::ProcessPacket 对 KADEMLIA2_BOOTSTRAP_REQ 直接分发，请求无 payload 要求；仅 InTrackListIsAllowedPacket 每 IP 限流与 port==53 特例"
+      ],
+      "conclusion": "执行环境过滤公网高位 UDP（出站或回程），不是 KAD 报文格式问题、不是节点拒绝、不是命名空间被拒；nodes.dat 联系人新鲜度是次要可能因素，但 STUN 对照与 KAD 无关，故不构成本次主因",
+      "precondition_check": "tests/spikes/s2/udp_egress_check.py（可选手动诊断，不发 KAD 报文）；退出码 0=通过 / 2=阻断",
+      "required_next_step": "在无 UDP 过滤的网络重跑 P4；重跑前先执行该诊断。禁止把本次超时记为 S2 结论"
+    },
+    "real_network": "executed_2026-11-10_inconclusive — P4 已按 G0 参数显式执行：3 × BOOTSTRAP_REQ 发出、0 响应、0 发布；环境过滤公网高位 UDP，S2.criteria 未被实际执行，S2.status 保持 not_run；详见 observations.p4_execution / p4_environment_diagnosis 与 PLAN.md §7"
   },
       "blocked_by": ["s2.real_network_conclusion"]
     },

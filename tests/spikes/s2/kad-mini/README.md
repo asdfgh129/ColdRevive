@@ -119,6 +119,12 @@ P3 已完成，因此带齐参数 + 公网清单运行 `live --check` 会返回 
 LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、退出码 2）；
 只有去掉 `--check` 才会真正执行 P4。详见 [../PLAN.md §2/§3](../PLAN.md)。
 
+**P4 首次执行（2026-11-10）**：门禁通过、3 条 `0xE4 0x01` `BOOTSTRAP_REQ` 以 5 s 间隔发出、
+0 响应、0 发布、3 个样本全部 `skipped`（未收敛到 tolerance zone）。对照实验确认是执行环境
+过滤公网高位 UDP，而非报文格式或节点拒绝；LAN 真实 eMule 对同一帧正常回 523 B / 20 contacts。
+结论 `inconclusive_environment_blocked`，`S2.status` 保持 `not_run`。重跑前先执行
+[`udp_egress_check.py`](../udp_egress_check.py)（退出码 0 才跑）。详见 [PLAN.md §7](../PLAN.md)。
+
 ## 7. LAN 真实客户端互操作探测（2026-11-09）
 
 `lan-probe` 对 RFC1918 内的真实 eMule 客户端（IP / 端口由 `--ip` / `--port` 传入，不写进仓库）只发两个握手包：
