@@ -211,7 +211,7 @@
         "LAN 真实 eMule 对照：同一份 2 字节 0xE4 0x01 得到 0xE4 0x09 明文 523 B / 20 contacts（证明 wire 格式与探针实现正确）",
         "aMule 源码：KademliaUDPListener::ProcessPacket 对 KADEMLIA2_BOOTSTRAP_REQ 直接分发，请求无 payload 要求；仅 InTrackListIsAllowedPacket 每 IP 限流与 port==53 特例"
       ],
-      "conclusion": "本机公网出口按目标端口/应用白名单过滤高位 UDP（53/123 通、3478/19302/24575/30303/40000 不通）；不是 UDP 全封、不是源端口策略、不是本机防火墙、不是 KAD 报文格式、不是节点拒绝、不是命名空间被拒；LAN 探测为纯 LAN 流量不能证明公网可达性；2026-11-10 跨主机 STUN 对照两台主机同被阻断；v2.4.11 收窄：STUN 不等于 KAD，本机已由 KAD 专用探针确证不可达；v2.4.12：LAN eMule 主机 Kad 网络面板两行均「打开」否证 firewalled/Buddy 假设，但 aMule 源码显示 KAD UDP 防火墙检测是「远端向本机公网 IP:KAD 端口发无载荷入站 UDP 包」的入站测试，由入站 DNAT 即可满足，且 m_firewalledUDP 初值为 false，故「打开」与「出站高位 UDP 被过滤」可同时成立、不证明该机能跑 P4；nodes.dat 新鲜度为独立次要风险",
+      "conclusion": "本机公网出口按目标端口/应用白名单过滤高位 UDP（53/123 通、3478/19302/24575/30303/40000 不通）；不是 UDP 全封、不是源端口策略、不是本机防火墙、不是 KAD 报文格式、不是节点拒绝、不是命名空间被拒；LAN 探测为纯 LAN 流量不能证明公网可达性；2026-11-10 跨主机 STUN 对照两台主机同被阻断；v2.4.11 收窄：STUN 不等于 KAD，本机已由 KAD 专用探针确证不可达；v2.4.12：LAN eMule 主机 Kad 网络面板两行均「打开」否证 firewalled/Buddy 假设，但 aMule 源码显示 KAD UDP 防火墙检测是「远端向本机公网 IP:KAD 端口发无载荷入站 UDP 包」的入站测试，由入站 DNAT 即可满足，且 m_firewalledUDP 初值为 false，故「打开」与「出站高位 UDP 被过滤」可同时成立、不证明该机能跑 P4；v2.4.13：跨主机 KAD 专用探针在该机 0/3 / 退出码 2，但两次 0/3 共用同一 3 个目标、不是独立复现，新增 bootstrap_res_to_targets.py 取 03:12 UTC 新鲜 BOOTSTRAP_RES 的 10 个公网联系人（与旧目标重叠 0/10）在本机宽扫仍 0/10；eMule 官方帮助表明下载走 TCP 与网络选择无关、搜索默认可为 eD2k 服务器 TCP 搜索，故「下载/搜索正常」不构成 KAD 出站证据，只有明确选 Kademlia 方法出结果才要求 UDP 通；工程结论为本网无独立客户端可跑 P4，换网重跑，不再等待归因收敛；nodes.dat 新鲜度为独立次要风险",
       "precondition_check": "tests/spikes/s2/udp_egress_check.py（v2.4.9 升级：低位/高位对照、--source-port、--lan-ip/--lan-port、--json；不发公网 KAD 报文）；退出码 0=通过 / 2=阻断 / 1=诊断错误",
       "refinement_2026_11_10": {
         "triggered_by": "项目所有者指出 LAN eMule 与本机同一网络、唯一差异是 eMule 开了入站映射，质疑「网络统一过滤」归因",
@@ -244,9 +244,9 @@
         "high_port_probe": "0/3 OK：stun.cloudflare.com:3478、stun.ekiga.net:3478、stun.l.google.com:19302 全部 TimeoutError",
         "exit_code": 2,
         "result": "BLOCKED",
-        "conclusion": "按主机 STUN 出站例外假设被否证；入站 DNAT 不产生 STUN 出站例外。v2.4.11 收窄：STUN 不等于 KAD，本机已由 KAD 专用探针确证不可达，LAN eMule 主机的 KAD 存活状态仍待核实，暂不下整网绝对结论",
+        "conclusion": "按主机 STUN 出站例外假设被否证；入站 DNAT 不产生 STUN 出站例外。v2.4.11 收窄：STUN 不等于 KAD，本机已由 KAD 专用探针确证不可达。v2.4.13：该机 KAD 专用探针亦 0/3 / 退出码 2（见 cross_host_kad_probe_2026_11_10），独立进程无 blanket 出站例外；但因与本机共用同一批目标、且按应用放行未排除，仍不下整网绝对结论，工程上按换网处理",
         "implications": [
-          "v2.4.12 更正：该机 Kad 网络面板状态 / UDP 状态均为「打开」、无 Buddy 行，firewalled / LowID 推测已否证；但「打开」是入站可达性结论，仍不能作为本网可跑 P4 的证据，须以该机 KAD 专用探针 + 统计计数判定",
+          "v2.4.13 更正：该机 KAD 专用探针已执行并得 0/3 / 退出码 2；面板状态 / UDP 状态均为「打开」、无 Buddy 行，firewalled / LowID 推测已否证，但「打开」是入站可达性结论，仍不能作为本网可跑 P4 的证据",
           "在本机或该机追加入站映射对出站过滤无效",
           "重跑前必须换到无高位 UDP 过滤的网络，并刷新 nodes.dat（2026-11-08 清单已过期）"
         ],
@@ -272,7 +272,7 @@
         ],
         "decisive_checks": [
           "Kad 网络面板完整截图：v2.4.12 已提供，见 kad_panel_evidence_2026_11_10；统计信息中 KAD 收发包计数是否增长仍缺",
-          "把 kad_egress_probe.py 与 bootstrap.live.local.json 拷到该机运行；退出码 0 = KAD 往返通（充分证据）、2 = 零响应（存在按应用放行时不是充分否证）"
+          "把 kad_egress_probe.py 与 bootstrap.live.local.json 拷到该机运行：v2.4.13 已执行，退出码 2 / 0/3（见 cross_host_kad_probe_2026_11_10）；退出码 0 = KAD 往返通（充分证据）、2 = 零响应（存在按应用放行时不是充分否证）。剩余：新鲜 10 目标宽扫 + Kademlia 方法搜索 + 统计计数"
         ],
         "scope_downgrade": "v2.4.10 的『整网无主机可跑 P4』降级为『本机已确证不可跑；LAN eMule 主机待核实』",
         "evidence_valid_for_pass": false,
@@ -309,11 +309,55 @@
           "different_egress_or_proxy": "still open",
           "uniform_egress_filter_plus_inbound_dnat_open_state": "new, cannot be excluded, consistent with all observations"
         },
-        "decisive_check_remaining": "在该机运行 kad_egress_probe.py（退出码 0 = 充分证据可重跑 P4；2 在按应用放行时不是充分否证）+ 查看统计信息 KAD 收发包计数是否增长；计数增长+探针 2 表示按应用/DPI 放行，计数不增长+探针 2 才支持本网无可用出口",
+        "decisive_check_remaining": "探针已于 v2.4.13 执行并得退出码 2 / 0/3（见 cross_host_kad_probe_2026_11_10）。剩余：新鲜 10 目标宽扫、明确选 Kademlia 方法的热门关键词搜索、统计信息 KAD 收发计数；注意入站请求触发的 UDP 回包属已建立流，计数增长不是充分证据，客户端主动发起的 Kademlia 搜索才是。这些只用于收窄归因，不阻塞换网重跑",
         "evidence_valid_for_pass": false,
         "status_unchanged": "S2.status=not_run, PROTOCOL_VERSION=1, T0 golden 未动, 三桶整体作废, 未发布任何测试 Key"
       },
-      "required_next_step": "本机已由 KAD 专用探针确证不可跑 P4；Kad 网络面板已到（见 kad_panel_evidence_2026_11_10，否证 firewalled 假设但不证明出站可用）。剩余决定性核实：在 LAN eMule 机器运行 kad_egress_probe.py（退出码 0/2）并查看统计信息 KAD 收发包计数是否增长。若该机 KAD 往返通，可从该机按 G0 参数重跑；否则须换到无高位 UDP 过滤的网络，先诊断得 0 并刷新 nodes.dat 再重跑。禁止把任何超时记为 S2 结论，也禁止用一次探针 2 再次推出整网绝对结论"
+      "cross_host_kad_probe_2026_11_10": {
+        "recorded_at": "2026-11-10",
+        "version": "v2.4.13",
+        "executed_by": "项目所有者",
+        "host": "LAN eMule 机器（同网段、开了入站映射）；主机身份已由项目所有者确认",
+        "host_verification": "本机 C:\\Users\\bemin\\Desktop 下无 kad_egress_probe.py / bootstrap.live.local.json / reports\\ 目录；输出中报告路径为该机 Desktop\\reports\\kad-egress-probe-20261110024452.json，与脚本按自身目录写 reports/ 的行为一致",
+        "command": "python kad_egress_probe.py --targets bootstrap.live.local.json --sample-size 3 --rate-limit 0.2 --attest-i-am-the-experiment-operator",
+        "result": "NO_REPLY (0/3 KAD replies)，3 条全部 TimeoutError: timed out；退出码 2；公网 IPv4 已脱敏",
+        "targets": "与本机 §8.6.1 完全相同的 3 个目标（2 × 标准 4672 + 1 × 高位端口），来自 00:29 UTC 的一次 LAN BOOTSTRAP_RES",
+        "finding": "该机独立 Python 进程同样无法完成一次公网 KAD UDP 往返；blanket 按主机出站例外被否证。但按 §9.3 判据边界，退出码 2 在按应用/进程放行时不是充分否证",
+        "shared_confound": "本机三种源端口的 0/3 与该机 0/3 共用同一份 3 目标，换主机/换源端口但没换目标 —— 两台主机不是独立复现；若这 3 个联系人已离线，两次都会 0/3",
+        "owner_report": "该机通过 eMule 下载和搜索都很正常（历史观察，当前未在下载）；所有者提出可现在开下载验证",
+        "ed2k_vs_kad_basis": [
+          "eMule 官方 Network Guide：『实际下载与两个网络的选择无关』，网络拓扑只管搜索与找源，找到来源后客户端以 TCP 连接 → 下载不区分 eD2k/KAD",
+          "eMule 官方 Search → Method：Server / Global (Server) 逐个查询服务器（TCP）；Kademlia 搜索整个 KAD 网络、不使用 eD2k 服务器",
+          "同页对 Kademlia 方法写明：连热门关键词都无结果时『系统的 UDP 端口很可能被防火墙或路由器阻断』→ 只有 Kademlia 方法出结果才要求 UDP 通",
+          "HighID 由 eD2k 服务器检查『其他客户端能否自由连入』后分配（TCP + 入站 DNAT）",
+          "推论：完整健康的 eD2k 路径可完全不产生出站高位 UDP；『下载/搜索正常』与 0/3、STUN 0/3 不冲突，反而是假设 ④ 的预期表现。不必开下载验证，应明确选 Kademlia 方法搜热门词",
+          "入站 KAD 请求触发的 UDP 回包属已建立流，状态化防火墙通常放行，故 KAD 收发计数增长不是充分证据；客户端主动发起的 Kademlia 搜索才是"
+        ],
+        "fresh_contact_tool": "tests/spikes/s2/bootstrap_res_to_targets.py — 只读解析 LAN BOOTSTRAP_RES（0xE4/0xE5 + 0x09），过滤公网 IPv4、去重，产出新鲜目标；不发任何包",
+        "fresh_lan_probe": "2026-11-10T03:12:18Z 重跑 kad-mini lan-probe：523 B / 20 contacts / RTT 12 ms（该 eMule 此刻在线），解出 15 个公网 IPv4",
+        "fresh_sweep_local": {
+          "targets": "取前 10 个新鲜公网联系人（5 × 标准 4672 + 5 × 其他高位端口），与旧 3 目标重叠 0/10",
+          "params": "--sample-size 10 --rate-limit 0.2（诊断而非 P4，仅 e401，在所有者硬上限 10 / 1.0 pps 内）",
+          "result": "0/10 KAD replies（9 × 超时 + 1 × WSAENETRESET），退出码 2",
+          "effect": "本机侧『全是死联系人』解释被大幅削弱；该机侧新鲜宽扫仍待执行"
+        },
+        "hypothesis_table": {
+          "kad_alive_per_application_egress": "still open（0/3 与 0/10 均来自独立进程；若仅 eMule.exe 被放行则为假阴性；须由 Kademlia 方法搜索判定）",
+          "firewalled_with_buddy": "falsified（§9）",
+          "different_egress_or_proxy": "still open",
+          "uniform_egress_filter_plus_inbound_dnat_open_state": "consistent with all observations，§10.3 补上 eD2k 机制解释；仍非严格证明",
+          "shared_dead_contacts": "本机侧由 0/10 新鲜宽扫大幅削弱；该机侧仍待宽扫"
+        },
+        "engineering_conclusion": "与科学归因解耦：本网没有任何独立客户端进程被证明能完成一次公网 KAD UDP 往返（本机 0/3 三种源端口 + 0/10 新鲜目标；该机 0/3）。无论 ①③④ 哪个为真，ColdRevive 自己的客户端在本网都跑不了 P4 —— P4 应换到高位 UDP 未被过滤的网络重跑，不再等待归因收敛；差别只在换网还是为本项目进程单独申请出站例外",
+        "optional_checks_not_blocking": [
+          "该机：搜索 Method 明确选 Kademlia，搜热门关键词；有结果 = ①/③，无结果 = ④",
+          "该机：拷入 bootstrap.fresh.local.json 后尽快跑 --sample-size 10 宽扫；0 为充分证据、2 须与上一项合看",
+          "若 Kademlia 搜索有结果而宽扫为 2，查该机安全软件按进程的出站规则"
+        ],
+        "evidence_valid_for_pass": false,
+        "status_unchanged": "S2.status=not_run, PROTOCOL_VERSION=1, T0 golden 未动, 三桶整体作废, 未发布任何测试 Key"
+      },
+      "required_next_step": "唯一有效路径（工程决策已与归因解耦）：换到高位 UDP 未被过滤的网络 → 先跑 udp_egress_check.py 得退出码 0 并视情况用 kad_egress_probe.py 复核 → 刷新 nodes.dat → 按 G0 参数（sample_size=3 / rate_limit_pps=0.2）显式重跑 P4 → 由实验执行人依据证据人工回填 S2.status。v2.4.13 跨主机 KAD 探针已执行（该机 0/3 / 退出码 2），本机新鲜 10 目标宽扫 0/10；剩余 Kademlia 方法搜索 / 统计计数 / 该机新鲜宽扫只用于收窄归因，不阻塞换网。禁止把任何超时记为 S2 结论，禁止用一次探针 2 推出整网绝对结论"
     },
     "real_network": "executed_2026-11-10_inconclusive — P4 已按 G0 参数显式执行：3 × BOOTSTRAP_REQ 发出、0 响应、0 发布；环境过滤公网高位 UDP，S2.criteria 未被实际执行，S2.status 保持 not_run；详见 observations.p4_execution / p4_environment_diagnosis 与 PLAN.md §7"
   },

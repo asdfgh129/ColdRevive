@@ -53,6 +53,14 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 矛盾。剩余决定性核实：在该机运行 [`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)
 （退出码 `0` = 充分证据；`2` 在按应用放行时不是充分否证）+ 查看 `统计信息` KAD 收发包计数是否
 增长。详见 [PLAN.md §9](../../tests/spikes/s2/PLAN.md)。
+**v2.4.13 探针已在该机执行**：0/3 / 退出码 2（见 [PLAN.md §10](../../tests/spikes/s2/PLAN.md)）；
+但两次 0/3 共用同一批目标，不是独立复现。新增
+[`bootstrap_res_to_targets.py`](../../tests/spikes/s2/bootstrap_res_to_targets.py) 取新鲜
+`BOOTSTRAP_RES` 的 10 个公网联系人（重叠 0/10），本机宽扫 0/10。所有者补充「该机 eMule
+下载/搜索正常」，但按 eMule 官方帮助，下载走 TCP 且与网络选择无关、默认搜索可为 eD2k
+服务器 TCP 搜索，只有明确选 `Kademlia` 方法出结果才要求 UDP 通 —— 因此这不构成 KAD
+出站证据，**不要开下载验证**，改做 `Kademlia` 方法热门词搜索。工程结论与归因解耦：
+本网无独立客户端可跑 P4，**换网重跑**；剩余核实只用于收窄归因，不阻塞。
 2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
 3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。

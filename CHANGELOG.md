@@ -2,6 +2,55 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.13] - 2026-11-10 — 跨主机 KAD 探针 0/3 + eD2k/KAD 判据区分：工程决策改为换网重跑
+
+### 新增证据
+
+- 项目所有者在 LAN eMule 机器（同网段、开了入站映射）执行 §8.6.3 的
+  [`kad_egress_probe.py`](tests/spikes/s2/kad_egress_probe.py)：3 个目标全部
+  `TimeoutError: timed out`，`RESULT: NO_REPLY (0/3)`、退出码 2。主机身份经确认；
+  本机 Desktop 无该脚本 / 目标文件 / 报告目录，报告路径在该机 `Desktop\reports\`。
+- 所有者补充「该机 eMule 下载和搜索都很正常」，并提出可现场开下载验证。
+- 新增 [`bootstrap_res_to_targets.py`](tests/spikes/s2/bootstrap_res_to_targets.py)：
+  只读解析 LAN `BOOTSTRAP_RES`（`0xE4`/`0xE5` + `0x09`，20 × 25 B 联系人），
+  过滤公网 IPv4、去重、产出新鲜目标；**不发任何包**。03:12 UTC 重跑 `lan-probe`
+  得 523 B / 20 contacts / RTT 12 ms，解出 15 个公网 IPv4，取前 10 个
+  （5 × `4672` + 5 × 其他高位端口），与旧 3 目标**重叠 0/10**；本机宽扫 **0/10**。
+
+### 两处方法学修正
+
+1. **两次 0/3 不是独立复现**：本机（三种源端口）与该机共用同一份 3 个目标，
+   换主机 / 换源端口但没换目标 —— 若这 3 个联系人已离线，两台主机都会 0/3。
+   跨主机结果压低了「按主机例外」，没有压低「死联系人」；新鲜 10 目标宽扫把
+   本机侧这一混淆大幅削弱。
+2. **「下载/搜索正常」不构成 KAD 出站证据**：按 eMule 官方
+   [Network Guide](https://www.emule-project.com/home/perl/help.cgi?l=1&rm=show_topic&topic_id=232)
+   与 [Search → Method](https://emule-project.com/home/perl/help.cgi?l=1&rm=show_topic&topic_id=133)，
+   下载本身「与两个网络的选择无关」、走 TCP；`Server` / `Global (Server)` 搜索逐个查询
+   eD2k 服务器（TCP）；只有 `Kademlia` 方法要求 UDP 通（官方原话：热门关键词都无结果时
+   「系统的 UDP 端口很可能被防火墙或路由器阻断」）。HighID 也只证明 TCP 回连 + 入站 DNAT。
+   因此一条完整健康的 eD2k 路径可以**完全不产生出站高位 UDP**，与 0/3、STUN 0/3 不冲突。
+   → 验证应改为「搜索 Method 明确选 `Kademlia` 搜热门词」，**不必开下载**。
+   另注意入站 KAD 请求触发的 UDP 回包属已建立流，计数增长不是充分证据。
+
+### 结论
+
+**工程决策与科学归因解耦**：本网没有任何独立客户端进程被证明能完成一次公网 KAD UDP
+往返（本机 0/3 三种源端口 + 0/10 新鲜目标；该机 0/3）。无论剩余假设
+① 按应用放行 / ③ 另一出口或代理 / ④ 出站统一过滤 + DNAT 产生「打开」哪个为真，
+ColdRevive 自己的客户端在本网都跑不了 P4 —— 差别只在「换网」还是「为本项目进程单独
+申请出站例外」。**P4 应换网重跑，不再等待归因收敛**；Kademlia 方法搜索、该机新鲜宽扫、
+统计计数只用于收窄归因，不阻塞。
+
+修订：[PLAN.md §10](tests/spikes/s2/PLAN.md)（新增）、顶部状态、§8.6.2/§8.6.3、§9.3；
+`spikes.json` 新增 `cross_host_kad_probe_2026_11_10` 并修订 `conclusion` /
+`cross_host_result` / `decisive_checks` / `required_next_step`；RISK R-02、
+OPEN-QUESTIONS、ROADMAP、根 README 与各 README、两个诊断脚本的说明与提示语、
+`docs/index.html` 重建。公共文档不含 LAN IP / 端口 / 公网 bootstrap IP。
+
+状态不变：`S2.status=not_run`、`PROTOCOL_VERSION=1`、T0 golden 未动、三桶整体作废、
+未发布任何测试 Key；本节全部观测 `evidence_valid_for_pass=false`。
+
 ## [2.4.12] - 2026-11-10 — `Kad 网络` 面板证据：否证 firewalled 假设，但「打开」是入站测试
 
 项目所有者补上 2.4.11 要求的第 ① 项：LAN eMule 主机 `Kad 网络` 面板完整截图，

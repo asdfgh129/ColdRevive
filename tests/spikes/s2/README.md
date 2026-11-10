@@ -92,6 +92,14 @@ aMule 源码，KAD UDP「打开」是**入站可达性**测试（远端向本机
 包，入站 DNAT 即可满足，协调走 TCP），`m_firewalledUDP` 初值还是 `false`，故与「出站高位
 UDP 被过滤」不矛盾，也不能证明该机可跑 P4。详见 [PLAN.md §9](PLAN.md)：把该探针拷到该机
 跑一次（退出码 `0` 是充分证据、`2` 不是充分否证），并查看 `统计信息` KAD 收发包计数是否增长。
+**v2.4.13**：该探针已在该机执行，结果 `NO_REPLY (0/3)` / 退出码 2；但本机与该机用的是同一份
+3 目标，不是独立复现。新增 [`bootstrap_res_to_targets.py`](bootstrap_res_to_targets.py)
+（只读解析 LAN `BOOTSTRAP_RES`，**不发包**）取 03:12 UTC 新鲜 20 contacts 中的 10 个公网
+IPv4（与旧目标重叠 0/10），本机宽扫仍 **0/10**。另外按 eMule 官方帮助，「下载/搜索正常」
+不构成 KAD 出站证据：下载走 TCP 与网络选择无关，默认搜索可为 eD2k 服务器 TCP 搜索，
+只有明确选 `Kademlia` 方法出结果才要求 UDP 通 —— **不要开下载验证**。
+工程结论与归因解耦：本网无独立客户端被证明可跑 P4，**换网重跑**；详见
+[PLAN.md §10](PLAN.md)。
 
 **v2.4.7 已补齐 P4 前置实现**（详见 [PLAN.md §6](PLAN.md)）：`live` 发布前先迭代收敛到
 `SEARCHTOLERANCE` 邻域、跳过 HELLO、用 `bind_any()` 绑定公网 socket、解码 `0xE5` 压缩帧；

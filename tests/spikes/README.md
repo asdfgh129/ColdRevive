@@ -1,7 +1,7 @@
 # M0 Spike 实验包（tests/spikes/）
 
 > **状态：S1–S7 `not_run`；S8 已由项目所有者豁免登记为 `pass`（无书面意见）。** 本目录是「实验的准备与就绪度检查」，不是实验结果。
-> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P3 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环、LAN 互操作、`0xE5` 解包、tolerance 收敛）已完成；P4 于 2026-11-10 已执行但被环境公网高位 UDP 过滤阻断（0 响应、0 发布），结论不可用，须先跑 [udp_egress_check.py](s2/udp_egress_check.py)（v2.4.9 支持跨主机对照；v2.4.10 STUN 跨主机同被阻断；v2.4.11 新增 KAD 专用探针并收窄结论；v2.4.12 `Kad 网络` 面板否证 firewalled 假设但源码复核表明「打开」是入站测试、仍不证明该机可跑，见 [PLAN.md §9](s2/PLAN.md)）并在出口可用的主机 / 网络上重跑。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
+> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P3 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环、LAN 互操作、`0xE5` 解包、tolerance 收敛）已完成；P4 于 2026-11-10 已执行但被环境公网高位 UDP 过滤阻断（0 响应、0 发布），结论不可用，须先跑 [udp_egress_check.py](s2/udp_egress_check.py)（v2.4.9 支持跨主机对照；v2.4.10 STUN 跨主机同被阻断；v2.4.11 新增 KAD 专用探针并收窄结论；v2.4.12 `Kad 网络` 面板否证 firewalled 假设但源码复核表明「打开」是入站测试；v2.4.13 该机 KAD 探针 0/3、本机新鲜 10 目标宽扫 0/10，并按 eMule 官方帮助区分 eD2k/KAD 判据，见 [PLAN.md §10](s2/PLAN.md)）并在出口可用的主机 / 网络上重跑。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
 
 ## 1. 定位与红线
 

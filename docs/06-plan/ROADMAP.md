@@ -129,7 +129,7 @@ ColdRevive
   三桶计数整体作废。新增可选前置诊断 [udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)
   （退出码 0 才可跑 P4）。详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。
 - 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)）、S1 的双 peer 真实分片传输、S3–S7 全部实验、S2 的 P4 **有效**实网小样本（首次执行被环境阻断）。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：v2.4.10 跨主机 STUN 对照在本机与 LAN eMule 机器上同得 `BLOCKED` / 退出码 2；v2.4.11 新增 KAD 专用探针确证本机不可达；v2.4.12 该机 `Kad 网络` 面板（状态 / UDP 状态均「打开」、无 Buddy 行）否证 firewalled 假设，但源码复核显示「打开」是入站 DNAT 即可满足的入站测试，不证明该机可跑 P4。剩余决定性核实 = 在该机跑 [`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)（退出码 `0` 充分 / `2` 非充分否证）+ 查看 `统计信息` KAD 收发包计数是否增长，详见 [PLAN.md §9](../../tests/spikes/s2/PLAN.md)。若该机通，可从该机重跑；否则须换到高位 UDP 未被过滤的网络，先跑诊断得 0 并刷新 `nodes.dat`，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`；S1 补齐双 peer 传输，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：v2.4.10 跨主机 STUN 对照在本机与 LAN eMule 机器上同得 `BLOCKED` / 退出码 2；v2.4.11 新增 KAD 专用探针确证本机不可达；v2.4.12 该机 `Kad 网络` 面板否证 firewalled 假设，但源码复核显示「打开」是入站 DNAT 即可满足的入站测试；v2.4.13 该机 KAD 专用探针已执行得 0/3 / 退出码 2，本机另用新鲜 10 目标宽扫 0/10，并按 eMule 官方帮助澄清「下载/搜索正常」不等于 KAD 出站可用（详见 [PLAN.md §10](../../tests/spikes/s2/PLAN.md)）。**工程决策已与归因解耦：本网无独立客户端被证明可跑 P4，直接换到高位 UDP 未被过滤的网络** → 先跑诊断得 0 并刷新 `nodes.dat`，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`。剩余 `Kademlia` 方法搜索 / 该机新鲜宽扫 / 统计计数只用于收窄归因，不阻塞换网；S1 补齐双 peer 传输，S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 

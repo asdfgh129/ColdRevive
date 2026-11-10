@@ -129,7 +129,11 @@ LAN 清单或私有 IP 清单会被拦截（v2.4.7 实测 `gate.passed=false`、
 新增 [`kad_egress_probe.py`](../kad_egress_probe.py) 用真实 `0xE4 0x01` 复测，本机 0/3 确证
 不可达。v2.4.12 该机 `Kad 网络` 面板两行均「打开」否证 firewalled 假设，但 aMule 源码显示
 「打开」是入站 DNAT 即可满足的入站测试，仍不证明该机可跑 P4；须在该机跑该探针并核对 KAD
-收发包计数，详见 §9。
+收发包计数，详见 §9。**v2.4.13**：该机探针已跑出 0/3 / 退出码 2，本机另用
+[`bootstrap_res_to_targets.py`](../bootstrap_res_to_targets.py) 从新鲜 LAN `BOOTSTRAP_RES`
+生成的 10 个公网联系人宽扫 0/10；按 eMule 官方帮助，「下载/搜索正常」不等于 KAD 出站可用
+（下载走 TCP、默认搜索可为 eD2k 服务器搜索）。工程决策为换网重跑 P4，详见
+[PLAN.md §10](../PLAN.md)。
 
 ## 7. LAN 真实客户端互操作探测（2026-11-09）
 

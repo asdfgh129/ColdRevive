@@ -28,7 +28,7 @@ Usage
     python3 kad_egress_probe.py --targets <file> --attest-i-am-the-experiment-operator --json
     echo $?   # 0 = at least one KAD reply, 2 = no reply, 1 = diagnostic error
 
-Interpretation (v2.4.12)
+Interpretation (v2.4.13)
 ------------------------
 Exit 0 is SUFFICIENT evidence that this host can complete a public KAD UDP
 round trip. Exit 2 is NOT a sufficient falsification: the egress policy may
@@ -37,11 +37,21 @@ which case a bare Python probe is another false negative. Corroborate with the
 client's KAD packet counters (are they increasing?) and, if needed, retry with
 --source-port after stopping the local eMule client.
 
+A SECOND confound is dead contacts. If two different hosts probe the SAME
+stale target list, those are NOT independent replicates. Use
+`bootstrap_res_to_targets.py` to harvest FRESH contacts from a live eMule
+client's LAN BOOTSTRAP_RES (no packets to public nodes), then re-run with
+--sample-size 10. See tests/spikes/s2/PLAN.md section 10.2.
+
 Also note: eMule/aMule's "UDP state: open" is an INBOUND reachability test --
 a remote node sends an unsolicited UDP packet to your public IP:Kad port,
 coordinated over TCP. An inbound DNAT mapping satisfies it without any
 outbound high-port UDP. So a client showing "open" does not prove P4 can run.
-See tests/spikes/s2/PLAN.md section 9.
+Nor does "downloads and searches work": per the official eMule help, the
+download itself is TCP and independent of the chosen network, and a
+Server / Global (Server) search queries eD2k servers over TCP. Only a search
+with Method explicitly set to "Kademlia" requires outbound UDP. See
+PLAN.md sections 9 and 10.3.
 """
 
 from __future__ import annotations
@@ -227,6 +237,8 @@ def main() -> int:
             print("  STUN-based egress checks were a false negative -> re-evaluate P4.")
         else:
             print("  Cannot separate egress filtering from dead contacts; do NOT count as S2 evidence.")
+            print("  Reduce that confound: bootstrap_res_to_targets.py -> fresh LAN BOOTSTRAP_RES")
+            print("  contacts, then re-run with --sample-size 10 (diagnostic, hard caps allow it).")
     return 0 if got else 2
 
 

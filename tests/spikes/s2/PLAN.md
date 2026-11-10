@@ -1,6 +1,6 @@
 # S2 实网实施排期（最小 eMule KAD 客户端）
 
-> 状态：**P0–P3 已完成；P4 已于 2026-11-10 按 G0 参数显式执行但零响应，结论不可用**；本机已由 KAD 专用探针确证不可达，LAN eMule 主机仍待 §8.6.3 的 KAD 专用探针核实（其 `Kad 网络` 面板证据与源码级复核见 §9）。
+> 状态：**P0–P3 已完成；P4 已于 2026-11-10 按 G0 参数显式执行但零响应，结论不可用**；§8.6.3 的跨主机 KAD 专用探针已于同日执行（该机 0/3），本机另由 10 个新鲜联系人宽扫 0/10 确证不可达；eD2k 与 KAD 判据已区分，**工程决策为换网重跑 P4，不再等待归因收敛**（见 §10；面板与源码复核见 §9）。
 > 本文件是「排期 + 门禁」，不是实验结论。S2 的 `status` 仍为 `not_run`，唯一结论入口是 `spikes.json`。
 > 判据来源：`spikes.json` 的 `S2.criteria`；合规红线：[OPS §6](../../../docs/07-operations/OPS.md)。
 
@@ -321,8 +321,9 @@ IPv4**（多条使用标准 eMule UDP 端口 `4672`），与 `nodes.dat`（2026-
 
 #### 8.6.2 仍未判定的是 LAN eMule 主机
 
-**v2.4.12 更新**：此处的第 ① 项核实（`Kad 网络` 面板完整截图）已由项目所有者提供，
-见 §9；假设表已据此改写。第 ② 项（在该机跑 KAD 专用探针）与统计信息计数**仍待执行**。
+**v2.4.13 更新**：第 ① 项（面板截图）见 §9；第 ② 项（在该机跑 KAD 专用探针）**已执行，
+结果 0/3 / 退出码 2，见 §10.1**；`统计信息` 计数与「Kademlia 方法搜索」仍未核实，但已
+不阻塞换网重跑的工程决策（见 §10.4）。
 
 原有三种可能：
 
@@ -349,8 +350,20 @@ echo %ERRORLEVEL%
 若该机 KAD 确实存活而临时端口探针仍失败，可临时停掉 eMule 后加 `--source-port <该机 KAD 端口>`
 复测，以区分「按 IP + 源端口」策略。
 
+**v2.4.13 已执行**：项目所有者在 LAN eMule 机器上运行上面这条命令，得到 `NO_REPLY (0/3)`
+/ 退出码 2，逐字输出与判定见 §10.1。为消除两次 0/3 共用的「死联系人」混淆，另新增
+[`bootstrap_res_to_targets.py`](bootstrap_res_to_targets.py) 生成新鲜目标；宽扫命令：
+
+```bat
+python kad_egress_probe.py --targets bootstrap.fresh.local.json --sample-size 10 --rate-limit 0.2 --attest-i-am-the-experiment-operator
+echo %ERRORLEVEL%
+```
+
+`--sample-size 10` 是**诊断**而非 P4，仍只发 `0xE4 0x01`，在所有者的硬上限
+（`sample_size_max=10` / `rate_limit_pps_max=1.0`）之内，`evidence_valid_for_pass=false`。
+
 **状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、三桶整体作废、未发布任何测试 Key。
-v2.4.10 的「整网无主机可跑 P4」降级为「本机已确证不可跑；LAN eMule 主机待 §8.6.2 核实」。
+v2.4.10 的「整网无主机可跑 P4」降级为「本机已确证不可跑；该机独立进程 0/3，工程上按换网处理」。
 
 ## 9. LAN eMule 主机 `Kad 网络` 面板证据与源码级复核（2026-11-10，v2.4.12）
 
@@ -409,8 +422,8 @@ ID:          <数字 ID，已脱敏>
 
 ### 9.3 决定性核实（不变，且必要性更强）
 
-1. 在 LAN eMule 机器运行 §8.6.3 命令 → `0` = 该机可完成公网 KAD 往返，可按 G0 参数从该机
-   重跑 P4；`2` = 该机通用 KAD 报文亦无响应。
+1. ~~在 LAN eMule 机器运行 §8.6.3 命令~~ → **v2.4.13 已执行，结果 `2` / 0/3，见 §10.1**。
+   该机的独立进程没有 blanket 出站例外；但按下方判据边界，`2` 不是充分否证。
 2. 同机查看 `统计信息` 中 **KAD 收发包计数是否随时间增长**（本次最关键的补充证据）：
    - 计数增长 + 探针 `0` → ① 成立，出口对 KAD 有选择性放行；
    - 计数增长 + 探针 `2` → 出口按应用 / 进程 / DPI 放行，Python 探针是假阴性，须查差异
@@ -422,3 +435,96 @@ ID:          <数字 ID，已脱敏>
 **状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
 RISK R-02 三桶整体作废、未发布任何测试 Key。本节的面板截图属**环境诊断证据**，
 `evidence_valid_for_pass = false`，不进入 S2 判据。
+
+## 10. 跨主机 KAD 探针已执行 + eD2k / KAD 判据区分（2026-11-10，v2.4.13）
+
+### 10.1 §9.3 决定性核实第 ② 项：已执行
+
+项目所有者在 LAN eMule 机器（同网段、开了入站映射）运行 §8.6.3 命令。主机身份核验：
+本机 `C:\Users\bemin\Desktop` 下**没有**该脚本、目标文件或 `reports\` 目录，而输出中的
+报告路径是 `Desktop\reports\kad-egress-probe-20261110024452.json`（脚本按自身所在目录写
+`reports/`）；与上一轮跨主机 STUN 对照的机器一致。输出逐字转录（公网 IPv4 已脱敏）：
+
+```text
+S2 P4 KAD-specific UDP egress probe (BOOTSTRAP_REQ only, no publish/search)
+<公网 IPv4>:4672         FAIL   timeout_or_error TimeoutError: timed out
+<公网 IPv4>:4672         FAIL   timeout_or_error TimeoutError: timed out
+<公网 IPv4>:<高位端口>    FAIL   timeout_or_error TimeoutError: timed out
+RESULT: NO_REPLY (0/3 KAD replies).
+Cannot separate egress filtering from dead contacts; do NOT count as S2 evidence.
+```
+
+退出码 **2**。§9.3 第 1 项因此闭环：**该机上的独立 Python 进程同样无法完成一次公网
+KAD UDP 往返**。假设表中「该机存在 blanket 出站例外」被否证；但按 §9.3 判据边界，
+`2` 在存在按应用 / 进程放行时**不是充分否证**。
+
+### 10.2 两次 0/3 不是独立复现：共享「死联系人」混淆
+
+本机（§8.6.1，三种源端口）与该机（§10.1）用的是**同一份 3 个目标**
+（`bootstrap.live.local.json`，由 00:29 UTC 一次 LAN `BOOTSTRAP_RES` 挑出）。换了主机、
+换了源端口，唯独**目标没换** —— 若这 3 个联系人已全部离线，两台主机都会 0/3，与出口
+策略无关。所以跨主机结果压低了「按主机例外」的可能，**没有**压低「死联系人」的可能。
+
+新增 [`bootstrap_res_to_targets.py`](bootstrap_res_to_targets.py)：只读解析 LAN
+`BOOTSTRAP_RES`（`0xE4` / `0xE5` 帧 + `0x09`，20 × 25 B 联系人，IP 网络序 / 端口小端），
+过滤公网 IPv4、去重、产出新目标清单；**不发任何包**。2026-11-10 03:12 UTC 重跑
+`lan-probe` 得 523 B / 20 contacts、RTT 12 ms（该 eMule 此刻确实在线），解出 15 个公网
+IPv4，取前 10 个（5 个标准 `4672` + 5 个其他高位端口），与旧 3 目标**重叠 0/10**。
+
+本机用这 10 个新鲜目标宽扫（`--sample-size 10 --rate-limit 0.2`，只发 `e401`，在硬上限内）：
+**0/10 无响应**（9 个超时 + 1 个 `WSAENETRESET`）。10 个来自活跃客户端当前路由表、含
+5 个标准 `4672` 的目标全部无回包，「全是死联系人」在本机侧已不再是简洁解释；该机侧的
+新鲜宽扫仍待执行（§10.5）。
+
+### 10.3 新证据「eMule 下载 / 搜索正常」不构成 KAD 出站证据
+
+所有者补充：「那台机器通过 eMule 下载和搜索都很正常，目前没在下载，但之前下载很正常」。
+按 eMule 官方帮助逐条核对（[Network Guide](https://www.emule-project.com/home/perl/help.cgi?l=1&rm=show_topic&topic_id=232)、
+[Search → Method](https://emule-project.com/home/perl/help.cgi?l=1&rm=show_topic&topic_id=133)）：
+
+| 官方表述 | 推论 |
+| :--- | :--- |
+| 「eMule 实际的下载**与两个网络的选择无关**……网络拓扑只与文件搜索以及寻找来源有关；找到来源后客户端连接它」 | 下载本身是 **TCP** 到来源，与 KAD UDP 无关 |
+| 搜索 `Method` 分 `Server` / `Global (Server)` / `Kademlia`；前者「逐个询问服务器」，后者「搜索整个 Kademlia 网络，**不使用 eD2k 服务器**」 | 「搜索正常」默认可能完全是 eD2k 服务器搜索（**TCP**） |
+| Kademlia 方法条目：「若连热门关键词都**无结果**，系统的 **UDP 端口很可能被防火墙或路由器阻断**」 | 只有 `Kademlia` 方法**出结果**才要求 UDP 通 |
+| HighID 由 eD2k 服务器检查「其他客户端能否自由连入」后分配 | TCP + 入站 DNAT，不需要出站高位 UDP |
+
+所以**一条完整、健康的 eD2k 路径可以完全不产生任何出站高位 UDP**：搜索 / 查源走 TCP
+到服务器，HighID 让远端主动连入，下载走 TCP。它与 §10.1 的 0/3、§8.4 的 STUN 0/3
+**并不冲突**，反而是假设 ④（出站过滤 + 入站 DNAT + 乐观「打开」）的预期表现。
+反过来，只有「明确选择 `Kademlia` 方法且热门关键词有结果」才证伪 ④。
+
+→ **判据修正**：不必「开个下载」验证（下载不区分网络）；应改为在搜索框 `Method`
+明确选 `Kademlia`，搜常见关键词看是否有结果。另注意：入站 KAD 请求触发的 UDP **回包**
+属于已建立流，状态化防火墙通常放行，即便本机不能主动发起出站 KAD，计数也可能增长 ——
+故「计数增长」不是充分证据，**客户端主动发起的 Kademlia 搜索**才是。
+
+### 10.4 假设表与工程结论
+
+| 假设 | v2.4.13 判定 |
+| :--- | :--- |
+| ① KAD 真活、出口按应用 / 进程放行 | **仍开放**；0/3 与 0/10 都来自独立进程，若仅 `eMule.exe` 被放行则均为假阴性；须由 `Kademlia` 方法搜索判定 |
+| ② firewalled / Buddy | **已否证**（§9） |
+| ③ eMule 走另一条出口 / 代理 | **仍开放** |
+| ④ 出站统一过滤 + 入站 DNAT 产生「打开」 | 与全部观测一致，§10.3 补上机制解释；仍非严格证明 |
+| ⑤ 新增：共享的死联系人 | 本机侧由 §10.2 的 0/10 新鲜宽扫**大幅削弱**；该机侧仍待宽扫 |
+
+**工程结论（与科学归因解耦）**：截至目前，本网**没有任何独立客户端进程**被证明能完成
+一次公网 KAD UDP 往返 —— 本机 0/3（三种源端口）+ 0/10（新鲜目标），该机 0/3。
+无论 ①③④ 哪个为真，ColdRevive 自己的客户端在本网都跑不了 P4：差别只在于「换网」
+还是「为本项目的进程单独申请一条出站例外」。因此 **P4 应换到高位 UDP 未被过滤的网络
+重跑，不再等待归因收敛**；本节全部观测都是环境诊断，`evidence_valid_for_pass=false`，
+不构成 S2 结论。
+
+### 10.5 剩余核实（可选，用于收窄归因，不阻塞换网）
+
+1. 该机：搜索 `Method` 明确选 `Kademlia`，搜热门关键词 → 有结果 = ① / ③；无结果 = ④。
+2. 该机：把 `bootstrap.fresh.local.json` 拷过去，**尽快**跑 §8.6.3 的宽扫命令 →
+   `0` = 该机能跑 P4（充分证据）；`2` = 须与第 1 项合看。
+3. 若第 1 项有结果而第 2 项为 `2` → 按应用 / 进程放行，查该机安全软件的出站规则；
+   本项目进程需显式放行，或仍换网。
+4. 换网后（唯一有效路径）：诊断退出码 `0` → 刷新 `nodes.dat` → 按 G0 参数
+   （`sample_size=3` / `rate_limit_pps=0.2`）重跑 P4 → 由实验执行人人工回填 `S2.status`。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+RISK R-02 三桶整体作废、未发布任何测试 Key。

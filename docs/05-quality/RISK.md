@@ -83,6 +83,14 @@ Buddy 行，firewalled / 陈旧路由表假设被否证；但 aMule 源码显示
 被过滤」可同时成立，**不证明该机能跑 P4**。新假设「出口统一过滤出站 + DNAT 产生打开」
 无法排除。决定性核实仍为在该机运行 KAD 专用探针（退出码 `0` 是充分证据、`2` 不是充分
 否证）并查看 KAD 收发包计数是否增长；详见 [PLAN.md §9](../../tests/spikes/s2/PLAN.md)。
+**v2.4.13 跨主机 KAD 探针已执行**：该机 0/3 / 退出码 2；但两次 0/3 共用同一份 3 目标、
+不是独立复现，新增 [`bootstrap_res_to_targets.py`](../../tests/spikes/s2/bootstrap_res_to_targets.py)
+从 03:12 UTC 新鲜 `BOOTSTRAP_RES` 取 10 个公网联系人（与旧目标重叠 0/10），本机宽扫
+0/10。另按 eMule 官方帮助区分：下载走 TCP 且「与网络选择无关」，`Server`/`Global (Server)`
+搜索走 eD2k 服务器 TCP，只有 `Kademlia` 方法要求 UDP 通 —— 故「eMule 下载/搜索正常」
+**不构成** KAD 出站证据，应为「明确选 `Kademlia` 方法搜热门词」。工程决策已与归因解耦：
+本网无独立客户端被证明可跑 P4，**换网重跑**，剩余核实只用于收窄归因。详见
+[PLAN.md §10](../../tests/spikes/s2/PLAN.md)。
 无论哪种情况都不得重试计数或据此判定 S2；换网后仍须刷新 `nodes.dat`。
 详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
