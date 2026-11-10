@@ -22,17 +22,17 @@ So the filter is at the network egress boundary and is destination-port /
 application based (well-known low ports allowed, unknown high ports dropped),
 NOT "UDP disabled", NOT source-port policy, NOT the local host firewall.
 
-IMPORTANT open question: the LAN eMule host is on the same L2/L3 network but has
-an inbound port mapping. The LAN probe never crossed the egress boundary, so it
-cannot settle whether public high-port UDP works from that host. Copy THIS file
-to that machine and run it there:
+RESOLVED (2026-11-10 cross-host run): the LAN eMule host is on the same network
+and HAS an inbound port mapping. Running this exact file there produced the same
+BLOCKED result (low-port 4/4 OK, high-port 0/3 OK, exit 2). So there is no
+per-host egress exception here and an inbound DNAT does not grant outbound
+high-port UDP. No host on this network can run P4.
 
-    - if high-port UDP passes there -> the egress exception is per-host (the
-      inbound mapping is likely a marker of a broader per-IP rule, not the
-      mechanism). Run P4 from that host, or request the same exception here.
-    - if it fails there too -> no host on this network can run P4; move to an
-      unrestricted network. Also refresh nodes.dat: 3 contacts picked from a
-      2-day-old list can all be dead even on a healthy network.
+    -> Move to an unrestricted network, re-run this check there (must exit 0),
+       refresh nodes.dat (a 2-day-old contact list may be entirely dead), then
+       re-run P4 with the G0-confirmed parameters.
+    -> When diagnosing a DIFFERENT host/network, copy this single file there and
+       repeat: 0 = P4 may run, 2 = environment-blocked, not an S2 finding.
 
 Usage
 -----
@@ -200,8 +200,8 @@ def main() -> int:
         print("        the filter sits at the internet egress boundary.")
     print("        Do NOT run P4 from this network; a KAD timeout here is an")
     print("        environment failure, NOT an S2 finding.")
-    print("        Cross-host check: copy this file to the LAN eMule machine and")
-    print("        run it there to test for a per-host egress exception.")
+    print("        Cross-host check: repeat on any other candidate host/network;")
+    print("        egress policy can be per-host (0 = P4 may run from there).")
     return 2
 
 

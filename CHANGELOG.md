@@ -2,6 +2,37 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.10] - 2026-11-10 — 跨主机实验闭环：整网阻断，S2 仍待换网
+
+项目所有者把同一份 [udp_egress_check.py](tests/spikes/s2/udp_egress_check.py) 拷到 LAN 那台
+eMule 机器（与本机同网段、同一网络环境，**开了入站映射**）上运行，结果：
+
+- 低位对照 **4/4 OK**：DNS/53 ×2、NTP/123 ×2；
+- 高位探测 **0/3 OK**：STUN/3478 ×2、STUN/19302 ×1 全部 `TimeoutError`；
+- `RESULT: BLOCKED`，退出码 **2**，与本机完全一致。
+
+**结论**：v2.4.9 留下的「出口例外是否按主机」开放问题被否证 —— 入站 DNAT 不产生出站
+高位 UDP 例外，本网两台主机共用同一条「按目标端口/应用白名单丢弃高位未知端口」的出口策略，
+**本网无主机可跑 P4**。那台 eMule 若显示连着公共 KAD，更可能是 firewalled / LowID 或
+`nodes.dat`（2026-11-08）路由表陈旧，不能作为公网可达性证据；给任一机器补入站映射都无效。
+
+### 变更
+
+- [PLAN.md §8.4](tests/spikes/s2/PLAN.md) 由「待执行」改为「已执行 + 结论」，§7 / §8 标题与
+  §8.2 条件推论同步收敛；新增输出原文与判定表。
+- `spikes.json` 新增 `observations.p4_environment_diagnosis.cross_host_result`，并更新
+  `status_note` / `conclusion` / `open_question` / `cross_host_test` / `required_next_step`。
+- [RISK R-02](docs/05-quality/RISK.md) 补记「逐主机判定已于本网两台主机实测、均为阻断」。
+- 诊断脚本文档字符串与提示语改为「已闭环」措辞，保留可搬运复用的跨主机用法。
+- S2 / kad-mini / tests-spikes README、ROADMAP、OPEN-QUESTIONS 去掉「待验证」表述；
+  `docs/index.html` 重建。
+
+**唯一有效路径**：换到高位 UDP 未被过滤的网络 → 诊断退出码 0 → 刷新 `nodes.dat` →
+按 G0 参数（`sample_size=3` / `rate_limit_pps=0.2`）重跑 P4，再由实验执行人手工回填 `S2.status`。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+三桶计数整体作废、未发布任何测试 Key、公共 KAD 未获得任何协议证据。
+
 ## [2.4.9] - 2026-11-10 — 环境归因复核：按端口白名单 + 跨主机待验证
 
 项目所有者指出 LAN 内那台 eMule 与本机同一网络、没有额外设置，唯一差异是 eMule 开了

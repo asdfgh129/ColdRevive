@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网仍被 G0 参数与 bootstrap 门禁阻断（见 PLAN.md），仍缺第三方 BT 客户端与 M1 二进制。",
+  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网 P4 已于 2026-11-10 按 G0 参数执行，但公网出口高位 UDP 白名单导致 0 响应，跨主机复验证实本网无主机可跑，结论不可用（见 PLAN.md §8.4），仍缺第三方 BT 客户端与 M1 二进制。",
   "conclusion_values": ["not_run", "pass", "fail", "fallback"],
   "spikes": [
     {
@@ -211,7 +211,7 @@
         "LAN 真实 eMule 对照：同一份 2 字节 0xE4 0x01 得到 0xE4 0x09 明文 523 B / 20 contacts（证明 wire 格式与探针实现正确）",
         "aMule 源码：KademliaUDPListener::ProcessPacket 对 KADEMLIA2_BOOTSTRAP_REQ 直接分发，请求无 payload 要求；仅 InTrackListIsAllowedPacket 每 IP 限流与 port==53 特例"
       ],
-      "conclusion": "本机公网出口按目标端口/应用白名单过滤高位 UDP（53/123 通、3478/19302/24575/30303/40000 不通）；不是 UDP 全封、不是源端口策略、不是本机防火墙、不是 KAD 报文格式、不是节点拒绝、不是命名空间被拒；LAN 探测为纯 LAN 流量不能证明公网可达性；跨主机例外待验证；nodes.dat 新鲜度为独立次要风险",
+      "conclusion": "本机公网出口按目标端口/应用白名单过滤高位 UDP（53/123 通、3478/19302/24575/30303/40000 不通）；不是 UDP 全封、不是源端口策略、不是本机防火墙、不是 KAD 报文格式、不是节点拒绝、不是命名空间被拒；LAN 探测为纯 LAN 流量不能证明公网可达性；2026-11-10 跨主机复验已否证按主机出口例外（LAN eMule 机器同为 BLOCKED/退出码 2），本网无主机可跑 P4；nodes.dat 新鲜度为独立次要风险",
       "precondition_check": "tests/spikes/s2/udp_egress_check.py（v2.4.9 升级：低位/高位对照、--source-port、--lan-ip/--lan-port、--json；不发公网 KAD 报文）；退出码 0=通过 / 2=阻断 / 1=诊断错误",
       "refinement_2026_11_10": {
         "triggered_by": "项目所有者指出 LAN eMule 与本机同一网络、唯一差异是 eMule 开了入站映射，质疑「网络统一过滤」归因",
@@ -230,12 +230,29 @@
           "入站 DNAT 解决外部主动连入，对请求/响应模式的 P4 不必要，也不能修复出站过滤",
           "nodes.dat（2026-11-08）联系人新鲜度是独立次要风险，原先判为「非主因」证据不足；3 个随机联系人在健康网络上也可能全部离线"
         ],
-        "open_question": "若 LAN eMule 当前确实连着公共 KAD，则出口例外是按主机的；入站映射很可能是同一条按 IP 策略的表征而非机制",
-        "cross_host_test": "把单文件零依赖 udp_egress_check.py 拷到 LAN eMule 机器运行：退出码 0 → 按主机例外、可从该机重跑 P4 或为本机申请同策略；退出码 2 → 整网无主机可跑 P4，须换网并刷新 nodes.dat",
+        "open_question": "已由 cross_host_result 关闭：LAN eMule 机器的高位 UDP 同样被挡，按主机出口例外不成立；入站映射不产生出站例外",
+        "cross_host_test": "已于 2026-11-10 由项目所有者执行：同一脚本在 LAN eMule 机器输出 BLOCKED / 退出码 2，走『退出码 2』分支；详见 cross_host_result",
         "script_upgrade": "新增 NTP/123 对照、非 Google STUN、--source-port、--lan-ip/--lan-port（RFC1918 硬校验）、--json；本机复验低位 4/4 OK、高位 0/3 OK、LAN OK、退出码 2",
         "status_unchanged": "S2.status=not_run, PROTOCOL_VERSION=1, T0 golden 未动, 三桶整体作废, 未发布任何测试 Key"
       },
-      "required_next_step": "在无 UDP 过滤的网络重跑 P4；重跑前先执行该诊断。禁止把本次超时记为 S2 结论"
+      "cross_host_result": {
+        "recorded_at": "2026-11-10",
+        "executed_by": "项目所有者",
+        "host": "LAN eMule 机器（与本机同网段、同一网络环境；该机开了入站映射）",
+        "script": "tests/spikes/s2/udp_egress_check.py（同一份单文件零依赖诊断，未发任何 KAD 报文）",
+        "low_port_control": "4/4 OK：8.8.8.8:53、1.1.1.1:53、time.cloudflare.com:123、pool.ntp.org:123",
+        "high_port_probe": "0/3 OK：stun.cloudflare.com:3478、stun.ekiga.net:3478、stun.l.google.com:19302 全部 TimeoutError",
+        "exit_code": 2,
+        "result": "BLOCKED",
+        "conclusion": "按主机出站例外假设被否证；入站 DNAT 不产生出站高位 UDP 例外；本网两台主机共用同一按目标端口/应用白名单的出口策略，无主机可跑 P4",
+        "implications": [
+          "LAN eMule 的公共 KAD 连接状态应在其界面核对（节点数 / firewalled / LowID）；若显示已连接，更可能是陈旧路由表或历史连接，不能作为本网可跑 P4 的证据",
+          "在本机或该机追加入站映射对出站过滤无效",
+          "重跑前必须换到无高位 UDP 过滤的网络，并刷新 nodes.dat（2026-11-08 清单已过期）"
+        ],
+        "status_unchanged": "S2.status=not_run, PROTOCOL_VERSION=1, T0 golden 未动, 三桶整体作废, 未发布任何测试 Key"
+      },
+      "required_next_step": "跨主机复验已证实本网（含 LAN eMule 机器）无主机可跑 P4；须换到无高位 UDP 过滤的网络，重跑前先执行该诊断得退出码 0 并刷新 nodes.dat，再按 G0 参数重跑。禁止把本次超时记为 S2 结论"
     },
     "real_network": "executed_2026-11-10_inconclusive — P4 已按 G0 参数显式执行：3 × BOOTSTRAP_REQ 发出、0 响应、0 发布；环境过滤公网高位 UDP，S2.criteria 未被实际执行，S2.status 保持 not_run；详见 observations.p4_execution / p4_environment_diagnosis 与 PLAN.md §7"
   },

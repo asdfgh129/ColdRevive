@@ -67,6 +67,10 @@ STUN/3478），同时 DNS/UDP-53 正常、LAN 真实 eMule 对同一份 `0xE4 0x
 v2.4.9 复核把归因细化为「出口按目标端口/应用白名单丢弃高位未知端口」（53/123 通、
 3478/19302 不通），并新增跨主机对照与 `nodes.dat` 新鲜度检查；详见
 [PLAN.md §8](../../tests/spikes/s2/PLAN.md)。
+**v2.4.10 跨主机复验已闭环**：同一诊断在开了入站映射的 LAN eMule 机器上同样返回
+`BLOCKED`（退出码 2，低位 4/4 OK、高位 0/3 OK），按主机例外假设被否证 —— 本网两台
+主机均无法完成公网高位 UDP 往返，入站 DNAT 不产生出站例外。因此本网**无主机可跑 P4**，
+前置条件失败须换网解决，不得重试计数或据此判定 S2；换网后仍须刷新 `nodes.dat`。
 详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
 

@@ -39,9 +39,9 @@ updated: 2026-11-09
 ## 3. 立即下一步（M0 Spike 清单）
 
 1. 落地 [TECH-STACK §2](../02-architecture/TECH-STACK.md) 的 **S1–S7** 七项验证，每项输出「通过 / 不通过 / 替代方案」结论（S8 已于 2026-11-09 由项目所有者豁免登记为 `pass`，无书面法务意见）。其中 S2 的 [PLAN.md](../../tests/spikes/s2/PLAN.md) P0–P3 已完成（协议核实、真实 wire 回环、LAN 互操作、G0 确认 `sample_size=3` / `rate_limit_pps=0.2`、用户 bootstrap 清单），P4 已于 2026-11-10 显式执行但被环境公网高位 UDP 过滤阻断（0 响应、0 发布），**只差在无过滤网络上重跑一次有效的 P4**；KAD 报文映射与 128/160-bit ID 错配已于 v2.4.6 回写 ADR-001 / PROTO §2.0 / `S2.criteria` / RISK R-02；v2.4.7 又补齐了 `live` 与判据的一致性（`0xE5` 解包、tolerance 收敛、跳过 HELLO、公网 bootstrap 校验），详见 [PLAN.md §6/§7](../../tests/spikes/s2/PLAN.md)。重跑前置检查：[udp_egress_check.py](../../tests/spikes/s2/udp_egress_check.py)（v2.4.9 升级，退出码 0）。
-待答问题：LAN 那台 eMule 与本机同一网络、仅多一条入站映射，若它当前确实连着公共 KAD，
-则出口例外是**按主机**的 —— 把该脚本拷到它上面跑一次即可判定，详见
-[PLAN.md §8](../../tests/spikes/s2/PLAN.md)。
+已答问题（v2.4.10）：LAN 那台 eMule 与本机同一网络、仅多一条入站映射；把同一份脚本拷到
+它上面运行，同样 `BLOCKED` / 退出码 2（低位 4/4 OK、高位 0/3 OK），**按主机出口例外被否证**，
+本网无主机可跑 P4，入站映射不产生出站例外。详见 [PLAN.md §8.4](../../tests/spikes/s2/PLAN.md)。
 2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
 3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。
