@@ -68,9 +68,15 @@ v2.4.9 复核把归因细化为「出口按目标端口/应用白名单丢弃高
 3478/19302 不通），并新增跨主机对照与 `nodes.dat` 新鲜度检查；详见
 [PLAN.md §8](../../tests/spikes/s2/PLAN.md)。
 **v2.4.10 跨主机复验已闭环**：同一诊断在开了入站映射的 LAN eMule 机器上同样返回
-`BLOCKED`（退出码 2，低位 4/4 OK、高位 0/3 OK），按主机例外假设被否证 —— 本网两台
-主机均无法完成公网高位 UDP 往返，入站 DNAT 不产生出站例外。因此本网**无主机可跑 P4**，
-前置条件失败须换网解决，不得重试计数或据此判定 S2；换网后仍须刷新 `nodes.dat`。
+`BLOCKED`（退出码 2，低位 4/4 OK、高位 0/3 OK），按主机的 **STUN** 出站例外假设被否证 ——
+入站 DNAT 不产生 STUN 出站例外。
+**v2.4.11 归因收窄**：STUN 是代理指标、不等于 KAD；本机已用真实 `0xE4 0x01` 对 3 个较新
+公网联系人（含标准 `4672`）在临时 / 固定源端口下复测，均 **0/3** 无响应，故**本机**前置
+条件失败成立；LAN eMule 主机显示 HighID 与 432 个 KAD 联系人，其 KAD 是否存活、出口是否
+按应用或按 IP+源端口放行仍未判定，须补 `Kad 网络` 面板状态并在该机运行
+[`kad_egress_probe.py`](../../tests/spikes/s2/kad_egress_probe.py)。详见
+[PLAN.md §8.6](../../tests/spikes/s2/PLAN.md)。无论哪种情况都不得重试计数或据此判定 S2；
+换网后仍须刷新 `nodes.dat`。
 详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)。来源：[PROTO §2.0](../04-protocol/PROTO.md)、
 [S2 排期 §0](../../tests/spikes/s2/PLAN.md)。
 

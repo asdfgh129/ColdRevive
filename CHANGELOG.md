@@ -2,7 +2,53 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
-## [2.4.10] - 2026-11-10 — 跨主机实验闭环：整网阻断，S2 仍待换网
+## [2.4.11] - 2026-11-10 — 新证据：STUN ≠ KAD，归因收窄并新增 KAD 专用探针
+
+项目所有者提供 LAN eMule 主机截图：eD2K 服务器连接为 **HighID**，Kad 页签 **节点 (432)**、
+联系人版本 8/9/10。同时本机 `lan-probe` 早先已从该客户端 `BOOTSTRAP_RES` 解出 20 个联系人
+（17 个公网 IPv4，多条使用标准 `4672`），与 2026-11-08 `nodes.dat` 中 P4 用的 3 个联系人
+完全不重叠。这使 v2.4.10 的绝对措辞不再成立：**STUN 超时只能说明 STUN 被过滤，不能推出
+KAD 报文也被过滤**；出口策略可能按应用 / DPI、按目标端口或按「主机 IP + 源端口」放行。
+
+### 概念澄清
+
+HighID 是 eD2K 服务器分配的客户端 ID，证明 DNAT 让服务器能回连 TCP；KAD 有独立的
+「状态 / 防火墙 / Buddy」，截图里 `Kad 网络` 面板被裁掉。Kad 页签 432 条是**路由表联系人**
+（`nodes.dat` 载入 + 入站请求学习），不等于此刻存在双向 UDP 流量；`0(8)` 这类值是联系人
+类型与 KAD 协议版本，不是 HighID。
+
+### 新增诊断与本机实测
+
+新增 [`kad_egress_probe.py`](tests/spikes/s2/kad_egress_probe.py)：只发 2 字节 `0xE4 0x01`
+`BOOTSTRAP_REQ`，不发布 Key、不发 HELLO / REQ / SEARCH；目标由用户提供且硬校验为公网 IPv4、
+不内置；G0 参数 3 条 / 0.2 包每秒、逐次留原始报文；报告写入 gitignored `reports/`。
+
+| 本机源端口 | KAD 响应 |
+| :--- | :--- |
+| 系统临时端口 | **0/3** |
+| 固定为 LAN eMule 的 KAD 源端口 | **0/3** |
+| 固定标准 eMule UDP 端口 `4672` | **0/3** |
+
+→ **本机确实无法与公网 KAD 节点完成一次往返**，不是「只有 STUN 不通」、不是「P4 只挑到死
+联系人」、不是源端口策略；§7 对本机的环境阻断结论成立。
+
+### 归因收窄与待核实
+
+[PLAN.md §8.6](tests/spikes/s2/PLAN.md) 记录三种未排除的可能：该机 KAD 确实存活（出口按应用 /
+按 IP+源端口放行，STUN 是假阴性）、KAD 已 firewalled 且 432 条为陈旧路由表、eMule 走另一条
+出口 / 代理。`spikes.json` 新增 `kad_specific_egress_2026_11_10`，并把
+`cross_host_result.conclusion` 与 `required_next_step` 改为非绝对表述；OPEN-QUESTIONS /
+ROADMAP / 各 README / RISK R-02 同步；`docs/index.html` 重建。
+
+**v2.4.10 的「整网无主机可跑 P4」降级为「本机已确证不可跑；LAN eMule 主机待核实」**。
+决定性核实：① 提供 `Kad 网络` 面板完整截图（状态 / 防火墙 / Buddy / 节点数）与 KAD 收发包
+计数是否增长；② 把 `kad_egress_probe.py` 与本地 `bootstrap.live.local.json` 拷到该机运行，
+退出码 0 / 2。
+
+**状态不变**：`S2.status = not_run`、`PROTOCOL_VERSION = 1`、T0 golden files 未动、
+三桶计数整体作废、未发布任何测试 Key。
+
+## [2.4.10] - 2026-11-10 — 跨主机 STUN 对照：本机与 LAN 主机同被阻断
 
 项目所有者把同一份 [udp_egress_check.py](tests/spikes/s2/udp_egress_check.py) 拷到 LAN 那台
 eMule 机器（与本机同网段、同一网络环境，**开了入站映射**）上运行，结果：
@@ -11,10 +57,10 @@ eMule 机器（与本机同网段、同一网络环境，**开了入站映射**�
 - 高位探测 **0/3 OK**：STUN/3478 ×2、STUN/19302 ×1 全部 `TimeoutError`；
 - `RESULT: BLOCKED`，退出码 **2**，与本机完全一致。
 
-**结论**：v2.4.9 留下的「出口例外是否按主机」开放问题被否证 —— 入站 DNAT 不产生出站
-高位 UDP 例外，本网两台主机共用同一条「按目标端口/应用白名单丢弃高位未知端口」的出口策略，
-**本网无主机可跑 P4**。那台 eMule 若显示连着公共 KAD，更可能是 firewalled / LowID 或
-`nodes.dat`（2026-11-08）路由表陈旧，不能作为公网可达性证据；给任一机器补入站映射都无效。
+**结论（按 STUN 口径）**：v2.4.9 留下的「出口例外是否按主机」开放问题被否证 —— 入站 DNAT
+不产生 STUN 出站例外，两台主机对 STUN 高位端口同样不通。
+> v2.4.11 更正：此处「高位 UDP / 白名单」结论只对 STUN 成立，不能外推到 KAD 报文；
+> 「本网无主机可跑 P4」已降级为「本机已确证不可跑；LAN eMule 主机待核实」，见 2.4.11。
 
 ### 变更
 
