@@ -915,6 +915,35 @@
           "gap": "四类真实 NAT（含 CGNAT）可达率未测",
           "evidence_valid_for_pass": false,
           "status_unchanged": true
+        },
+        "cr_nat_implementation_2026_11_13": {
+          "recorded_at": "2026-11-13（本轮）",
+          "trigger": "用户指令：准备第二台物理主机并先实现 NAT 穿透。用户选择「还没定/想听建议」拓扑、并授权「现在开始实现 cr-nat 作为 M2 合法前置，不宣称 S6 达标」",
+          "scope": "M2 合法前置（与 G0 条件冻结同口径：豁免 G0 时点结论，但状态保持 not_run），不触碰 T0 契约与 M1 复活流程",
+          "implementation": {
+            "crate": "src/crates/cr-nat（std-only，零第三方依赖，cargo test --workspace --offline 可复现）",
+            "modules": [
+              "stun.rs — RFC 5389 STUN Binding（XOR-MAPPED-ADDRESS 解析 + TID 校验 + 同 socket 多服务器探测）",
+              "natpmp.rs — RFC 6886 NAT-PMP 外部地址 / 端口映射",
+              "pcp.rs — RFC 6887 PCP MAP（UDP/TCP），含 nonce 回显与 ext_ip",
+              "upnp.rs — UPnP IGD：SSDP 发现 + SOAP get_external_ip / add_port_mapping（相对 controlURL 解析）",
+              "relay.rs — 中继/LowID 回退帧协议（register/send_relay/recv_frame）",
+              "classify.rs — 由 STUN 映射集合分类 NAT 类型（FullCone/RestrictedCone/PortRestrictedCone/Symmetric/Cgnat/Unknown）+ cone 子型细分 + CGNAT 启发式",
+              "lib.rs — Traversal::run() 编排 STUN→UPnP→NAT-PMP→PCP→CGNAT 并选策略；S6_REQUIRED_MATRIX / R04_MIN_REACHABILITY=0.70 常量齐备"
+            ],
+            "binary": "src/bins/coldrevive-nat（新增第 4 个 bin）：CLI 诊断，--json 稳定字段输出 nat_type/public_udp_egress_ok/upnp|natpmp|pcp_available/mapped_address/cgnat_suspected/recommended_strategy/needs_relay/s6_status=not_run",
+            "unit_tests": "24 passed（含 STUN/NAT-PMP/PCP/UPnP/中继 本地 UDP mock 往返 + 分类 + 策略选择 + 矩阵口径）"
+          },
+          "end_to_end_validation": {
+            "stun_real": "coldrevive-nat 对本机实测：STUN 真实可达（stun.l.google.com / stun.cloudflare.com），mapped_address=112.5.60.4:xxxxx，public_udp_egress_ok=true，nat_type 保守判为 full-cone（两服务器同映射）；UPnP/NAT-PMP/PCP 在本环境均不可用，recommended_strategy=udp-predictive",
+            "note": "真实 STUN 往返证明发送/解析链路正确；分类为保守 full-cone 因未做 OTHER-ADDRESS 二次细分与多端口对称判定（属 S6 矩阵实测范围）"
+          },
+          "policy_closure": "t1_progress.design_gaps[0]「M1 CLI MVP 无 UPnP/NAT-PMP/PCP/STUN 打洞/中继」已在库层闭合：cr-nat 提供全部协议实现与策略选择；但 M1 CLI 复活路径（UDP 唤醒 / 私网 tracker peer 地址协商）尚未接入该库，接入属 M2 范围",
+          "gate_discipline": {
+            "s6_status": "not_run（不变）",
+            "no_false_claim": "本实现仅补齐穿透手段，S6 判据「四类 NAT（含 CGNAT）实测可达率」仍须 M2 在多个真实 NAT 环境实测；不据此宣称 G2/S6 达标",
+            "script_prohibition": "spikes.json 结论仍由实验执行人据 M2 实测证据手工回填，脚本/工具不自动置 pass"
+          }
         }
       }
     },
@@ -1031,14 +1060,14 @@
     "milestone": "M1",
     "gate": "G1",
     "status": "in_progress",
-    "workspace": {
-      "root_manifest": "Cargo.toml",
-      "crates": 17,
-      "bins": 3,
-      "dependency_policy": "std-only；cargo test --workspace --offline 可复现",
-      "unit_tests": "31 passed / 0 failed（2026-11-13 复核；此前记为 27 系统计口径遗漏，按 cargo test --workspace --offline 汇总基线为 30，本轮新增 1 个跨主机地址单测）",
-      "m2_crates": "cr-engine / cr-qos / cr-nat / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 仅骨架，不宣称 G2"
-    },
+      "workspace": {
+        "root_manifest": "Cargo.toml",
+        "crates": 17,
+        "bins": 4,
+        "dependency_policy": "std-only；cargo test --workspace --offline 可复现",
+        "unit_tests": "55 passed / 0 failed（cr-nat 落地 24 个新单测：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类；2026-11-13 复核基线 31，本轮 +24）",
+        "m2_crates": "cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 仍仅骨架，不宣称 G2；cr-nat 已于 2026-11-13 落地实现（std-only：STUN+NAT-PMP+PCP+UPnP IG+中继回退 + 分类/策略选择），作为 M2 合法前置，S6.status 仍为 not_run，不宣称 G2/S6 达标"
+      },
     "t0_real": {
       "date": "2026-11-13",
       "result": "21/21 PASS",
@@ -1142,7 +1171,7 @@
       "scope": "单机真实 socket 全链路预检，不构成 T1 / G1 证据"
     },
     "design_gaps": [
-      "M1 CLI MVP 无 UPnP IGD / NAT-PMP / PCP / STUN 打洞 / 中继，跨 NAT 双机的 UDP 唤醒与私网 tracker peer 地址将不可达；S6 先导样本还显示本机 UPnP 与 NAT-PMP 均不可用",
+      "cr-nat 库已于 2026-11-13 落地（STUN/NAT-PMP/PCP/UPnP IGD/中继 + 分类与策略选择，std-only），M2 穿透手段缺口在库层闭合；但 M1 CLI 复活路径（跨 NAT 的 UDP 唤醒 / 私网 tracker peer 地址协商）尚未接入该库，接入属 M2 范围。S6 判据「四类 NAT（含 CGNAT）实测可达率」仍须 M2 真实多 NAT 环境实测，status 保持 not_run",
       "T1-08 只做单侧 NAT 特征取证，四类 NAT 矩阵属 M2 / S6",
       "B 主机需预启动守护进程与第三方下载器，harness 不假装能远程拉起"
     ],

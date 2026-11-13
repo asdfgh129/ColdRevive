@@ -9,11 +9,11 @@
 | 当前阶段 | **M1 进行中**（CLI MVP 已跑通 T0 真实链路）；**G1 未通过、M2 受门禁阻塞** |
 | 代码仓库 | **https://github.com/asdfgh129/ColdRevive**（公开） |
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
-| 文档版本 | v2.4.39（T1 双机 harness + M1 跨主机寻址 + S5 真实 uTP 栈量测；G1/M2 门禁不变） |
-| M1 状态 | 根 `Cargo.toml` + 17 crate + 3 bin（std-only，`cargo test --workspace --offline` **31/31**）；`coldrevived` / `coldrevive-cli` 已按 CLI v1 契约实现，并补齐**按节点 host 的跨主机寻址**与 `/health` 机器身份；**T0 `--mode real` 21/21 PASS、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验 |
-| T1 / G1 | [T1 双机 harness](tests/e2e/t1/README.md) 已落地（10 用例 / 40 断言）；单机预检两模式各 **10 PASS / 1 SKIP**、`evidence_valid=false`（唤醒 P95 2.0 ms、复活 30/30）；**`--mode real` 因只有一台物理主机 `BLOCKED`**，G1 未通过。另发现 M1 **无 NAT 穿透**，跨 NAT 双机前须补穿透栈 |
+| 文档版本 | v2.4.40（T1 双机 harness + M1 跨主机寻址 + S5 真实 uTP 栈量测 + cr-nat 穿透栈落地；G1/M2 门禁不变） |
+| M1 状态 | 根 `Cargo.toml` + 17 crate + 4 bin（std-only，`cargo test --workspace --offline` **55/55**）；`coldrevived` / `coldrevive-cli` 已按 CLI v1 契约实现，并补齐**按节点 host 的跨主机寻址**与 `/health` 机器身份；**T0 `--mode real` 21/21 PASS、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验 |
+| T1 / G1 | [T1 双机 harness](tests/e2e/t1/README.md) 已落地（10 用例 / 40 断言）；单机预检两模式各 **10 PASS / 1 SKIP**、`evidence_valid=false`（唤醒 P95 2.0 ms、复活 30/30）；**`--mode real` 因只有一台物理主机 `BLOCKED`**，G1 未通过。`cr-nat` 穿透栈（STUN / NAT-PMP / PCP / UPnP IGD / 中继）已落地为 **M2 合法前置**，但 M1 CLI 复活路径尚未接入该库（属 M2），S6.status 仍 `not_run` |
 | S5 / 风险 | 用真实 `librqbit-utp 0.7.0` 栈量测（16 Mbit/s 共享瓶颈、3 轮中位）：ratio `0.20 → 14.82%`、`0.05 → 4.31%`、`0.02 → 2.70%` 前台劣化；**源码核实该版本只实现 CUBIC、无 LEDBAT**，`prefer_utp` 不提供退让，R-07 口径上调，`S5.status` 仍 `not_run` |
-| M2 状态 | **未开工（`blocked_by_G1`）**：G1 还缺 T1 两台真实物理机 + 真实 NAT，以及 S3 真实双栈 / S5 真实拥塞链路实测；本轮未新增任何 M2 实现，不宣称 G2 达标 |
+| M2 状态 | **未开工（`blocked_by_G1`）**：G1 还缺 T1 两台真实物理机 + 真实 NAT，以及 S3 真实双栈 / S5 真实拥塞链路实测。`cr-nat` 穿透栈已落地（M2 合法前置，24 单测 + `coldrevive-nat` 诊断 bin），但 M2 二进制 / 唤醒接入未开工；**S6.status 仍 `not_run`，不宣称 G2 达标** |
 | 验收骨架 | [T0 双节点验收](tests/e2e/t0/README.md)：**real 模式 21/21 PASS、`evidence_valid=true`**；[T1 双机验收](tests/e2e/t1/README.md)：harness + 单机预检，`evidence_valid` 恒 `false`；`--self-test` 的 PASS 仍非 G1 证据 |
 | M0 / 门禁 | [G0 条件冻结](docs/06-plan/G0-REVIEW.md) 已生效：S1/S2/S4/S7/S8 `pass`，S3/S5/S6 保持 `not_run`（M1/M2 必测回填）；[Spike 实验包](tests/spikes/README.md) · [S2 实网排期](tests/spikes/s2/PLAN.md) · 机读进度 `spikes.json` 的 `m1_progress` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
@@ -54,8 +54,8 @@ ColdRevive/
 │   ├── 08-reference/          参考资料     GLOSSARY / DISCUSSION-MAP / REFERENCES
 │   └── 09-archive/            归档基线     chat.md / v2.0 合并文档
 ├── Cargo.toml / Cargo.lock    Workspace 根清单（M1 建立，std-only 零第三方依赖）
-├── src/crates/                17 个 crate（M1 七个真实实现 + M2/M3/M4 骨架）
-├── src/bins/                  coldrevived / coldrevive-cli / coldrevive-agent
+├── src/crates/                17 个 crate（M1 七个真实实现 + M2/M3/M4 骨架；cr-nat 已落地穿透栈，余 M2 crate 仍骨架）
+├── src/bins/                  coldrevived / coldrevive-cli / coldrevive-agent / coldrevive-nat（NAT 穿透诊断，M2 合法前置）
 ├── tests/                     测试（unit / integration / e2e / fixtures / spikes）
 │   ├── e2e/t0/                T0 双节点验收（21 条用例、CLI 契约、观测层、断言引擎、JSON 报告）
 │   ├── e2e/t1/                T1 双机 + 真实 NAT 验收（10 用例 / 40 断言、可达性探针、双机启动契约）

@@ -2,6 +2,41 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.40] - 2026-11-13 — cr-nat NAT 穿透栈落地（M2 合法前置）；G1 / M2 / S6 门禁不变
+
+> 范围声明：依用户指令（准备第二台物理主机并先实现 NAT 穿透）落地 `cr-nat` 穿透栈，**作为 M2 的合法前置**，
+> 与 G0 条件冻结同口径（豁免 G0 时点结论，但 **S6.status 保持 `not_run`**）。
+> **不改变任何 Spike 的 `status`**、**不宣称 G1 通过、不启动 M2 二进制 / 唤醒接入**。
+> 结论：`cr-nat` 补齐了 T1 design_gaps[0] 的「M1 无穿透手段」库层缺口；但 M1 CLI 复活路径尚未接入该库（属 M2）。
+
+### cr-nat 穿透栈实现（`src/crates/cr-nat/`，std-only 零第三方依赖）
+
+- `stun.rs` — RFC 5389 STUN Binding：XOR-MAPPED-ADDRESS 解析、TID 校验、同 socket 多服务器探测。
+- `natpmp.rs` — RFC 6886 NAT-PMP 外部地址 / 端口映射（显式端口优先、缺省 5351）。
+- `pcp.rs` — RFC 6887 PCP MAP（UDP/TCP），含 nonce 回显与 ext_ip 解析。
+- `upnp.rs` — UPnP IGD：SSDP 发现 + SOAP `get_external_ip` / `add_port_mapping`，相对 `controlURL` 解析。
+- `relay.rs` — 中继 / LowID 回退帧协议（register / send_relay / recv_frame）。
+- `classify.rs` — 由 STUN 映射集合分类 NAT 类型（FullCone / RestrictedCone / PortRestrictedCone / Symmetric / Cgnat / Unknown）+ cone 子型细分 + CGNAT 启发式。
+- `lib.rs` — `Traversal::run()` 编排 STUN→UPnP→NAT-PMP→PCP→CGNAT 并选策略；常量 `S6_REQUIRED_MATRIX` / `R04_MIN_REACHABILITY=0.70` 齐备。
+- **24 个单测全绿**（含 STUN / NAT-PMP / PCP / UPnP / 中继的本地 UDP mock 往返 + 分类 + 策略选择 + 矩阵口径）；
+  `cargo test --workspace --offline` 现 **55 / 0 失败**（基线 31 + 本轮 24）。
+
+### 新增诊断 bin：`coldrevive-nat`（`src/bins/coldrevive-nat/`）
+
+- 仅依赖 `cr-nat`，不触碰 T0 契约与 M1 复活流程；`--json` 稳定字段输出
+  `nat_type / public_udp_egress_ok / upnp|natpmp|pcp_available / mapped_address / cgnat_suspected / recommended_strategy / needs_relay / s6_status=not_run`。
+- 端到端校验：对本机运行真实 STUN（stun.l.google.com / stun.cloudflare.com）已往返成功，
+  `mapped_address=112.5.60.4:xxxxx`、`public_udp_egress_ok=true`；本环境 UPnP / NAT-PMP / PCP 均不可用，`recommended_strategy=udp-predictive`。
+  分类保守为 full-cone（未做 OTHER-ADDRESS 二次细分与多端口对称判定，属 S6 矩阵实测范围）。
+
+### 门禁结论
+
+`cr-nat` 仅补齐穿透**手段**；S6 判据「四类 NAT（含 CGNAT）实测可达率」仍须 **M2 在多个真实 NAT 环境实测**，
+`spikes.json` 中 `S6.status` 保持 `not_run`，不据此宣称 G2 / S6 达标。`spikes.json` 结论仍由实验执行人据 M2 实测证据手工回填。
+机读口径见 `spikes.json` 的 `S6.observations.cr_nat_implementation_2026_11_13`、`m1_progress.workspace`、`t1_progress.design_gaps`。
+
+同步：[README.md](README.md)（v2.4.40）· [S6 实验包](tests/spikes/s6/) · [spikes.json](tests/spikes/spikes.json) · `.gitignore`。
+
 ## [2.4.39] - 2026-11-13 — T1 双机 harness + M1 跨主机寻址 + S5 真实 uTP 栈量测；G1 / M2 门禁不变
 
 > 范围声明：本轮继续推进 [G0-REVIEW](docs/06-plan/G0-REVIEW.md) 条件冻结下的 M1 必测回填，

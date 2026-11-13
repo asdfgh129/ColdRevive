@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-nat"
+version.workspace = true
+edition.workspace = true
+description = "NAT 穿透诊断工具（M2 合法前置）：STUN/UPnP/NAT-PMP/PCP 探测并给出穿透策略。S6.status=not_run"
+
+[dependencies]
+cr-nat = { path = "../../crates/cr-nat" }

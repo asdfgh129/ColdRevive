@@ -2,6 +2,6 @@
 name = "cr-nat"
 version.workspace = true
 edition.workspace = true
-description = "M2 (W3.3): NAT 类型枚举与 S6 实测矩阵口径（骨架）"
+description = "NAT 穿透前置栈（std-only）：STUN 探测 + UPnP IGD / NAT-PMP / PCP 映射 + 中继回退。M2 合法前置，S6 实测仍 not_run。"
 
 [dependencies]
