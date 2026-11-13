@@ -1,0 +1,150 @@
+{
+  "suite": "T1",
+  "schema": "coldrevive.t1.cases/v1",
+  "version": 1,
+  "gate": "G1",
+  "_note": "断言的 expect 支持 @path 形式从 t1_config.json 解析，避免把阈值在两处各写一遍。每条观测都来自真实 CLI / HTTP / STUN / 文件，禁止合成。",
+  "cases": [
+    {
+      "id": "T1-01",
+      "title": "A/B 为不同物理主机且双侧 /health 可达",
+      "group": "environment",
+      "flow": "环境",
+      "source": "TEST.md §2 T1 / ROADMAP G1",
+      "mandatory": true,
+      "requires_two_hosts": true,
+      "assertions": [
+        {"label": "A /health 返回 200", "key": "a_health", "op": "eq", "expect": true},
+        {"label": "B /health 返回 200", "key": "b_health", "op": "eq", "expect": true},
+        {"label": "A/B 对外 IP 不同", "key": "distinct_host", "op": "eq", "expect": true},
+        {"label": "A/B 机器名不同", "key": "distinct_machine", "op": "eq", "expect": true},
+        {"label": "A/B 节点角色不同", "key": "distinct_node", "op": "eq", "expect": true}
+      ]
+    },
+    {
+      "id": "T1-02",
+      "title": "跨主机 KAD 命名空间发布与发现",
+      "group": "chain",
+      "flow": "F2",
+      "source": "PROTO §2 / ADR-001",
+      "mandatory": true,
+      "assertions": [
+        {"label": "B 的 find 命中 A", "key": "hit_node", "op": "eq", "expect": "A"},
+        {"label": "发现结果数 ≥ 1", "key": "result_count", "op": "gte", "expect": 1},
+        {"label": "命名空间为 ColdRevive_V1:", "key": "namespace_ok", "op": "eq", "expect": true},
+        {"label": "已发布 key 非空", "key": "published_keys_count", "op": "gte", "expect": 1}
+      ]
+    },
+    {
+      "id": "T1-03",
+      "title": "跨主机 UDP WAKEUP_REQ v1 Challenge-Response",
+      "group": "chain",
+      "flow": "F3",
+      "source": "PROTO §3.1 / §3.2",
+      "mandatory": true,
+      "assertions": [
+        {"label": "请求字段与 golden 契约一致", "key": "req_valid", "op": "eq", "expect": true},
+        {"label": "Challenge 校验通过", "key": "challenge_ok", "op": "eq", "expect": true},
+        {"label": "nonce 唯一", "key": "nonce_unique", "op": "eq", "expect": true},
+        {"label": "时间窗有效", "key": "time_window_ok", "op": "eq", "expect": true},
+        {"label": "ACK 状态 OK", "key": "wake_status", "op": "eq", "expect": "OK"},
+        {"label": "ACK 必填字段齐全", "key": "ack_fields_ok", "op": "eq", "expect": true}
+      ]
+    },
+    {
+      "id": "T1-04",
+      "title": "跨主机唤醒时延 P95 < 3000 ms",
+      "group": "metric",
+      "flow": "NFR-04",
+      "source": "SRS NFR-04 / TEST.md §2.1",
+      "mandatory": true,
+      "assertions": [
+        {"label": "P95 低于阈值", "key": "p95_ms", "op": "lt", "expect": "@thresholds.wake_p95_ms"},
+        {"label": "样本数达标", "key": "sample_count", "op": "eq", "expect": "@thresholds.wake_sample_count"},
+        {"label": "无超时样本", "key": "timeout_samples", "op": "eq", "expect": 0}
+      ]
+    },
+    {
+      "id": "T1-05",
+      "title": "受控环境复活成功率 100%",
+      "group": "metric",
+      "flow": "G1",
+      "source": "ROADMAP §3 G1 / TEST.md §3",
+      "mandatory": true,
+      "assertions": [
+        {"label": "成功率 ≥ 1.0", "key": "success_rate", "op": "gte", "expect": "@thresholds.revival_success_rate"},
+        {"label": "成功次数等于样本数", "key": "success", "op": "eq", "expect": "@thresholds.revival_sample_count"},
+        {"label": "样本数达标", "key": "total", "op": "eq", "expect": "@thresholds.revival_sample_count"}
+      ]
+    },
+    {
+      "id": "T1-06",
+      "title": "伴随种子跨主机取回与真实 InfoHash 校验",
+      "group": "chain",
+      "flow": "F3→F4",
+      "source": "PROTO §3.3 / T0 §5 接线清单第 5 条",
+      "mandatory": true,
+      "assertions": [
+        {"label": "种子经 HTTP 真实取回", "key": "torrent_fetch_ok", "op": "eq", "expect": true},
+        {"label": "种子可解析", "key": "torrent_parse_ok", "op": "eq", "expect": true},
+        {"label": "ACK InfoHash 与伴随种子一致", "key": "infohash_match", "op": "eq", "expect": true},
+        {"label": "InfoHash 为 40 位十六进制", "key": "infohash_len", "op": "eq", "expect": 40}
+      ]
+    },
+    {
+      "id": "T1-07",
+      "title": "第三方 BT 客户端跨主机标准数据面下载闭环",
+      "group": "chain",
+      "flow": "F4",
+      "source": "ROADMAP M1 / S1 cross_client_round",
+      "mandatory": true,
+      "assertions": [
+        {"label": "下载完成", "key": "download_ok", "op": "eq", "expect": true},
+        {"label": "落盘 SHA-256 与样本一致", "key": "sha256_match", "op": "eq", "expect": true},
+        {"label": "逐片 SHA-1 校验通过", "key": "piece_sha1_ok", "op": "eq", "expect": true},
+        {"label": "私有协议未进入数据面", "key": "private_protocol_in_data_plane", "op": "eq", "expect": false},
+        {"label": "下载器为真实第三方程序", "key": "downloader_third_party", "op": "eq", "expect": true}
+      ]
+    },
+    {
+      "id": "T1-08",
+      "title": "真实 NAT 特征取证（STUN / UPnP / NAT-PMP）",
+      "group": "environment",
+      "flow": "环境",
+      "source": "S6 pilot / RISK R-04",
+      "mandatory": true,
+      "assertions": [
+        {"label": "STUN 至少 1 台应答", "key": "stun_responded", "op": "gte", "expect": 1},
+        {"label": "取得公网映射地址", "key": "mapped_address", "op": "nonempty", "expect": null},
+        {"label": "公网 UDP 出站可用", "key": "public_udp_egress", "op": "eq", "expect": true},
+        {"label": "报告来自真实探针而非合成", "key": "nat_report_real", "op": "eq", "expect": true}
+      ]
+    },
+    {
+      "id": "T1-09",
+      "title": "PROTO v1 golden 唤醒报文契约跨主机回归",
+      "group": "contract",
+      "flow": "F3",
+      "source": "PROTO §3.2 / §3.3 / golden fixtures",
+      "mandatory": true,
+      "assertions": [
+        {"label": "WAKEUP_REQ golden 合规", "key": "golden_req_ok", "op": "eq", "expect": true},
+        {"label": "WAKEUP_ACK golden 合规", "key": "golden_ack_ok", "op": "eq", "expect": true},
+        {"label": "协议版本为 1", "key": "protocol_version", "op": "eq", "expect": 1}
+      ]
+    },
+    {
+      "id": "T1-10",
+      "title": "默认最小暴露与退出无残留",
+      "group": "safety",
+      "flow": "NFR",
+      "source": "CONFIG.md / cr-api RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK",
+      "mandatory": true,
+      "assertions": [
+        {"label": "默认共享目录为空", "key": "shared_dirs_empty", "op": "eq", "expect": true},
+        {"label": "非回环监听须配置 rpc_secret", "key": "rpc_secret_required", "op": "eq", "expect": true},
+        {"label": "无残留 PID 文件", "key": "residual_pids", "op": "eq", "expect": 0}
+      ]
+    }
+  ]
+}

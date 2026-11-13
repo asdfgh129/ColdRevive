@@ -2,7 +2,7 @@
 doc_id: DOC-11
 title: 配置规范（CONFIG）
 category: 协议
-version: 2.1
+version: 2.2
 status: 待评审
 owner: 内核组 / 运维组
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # 配置规范（CONFIG）
 
-> 编号 DOC-11 · 版本 2.1 · 状态 待评审 · 责任人 内核组 / 运维组 · 更新 2026-11-13
+> 编号 DOC-11 · 版本 2.2 · 状态 待评审 · 责任人 内核组 / 运维组 · 更新 2026-11-13
 > 可执行样例：[config/coldrevive.example.toml](../../config/coldrevive.example.toml)。所有默认值遵循「最小暴露」原则。
 > **v2.1**：`qos.background_upload_ratio` 默认由 `0.2` 回调为 `0.02`（S5 实测标定，见 §2 注记）。
 
@@ -79,9 +79,9 @@ cors_allowlist = []
 | scheduler | `idle_sleep_minutes` | 10 | 无活动自动休眠 |
 | scheduler | `wake_session_ttl_sec` | 7200 | 唤醒会话硬顶 |
 | scheduler | `memory_soft_limit_mb` / `memory_hard_limit_mb` | 100 / 200 | 越限触发降级链 |
-| qos | `background_upload_ratio` | **0.02** | 后台做种上行占比。S5 实测量测：0.2 → 前台劣化 20.12%、0.05 → 6.19%、0.02 → 4.03%（NFR-03 ≤5%）；默认值按实测回调，**不代表 S5 判 pass**，仍须 M1/G3 真实拥塞链路 + rqbit uTP 实测回填。见 [G0-REVIEW §5](../06-plan/G0-REVIEW.md) |
+| qos | `background_upload_ratio` | **0.02** | 后台做种上行占比。S5 本地模型量测：0.2 → 前台劣化 20.12%、0.05 → 6.19%、0.02 → 4.03%；**真实 librqbit-utp 0.7.0 栈量测**：0.2 → 14.82%、0.05 → 4.31%、0.02 → 2.70%（NFR-03 ≤5%）。默认值按实测回调，**不代表 S5 判 pass**，仍须 M1/G3 在 `tc/netem` / 跨主机真实拥塞链路实测回填。见 [G0-REVIEW §5](../06-plan/G0-REVIEW.md) |
 | qos | `max_connections_total` | 200 | 全局连接数上限 |
-| qos | `prefer_utp` | true | uTP/LEDBAT 后台退让 |
+| qos | `prefer_utp` | true | 优先用 uTP 传输。**2026-11-13 源码核实**：`librqbit-utp 0.7.0` 仅实现 CUBIC、无 LEDBAT（`// TODO: LEDBAT congestion control`），真实栈实测也未见退让；本项**不提供低优先级退让保证**，NFR-03 ≤5% 目前只由 `background_upload_ratio` 兜底，见 [S5 README §9](../../tests/spikes/s5/README.md) 与 [RISK R-07](../05-quality/RISK.md) |
 | security | `rpc_secret` | 空 | 为空时强制仅回环监听 |
 | security | `wake_rate_per_ip` / `max_wake_concurrency` | 5 / 8 | 唤醒限流 |
 | security | `cors_allowlist` | 空 | 显式白名单，不做通配放行 |
@@ -109,7 +109,7 @@ cors_allowlist = []
 | :--- | :--- |
 | 机械硬盘 | `torrent_gen_concurrency = 1`，避免造种抢占 I/O |
 | SSD / 高性能主机 | 可提到 4 |
-| 上行带宽小 | `background_upload_ratio = 0.02`，保持 `prefer_utp = true`；不得回调到 0.1 / 0.2（S5 实测劣化 6.19% / 20.12%） |
+| 上行带宽小 | `background_upload_ratio = 0.02`，保持 `prefer_utp = true`（但不要把它当作退让手段，见上表）；不得回调到 0.05 / 0.1 / 0.2（本地模型 6.19% / 20.12%、真实 uTP 栈 14.82%） |
 | > 1 万文件共享 | 调大 `max_active_seeds` 前先做 [TEST 内存压测](../05-quality/TEST.md) |
 | 私有小团体 | `bootstrap_mode = "private"`，见 [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) |
 | NAS / Docker | `bind = "0.0.0.0"` + 强 `rpc_secret` + 反向代理 TLS，见 [OPS §1](../07-operations/OPS.md) |

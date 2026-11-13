@@ -71,6 +71,15 @@ fn main() {
     };
     cfg.node_id = node_id.clone();
     if let Some(b) = opt("--bind") { cfg.bind = b; }
+    // T1 双机：本进程所在主机的对外地址覆盖 nodes.<self>.host；
+    // 两端可共用同一份配置，仅 --bind / --self-host 不同。
+    if let Some(h) = opt("--self-host") {
+        if let Some(n) = cfg.nodes.get_mut(&node_id) { n.host = h; }
+    }
+    // T1 两端工作目录 / 样本 / 下载器路径可各自不同，按启动参数覆盖共享配置。
+    if let Some(w) = opt("--workdir") { cfg.workdir = PathBuf::from(w); }
+    if let Some(s) = opt("--sample") { cfg.sample_path = PathBuf::from(s); }
+    if let Some(d) = opt("--downloader") { cfg.downloader = PathBuf::from(d); }
     let me = match cfg.me() {
         Ok(m) => m.clone(),
         Err(e) => { eprintln!("{}", e); std::process::exit(2); }
@@ -123,7 +132,7 @@ fn main() {
 
 fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
     let facts = inspect_file(&cfg.sample_path)?;
-    let announce = format!("http://{}:{}/announce", cfg.bind,
+    let announce = format!("http://{}:{}/announce", cfg.host(&cfg.node_id),
                            cfg.node_http(&cfg.node_id).unwrap_or(0));
     let torrent = cr_torrent::generate(&facts.data, &facts.name, PIECE_SIZE, &announce);
     let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
@@ -175,9 +184,17 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
     };
     let (method, path, body) = req;
     let response: (String, Vec<u8>, &'static str) = if path.starts_with("/health") {
+        // T1 双机取证：host / machine_id / pid 均取自运行环境，不接受配置伪造。
+        let machine = env::var("COMPUTERNAME").or_else(|_| env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
         ("200 OK".into(),
-         Json::obj(vec![("status", Json::s("ok")), ("node", Json::s(&cfg.node_id))])
-             .dump().into_bytes(), "application/json")
+         Json::obj(vec![
+             ("status", Json::s("ok")),
+             ("node", Json::s(&cfg.node_id)),
+             ("host", Json::s(cfg.me_host())),
+             ("machine_id", Json::s(&machine)),
+             ("pid", Json::n(std::process::id() as f64)),
+         ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
             Ok(j) => commands::dispatch(&state, &j),
@@ -201,7 +218,7 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
     } else if path.starts_with("/announce") {
         let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
         let port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
-        ("200 OK".into(), bt::tracker_response(query, &cfg.bind, port), "application/x-bittorrent")
+        ("200 OK".into(), bt::tracker_response(query, cfg.host("A"), port), "application/x-bittorrent")
     } else {
         ("404 Not Found".into(), b"not found".to_vec(), "text/plain")
     };
@@ -399,7 +416,8 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>, frame: &Json) -
         st.bt_seeding = true;
         let _ = st.index.save();
         let me = cfg.me().ok()?;
-        let url = format!("http://{}:{}/torrent/{}", cfg.bind, me.http_port, entry.infohash);
+        let url = format!("http://{}:{}/torrent/{}", cfg.host(&cfg.node_id),
+                          me.http_port, entry.infohash);
         return Some(build_ack(&trace, &entry.infohash, &url, entry.size,
                               entry.piece_size, me.bt_port));
     }

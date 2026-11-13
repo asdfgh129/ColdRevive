@@ -1,10 +1,12 @@
-name: T0 skeleton
+name: T0 / T1 acceptance
 
 on:
   push:
-    paths: ['tests/e2e/t0/**', 'tests/fixtures/t0/**', 'tests/spikes/**', '.github/workflows/t0.yml']
+    paths: ['tests/e2e/t0/**', 'tests/e2e/t1/**', 'tests/fixtures/t0/**', 'tests/spikes/**',
+            'src/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/t0.yml']
   pull_request:
-    paths: ['tests/e2e/t0/**', 'tests/fixtures/t0/**', 'tests/spikes/**', '.github/workflows/t0.yml']
+    paths: ['tests/e2e/t0/**', 'tests/e2e/t1/**', 'tests/fixtures/t0/**', 'tests/spikes/**',
+            'src/**', 'Cargo.toml', 'Cargo.lock', '.github/workflows/t0.yml']
   workflow_dispatch:
 
 jobs:
@@ -19,8 +21,8 @@ jobs:
       - name: Compile and test Cargo workspace (M1 std-only crates)
         run: cargo test --workspace --offline
 
-      - name: Compile T0 and M0 scripts
-        run: python3 -m py_compile tests/e2e/t0/*.py tests/spikes/*.py
+      - name: Compile T0, T1 and M0 scripts
+        run: python3 -m py_compile tests/e2e/t0/*.py tests/e2e/t1/*.py tests/spikes/*.py
 
       - name: Harness self-check
         run: python3 tests/e2e/t0/t0_harness.py --self-check
@@ -90,8 +92,41 @@ jobs:
           grep -q 'BLOCKED' /tmp/t0-real.log
           echo "OK: no binaries on CI -> real mode blocked with exit code 2"
 
-      - name: Upload T0 reports
+      - name: T1 self-test must never claim G1 evidence
+        run: |
+          python3 tests/e2e/t1/t1_accept.py --list
+          python3 tests/e2e/t1/t1_accept.py --self-test
+          python3 - <<'PY'
+          import glob, json
+          path = sorted(glob.glob('tests/e2e/t1/reports/*-self-test.json'))[-1]
+          r = json.load(open(path, encoding='utf-8'))
+          assert r['evidence_valid'] is False, 'T1 stub 不得标记为门禁证据'
+          assert r['summary']['failed'] == 0
+          assert r['summary']['passed'] == r['summary']['total']
+          print('OK:', r['summary']['passed'], 'PASS, evidence_valid=false')
+          PY
+
+      - name: T1 real mode stays BLOCKED without two physical hosts
+        run: |
+          set +e
+          python3 tests/e2e/t1/t1_accept.py --mode real > /tmp/t1-real.log 2>&1
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          grep -q 'BLOCKED' /tmp/t1-real.log
+          python3 - <<'PY'
+          import glob, json
+          path = sorted(glob.glob('tests/e2e/t1/reports/*-real-*.json'))[-1]
+          r = json.load(open(path, encoding='utf-8'))
+          assert r['evidence_valid'] is False, '单机 CI 不得产出 T1 门禁证据'
+          assert r['environment']['two_distinct_hosts'] is False
+          print('OK: T1 real BLOCKED, evidence_valid=false')
+          PY
+
+      - name: Upload T0 / T1 reports
         uses: actions/upload-artifact@v4
         with:
-          name: coldrevive-t0-reports
-          path: tests/e2e/t0/reports/
+          name: coldrevive-acceptance-reports
+          path: |
+            tests/e2e/t0/reports/
+            tests/e2e/t1/reports/

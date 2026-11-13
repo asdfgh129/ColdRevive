@@ -27,7 +27,7 @@ fn args_of<'a>(req: &'a Json) -> Vec<String> {
 fn arg(args: &[String], i: usize) -> String { args.get(i).cloned().unwrap_or_default() }
 
 fn peer_wake(cfg: &Config) -> Result<SocketAddr, String> {
-    socket_addr(&cfg.bind, cfg.peer()?.wake_udp_port)
+    socket_addr(cfg.peer_host(), cfg.peer()?.wake_udp_port)
 }
 fn holder_http_cli(cfg: &Config) -> String { cfg.url("A", "/cli") }
 
@@ -407,7 +407,8 @@ fn scenario_hash_mismatch(state: &Shared, cfg: &Config, file_hash: &str) -> Json
 fn scenario_holder_offline(cfg: &Config, file_hash: &str) -> Json {
     // 主候选为明确关闭的 UDP 端口（模拟持有者离线），超时后切到真实候选 A
     let dead_port = cfg.peer().map(|p| p.wake_udp_port + 1000).unwrap_or(17901);
-    let dead = socket_addr(&cfg.bind, dead_port).unwrap();
+    let dead = socket_addr(cfg.peer_host(), dead_port)
+        .unwrap_or_else(|_| socket_addr(&cfg.bind, dead_port).unwrap());
     let req = build_req(NODE_SECRET, file_hash, "infohash");
     let started = Instant::now();
     let primary = udp_roundtrip(&cfg.bind, dead, &req, 1200);
@@ -484,7 +485,7 @@ fn download(state: &Shared, cfg: &Config, magnet: &str) -> Json {
     let torrent_file = dir.join(format!("{}.torrent", torrent.info_hash));
     if fs::write(&torrent_file, &raw).is_err() { return download_error("种子落盘失败"); }
 
-    let tracker = format!("http://{}:{}/announce", cfg.bind,
+    let tracker = format!("http://{}:{}/announce", cfg.host("A"),
                           cfg.node_http("A").unwrap_or(0));
     let listen_port = cfg.me().map(|m| m.bt_port + 1000).unwrap_or(17900);
     let mut cmd = Command::new(&cfg.downloader);

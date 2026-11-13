@@ -4,7 +4,7 @@
 > **stub 自检的全部 PASS 只证明框架本身正确，不构成任何门禁证据。** 报告中的 `evidence_valid: false` 是刻意设计，禁止手工改成 `true`。
 > 接线进度：CLI v1 契约与 20 条真实观测映射已落地（`t0_cli.py` / `t0_cli_selftest.py`），`CliAdapter.wired = True`（代码层）；`t0_accept.py` 会在 real 模式下启动 A/B 两个 `coldrevived` 实例并等待健康检查。
 > **环境级防呆**：缺任一二进制环境变量时 `--mode real` 仍 `BLOCKED` / 退出码 2（CI 依赖此行为）。
-> **边界**：T0 只覆盖 `127.0.0.1` 单机回环；G1 还需要 T1 局域网双机 + 真实 NAT 与 S3/S5/S6 必测回填，见 [G0-REVIEW §9](../../../docs/06-plan/G0-REVIEW.md)。
+> **边界**：T0 只覆盖 `127.0.0.1` 单机回环；G1 还需要 [T1 双机 + 真实 NAT 验收](../t1/README.md)（harness 已落地、`--mode real` 因无第二台物理主机 `BLOCKED`）与 S3/S5/S6 必测回填，见 [G0-REVIEW §9–§10](../../../docs/06-plan/G0-REVIEW.md)。
 
 ## 1. 定位
 
@@ -107,7 +107,7 @@ aria2 1.36.0 标准 BT 完成下载并逐片 SHA-1 校验。该结果仍只是 T
 | 6 | 接入第三方下载器 | ✅ | 本机 Motrix Next 捆绑 `motrixnext-aria2c.exe`（aria2 1.36.0），由 `T0_DOWNLOADER` 指定；G3 矩阵仍未锁定版本 |
 | 7 | 指标来自真实 `trace_id` 埋点，不接受 stub 数组 | ✅ | `metrics wake-latency/revival` 由 B 节点发起真实 UDP 唤醒往返采样（30 次），不读合成数组 |
 | 8 | 编译 M1 二进制并置 `wired = True`，同步改 CI | ✅ | 3 个二进制由 `cargo build --workspace --offline` 产出；CI 新增 workspace 单测并保留「无二进制时 real 必 BLOCKED」防呆 |
-| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ⛔ | T0 已 21/21 PASS；**T1 未执行**，两者共同构成 G1 证据。T1 与 S3/S5/S6 必测回填完成前 M2 保持阻塞 |
+| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ⛔ | T0 已 21/21 PASS；[T1 harness](../t1/README.md) 已落地、单机预检通过，但 `--mode real` 因无第二台物理主机 `BLOCKED`，且 M1 尚缺 NAT 穿透栈。两者共同构成 G1 证据，T1 与 S3/S5/S6 必测回填完成前 M2 保持阻塞 |
 | 10 | S3 / S5 / S6 必测回填 | ⛔ | 见 [G0-REVIEW §9](../../../docs/06-plan/G0-REVIEW.md)；三者 `status` 仍 `not_run`，不虚判 |
 
 随时可用 `python3 tests/spikes/m0_preflight.py` 复查上面哪些条件已齐备。该脚本**只查条件、不做实验、不产出 Spike 结论**。

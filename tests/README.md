@@ -1,6 +1,6 @@
 # 测试目录（tests/）
 
-> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。M1 已建立 Cargo Workspace：27 个 Rust 单测随各 crate 内联；T0 真实链路已跑通。
+> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。M1 已建立 Cargo Workspace：31 个 Rust 单测随各 crate 内联；T0 真实链路已跑通；T1 双机 harness 已落地但真实验收 `BLOCKED`。
 
 ## 目录划分
 
@@ -10,6 +10,7 @@
 | `integration/` | 索引 → 造种 → 入库 → KAD 发布 → 唤醒 → 下载闭环 | 集成测试 |
 | `e2e/` | 双节点 / 多节点真实网络场景、旧客户端兼容性矩阵 | 端到端与兼容性 |
 | `e2e/t0/` | **T0 单机回环双节点验收**：用例清单、环境编排、观测适配器、CLI 契约、断言引擎、JSON 报告 | 端到端（G1 门禁证据） |
+| `e2e/t1/` | **T1 双机 + 真实 NAT 验收**：10 用例 / 40 断言、跨主机启动契约、`t1_netprobe.py` 可达性探针；`--mode real` 需两台物理主机，当前 `BLOCKED` | 端到端（G1 门禁证据，未取得） |
 | `spikes/` | **M0 Spike 实验包**：S1–S8 判据与状态、`m0_preflight.py` 就绪度检查、结论回填规则 | 选型验证（G0 门禁） |
 | `fixtures/` | 固定种子文件、样本文件、golden 协议报文、`T0～T3` 环境配置 | 测试数据 |
 | `fixtures/t0/` | **T0 确定性样本、PROTO v1 唤醒报文 golden** | 测试数据 |
@@ -43,7 +44,21 @@ python3 tests/e2e/t0/t0_accept.py --mode real
 `T0_DOWNLOADER` 指向真实文件；缺任一项仍把用例标记为 `BLOCKED` 并以退出码 2 结束（CI 依赖此防呆）。
 stub 自检报告的 `evidence_valid` 恒为 `false`，不得当作 G1 证据。
 **边界**：T0 只覆盖单机回环；G1 还需 T1 局域网双机 + 真实 NAT 与 S3 / S5 / S6 必测回填，
-M2 仍 `blocked_by_G1`，见 [G0-REVIEW §9](../docs/06-plan/G0-REVIEW.md) 与 `spikes.json` 的 `m1_progress`。
+M2 仍 `blocked_by_G1`，见 [G0-REVIEW §9–§10](../docs/06-plan/G0-REVIEW.md) 与 `spikes.json` 的 `m1_progress` / `t1_progress`。
+
+## T1 双机验收（真实验收 BLOCKED）
+
+```bash
+python3 tests/e2e/t1/t1_accept.py --list
+python3 tests/e2e/t1/t1_accept.py --self-test                                  # 11/11 PASS，evidence_valid=false
+python3 tests/e2e/t1/t1_netprobe.py                                             # 本机跨 IP UDP 可达性真实探测
+python3 tests/e2e/t1/t1_accept.py --lan-precheck --address-mode aliases         # 需三个二进制环境变量
+python3 tests/e2e/t1/t1_accept.py --lan-precheck --address-mode nic
+python3 tests/e2e/t1/t1_accept.py --mode real                                  # 需两台物理主机，当前 BLOCKED / 退出码 2
+```
+
+单机预检各 **10 PASS / 1 SKIP**、`evidence_valid=false`；`--mode real` 的 `evidence_valid=true`
+必须由双机 `machine_id` / `host` 互异 + 真实 NAT 报告 + 全用例 PASS 共同决定。详见 [T1 README](e2e/t1/README.md)。
 
 ## M0 Spike 实验包
 
@@ -63,4 +78,5 @@ python3 tests/spikes/m0_preflight.py --json    # 机器可读输出
 - `fixtures/` 中**禁止**存放任何真实受版权保护内容；一律使用自制小文件与合成数据。样本由固定种子生成，`sample/` 不入库。
 - 兼容性矩阵客户端（qBittorrent / Transmission / BitComet / eMule / AriaNg）版本需在 `fixtures/compat-matrix.toml` 中锁定。
 - 性能与 Soak 用例需输出 RSS / CPU / 上行采样，作为 G2、G4 门禁证据。
-- 运行产物（`e2e/t0/.run/`、`e2e/t0/reports/`、`spikes/reports/`、`fixtures/t0/sample/`）已由 `.gitignore` 排除。
+- 运行产物（`e2e/t0/.run/`、`e2e/t0/reports/`、`e2e/t1/.run/`、`e2e/t1/reports/`、
+  `spikes/reports/`、`spikes/s5/utp/reports/`、`fixtures/t0/sample/`）已由 `.gitignore` 排除。

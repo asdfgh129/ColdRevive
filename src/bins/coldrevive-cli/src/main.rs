@@ -40,13 +40,14 @@ fn run() -> Result<Json, String> {
         ("args", Json::arr(args)),
     ]).dump();
 
-    let mut stream = TcpStream::connect(format!("{}:{}", cfg.bind, port))
-        .map_err(|e| format!("连接 {}:{} 失败: {}", cfg.bind, port, e))?;
+    let host = cfg.host(&node);
+    let mut stream = TcpStream::connect(format!("{}:{}", host, port))
+        .map_err(|e| format!("连接 {}:{} 失败: {}", host, port, e))?;
     stream.set_read_timeout(Some(std::time::Duration::from_secs(130)))
         .map_err(|e| e.to_string())?;
     let req = format!(
         "POST /cli HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-        cfg.bind, body.as_bytes().len(), body
+        host, body.as_bytes().len(), body
     );
     stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
     let mut raw = Vec::new();

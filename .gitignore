@@ -37,6 +37,11 @@ tests/e2e/t0/reports/*
 tests/fixtures/t0/sample/*
 !tests/fixtures/t0/sample/.gitkeep
 
+# T1 双机验收运行产物（同样只在本机留证据，不入库）
+tests/e2e/t1/.run/
+tests/e2e/t1/reports/*
+!tests/e2e/t1/reports/.gitkeep
+
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*
 !tests/spikes/reports/.gitkeep

@@ -2,15 +2,15 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.3
+version: 2.4
 status: 待评审
 owner: 测试组
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.3 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-11
+> 编号 DOC-12 · 版本 2.4 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-13
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 ## 1. 测试分层
@@ -38,20 +38,42 @@ updated: 2026-11-11
 
 ### 2.1 T0 验收脚本骨架
 
-[T0 双节点验收骨架](../../tests/e2e/t0/README.md) 已落位于 `tests/e2e/t0/`，是 G1 门禁的机器可读证据来源。当前为**骨架 / 未接线**状态：
+[T0 双节点验收骨架](../../tests/e2e/t0/README.md) 已落位于 `tests/e2e/t0/`，是 G1 门禁的机器可读证据来源。**2026-11-13 起已接线并跑通真实链路**：
 
 | 项 | 内容 |
 | :--- | :--- |
 | 用例 | `T0-00`～`T0-20`，覆盖 F1→F2→F3→F4 主链路、§5 故障注入、PROTO v1 golden 契约与最小暴露检查；判据出处逐条登记在 `t0_cases.json` |
 | 阈值 | 只在 `t0_config.json` 定义一次：P95 < 3000 ms（NFR-04）、复活成功率 1.0（G1）、唤醒超时 1.5 s（PROTO §3.1） |
 | 环境 | A / B 两实例回环不同端口；样本由固定种子生成，无版权内容 |
-| 防呆 | `--self-test` 用合成观测验证脚本本身，报告的 `evidence_valid` 恒为 `false`；`--mode real` 在 M1 二进制接线前一律 `BLOCKED` 并以退出码 2 结束，杜绝「没跑却显示绿」 |
+| 防呆 | `--self-test` 用合成观测验证脚本本身，报告的 `evidence_valid` 恒为 `false`；`CliAdapter.wired=True` 为代码层接线，但 real 运行前动态校验三个二进制环境变量，缺任一项一律 `BLOCKED` / 退出码 2，杜绝「没跑却显示绿」 |
 | 观测层 | CLI v1 契约（`t0_config.json` 的 `launch`）与 20 条真实取数映射（`t0_cli.OBSERVE_PLAN`）已落地；伴随种子 InfoHash 按 BT 规范从 info 字典原始字节独立计算。`t0_cli_selftest.py` 验证「字段缺失不合成、缺二进制抛异常」 |
-| 证据 | JSON 报告落在 `tests/e2e/t0/reports/`，按 §7 附入 G1 交付物；接线清单见骨架 README §5 |
+| 证据 | JSON 报告落在 `tests/e2e/t0/reports/`，按 §7 附入 G1 交付物；**2026-11-13 `--mode real` 实跑 21/21 PASS、`evidence_valid=true`**（数据面由第三方 aria2 真实完成 BT 下载）。接线清单见骨架 README §5 |
 
-> T0 只在 `127.0.0.1` 运行，除 S2 专项外不接触公共 KAD。T1（局域网双机）通过后才与 T0 共同构成 G1 证据，见 [ROADMAP §3](../06-plan/ROADMAP.md)。
+> T0 只在 `127.0.0.1` 运行，除 S2 专项外不接触公共 KAD。**T0 的 PASS 只覆盖单机回环**，T1（局域网双机）通过后才与 T0 共同构成 G1 证据，见 [ROADMAP §3](../06-plan/ROADMAP.md)。
 
-**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
+### 2.2 T1 双机验收（2026-11-13 新增 harness，真实验收仍 BLOCKED）
+
+[T1 双机 + 真实 NAT 验收](../../tests/e2e/t1/README.md) 落位于 `tests/e2e/t1/`：10 条用例 / 40 条断言，
+覆盖双机身份、跨主机 KAD 发现、UDP 唤醒、P95 / 复活成功率、伴随种子与真实 InfoHash、
+第三方 BT 数据面、真实 NAT 特征、PROTO v1 golden 与最小暴露。
+
+| 运行 | 结果 | 证据有效性 |
+| :--- | :--- | :--- |
+| `--self-test` | 11/11 PASS（含注入坏观测判 FAIL 的断言引擎自检） | `false`（合成观测） |
+| `--lan-precheck --address-mode aliases` | 10 PASS / 1 SKIP（T1-01 双机身份） | `false`（同一物理主机） |
+| `--lan-precheck --address-mode nic` | 10 PASS / 1 SKIP（T1-01 双机身份） | `false`（同一物理主机） |
+| `--mode real` | 10 BLOCKED / 退出码 2 | `false`（无第二台物理主机） |
+
+预检真实量测：唤醒 P95 **2.0 ms**（30 样本、0 超时）、复活 **30/30**、aria2 跨地址完成 BT 下载。
+`evidence_valid=true` 仅当 `--mode real` + 全用例 PASS 无 BLOCKED/SKIP + `/health` 实测 A/B 的
+`machine_id` 与 `host` 均不同 + 真实 NAT 报告 + 观测来源 `real`。
+
+**环境阻塞（实测，非推断）**：`t1_netprobe.py` 的 25 组真实 UDP 探测显示本机同 IP `5/5` 可达、
+跨 IP 仅 `6/20`（全部只在回环别名之间）；物理网卡与 Hyper-V 交换机双向 `WSAENETUNREACH (10051)`。
+WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**：M1 CLI MVP 无 UPnP / NAT-PMP / 打洞 / 中继，
+跨 NAT 双机须先补穿透栈（详见 [T1 README §5](../../tests/e2e/t1/README.md)）。
+
+**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 
 **ADR-011 L1 / L2 探针证据（2026-11-11，不构成 T0/T1 或 Spike 结论）**：[S2 实验包](../../tests/spikes/README.md)
 在 `127.0.0.1` 与 RFC1918 上另产出两组回归 —— `kad-mini`（`cargo test` 21/21、`selftest` 48/48、

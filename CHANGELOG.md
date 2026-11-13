@@ -2,6 +2,67 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.39] - 2026-11-13 — T1 双机 harness + M1 跨主机寻址 + S5 真实 uTP 栈量测；G1 / M2 门禁不变
+
+> 范围声明：本轮继续推进 [G0-REVIEW](docs/06-plan/G0-REVIEW.md) 条件冻结下的 M1 必测回填，
+> **不改变任何 Spike 的 `status`**（S3/S5/S6 仍 `not_run`），**不宣称 G1 通过、不启动 M2**。
+> 结论：**T1 真实验收在本环境物理阻塞**（只有一台主机，WSL/虚拟机被安全策略禁止，未做绕过），
+> 因此仅交付可复现 harness 与单机预检；`--mode real` 明确 `BLOCKED`。
+
+### M1 跨主机支持（为 T1 铺路，T0 口径不变）
+
+- `cr-core` 的 `NodeSpec` 新增可选 `host`（缺省回落 `bind`），新增 `Config::host / me_host / peer_host / url`；
+  所有**对端** URL / UDP 地址 / tracker / torrent URL 按节点 host 构造，本地监听仍用 `--bind`。
+- `coldrevived` 新增 `--self-host` / `--workdir` / `--sample` / `--downloader`，两端可共用一份配置；
+  `coldrevive-cli` 按节点 host 连接；`/health` 输出真实 `host` / `machine_id` / `pid` 供双机取证。
+- 新增单测 `per_node_host_defaults_to_bind_and_can_override`；`cargo test --workspace --offline` 全绿
+  （31 个单测；此前 v2.4.38 记为 27 系统计口径遗漏，见下方更正）；**T0 `--mode real` 回归 21/21 PASS、`evidence_valid=true` 不变**。
+
+### T1 双机真实验收 harness（`tests/e2e/t1/`）
+
+- `t1_config.json`（双机启动契约）、`t1_cases.json`（10 用例 / 40 断言）、`t1_accept.py`（编排、
+  断言、报告）、`t1_netprobe.py`（真实 UDP 可达性探针）、[README](tests/e2e/t1/README.md)。
+- 证据闸门：`evidence_valid=true` 仅当 `--mode real` + 全用例 PASS 无 BLOCKED/SKIP + `/health` 实测
+  A/B 的 `machine_id` 与 `host` 均不同 + 真实 NAT 报告 + 观测来源 `real`。`--self-test` /
+  `--lan-precheck` 恒为 `false`，且 `--mode real` 不假装能远程拉起 B 进程。
+- 实跑：`--self-test` 11/11 PASS；`--lan-precheck`（`aliases` 与 `nic` 两种地址模式）各
+  **10 PASS / 1 SKIP**（T1-01 双机身份），唤醒 P95 **2.0 ms**（30 样本、0 超时）、复活 **30/30**、
+  第三方 aria2 跨地址完成标准 BT 下载；`--mode real` 缺远端前置条件时 **10 BLOCKED / 退出码 2**。
+- `t1_netprobe.py` 真实量测：同 IP `5/5` 可达，跨 IP 仅 `6/20`（全部是回环别名之间）；
+  物理网卡 `192.168.1.210` 与 Hyper-V `172.26.96.1` 双向 `WSAENETUNREACH (10051)`。
+  首次两网卡预检的 UDP 唤醒确实报 `10051` 并如实 FAIL/BLOCKED，已保留现场报告。
+- **设计缺口登记**：M1 CLI MVP 无 UPnP / NAT-PMP / PCP / STUN 打洞 / 中继，跨 NAT 双机的唤醒与
+  私网 tracker peer 地址将不可达；S6 先导样本显示本机 UPnP 与 NAT-PMP 均不可用。G1 前须补穿透栈
+  或明确 T1 为「同一 NAT 内两机」。
+
+### S5 真实 librqbit-utp 协议栈量测（`tests/spikes/s5/utp/`）
+
+- 用缓存中的 **librqbit-utp 0.7.0 真实 BEP 29 栈**（独立 Cargo 工程，`cargo build --offline --release`
+  可复现）跑共享真实时钟瓶颈：前台 TCP 与后台 uTP 争用 16 Mbit/s 链路，排队由真实 `sleep` 产生。
+- **源码核实否证了原假设**：该版本 `src/lib.rs` 写着 `// TODO: LEDBAT congestion control`，
+  `CongestionControllerKind` 只有 `Cubic`，`src/congestion/` 只有 `cubic.rs`。
+  即 `prefer_utp=true` 只切换传输层，**不提供 LEDBAT 低优先级退让**；S5 README §2 已更正、
+  R-07 风险口径上调。
+- 3 s × 3 轮中位前台劣化：`ratio=0.20 → 14.82%`（❌）、`0.05 → 4.31%`（✅）、
+  `0.02 → 2.70%`（✅）；三档劣化与后台实际链路占比近似 1:1，**未观察到退让回收**。
+  支持 M1 已回调的默认 `0.02`，但这是令牌桶降级生效，**不是 uTP 达标**。
+- 报告固定 `evidence_valid_for_pass=false`（瓶颈仍是本机用户态整形，非 `tc/netem` / 跨主机链路），
+  `S5.status` 保持 `not_run`。
+
+> **计数更正**：v2.4.38 记为「27 个单测」是统计口径遗漏（只数了部分 crate）。按 `cargo test --workspace --offline` 汇总，全部 crate / bin 的 `#[test]` 基线实为 **30**；本轮新增 `per_node_host_defaults_to_bind_and_can_override` 后为 **31 / 0 失败**。历史条目按 ROADMAP §6 惯例保留当时口径，现行状态一律以 31 为准。
+
+### 门禁结论
+
+`T0 21/21 PASS` + `T1 单机预检 10 PASS` **都不等于 G1**：T1 `--mode real` 未执行、S3 真实双栈 +
+G3 矩阵、S5 真实拥塞链路、S6 多 NAT 实测均未完成。**M2 保持 `blocked_by_G1`**，本轮未新增任何
+M2 实现。机读口径见 `spikes.json` 的 `t1_progress`、`m1_progress.g1_remaining` 与
+`S5.observations.utp_real_2026_11_13`。
+
+同步：[ROADMAP](docs/06-plan/ROADMAP.md) 2.10 · [G0-REVIEW](docs/06-plan/G0-REVIEW.md) 1.2 ·
+[TEST](docs/05-quality/TEST.md) 2.4 · [RISK](docs/05-quality/RISK.md) 2.3 ·
+[TECH-STACK](docs/02-architecture/TECH-STACK.md) 2.6 · [CONFIG](docs/04-protocol/CONFIG.md) 2.2 ·
+[T1 README](tests/e2e/t1/README.md) · [S5 README](tests/spikes/s5/README.md) · `.gitignore`。
+
 ## [2.4.38] - 2026-11-13 — M1 开工：Cargo Workspace + 真实 CLI MVP + T0 real 21/21 PASS；M2 仍受 G1 阻塞
 
 > 范围声明：依 [G0-REVIEW](docs/06-plan/G0-REVIEW.md) 的条件冻结**开工 M1**（工程接线与 MVP 实现），

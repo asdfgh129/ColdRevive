@@ -2,7 +2,7 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.7
+version: 2.8
 status: 有效
 owner: 架构组
 updated: 2026-11-13
@@ -144,6 +144,8 @@ python3 scripts/build_docs.py --check    # 校验 front matter 与相对链接�
 
 依赖：Python 3.9+、`markdown>=3.4`。构建产物 `docs/**/*.html` 由 `.gitignore` 排除，唯一例外是 `docs/index.html`。
 
-`docs/index.html` 是**自包含单文件门户**：构建器把全部文档的渲染正文与 Markdown 源码（含 `docs/` 外被引用的 `README.md`、`CHANGELOG.md`、`src/tests/scripts/README.md`、`tests/e2e/t0/README.md`、`tests/spikes/README.md`、`config/coldrevive.example.toml`，共 8 项）写入页内的 `DOCS_PAYLOAD` 数据块，点击「阅读 / MD」在页内阅读器中就地渲染，不跳转到同目录文件。原因是预览面板 / `srcdoc` 沙箱通常只承载 `index.html` 一个文件，指向同级 `.html` 的相对链接会解析失败并提示 *no data available*。
+`docs/index.html` 是**自包含单文件门户**：构建器把全部文档的渲染正文与 Markdown 源码（含 `docs/` 外被引用的 `README.md`、`CHANGELOG.md`、`src/tests/scripts/README.md`、`tests/e2e/t0/README.md`、
+`tests/e2e/t1/README.md`、`tests/spikes/README.md`、`tests/spikes/s5/README.md`、
+`config/coldrevive.example.toml`，共 10 项）写入页内的 `DOCS_PAYLOAD` 数据块，点击「阅读 / MD」在页内阅读器中就地渲染，不跳转到同目录文件。原因是预览面板 / `srcdoc` 沙箱通常只承载 `index.html` 一个文件，指向同级 `.html` 的相对链接会解析失败并提示 *no data available*。
 
 因此：**修改任一 `.md` 后必须重跑构建**，否则索引页内嵌内容不会更新；手工编辑 `index.html` 时不要改动 `DOCS_PAYLOAD_START` / `DOCS_PAYLOAD_END` 两个 HTML 注释标记之间的内容。`--check` 会校验这两个标记是否存在。

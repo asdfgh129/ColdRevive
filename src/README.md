@@ -2,12 +2,18 @@
 
 > **当前状态**：[G0 条件冻结](../docs/06-plan/G0-REVIEW.md) 于 2026-11-13 生效后，**M1 已按门禁开工**：
 > 根 `Cargo.toml` / `Cargo.lock` 与 17 个 crate + 3 个 bin 已建立，`cargo test --workspace --offline`
-> 27 单测全绿；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
+> **31 个 Rust 单测全绿**（本轮新增 1 个跨主机地址单测；此前记为 27 系统计口径遗漏，复核后基线为 30）；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
 > （`evidence_valid=true`，报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`）。
+> **2026-11-13 补记（T1 前置）**：`cr-core` 的 `NodeSpec` 增加可选 `host`（缺省回落 `bind`），
+> 新增 `Config::host / me_host / peer_host / url`；`coldrevived` 增加 `--self-host` / `--workdir` /
+> `--sample` / `--downloader`，`/health` 输出真实 `host` / `machine_id` / `pid`，`coldrevive-cli`
+> 按节点 host 连接。**T0 单机回环口径完全不变，回归 21/21 PASS**；新增单测
+> `per_node_host_defaults_to_bind_and_can_override`。
 > 全部 crate 采用 **std-only 零第三方依赖**，保证离线可复现；引入 rqbit / tokio / axum / rusqlite
 > 属 M2+，须另立 ADR 并复核 G1 门禁。
 > **M2 相关 crate 目前只是骨架**（trait / 常量 / 门禁标记），不实现、不宣称 G2 达标；
-> S3 / S5 / S6 仍 `not_run`，G1 还缺 T1 与必测回填，详见 [ROADMAP §6](../docs/06-plan/ROADMAP.md)。
+> S3 / S5 / S6 仍 `not_run`，G1 还缺真实 T1（双机 harness 已建、`--mode real` 因无第二台物理主机
+> `BLOCKED`）与必测回填，详见 [T1 README](../tests/e2e/t1/README.md) 与 [ROADMAP §6](../docs/06-plan/ROADMAP.md)。
 
 ## 规划结构
 

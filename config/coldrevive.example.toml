@@ -39,9 +39,11 @@ memory_soft_limit_mb = 100
 memory_hard_limit_mb = 200
 
 [qos]
-# S5 真实量测（2026-11-13, tests/spikes/s5/qos_bench.py）：0.2 时前台劣化 20.12%，
-# 0.05 → 6.19%，0.02 → 4.03%；NFR-03 要求 ≤5%，故默认值回调为 0.02。
-# 注意：这只是按实测回调配置，S5.status 仍为 not_run，须 M1/G3 真实拥塞链路 uTP 实测回填。
+# S5 量测（2026-11-13）：本地模型 0.2 → 20.12%、0.05 → 6.19%、0.02 → 4.03%；
+# 真实 librqbit-utp 0.7.0 栈（tests/spikes/s5/utp/）0.2 → 14.82%、0.05 → 4.31%、0.02 → 2.70%。
+# NFR-03 要求 ≤5%，故默认值回调为 0.02。源码核实该 uTP 版本只有 CUBIC、无 LEDBAT，
+# prefer_utp 不提供低优先级退让，≤5% 目前完全依赖本项令牌桶降级。
+# 注意：这只是按实测回调配置，S5.status 仍为 not_run，须 M1/G3 真实拥塞链路实测回填。
 background_upload_ratio = 0.02
 max_connections_total = 200
 prefer_utp = true

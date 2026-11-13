@@ -1,0 +1,101 @@
+{
+  "suite": "T1",
+  "schema": "coldrevive.t1.config/v1",
+  "version": 1,
+  "gate": "G1",
+  "description": "局域网双机 + 真实 NAT 内网全链路验收。与 T0 共同构成 G1 证据；T0 只覆盖 127.0.0.1 单机回环，不能替代本环境。",
+  "environment": {
+    "definition": "TEST.md §2 T1：两台物理主机、A/B 各跑一个 coldrevived 实例，处于真实 NAT 内网",
+    "two_distinct_hosts_required": true,
+    "real_nat_required": true,
+    "note": "evidence_valid 由断言结果 + /health 的 machine_id/host 互异 + 真实 NAT 报告共同决定，缺一不可"
+  },
+  "nodes": {
+    "A": {
+      "role": "holder",
+      "host": "192.168.1.210",
+      "http_port": 17800,
+      "wake_udp_port": 17801,
+      "bt_port": 17802
+    },
+    "B": {
+      "role": "requester",
+      "host": "172.26.96.1",
+      "http_port": 17900,
+      "wake_udp_port": 17901,
+      "bt_port": 17902
+    }
+  },
+  "lan_precheck": {
+    "_note": "单机预检：两种地址模式都如实标注为「同一物理主机」，evidence_valid 恒为 false。aliases 用两个回环别名验证按节点 host 寻址；nic 用真实物理网卡 IP（非回环）验证真实 NIC socket 链路。",
+    "default_address_mode": "aliases",
+    "modes": {
+      "aliases": {
+        "label": "两个回环别名（distinct host 寻址路径）",
+        "bind": {"A": "127.0.0.2", "B": "127.0.0.3"},
+        "host": {"A": "127.0.0.2", "B": "127.0.0.3"}
+      },
+      "nic": {
+        "label": "真实物理网卡 192.168.1.210（同一 IP、不同端口）",
+        "bind": {"A": "192.168.1.210", "B": "192.168.1.210"},
+        "host": {"A": "192.168.1.210", "B": "192.168.1.210"}
+      }
+    }
+  },
+  "timeouts_sec": {
+    "startup": 12,
+    "health": 1,
+    "stun": 2.0
+  },
+  "thresholds": {
+    "wake_p95_ms": 3000,
+    "revival_success_rate": 1.0,
+    "wake_sample_count": 30,
+    "revival_sample_count": 30
+  },
+  "protocol": {
+    "version": 1,
+    "namespace": "ColdRevive_V1:",
+    "challenge_window_sec": 300
+  },
+  "fixture": {
+    "filename": "coldrevive-t1-sample.bin",
+    "size_bytes": 262144,
+    "seed": 20261113,
+    "keywords": ["coldrevive", "t1", "sample"]
+  },
+  "paths": {
+    "workdir": "tests/e2e/t1/.run",
+    "sample_dir": "tests/e2e/t1/.run/sample",
+    "reports": "tests/e2e/t1/reports",
+    "golden_dir": "tests/fixtures/t0/golden",
+    "nat_report_fallback": "tests/spikes/s6/reports/s6-nat-20261113T061908Z.json"
+  },
+  "bin": {
+    "daemon_env": "COLDREVIVE_DAEMON",
+    "cli_env": "COLDREVIVE_CLI",
+    "downloader_env": "T0_DOWNLOADER"
+  },
+  "remote": {
+    "_note": "--mode real 时 B 由操作员在远端主机预先启动，harness 只做 /health 与 CLI 远端取数，不假装能远程拉起进程。",
+    "host_b_env": "T1_HOST_B",
+    "prestarted_ack_env": "T1_REMOTE_PRESTARTED",
+    "host_a_env": "T1_HOST_A",
+    "daemon_argv_remote": [
+      "{daemon}", "--config", "{config}", "--node-id", "B",
+      "--bind", "{bind}", "--self-host", "{host}",
+      "--workdir", "{workdir}", "--downloader", "{downloader}"
+    ]
+  },
+  "launch": {
+    "schema": "coldrevive.t1.launch/v1",
+    "daemon_argv": [
+      "{daemon}", "--config", "{config}", "--node-id", "{node}",
+      "--bind", "{bind}", "--self-host", "{host}",
+      "--workdir", "{workdir}", "--sample", "{sample}",
+      "--downloader", "{downloader}"
+    ],
+    "cli_argv": ["{cli}", "--json", "--node", "{node}", "{command}"],
+    "health_path": "/health"
+  }
+}

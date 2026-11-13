@@ -2,7 +2,7 @@
 doc_id: DOC-22
 title: G0 技术路线冻结评审记录
 category: 计划跟踪
-version: 1.1
+version: 1.2
 status: 已接受
 owner: 项目所有者
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # G0 技术路线冻结评审记录
 
-> 编号 DOC-22 · 版本 1.1 · 状态 **已接受** · 责任人 项目所有者 · 更新 2026-11-13
+> 编号 DOC-22 · 版本 1.2 · 状态 **已接受** · 责任人 项目所有者 · 更新 2026-11-13
 > 机读状态见 [`tests/spikes/spikes.json`](../../tests/spikes/spikes.json) 的 `g0_review` 字段；
 > 判据口径见 [spikes README §6](../../tests/spikes/README.md)，里程碑见 [ROADMAP §6](ROADMAP.md)。
 
@@ -121,3 +121,29 @@ T1（局域网双机 + 真实 NAT）未执行，S3 真实双栈集成 + G3 矩�
 - 任一 M1/M2 必测不达标仍按 §3 第 3 条退回条款降级并重新提交冻结评审。
 
 机读口径见 `spikes.json` 的 `m1_progress`（含 `g1_remaining` 与 `m2_gate`）。
+
+## 10. T1 与 S5 必测回填补记（2026-11-13，v1.2）
+
+**§3 的必测回填仍未结案，条件冻结的边界未被突破**：S3 / S5 / S6 的 `status` 全部保持
+`not_run`，本轮只补工程与量测证据，`evidence_valid_for_pass` 一律为 `false`。
+
+| 必测项 | 本轮进展 | 是否结案 |
+| :--- | :--- | :--- |
+| T1 双机 + 真实 NAT 全链路 | `tests/e2e/t1/` harness 落地（10 用例 / 40 断言）、M1 补齐按节点 host 寻址与 `/health` 机器身份；单机预检两模式各 10 PASS / 1 SKIP，唤醒 P95 2.0 ms、复活 30/30 | ❌ `--mode real` 因只有一台物理主机 `BLOCKED`，`evidence_valid=false` |
+| S3 真实双栈 + G3 矩阵 | 未新增；M1 仍只有本地私有子网 UDP KAD | ❌ |
+| S5 真实拥塞链路 uTP ≤5% | 真实 `librqbit-utp 0.7.0` 协议栈量测完成；`ratio=0.02` 前台劣化 2.70% | ❌ 瓶颈为本机用户态整形，非 `tc/netem` / 跨主机链路 |
+| S6 四类 NAT 可达率 | 未新增（M2 必测） | ❌ |
+
+两条影响后续决策的新事实：
+
+1. **T1 不是「找两台机器就能跑」**：M1 CLI MVP 没有 UPnP IGD / NAT-PMP / PCP / STUN 打洞 / 中继，
+   且 S6 先导样本显示本机 UPnP 与 NAT-PMP 均不可用。跨 NAT 双机时 UDP 唤醒与 tracker 返回的私网
+   peer 地址都不可达。G1 前须补穿透栈，或把 T1 边界明确限定为「同一 NAT 内两机」并重新评审。
+2. **S5 的次级退让假设被源码否证**：`librqbit-utp 0.7.0` 只有 CUBIC 拥塞控制器，
+   `src/lib.rs` 留有 `// TODO: LEDBAT congestion control`；真实栈实测前台劣化与后台链路占比近似
+   1:1，无退让回收。按 §3 第 3 条，这属于「必测不达标」的口径变化：NFR-03 ≤5% 目前**只能依赖
+   `background_upload_ratio=0.02` 的令牌桶降级**，不得记为「uTP/LEDBAT 达标」；R-07 风险口径已上调。
+   若坚持保留 uTP 退让路线，须换实现或自行实现 LEDBAT 并重新提交冻结评审。
+
+**G1 / M2 结论不变**：G1 未通过，M2 保持 `blocked_by_G1`。机读见 `spikes.json` 的
+`t1_progress`、`m1_progress.g1_remaining`、`g0_review.t1_and_s5_2026_11_13`。

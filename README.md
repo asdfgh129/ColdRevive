@@ -9,10 +9,12 @@
 | 当前阶段 | **M1 进行中**（CLI MVP 已跑通 T0 真实链路）；**G1 未通过、M2 受门禁阻塞** |
 | 代码仓库 | **https://github.com/asdfgh129/ColdRevive**（公开） |
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
-| 文档版本 | v2.4.38（M1 工程接线 + T0 real 验收 + G1/M2 门禁边界） |
-| M1 状态 | 根 `Cargo.toml` + 17 crate + 3 bin（std-only，`cargo test --workspace --offline` 27/27）；`coldrevived` / `coldrevive-cli` 已按 CLI v1 契约实现；**T0 `--mode real` 21/21 PASS、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验 |
-| M2 状态 | **未开工（`blocked_by_G1`）**：G1 还缺 T1 局域网双机 + 真实 NAT，以及 S3 真实双栈 / S5 真实拥塞链路 uTP 实测；本轮仅建 M2 crate 骨架、按 S5 实测把 `background_upload_ratio` 默认回调为 `0.02`、登记 S6 四类 NAT 矩阵，均不宣称 G2 达标 |
-| 验收骨架 | [T0 双节点验收](tests/e2e/t0/README.md)：CLI v1 契约 + 20 条真实观测映射已接线，**real 模式 21/21 PASS、`evidence_valid=true`**；`--self-test` 的 PASS 仍非 G1 证据 |
+| 文档版本 | v2.4.39（T1 双机 harness + M1 跨主机寻址 + S5 真实 uTP 栈量测；G1/M2 门禁不变） |
+| M1 状态 | 根 `Cargo.toml` + 17 crate + 3 bin（std-only，`cargo test --workspace --offline` **31/31**）；`coldrevived` / `coldrevive-cli` 已按 CLI v1 契约实现，并补齐**按节点 host 的跨主机寻址**与 `/health` 机器身份；**T0 `--mode real` 21/21 PASS、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验 |
+| T1 / G1 | [T1 双机 harness](tests/e2e/t1/README.md) 已落地（10 用例 / 40 断言）；单机预检两模式各 **10 PASS / 1 SKIP**、`evidence_valid=false`（唤醒 P95 2.0 ms、复活 30/30）；**`--mode real` 因只有一台物理主机 `BLOCKED`**，G1 未通过。另发现 M1 **无 NAT 穿透**，跨 NAT 双机前须补穿透栈 |
+| S5 / 风险 | 用真实 `librqbit-utp 0.7.0` 栈量测（16 Mbit/s 共享瓶颈、3 轮中位）：ratio `0.20 → 14.82%`、`0.05 → 4.31%`、`0.02 → 2.70%` 前台劣化；**源码核实该版本只实现 CUBIC、无 LEDBAT**，`prefer_utp` 不提供退让，R-07 口径上调，`S5.status` 仍 `not_run` |
+| M2 状态 | **未开工（`blocked_by_G1`）**：G1 还缺 T1 两台真实物理机 + 真实 NAT，以及 S3 真实双栈 / S5 真实拥塞链路实测；本轮未新增任何 M2 实现，不宣称 G2 达标 |
+| 验收骨架 | [T0 双节点验收](tests/e2e/t0/README.md)：**real 模式 21/21 PASS、`evidence_valid=true`**；[T1 双机验收](tests/e2e/t1/README.md)：harness + 单机预检，`evidence_valid` 恒 `false`；`--self-test` 的 PASS 仍非 G1 证据 |
 | M0 / 门禁 | [G0 条件冻结](docs/06-plan/G0-REVIEW.md) 已生效：S1/S2/S4/S7/S8 `pass`，S3/S5/S6 保持 `not_run`（M1/M2 必测回填）；[Spike 实验包](tests/spikes/README.md) · [S2 实网排期](tests/spikes/s2/PLAN.md) · 机读进度 `spikes.json` 的 `m1_progress` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
 | 原始想法 | [docs/09-archive/chat.md](docs/09-archive/chat.md) |
@@ -56,8 +58,9 @@ ColdRevive/
 ├── src/bins/                  coldrevived / coldrevive-cli / coldrevive-agent
 ├── tests/                     测试（unit / integration / e2e / fixtures / spikes）
 │   ├── e2e/t0/                T0 双节点验收（21 条用例、CLI 契约、观测层、断言引擎、JSON 报告）
+│   ├── e2e/t1/                T1 双机 + 真实 NAT 验收（10 用例 / 40 断言、可达性探针、双机启动契约）
 │   ├── fixtures/t0/           T0 确定性样本与 PROTO v1 golden 报文
-│   └── spikes/                M0 Spike 实验包（判据、状态登记、就绪度检查）
+│   └── spikes/                M0 Spike 实验包（判据、状态登记、就绪度检查；s5/utp 为真实 uTP 栈量测）
 ├── scripts/                   工具脚本（build_docs.py 等）
 ├── config/                    配置样例（coldrevive.example.toml）
 ├── .github/workflows/         CI（文档构建与校验）
@@ -65,8 +68,9 @@ ColdRevive/
 ```
 
 > [G0 条件冻结](docs/06-plan/G0-REVIEW.md) 已于 2026-11-13 生效，M1 据此建立可编译的 Cargo Workspace 与生产二进制；
-> `CliAdapter` 代码层已接线并保留环境级防呆。**T0 真实链路已通过，但 G1 仍缺 T1 与 S3/S5/S6 必测回填，M2 未开工。**
-> `tests/e2e/t0/` 的编排层仍是纯 Python（不依赖 Rust 工具链），真实观测由 `coldrevive-cli` 提供。
+> `CliAdapter` 代码层已接线并保留环境级防呆。**T0 真实链路已通过，T1 harness 与单机预检已就位，
+> 但 `--mode real` 因只有一台物理主机 `BLOCKED`；G1 仍缺真实 T1 与 S3/S5/S6 必测回填，M2 未开工。**
+> `tests/e2e/t0/` 与 `tests/e2e/t1/` 的编排层是纯 Python（不依赖 Rust 工具链），真实观测由 `coldrevive-cli` 提供。
 
 ## 文档工作流
 
@@ -91,8 +95,11 @@ python3 tests/e2e/t0/t0_accept.py --list        # 21 条用例与判据出处
 python3 tests/e2e/t0/t0_accept.py --self-test   # 框架自检
 python3 tests/e2e/t0/t0_harness.py --self-check # 环境与确定性样本自检
 python3 tests/e2e/t0/t0_cli_selftest.py         # 观测层自检（不合成值 + 环境级防呆）
+python3 tests/e2e/t1/t1_accept.py --list        # T1 的 10 条用例 / 40 条断言
+python3 tests/e2e/t1/t1_accept.py --self-test   # T1 编排与断言引擎自检（evidence_valid=false）
+python3 tests/e2e/t1/t1_netprobe.py             # 本机跨 IP UDP 可达性真实探测
 python3 tests/spikes/m0_preflight.py             # 就绪度检查（退出码 2 = 有阻塞）
-cargo test --workspace --offline                # 27 个 Rust 单测（零第三方依赖）
+cargo test --workspace --offline                # 31 个 Rust 单测（零第三方依赖）
 ```
 
 真实链路（M1 二进制 + 第三方 BT 下载器，Windows 示例）：
@@ -107,6 +114,17 @@ python3 tests/e2e/t0/t0_accept.py --mode real
 
 2026-11-13 实跑结果：**21/21 PASS、`evidence_valid=true`**（含第三方 aria2 标准 BT 下载与逐片 SHA-1 校验）。
 未设置三个环境变量时 `--mode real` 仍 `BLOCKED` / 退出码 2（CI 依赖此防呆）。
+
+T1 单机预检（同样需要三个二进制环境变量）：
+
+```bash
+python3 tests/e2e/t1/t1_accept.py --lan-precheck --address-mode aliases  # 两个回环别名，验证按节点 host 寻址
+python3 tests/e2e/t1/t1_accept.py --lan-precheck --address-mode nic      # 真实物理网卡（非回环）
+```
+
+两种模式各 **10 PASS / 1 SKIP**（缺第二台物理主机）、`evidence_valid=false`、退出码 2。
+真正的 `--mode real` 需要两台物理主机与 B 端预启动守护进程，命令见 [T1 README §4](tests/e2e/t1/README.md)。
+**T0 与 T1 预检的 PASS 都不等于 G1。**
 
 `--self-test` 的 PASS 只证明脚本编排与断言引擎正确，**不是 G1 门禁证据**（报告 `evidence_valid` 恒为 `false`）；
 `--mode real` 的 T0 结果也**只覆盖 T0 单机回环**，G1 还需 T1 局域网双机与 S3/S5/S6 必测回填。

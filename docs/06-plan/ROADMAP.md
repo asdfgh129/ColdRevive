@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.9
+version: 2.10
 status: 持续维护
 owner: 项目组
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.9 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-13
+> 编号 DOC-14 · 版本 2.10 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-13
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -170,6 +170,10 @@ ColdRevive
 - **M1 开工与 T0 真实验收（2026-11-13，v2.4.38）**：门禁复核结论——**M1 可开工**（G0 条件冻结已签署；preflight 的 2 个剩余阻塞项恰为 M1 自身工程接线），**M2 不可开工**（§2 依赖 M1/G1）。本轮按 [src/README.md](../../src/README.md) 创建根 `Cargo.toml` + 17 crate + 3 bin（全部 std-only，`cargo test --workspace --offline` 27 单测全绿），实现 `coldrevived` / `coldrevive-cli` 的 CLI v1 契约与 20 条真实观测；`CliAdapter.wired` 置 `True` 并保留环境级防呆。设三个二进制环境变量后 `--mode real` **21/21 PASS、FAIL 0、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验。首轮 3 个失败（状态跃迁累积 / 重放误报重复激活 / `residual_pids` 误判）均已如实记录并修复后复跑全绿。
 - **M2 合法前置（2026-11-13）**：M2 侧 10 个 crate 仅建骨架；按 S5 实测把 `background_upload_ratio` 默认由 `0.2` 回调为 `0.02`（[CONFIG](../04-protocol/CONFIG.md) 2.1）；`cr-nat` 登记 S6 四类 NAT + CGNAT 矩阵与 R-04 ≥70% 阈值；`cr-engine` 固定 `Engine` Trait 边界。**以上均不宣称 G2 达标，也不改变 S3/S5/S6 的 `not_run` 状态。**
 - **G0 剩余缺口清单（2026-11-13 第四次更新 / M1 开工后）**：① ~~S1 状态回填~~ ✅；② ~~S4 / S7 量测~~ ✅；③ ~~ADR-001 签署~~ ✅；④ ~~技术路线冻结评审~~ ✅；⑤ ~~M1 二进制 / CliAdapter 工程接线~~ ✅（本轮完成）；⑥ ~~T0 单机回环真实链路~~ ✅（21/21 PASS）；**剩余（G1 出口 / M2 前置）**：T1 局域网双机 + 真实 NAT 全链路；S3 真实双栈集成 + G3 矩阵；S5 真实拥塞链路 rqbit uTP ≤5% 实测；S6（M2）四类 NAT 可达率实测；M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**`T0 evidence_valid=true` 只覆盖 T0，不等于 G1；M2 保持 `blocked_by_G1`。** `m0_preflight.py` 的 `g0_ready` 算法按 [G0-REVIEW §6](G0-REVIEW.md) 保持不变，工程阻塞项清零但豁免项未结案时会打印提示。
+
+- **G0 剩余缺口清单（2026-11-13 第五次更新 / T1 与 S5 推进后）**：① ~~S1 / S4 / S7 回填~~ ✅；② ~~ADR-001 签署~~ ✅；③ ~~技术路线冻结评审~~ ✅；④ ~~M1 二进制 / CliAdapter 接线~~ ✅；⑤ ~~T0 单机回环真实链路~~ ✅（21/21 PASS）；⑥ **T1 harness + M1 跨主机寻址已落地**，单机预检（`aliases` / `nic` 两模式）各 10 PASS / 1 SKIP、`evidence_valid=false`，但 `--mode real` 因**只有一台物理主机**明确 `BLOCKED`；⑦ **S5 真实 librqbit-utp 0.7.0 栈量测完成**，并源码核实该版本**仅 CUBIC、无 LEDBAT**（`prefer_utp` 不带来退让），`ratio=0.02` 实测前台劣化 2.70%；**剩余（G1 出口 / M2 前置）**：T1 两台真实物理机 + 真实 NAT 全链路（且需先补 NAT 穿透栈，M1 当前无 UPnP/打洞/中继）；S3 真实双栈集成 + G3 矩阵；S5 `tc/netem` 或跨主机真实拥塞链路实测；S6（M2）四类 NAT 可达率实测；M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**T0 / T1 预检的 PASS 均不等于 G1；M2 保持 `blocked_by_G1`，S3/S5/S6 仍 `not_run`。** 机读口径：`spikes.json` 的 `t1_progress`、`m1_progress.g1_remaining`、`S5.observations.utp_real_2026_11_13`。详见 [T1 README](../../tests/e2e/t1/README.md) 与 [S5 README](../../tests/spikes/s5/README.md)。
+
+- **T1 环境约束（2026-11-13 实测）**：`t1_netprobe.py` 的 25 组真实 UDP 探测显示，本机同一 IP `5/5` 可达、跨 IP 仅 `6/20`（全部只在回环别名之间），物理网卡与 Hyper-V 交换机双向 `WSAENETUNREACH (10051)`；WSL / 第二台虚拟机被安全策略禁止，未做绕过。因此单机无法伪装双机，T1 必须换真实第二台物理机。
 
 ## 相关文档
 

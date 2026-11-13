@@ -4,8 +4,11 @@
 > 本质是**真实网络拥塞下的退让行为**，无法在 127.0.0.1 回环上忠实复现（见 §3 限制）。
 > 本目录给出控制栈设计、rqbit 能力确认、可在 M1/G3 执行的可复现验证方案与 fallback 链；
 > 最终 `pass` 须 M1/G3 在**带流量整形的链路**上实测前台劣化 ≤5%。
-> **2026-11-13 更新**：令牌桶硬上限已由 `qos_bench.py` 真实量测验证，但发现默认配置不满足 ≤5%；
-> 已获项目所有者 [G0 条件冻结](../../../docs/06-plan/G0-REVIEW.md) 豁免，M1/G3 必测回填。
+> **2026-11-13 第二次更新（重要）**：用缓存中的 **librqbit-utp 0.7.0 真实协议栈**跑通了
+> 共享瓶颈量测，并从源码核实：该版本**只实现 CUBIC 拥塞控制，`src/lib.rs` 明确写着
+> `// TODO: LEDBAT congestion control`**。即 `prefer_utp = true` 只把传输层切到 uTP，
+> **并不提供 LEDBAT 低优先级退让**；本文早期「uTP/LEDBAT 机制可用」的表述已按源码更正。
+> 详见 §9。`S5.status` 仍为 `not_run`。
 
 ## 1. 判据与目标（NFR-03）
 
@@ -23,10 +26,14 @@ NFR-03 由**两层**共同保证，其中令牌桶是主控制、uTP/LEDBAT 是�
    - `qos.max_connections_total = 200`（全局连接数上限）
    - 该限速是**确定性、可单元化、本地即可验证**的：后台上行被硬卡在总上行 20%，
      无论前台是否拥塞都保证「上行 ≤ 阈值」这部分判据。
-2. **uTP / LEDBAT（次级退让）** — `qos.prefer_utp = true`：
-   - LEDBAT 监测单向延迟（one-way delay），当后台 uTP 流量导致队列延迟上升（即前台 TCP 开始排队）时，
-     自动减小发送窗口退让，让前台 TCP 优先占用带宽，从而达成「前台吞吐劣化 ≤5%」。
-   - librqbit 已支持 uTP（μTP）传输层；`prefer_utp` 配置项已存在于 `CONFIG.md`，机制可用。
+2. **uTP / LEDBAT（次级退让）— 假设已被源码否证** — `qos.prefer_utp = true`：
+   - 设计意图：LEDBAT 监测单向延迟，队列延迟上升时减小发送窗口，让前台 TCP 优先占用带宽。
+   - **2026-11-13 源码核实**：librqbit 9.1.0 依赖的 `librqbit-utp 0.7.0` 在
+     `src/lib.rs` 首部留有 `// TODO: LEDBAT congestion control`，`CongestionControllerKind`
+     **只有 `Cubic` 一个变体**，`src/congestion/` 目录下也只有 `cubic.rs`。
+     因此 rqbit 的 uTP 是「带 CUBIC 的 uTP 传输」，**没有 LEDBAT 退让能力**。
+   - 结论：NFR-03 第二半在当前技术栈下**只能靠令牌桶 ratio 降级**，不得宣称 uTP 会自动退让；
+     若要真正启用 LEDBAT，须换实现或自行实现控制器（见 §9 与 [RISK R-07](../../../docs/05-quality/RISK.md)）。
 
 ## 3. 本地回环的根本限制（为何不能本地判 pass）
 
@@ -40,8 +47,9 @@ LEDBAT 的退让触发条件是**观测到单向延迟上升**。在 `127.0.0.1`
 ## 4. 可在本地确认的可行性（已完成/可补）
 
 - [x] **设计层去险**：令牌桶（硬上限）+ uTP/LEDBAT（退让）+ 降级链三层，R-07 在架构上已覆盖。
-- [x] **rqbit uTP 能力确认**：librqbit 9.1.0 支持 uTP；S1 `cross-seed`/`cross-lee` 已验证 rqbit 双 Session
-      真实 BT 分片传输（S1 判 `pass`），uTP 传输是该引擎的标配能力。
+- [x] **rqbit uTP 能力确认（已更正）**：librqbit-utp 0.7.0 是真实 BEP 29 实现，S1 `cross-seed`/`cross-lee`
+      已验证 rqbit 双 Session 真实 BT 分片传输（S1 判 `pass`）；但**拥塞控制器只有 CUBIC，无 LEDBAT**。
+      §9 已用真实 uTP socket 跑通共享瓶颈量测，直接观测到「无退让」。
 - [x] **令牌桶单元验证（2026-11-13 已补，见 §8）**：本地可对一个限速器实现做确定性单测，证明后台上行被卡在 ≤20%；
       这部分**不依赖网络拥塞**，可在 G0 前补一个本地 harness 直接确认 NFR-03 的第一半。
 - [x] **并发瓶颈量测（2026-11-13 已补，见 §8；非真实 uTP）**：rqbit uTP 后台做种 + 前台 TCP 吞吐探针并发运行，确认无崩溃/无死锁
@@ -85,6 +93,47 @@ fallback 旋钮（ratio=0.02）才把它压到 4.03–4.55%。`S5.status = not_r
 3. **fallback 有效**：把 ratio 降到 0.02 后本地劣化进入目标区间，给了 M1 一个可执行的参数起点。
 4. 退让控制器是**LEDBAT 机理的可执行模型**，不是 librqbit uTP；瓶颈也是应用层整形而非真实链路排队。
    按 README §6 第 3 条，这些数字**不能支撑 `pass`**，只用于定位参数与验证 harness 骨架。
+5. **§8 的「+退让模型」一栏在真实 rqbit 栈上不成立**：源码核实无 LEDBAT，§9 的实测也显示
+   前台劣化与后台实际占用近似 1:1，没有出现模型预测的「退让回收」。
+
+## 9. 真实 librqbit-utp 协议栈拥塞量测（2026-11-13 第二次更新）
+
+`utp/` 是独立 Cargo 工程（不并入 std-only 根 workspace，`cargo build --offline --release` 可复现）。
+与 `qos_bench.py` 的本质区别：**后台是真实 `librqbit-utp 0.7.0` BEP 29 栈**，真实 UDP socket、
+真实 SYN/ACK/窗口/重传；前台 TCP 与后台 uTP 争用**同一个真实时钟令牌桶瓶颈**，
+排队用真实 `sleep` 产生（实测最大排队等待 16–32 ms、均值 2–5 ms），uTP 观测到的是真实 RTT 膨胀。
+
+```bash
+cd tests/spikes/s5/utp && cargo build --offline --release
+target/release/coldrevive-s5-utp-probe.exe \
+  --seconds 3 --rounds 3 --ratios 0.2,0.05,0.02 --link-mbps 16 \
+  --out reports/s5-utp-real-20261113.json
+```
+
+16 Mbit/s 链路、每相位 3 s、每档 3 轮取中位数：
+
+| `background_upload_ratio` | 后台实际链路占比（中位） | 前台劣化（中位） | 逐轮劣化 | NFR-03 ≤5% |
+| :--- | :--- | :--- | :--- | :--- |
+| **0.20（原默认）** | 14.6% | **14.82%** | 15.86 / 12.97 / 14.82 % | ❌ |
+| 0.05 | 5.4% | **4.31%** | 4.58 / 4.31 / 3.78 % | ✅ |
+| **0.02（M1 现行默认）** | 3.1% | **2.70%** | 2.96 / 2.70 / 2.70 % | ✅ |
+
+关键结论：
+
+1. **真实 uTP 栈没有退让**：三档的「前台劣化」与「后台实际链路占比」几乎 1:1
+   （14.8%↔14.6%、4.3%↔5.4%、2.7%↔3.1%），不存在 §8 模型预测的「LEDBAT 回收约 5 个点」。
+   与源码 `// TODO: LEDBAT congestion control` + 仅 `Cubic` 变体完全吻合。
+2. **NFR-03 第二半只能靠令牌桶**：M1 已把默认 `background_upload_ratio` 从 `0.2` 回调为 `0.02`
+   （[CONFIG](../../../docs/04-protocol/CONFIG.md) 2.1），本次真实协议栈量测给出 2.70% 劣化，
+   支持该回调；但这是**降级链生效**，不是 uTP 退让达标。
+3. 与 §8 模型数值不同（0.2 档模型 15.0% / 实测 14.82%；0.05 档模型 6.16% / 实测 4.31%），
+   原因是模型假设 uTP 会退让且用固定整形，实测是真实窗口控制。**以实测为准**。
+4. **范围限制**：瓶颈仍是本机用户态整形，不是 `tc/netem` 内核队列或跨主机真实拥塞链路；
+   报告固定 `evidence_valid_for_pass=false`。按 §6 第 3 条，`S5.status` 保持 `not_run`，
+   G3 仍须在真实拥塞链路 + 真实客户端上复测。
+
+报告：`reports/s5-utp-real-20261113.json`（本地产物，按 spike 惯例不入库）。
+机读结论与风险升级登记在 `tests/spikes/spikes.json` 的 `S5.observations.utp_real_2026_11_13`。
 
 报告：`reports/s5-qos-final-ratio020.json` / `...ratio005.json` / `...ratio002.json`（本地产物、不入库）。
 

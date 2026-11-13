@@ -49,7 +49,9 @@ EMBED_EXTRA = (
     "src/README.md",
     "tests/README.md",
     "tests/e2e/t0/README.md",
+    "tests/e2e/t1/README.md",
     "tests/spikes/README.md",
+    "tests/spikes/s5/README.md",
     "scripts/README.md",
     "config/coldrevive.example.toml",
 )

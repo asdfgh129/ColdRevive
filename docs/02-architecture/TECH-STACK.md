@@ -2,7 +2,7 @@
 doc_id: DOC-04
 title: 技术选型与 M0 Spike 清单
 category: 架构
-version: 2.5
+version: 2.6
 status: 待评审
 owner: 架构组 / 内核组
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # 技术选型与 M0 Spike 清单
 
-> 编号 DOC-04 · 版本 2.5 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-13
+> 编号 DOC-04 · 版本 2.6 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-13
 > 本文记录技术栈选择、备选方案、**必须由 M0 验证的假设**。选型变更须新增 [ADR](adr/README.md)。
 
 ## 1. 选型总表
@@ -97,9 +97,12 @@ updated: 2026-11-13
 > - **S7 `pass`**：`tests/spikes/s7/s7_bench.py` 流式哈希 4 GB（262144 片 SHA-1 + 全文件 SHA-256 +
 >   `.torrent` 序列化）耗时 **4.14 s / 989 MB/s**、峰值 RSS **29.3 MiB**、Idle 优先级，R-07 去险，
 >   fallback（分片自适应 + 增量哈希）未触发。
-> - **S5 `not_run`（分析就绪）**：NFR-03 双层控制——令牌桶硬上限 20% 上行（可本地单元验证）+
->   uTP/LEDBAT 退让（rqbit 9.1.0 支持 uTP，S1 已证真实分片传输）；但「前台劣化 ≤5%」须真实拥塞链路，
->   回环队列延迟恒 ~0 无法触发 LEDBAT 退让，M1/G3 实测回填。见 `tests/spikes/s5/README.md`。
+> - **S5 `not_run`（分析就绪 + 真实栈量测）**：NFR-03 双层控制——令牌桶硬上限 20% 上行 +
+>   uTP 低优先级退让；但**2026-11-13 源码核实 `librqbit-utp 0.7.0` 只实现 CUBIC、无 LEDBAT**
+>   （`// TODO: LEDBAT congestion control`），`prefer_utp` 不再构成退让手段。
+>   真实 uTP 协议栈量测（16 Mbit/s 共享瓶颈、3 轮中位）：ratio 0.20 → 14.82%、0.05 → 4.31%、
+>   0.02 → 2.70% 前台劣化，且与后台链路占比近似 1:1（无退让）。「前台劣化 ≤5%」仍须
+>   `tc/netem` / 跨主机真实拥塞链路实测，M1/G3 回填。见 `tests/spikes/s5/README.md` §9。
 > - **S6 `not_run`（分析就绪）**：穿透栈（UPnP + NAT-PMP + UDP 打洞 + 中继/LowID 回退）覆盖全 4 类 NAT，
 >   分析型含中继可达率 ≥95%（> R-04 的 70% 阈值）；量化判据须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。
 >   见 `tests/spikes/s6/nat-matrix.md`。
@@ -123,6 +126,16 @@ updated: 2026-11-13
 > `rusqlite`、Tokio/axum 时须另立 ADR 并复核 G1。`coldrevived` 当前的最小 HTTP / UDP / BT 种子端
 > 是 M1 验证用实现，不是最终架构。T0 `--mode real` 已 21/21 PASS，但 T1 与 S3/S5/S6 必测回填
 > 未完成，**G1 未通过、M2 仍 `blocked_by_G1`**，见 [G0-REVIEW §9](../06-plan/G0-REVIEW.md)。
+
+> **T1 / S5 补记（2026-11-13，v2.6）**：M1 增加按节点 `host` 的跨主机寻址（`NodeSpec.host`
+> 缺省回落 `bind`）、`--self-host` / `--workdir` / `--sample` / `--downloader` 启动参数与
+> `/health` 机器身份，`tests/e2e/t1/` 建立 10 用例 / 40 断言的双机验收 harness。
+> 单机预检两模式各 10 PASS / 1 SKIP、`evidence_valid=false`；`--mode real` 因**只有一台物理主机**
+> 明确 `BLOCKED`。环境实测：本机跨 IP UDP 仅 `6/20` 可达（全部是回环别名之间），
+> 物理网卡 ↔ Hyper-V 双向 `WSAENETUNREACH`。**新的技术缺口**：M1 无 UPnP / NAT-PMP / 打洞 / 中继，
+> 跨 NAT 双机的唤醒与私网 peer 地址不可达，G1 前须补穿透栈；S5 的 LEDBAT 假设已否证（见上）。
+> 因此 G1 与 M2 结论不变，详见 [G0-REVIEW §10](../06-plan/G0-REVIEW.md) 与
+> [T1 README](../../tests/e2e/t1/README.md)。
 
 ## 3. 参考项目与可复用资产
 

@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。",
+  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -713,7 +713,9 @@
         "tests/spikes/s5/README.md",
         "tests/spikes/s5/qos_bench.py",
         "tests/spikes/s5/reports/s5-qos-final-ratio020.json",
-        "tests/spikes/s5/reports/s5-qos-final-ratio002.json"
+        "tests/spikes/s5/reports/s5-qos-final-ratio002.json",
+        "tests/spikes/s5/utp/src/main.rs",
+        "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json"
       ],
       "observations": {
         "nfr_target": "NFR-03 (后台上行 ≤20% 总上行；前台吞吐劣化 ≤5%)",
@@ -739,7 +741,7 @@
         ],
         "validation_gap": "量化前台劣化 ≤5% 须 M1/G3 在真实拥塞链路（tc/netem 或实验室链路）用 rqbit uTP 实测；本地模型只给出参数方向与 fallback 阈值",
         "fallback": "降低 background_upload_ratio / 连接数限制 / 暂停造种队列(LLD 降级链)",
-        "verdict": "R-07 设计层去险，但 NFR-03 ≤5% 判据在默认配置下未达成，已定位 fallback 旋钮；S5.status=not_run，2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论，M1/G3 必须实测回填",
+        "verdict": "R-07 设计层去险，但 NFR-03 ≤5% 判据在默认 0.2 配置下不成立（模型 15.0% / 真实 uTP 栈 14.82%）。2026-11-13 源码核实 librqbit-utp 0.7.0 仅 CUBIC、无 LEDBAT，真实协议栈实测也未见退让；≤5% 目前只能靠 background_upload_ratio=0.02 的令牌桶降级（实测 2.70%）。S5.status=not_run，G0 条件冻结豁免其 G0 时点结论，M1/G3 须在真实拥塞链路实测回填。",
         "report": "tests/spikes/s5/README.md",
         "local_qos_2026_11_13": {
           "harness": "tests/spikes/s5/qos_bench.py",
@@ -780,6 +782,70 @@
         "m1_2026_11_13": {
           "evidence": "按 S5 实测把 cr-qos / config/coldrevive.example.toml 的 background_upload_ratio 默认值由 0.2 回调为 0.02（实测 4.03% < NFR-03 的 5%）",
           "gap": "未做真实拥塞链路 + rqbit uTP 的 ≤5% 实测",
+          "evidence_valid_for_pass": false,
+          "status_unchanged": true
+        },
+        "utp_real_2026_11_13": {
+          "harness": "tests/spikes/s5/utp/ (cargo build --offline --release)",
+          "report": "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json",
+          "method": "真实 librqbit-utp 0.7.0 BEP 29 协议栈 + 真实 UDP/TCP socket + 共享真实时钟瓶颈令牌桶；前台 TCP 与后台 uTP 争用同一 16 Mbit/s 链路，排队由真实 sleep 产生（最大 16–32 ms）",
+          "config": {
+            "link_mbps": 16,
+            "seconds_per_phase": 3,
+            "rounds": 3,
+            "ratios": [
+              0.2,
+              0.05,
+              0.02
+            ]
+          },
+          "measurements": [
+            {
+              "bg_ratio": 0.2,
+              "background_actual_link_share_median": 0.1463,
+              "degradation_pct_median": 14.82,
+              "degradation_pct_all": [
+                15.86,
+                12.97,
+                14.82
+              ],
+              "meets_5pct": false
+            },
+            {
+              "bg_ratio": 0.05,
+              "background_actual_link_share_median": 0.0539,
+              "degradation_pct_median": 4.31,
+              "degradation_pct_all": [
+                4.58,
+                4.31,
+                3.78
+              ],
+              "meets_5pct": true
+            },
+            {
+              "bg_ratio": 0.02,
+              "background_actual_link_share_median": 0.0311,
+              "degradation_pct_median": 2.7,
+              "degradation_pct_all": [
+                2.96,
+                2.7,
+                2.7
+              ],
+              "meets_5pct": true
+            }
+          ],
+          "source_finding": {
+            "crate": "librqbit-utp 0.7.0（librqbit 9.1.0 依赖）",
+            "ledbat_implemented": false,
+            "congestion_controllers": [
+              "Cubic"
+            ],
+            "evidence": "src/lib.rs `// TODO: LEDBAT congestion control`；CongestionControllerKind 仅 Cubic；src/congestion/ 仅 cubic.rs",
+            "impact": "prefer_utp=true 只切换传输层，不提供 LEDBAT 低优先级退让；早期「uTP/LEDBAT 机制可用」表述已按源码更正"
+          },
+          "no_yield_observed": "三档前台劣化与后台实际链路占比近似 1:1（14.8%↔14.6%、4.3%↔5.4%、2.7%↔3.1%），未出现 LEDBAT 式退让回收",
+          "supports_default_0_02": true,
+          "scope_limitation": "瓶颈为本机用户态整形，非 tc/netem 内核队列或跨主机真实拥塞链路；按 s5/README §6 第 3 条不能支撑 pass",
           "evidence_valid_for_pass": false,
           "status_unchanged": true
         }
@@ -951,6 +1017,13 @@
       ],
       "note": "两项工程接线已完成（cargo build 产出 coldrevived / coldrevive-cli / coldrevive-agent，T0 real 21/21 PASS）；但条件冻结的必测回填项与 T1 未完成，G1 / M2 门禁不因此解除。",
       "environment_gate": "real 运行前须设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER；缺失时 --mode real 仍 BLOCKED（CI 依赖此行为）"
+    },
+    "t1_and_s5_2026_11_13": {
+      "recorded_at": "2026-11-13",
+      "t1": "harness + 跨主机寻址已落地；单机预检 10/10 真实用例 PASS 但 evidence_valid=false；--mode real 因无第二台物理主机 BLOCKED",
+      "s5": "真实 librqbit-utp 0.7.0 栈量测完成；否证 LEDBAT 退让假设（仅 CUBIC），R-07 风险口径上调",
+      "gate_effect": "G1 未通过；M2 继续 blocked_by_G1；S3/S5/S6 状态全部保持 not_run",
+      "must_validate_still_open": true
     }
   },
   "m1_progress": {
@@ -963,7 +1036,7 @@
       "crates": 17,
       "bins": 3,
       "dependency_policy": "std-only；cargo test --workspace --offline 可复现",
-      "unit_tests": "27 passed / 0 failed",
+      "unit_tests": "31 passed / 0 failed（2026-11-13 复核；此前记为 27 系统计口径遗漏，按 cargo test --workspace --offline 汇总基线为 30，本轮新增 1 个跨主机地址单测）",
       "m2_crates": "cr-engine / cr-qos / cr-nat / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 仅骨架，不宣称 G2"
     },
     "t0_real": {
@@ -975,13 +1048,105 @@
       "scope": "127.0.0.1 单机双节点；未接触公共 KAD；不含 T1 局域网双机 / 真实 NAT"
     },
     "g1_remaining": [
-      "T1 局域网双机 + 真实 NAT 全链路验收未执行",
+      "T1 局域网双机 + 真实 NAT 全链路验收：harness 已落地、单机预检 10/10 真实用例通过，但 --mode real 因无第二台物理主机 BLOCKED；且 M1 无 NAT 穿透，跨 NAT 场景须先补穿透栈",
       "S3：M1 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵未完成（M1 仅本地私有子网 UDP KAD）",
-      "S5：M1/G3 真实拥塞链路 + rqbit uTP 前台劣化 ≤5% 实测未完成",
+      "S5：真实拥塞链路（tc/netem 或跨主机）+ 真实客户端的 ≤5% 实测未完成；本轮真实 uTP 栈量测仍属本机用户态整形",
       "S6：M2 四类 NAT（含 CGNAT）可达率实测未完成"
     ],
     "m2_gate": "blocked_by_G1",
-    "note": "T0 evidence_valid=true 只证明 T0 真实链路通过，不等于 G1 门禁通过；M2 不得据此启动。",
+    "note": "T0 evidence_valid=true 只证明 T0 真实链路通过；T1 预检 evidence_valid 恒为 false；G1 门禁未通过，M2 不得据此启动。",
+    "spike_status_changed": false,
+    "t1_cross_host_support": "2026-11-13 已补齐 NodeSpec.host / --self-host / /health machine_id；T0 单机口径不变，回归 21/21 PASS"
+  },
+  "t1_progress": {
+    "recorded_at": "2026-11-13",
+    "suite": "T1",
+    "gate": "G1",
+    "status": "blocked_no_second_host",
+    "environment": {
+      "definition": "TEST.md §2 T1：局域网双机 + 真实 NAT 内网",
+      "physical_hosts_available": 1,
+      "wsl_or_vm": "被安全策略禁止，未尝试绕过",
+      "two_distinct_hosts": false
+    },
+    "m1_cross_host_support": {
+      "config": "cr-core NodeSpec.host（缺省回落 bind）+ Config::host/me_host/peer_host/url",
+      "daemon_flags": "--self-host / --workdir / --sample / --downloader",
+      "health_identity": "/health 输出真实 host / machine_id / pid",
+      "t0_regression": "cargo test --workspace --offline 31 单测全绿；T0 --mode real 21/21 PASS 复跑通过",
+      "unit_test_added": "per_node_host_defaults_to_bind_and_can_override"
+    },
+    "harness": {
+      "dir": "tests/e2e/t1/",
+      "files": [
+        "t1_config.json",
+        "t1_cases.json",
+        "t1_accept.py",
+        "t1_netprobe.py",
+        "README.md"
+      ],
+      "cases": 10,
+      "assertions": 40,
+      "evidence_rule": "mode=real + 全用例 PASS 无 BLOCKED/SKIP + /health 的 machine_id 与 host 均不同 + 真实 NAT 报告 + 观测来源 real"
+    },
+    "netprobe": {
+      "report": "tests/e2e/t1/reports/t1-netprobe-20261113T083818Z.json",
+      "method": "25 组真实 UDP bind(src)→sendto(dst)→recvfrom",
+      "same_ip_ok": "5/5",
+      "cross_ip_ok": "6/20（全部仅回环别名之间）",
+      "finding": "物理网卡 192.168.1.210 与 Hyper-V 172.26.96.1 双向不可达（WSAENETUNREACH 10051）；回环别名→物理网卡同为 10051；物理网卡→回环别名为 WSAEADDRNOTAVAIL 10049",
+      "conclusion": "本机无法用两块网卡/别名伪装成两台主机，T1 必须换真实第二台物理机"
+    },
+    "runs": [
+      {
+        "mode": "self-test",
+        "result": "11/11 PASS",
+        "evidence_valid": false,
+        "note": "合成观测 + 注入坏观测判 FAIL 的断言引擎自检"
+      },
+      {
+        "mode": "lan-precheck/aliases",
+        "hosts": {
+          "A": "127.0.0.2",
+          "B": "127.0.0.3"
+        },
+        "result": "10 PASS / 1 SKIP (T1-01)",
+        "evidence_valid": false,
+        "report": "tests/e2e/t1/reports/t1-20261113T084004Z-lan-precheck-aliases.json"
+      },
+      {
+        "mode": "lan-precheck/nic",
+        "hosts": {
+          "A": "192.168.1.210",
+          "B": "192.168.1.210"
+        },
+        "result": "10 PASS / 1 SKIP (T1-01)",
+        "evidence_valid": false,
+        "report": "tests/e2e/t1/reports/t1-20261113T084035Z-lan-precheck-nic.json",
+        "note": "真实物理网卡非回环 socket，但同一 IP/同一主机"
+      },
+      {
+        "mode": "real",
+        "result": "10 BLOCKED / 退出码 2",
+        "evidence_valid": false,
+        "reason": "缺 T1_HOST_A/T1_HOST_B/T1_REMOTE_PRESTARTED 与真实第二台主机"
+      }
+    ],
+    "real_measurements": {
+      "wake_p95_ms": 2.0,
+      "wake_samples": 30,
+      "timeout_samples": 0,
+      "revival_success": "30/30 = 1.0",
+      "third_party_bt_download": "aria2 真实跨地址标准 BT 下载 + 逐片 SHA-1 校验",
+      "nat_report": "S6 真实 STUN 样本 112.5.60.4:36764，4/6 应答，公网 UDP 出站可用",
+      "scope": "单机真实 socket 全链路预检，不构成 T1 / G1 证据"
+    },
+    "design_gaps": [
+      "M1 CLI MVP 无 UPnP IGD / NAT-PMP / PCP / STUN 打洞 / 中继，跨 NAT 双机的 UDP 唤醒与私网 tracker peer 地址将不可达；S6 先导样本还显示本机 UPnP 与 NAT-PMP 均不可用",
+      "T1-08 只做单侧 NAT 特征取证，四类 NAT 矩阵属 M2 / S6",
+      "B 主机需预启动守护进程与第三方下载器，harness 不假装能远程拉起"
+    ],
+    "g1_effect": "G1 仍未通过；M2 继续 blocked_by_G1",
     "spike_status_changed": false
   }
 }

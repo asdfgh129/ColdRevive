@@ -4,6 +4,11 @@
 > **G0 已于 2026-11-13 由项目所有者批准「条件冻结」（conditional pass）**：[ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md)
 > 签署 `public` 默认模式；S3/S5/S6 豁免 G0 时点结论（状态仍 `not_run`，不虚判），M1/M2 必测回填。
 > 评审记录 [G0-REVIEW](../../docs/06-plan/G0-REVIEW.md)，机读决策 `spikes.json` 的 `g0_review`。
+> **2026-11-13 第二次补记（T1 / S5）**：T1 双机 harness 已落地于 `../e2e/t1/`，单机预检各 10 PASS / 1 SKIP
+> 但 `evidence_valid=false`，`--mode real` 因无第二台物理主机 `BLOCKED`；**S5 用真实 librqbit-utp 0.7.0
+> 栈量测并源码核实该版本仅 CUBIC、无 LEDBAT**（见 [s5/README.md §9](s5/README.md)），R-07 口径上调。
+> S3 / S5 / S6 状态**继续 `not_run`**，G1 未通过、M2 仍 `blocked_by_G1`；
+> 机读进度见 `spikes.json` 的 `t1_progress`、`m1_progress` 与 `S5.observations.utp_real_2026_11_13`。
 > **2026-11-13 M1 开工补记**：T0 真实链路 21/21 PASS（`evidence_valid=true`），但 **T1 与 S3/S5/S6 必测回填未完成**，
 > G1 未通过、M2 仍 `blocked_by_G1`；三项状态**继续 `not_run`**，各补 `m1_2026_11_13` 证据条目
 > （`evidence_valid_for_pass=false`），机读进度见 `spikes.json` 的 `m1_progress`。

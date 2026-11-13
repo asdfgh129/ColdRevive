@@ -286,6 +286,9 @@ pub struct NodeSpec {
     pub http_port: u16,
     pub wake_udp_port: u16,
     pub bt_port: u16,
+    /// 该节点对外可达的 IP。缺省时回落到 `Config.bind`（T0 单机回环口径）。
+    /// T1 双机时 A/B 各写自己的地址，两端共用同一份配置即可正确互指。
+    pub host: String,
 }
 
 #[derive(Debug, Clone)]
@@ -310,6 +313,7 @@ impl Config {
             j.get(k).and_then(Json::as_str).map(str::to_string)
                 .ok_or_else(|| format!("配置缺字段 {}", k))
         };
+        let bind = get_s("bind")?;
         let mut nodes = BTreeMap::new();
         let node_obj = j.get("nodes").and_then(Json::as_obj)
             .ok_or_else(|| "配置缺 nodes 对象".to_string())?;
@@ -322,13 +326,15 @@ impl Config {
                 http_port: port("http_port")?,
                 wake_udp_port: port("wake_udp_port")?,
                 bt_port: port("bt_port")?,
+                host: spec.get("host").and_then(Json::as_str)
+                    .unwrap_or(bind.as_str()).to_string(),
             });
         }
         let keywords = j.get("keywords").and_then(Json::as_arr)
             .unwrap_or(&[]).iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
         Ok(Config {
             node_id: String::new(),
-            bind: get_s("bind")?,
+            bind,
             nodes,
             sample_path: PathBuf::from(get_s("sample_path")?),
             keywords,
@@ -355,8 +361,17 @@ impl Config {
         self.nodes.get(&id).ok_or_else(|| format!("nodes 缺 {}", id))
     }
     pub fn node_http(&self, id: &str) -> Option<u16> { self.nodes.get(id).map(|n| n.http_port) }
+    /// 节点对外可达地址。T0 未配置 host 时等于 bind；T1 双机时按 nodes.<id>.host 返回。
+    pub fn host(&self, id: &str) -> &str {
+        self.nodes.get(id).map(|n| n.host.as_str()).unwrap_or(self.bind.as_str())
+    }
+    pub fn me_host(&self) -> &str { self.host(&self.node_id) }
+    pub fn peer_host(&self) -> &str {
+        let id = self.peer_id();
+        self.host(&id)
+    }
     pub fn url(&self, id: &str, path: &str) -> String {
-        format!("http://{}:{}{}", self.bind,
+        format!("http://{}:{}{}", self.host(id),
                 self.node_http(id).unwrap_or(0), path)
     }
 }
@@ -393,5 +408,32 @@ mod tests {
         assert_eq!(n.len(), 32);
         assert_ne!(n, nonce_hex());
         assert_eq!(trace_id().len(), 36);
+    }
+
+    #[test]
+    fn per_node_host_defaults_to_bind_and_can_override() {
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802},
+                "B": {"host": "192.168.1.211", "http_port": 16900,
+                      "wake_udp_port": 16901, "bt_port": 16902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let p = std::env::temp_dir().join("cr_core_host_test.json");
+        fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        // 未配置 host 的节点回落 bind —— T0 单机回环口径不变
+        assert_eq!(cfg.host("A"), "127.0.0.1");
+        assert_eq!(cfg.url("A", "/health"), "http://127.0.0.1:16800/health");
+        // 显式 host 生效，供 T1 双机互指
+        assert_eq!(cfg.host("B"), "192.168.1.211");
+        assert_eq!(cfg.url("B", "/cli"), "http://192.168.1.211:16900/cli");
+        cfg.node_id = "A".into();
+        assert_eq!(cfg.me_host(), "127.0.0.1");
+        assert_eq!(cfg.peer_host(), "192.168.1.211");
+        let _ = fs::remove_file(&p);
     }
 }
