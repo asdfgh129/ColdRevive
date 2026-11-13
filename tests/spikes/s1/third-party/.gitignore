@@ -1,0 +1,4 @@
+/payload.bin
+/leech-out/
+*.log
+__pycache__/

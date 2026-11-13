@@ -34,8 +34,26 @@ const MANIFEST: &str = env!("CARGO_MANIFEST_DIR");
 /// Iterative-routing depth ceiling for the tolerance-zone lookup (S2 P4).
 /// Public KAD converges to the SEARCHTOLERANCE zone well within this; 3 was
 /// far too shallow (only 2 candidates × 3 hops => ~20-34 contacts, never in
-/// zone). 10 matches aMule's own lookup horizon and stays well under G0 caps.
-const MAX_FIND_HOPS: usize = 10;
+/// zone). 16 covers the funnel plus the extra hops spent re-verifying after a
+/// single in-zone target turned out not to answer PUBLISH (v2.4.19 run).
+///
+/// v2.4.24 tried 32 (PLAN §17.6 option A) and it was a wash: the same key
+/// reached the *same* closest distance (13,899,520) at 16 and at 32 hops, while
+/// `frontier_widened_hops` doubled in absolute terms. The lookup saturates at
+/// ~2^23.7-2^25 because the reachable neighbourhood of a key is sparse, not
+/// because the hop budget is short (v2.4.25, PLAN §18). Reverted to 16; set to
+/// 32 again only to reproduce that experiment.
+const MAX_FIND_HOPS: usize = 16;
+/// Stop walking once this many *verified* in-zone targets exist. One is not
+/// enough: a node can answer KADEMLIA2_REQ and then silently drop PUBLISH
+/// (firewalled-UDP flag), which with a single target means a zero-information
+/// sample (observed twice in the v2.4.19 run).
+const MIN_ZONE_TARGETS: usize = 3;
+/// Lookup frontier width: only query contacts within this multiple of the best
+/// (closest) XOR distance discovered so far. A Kademlia lookup narrows
+/// monotonically; without this ceiling the walk jumps to 1G+ distance peers
+/// once the near ones are spent and converges barely at all (see v2.4.23).
+const FRONTIER_FACTOR: u64 = 8;
 /// Publish/search fan-out: KAD stores a key on the K closest nodes, so we must
 /// send PUBLISH/SEARCH to several near-key contacts -- not one. A single
 /// contact's *reported* KadID can be stale vs its live KadID and aMule will then
@@ -400,7 +418,24 @@ impl Client {
     ) -> Result<(Vec<u8>, f64), io::Error> {
         self.send(to, frame, send_detail, limiter, target_kad)?;
         let t0 = Instant::now();
-        let (_, data) = self.recv(recv_detail)?;
+        // Accept only a datagram from the peer we actually asked. A reply to an
+        // earlier hop can land while we wait here; without this filter a stray 0x29
+        // is decoded as "expected 0x43, got 0x29" and a stray 0x43 would be credited
+        // to the wrong target. Bounded by 4 socket timeouts, so it cannot spin.
+        let mut data = Vec::new();
+        for _ in 0..4 {
+            let (from, d) = self.recv(recv_detail)?;
+            if from == to {
+                data = d;
+                break;
+            }
+        }
+        if data.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("no datagram from {to} (only foreign frames arrived)"),
+            ));
+        }
         let rtt = t0.elapsed().as_secs_f64() * 1000.0;
         // Both 0xE4 plaintext and 0xE5 zlib-packed (and obfuscated) responses are
         // valid KAD replies. Misclassifying a packed frame as a protocol failure
@@ -1038,6 +1073,692 @@ fn run_lan_probe(args: &LanArgs) -> Result<J, String> {
     ]))
 }
 
+// --------------------------------------------------- lan index probe (D) --
+
+#[derive(Default)]
+struct LanIndexArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    rate: f64,
+    bisect: bool,
+    tag_probe: bool,
+}
+
+/// S2 PLAN §18.6 option D: index-plane interop against a real aMule on the LAN.
+///
+/// Why this exists. Five PUBLISH attempts against public, verified, in-zone peers
+/// all came back silent. Per aMule source there are exactly two silent paths in
+/// `Process2PublishKeyRequest`: the peer believes it is UDP-firewalled, or
+/// `top32(KadID XOR key) > SEARCHTOLERANCE`. The second is excluded by
+/// `verified_in_zone`; the first is invisible from outside. A LAN peer removes
+/// both confounds at once -- `IsLanIP(ip)` bypasses the tolerance check entirely,
+/// and a peer on the same broadcast domain has no NAT that could have failed its
+/// UDP firewall test. What is left to measure is purely "does a real aMule accept
+/// our 0x43 and serve the entry back to 0x33".
+///
+/// This is not public-KAD evidence: `public_kad_contacted=false`,
+/// `evidence_valid_for_pass=false`, and it cannot set `S2.status`.
+fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <RFC1918 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：lan-index-probe 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 {
+        return Err("--port 必须 > 0".into());
+    }
+    let dest = SocketAddr::from((ip, port));
+    let rate = if args.rate > 0.0 && args.rate <= 1.0 { args.rate } else { 0.2 };
+
+    let mut client = Client::bind_any("lan-index-probe", node_id("lan-index-probe"))
+        .map_err(|e| format!("bind lan socket: {e}"))?;
+    let mut limiter = Limiter::new(rate);
+
+    let ms = unix_ms();
+    // A logical name that has never existed anywhere. Any answer to the later
+    // SEARCH therefore proves *this* run's PUBLISH was stored -- not that some
+    // older entry under a reused key survived.
+    let logical = format!("lan-index-probe:{ms}");
+    let key = namespaced_key(&logical);
+    let descriptor_id = node_id(&format!("lan-descriptor-{ms}"));
+    let entry = IndexEntry {
+        source_id: descriptor_id,
+        tags: descriptor_tags(&logical, "lan-index-probe", client.addr().port()),
+    };
+    let publish_frame = publish_key_req(&key, &[entry.clone()]);
+
+    // --- 0. reachability: BOOTSTRAP_REQ/RES proves a 2-way UDP path ----------
+    let boot = client.exchange(
+        dest,
+        &bootstrap_req(),
+        op::BOOTSTRAP_RES,
+        "lan-index: BOOTSTRAP_REQ",
+        "lan-index: BOOTSTRAP_RES",
+        &mut limiter,
+        None,
+    );
+    let (reachable, boot_contacts, boot_rtt, boot_err) = match &boot {
+        Ok((p, rtt)) => (true, parse_bootstrap_res(p).map(|r| r.contacts.len()).unwrap_or(0), *rtt, String::new()),
+        Err(e) => (false, 0, 0.0, e.to_string()),
+    };
+
+    // --- 0b. optional tag-count bisect --------------------------------------
+    // If the full 5-tag publish is silent, cut the tag list down to 0,1,2,... and
+    // see where the ack stops. Each variant uses its own key so an ack can never
+    // be attributed to the wrong variant.
+    let mut bisect: Vec<J> = Vec::new();
+    if (args.bisect || args.tag_probe) && reachable {
+        let all_tags = descriptor_tags(&logical, "lan-index-probe", client.addr().port());
+        // --bisect cuts the real descriptor tag list down to 0,1,2,...; --tag-probe
+        // swaps in single hand-built tags to separate "any tag at all" from
+        // "this particular tag type/name/value length".
+        let variants: Vec<(String, Vec<Tag>)> = if args.tag_probe {
+            vec![
+                ("filename_1char".to_string(), vec![Tag::str1(TAG_FILENAME, "a")]),
+                ("filename_43char".to_string(), vec![Tag::str1(TAG_FILENAME, &format!("{NAMESPACE}{logical}"))]),
+                ("filesize_u32".to_string(), vec![Tag::int4(TAG_FILESIZE, 1024)]),
+                ("sourceuport_u16".to_string(), vec![Tag::int2(TAG_SOURCEUPORT, 62521)]),
+                ("longname_str_short".to_string(), vec![Tag { name: b"ColdRevive_V1:descriptor".to_vec(), value: TagValue::Str("v=1".into()) }]),
+                ("longname_str_14".to_string(), vec![Tag { name: b"ColdRevive_V1:namespace".to_vec(), value: TagValue::Str(NAMESPACE.into()) }]),
+            ]
+        } else {
+            (0..=all_tags.len()).map(|k| (format!("prefix_{k}"), all_tags[..k].to_vec())).collect()
+        };
+        for (label, tags) in variants {
+            let k = tags.len();
+            let vkey = namespaced_key(&format!("{logical}:{label}"));
+            let ventry = IndexEntry {
+                source_id: node_id(&format!("lan-descriptor-{ms}-{label}")),
+                tags: tags.clone(),
+            };
+            let vframe = publish_key_req(&vkey, &[ventry]);
+            let detail_send = format!("lan-index: PUBLISH_KEY_REQ variant={label}");
+            let detail_recv = format!("lan-index: PUBLISH_RES variant={label}");
+            let r = client.exchange(dest, &vframe, op::PUBLISH_RES, &detail_send, &detail_recv, &mut limiter, None);
+            let (acked, load, err) = match r {
+                Ok((p_, _)) => (true, parse_publish_res(&p_).map(|x| x.load as i64).unwrap_or(-1), String::new()),
+                Err(e) => (false, -1, e.to_string()),
+            };
+            bisect.push(obj(vec![
+                ("variant", s(&label)),
+                ("tag_count", n(k as f64)),
+                ("tag_names", s(tags.iter().map(|t| String::from_utf8_lossy(&t.name).to_string()).collect::<Vec<_>>().join(","))),
+                ("frame_bytes", n(vframe.len() as f64)),
+                ("acked", b(acked)),
+                ("load", n(load as f64)),
+                ("error", s(err)),
+            ]));
+        }
+    }
+
+    // --- 1. PUBLISH_KEY_REQ -> PUBLISH_RES ----------------------------------
+    let publish = if reachable {
+        Some(client.exchange(
+            dest,
+            &publish_frame,
+            op::PUBLISH_RES,
+            "lan-index: PUBLISH_KEY_REQ",
+            "lan-index: PUBLISH_RES",
+            &mut limiter,
+            None,
+        ))
+    } else {
+        None
+    };
+    let (publish_res, publish_load, publish_rtt, publish_err, publish_key_echo) = match publish {
+        None => (false, 0i64, 0.0, "skipped (peer unreachable)".to_string(), false),
+        Some(Ok((p, rtt))) => match parse_publish_res(&p) {
+            Ok(r) => (true, r.load as i64, rtt, String::new(), r.key == key),
+            Err(e) => (true, -1, rtt, format!("PUBLISH_RES parse: {e}"), false),
+        },
+        Some(Err(e)) => (false, -1, 0.0, e.to_string(), false),
+    };
+
+    // --- 2. SEARCH_KEY_REQ -> SEARCH_RES ------------------------------------
+    // aMule never replies to a search miss (`SendValidKeywordResult` is wholly
+    // inside `if (m_Keyword_map.find(keyID) != end())`), so a timeout and an
+    // empty index are indistinguishable by design. Retry once: the store path is
+    // synchronous, but a lost datagram on a busy client is not worth a false
+    // negative.
+    let mut search_attempts: Vec<J> = Vec::new();
+    let mut search_res = false;
+    let mut search_answers = 0usize;
+    let mut hit = false;
+    let mut tags_match = false;
+    for attempt in 0..2 {
+        if !reachable || !publish_res {
+            break;
+        }
+        if attempt > 0 {
+            thread::sleep(Duration::from_millis(1200));
+        }
+        match client.exchange(
+            dest,
+            &search_key_req(&key),
+            op::SEARCH_RES,
+            "lan-index: SEARCH_KEY_REQ",
+            "lan-index: SEARCH_RES",
+            &mut limiter,
+            None,
+        ) {
+            Ok((p, rtt)) => match parse_search_res(&p) {
+                Ok(r) => {
+                    search_res = true;
+                    search_answers = r.answers.len();
+                    let mine = r.answers.iter().find(|a| a.source_id == descriptor_id);
+                    hit = r.target == key && mine.is_some();
+                    tags_match = mine.is_some_and(|a| {
+                        a.tags.iter().any(|t| match (&t.name[..], &t.value) {
+                            (b"ColdRevive_V1:namespace", TagValue::Str(v)) => v == NAMESPACE,
+                            _ => false,
+                        })
+                    });
+                    search_attempts.push(obj(vec![
+                        ("attempt", n(attempt as f64)),
+                        ("search_ok", b(true)),
+                        ("rtt_ms", n(rtt)),
+                        ("answers", n(r.answers.len() as f64)),
+                        ("target_echo_matches", b(r.target == key)),
+                        ("our_descriptor_returned", b(hit)),
+                        ("namespace_tag_matches", b(tags_match)),
+                        ("responder_id", s(id_hex(&r.sender))),
+                    ]));
+                    break;
+                }
+                Err(e) => {
+                    search_attempts.push(obj(vec![
+                        ("attempt", n(attempt as f64)),
+                        ("search_ok", b(true)),
+                        ("parse_error", s(e)),
+                    ]));
+                }
+            },
+            Err(e) => {
+                search_attempts.push(obj(vec![
+                    ("attempt", n(attempt as f64)),
+                    ("search_ok", b(false)),
+                    ("error", s(e.to_string())),
+                ]));
+            }
+        }
+    }
+
+    let verdict = if !reachable {
+        "unreachable"
+    } else if !publish_res {
+        "publish_silent_on_lan"
+    } else if hit && tags_match {
+        "confirmed_publish_then_retrieve"
+    } else if search_res {
+        "publish_acked_search_answered_without_our_entry"
+    } else {
+        "publish_acked_search_silent"
+    };
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-lan-index-probe/v1")),
+        ("generated_at", s(utc_iso(ms))),
+        ("mode", s("lan-index-probe")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("public_kad_contacted", b(false)),
+        ("evidence_valid_for_pass", b(false)),
+        ("s2_status", s("not_run")),
+        ("publish_sent", b(reachable)),
+        ("rate_limit_pps", n(rate)),
+        ("local_kad_id", s(id_hex(&client.id))),
+        ("key_logical", s(&logical)),
+        ("key_id", s(id_hex(&key))),
+        ("descriptor_id", s(id_hex(&descriptor_id))),
+        ("publish_frame_bytes", n(publish_frame.len() as f64)),
+        ("publish_frame_hex", s(sha1::hex(&publish_frame))),
+        ("distance_top32", n(top_chunk(&client.id, &key) as f64)),
+        ("lan_bypass_required", b(top_chunk(&client.id, &key) > SEARCHTOLERANCE)),
+        ("reachable", b(reachable)),
+        ("bootstrap_contacts", n(boot_contacts as f64)),
+        ("bootstrap_rtt_ms", n(boot_rtt)),
+        ("bootstrap_error", s(boot_err)),
+        ("publish_acked", b(publish_res)),
+        ("publish_key_echo_matches", b(publish_key_echo)),
+        ("publish_load", n(publish_load as f64)),
+        ("publish_rtt_ms", n(publish_rtt)),
+        ("publish_error", s(publish_err)),
+        ("search_responded", b(search_res)),
+        ("search_answers", n(search_answers as f64)),
+        ("our_entry_returned", b(hit)),
+        ("namespace_tag_matches", b(tags_match)),
+        ("tag_bisect", J::Arr(bisect)),
+        ("search_attempts", J::Arr(search_attempts)),
+        ("verdict", s(verdict)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s(lan_index_note())),
+    ]))
+}
+
+/// Render a KAD tag name for reports. Numeric tag names are single raw bytes
+/// like 0xFE (TAG_SOURCEIP), not printable text; `from_utf8_lossy` would turn
+/// them into U+FFFD and make the evidence unreadable.
+fn tag_name_display(name: &[u8]) -> String {
+    let mut out = String::new();
+    for &b in name {
+        if (0x20..0x7f).contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("\\x{b:02x}"));
+        }
+    }
+    out
+}
+
+fn lan_index_note() -> &'static str {
+    "局域网真实 aMule 的索引面互操作探测（PLAN §18.6 选项 D）：先 BOOTSTRAP 证明双向 UDP 可达，再 0x43 发布一个从未存在过的命名空间 Key，随后 0x33 取回。LAN 源地址走 aMule 的 IsLanIP 豁免，因此距离判据不参与，剩下的只是「真实 aMule 是否接收并服务我们的索引条目」。public_kad_contacted=false、evidence_valid_for_pass=false，不能作为 S2 公共 KAD 结论。发布条目只落在该局域网节点上；但 aMule 会为自己持有的索引条目做 TTL 续期，若它同时连着公共 KAD，该条目未来可能被它自己重发一次。"
+}
+
+// --------------------------------------------- eD2k keyword dict probe (L1) --
+
+#[derive(Default)]
+struct Ed2kDictArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    keyword: Option<String>,
+    rate: f64,
+}
+
+/// ADR-011 L1: publish an eMule-parseable keyword-dictionary entry to a real
+/// aMule on the LAN and read it back, using the **unnamespaced** MD4 keyword
+/// Key (`KadGetKeywordHash`) rather than `ColdRevive_V1:` SHA-1 keys.
+///
+/// This is the first concrete check of the compatibility track: if a real
+/// aMule stores and serves this entry, an old client searching `keyword`
+/// would see a file with a genuine `ed2k_hash` as its fileID.
+/// LAN-only, 0 public packets. It deliberately uses a unique nonsense term so
+/// that even a LAN aMule that is also connected to public KAD cannot collide
+/// with a real user's keyword bucket.
+fn run_ed2k_dict_probe(args: &Ed2kDictArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <RFC1918 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：ed2k-dict-probe 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 {
+        return Err("--port 必须 > 0".into());
+    }
+    let dest = SocketAddr::from((ip, port));
+    let rate = if args.rate > 0.0 && args.rate <= 1.0 { args.rate } else { 0.2 };
+
+    let ms = unix_ms();
+    let keyword = args
+        .keyword
+        .clone()
+        .unwrap_or_else(|| format!("coldrevive-ed2k-probe-{ms}"));
+    if keyword.is_empty() {
+        return Err("--keyword 不能为空".into());
+    }
+    let key = kad_keyword_hash(&keyword);
+    let filename = format!("coldrevive-ed2k-probe-{ms}.txt");
+    let content = format!("ColdRevive eD2k keyword-dictionary interop probe {ms}\n").into_bytes();
+    let file_hash = ed2k_hash(&content);
+    let size = content.len() as u32;
+    let entry = IndexEntry {
+        source_id: file_hash,
+        tags: vec![
+            Tag::str1(TAG_FILENAME, &filename),
+            Tag::int4(TAG_FILESIZE, size),
+        ],
+    };
+    let link = format!("ed2k://|file|{filename}|{size}|{}|/", id_hex(&file_hash));
+    let publish_frame = publish_key_req(&key, &[entry.clone()]);
+
+    let mut client = Client::bind_any("ed2k-dict-probe", node_id("ed2k-dict-probe"))
+        .map_err(|e| format!("bind lan socket: {e}"))?;
+    let mut limiter = Limiter::new(rate);
+
+    // --- 0. two-way UDP reachability ----------------------------------------
+    let boot = client.exchange(
+        dest,
+        &bootstrap_req(),
+        op::BOOTSTRAP_RES,
+        "ed2k-dict: BOOTSTRAP_REQ",
+        "ed2k-dict: BOOTSTRAP_RES",
+        &mut limiter,
+        None,
+    );
+    let (reachable, boot_contacts, boot_rtt, boot_err) = match &boot {
+        Ok((p, rtt)) => (
+            true,
+            parse_bootstrap_res(p).map(|r| r.contacts.len()).unwrap_or(0),
+            *rtt,
+            String::new(),
+        ),
+        Err(e) => (false, 0, 0.0, e.to_string()),
+    };
+
+    // --- 1. PUBLISH_KEY_REQ into the eMule keyword dictionary ---------------
+    let (publish_acked, publish_load, publish_echo, publish_rtt, publish_err) = if !reachable {
+        (false, -1, false, 0.0, "bootstrap 未通过，跳过发布".to_string())
+    } else {
+        match client.exchange(
+            dest,
+            &publish_frame,
+            op::PUBLISH_RES,
+            "ed2k-dict: PUBLISH_KEY_REQ (unnamespaced keyword)",
+            "ed2k-dict: PUBLISH_RES",
+            &mut limiter,
+            None,
+        ) {
+            Ok((p, rtt)) => {
+                let parsed = parse_publish_res(&p);
+                (
+                    true,
+                    parsed.as_ref().map(|r| r.load as i64).unwrap_or(-1),
+                    parsed.map(|r| r.key == key).unwrap_or(false),
+                    rtt,
+                    String::new(),
+                )
+            }
+            Err(e) => (false, -1, false, 0.0, e.to_string()),
+        }
+    };
+
+    // --- 2. SEARCH_KEY_REQ and check our entry comes back -------------------
+    let (search_responded, answers, our_entry_returned, tags_seen, search_rtt, search_err) =
+        if !publish_acked {
+            (false, 0, false, Vec::new(), 0.0, "发布未确认，跳过查询".to_string())
+        } else {
+            match client.exchange(
+                dest,
+                &search_key_req(&key),
+                op::SEARCH_RES,
+                "ed2k-dict: SEARCH_KEY_REQ (unnamespaced keyword)",
+                "ed2k-dict: SEARCH_RES",
+                &mut limiter,
+                None,
+            ) {
+                Ok((p, rtt)) => match parse_search_res(&p) {
+                    Ok(sr) => {
+                        let mut found = false;
+                        let mut seen: Vec<String> = Vec::new();
+                        for a in &sr.answers {
+                            if a.source_id == file_hash {
+                                found = true;
+                                for t in &a.tags {
+                                    let v = match &t.value {
+                                        TagValue::Str(v) => v.clone(),
+                                        TagValue::U8(v) => v.to_string(),
+                                        TagValue::U16(v) => v.to_string(),
+                                        TagValue::U32(v) => v.to_string(),
+                                        TagValue::U64(v) => v.to_string(),
+                                        TagValue::Hash16(h) => sha1::hex(h),
+                                        TagValue::Raw(_, v) => sha1::hex(v),
+                                    };
+                                    seen.push(format!("{}={v}", tag_name_display(&t.name)));
+                                }
+                            }
+                        }
+                        (true, sr.answers.len(), found, seen, rtt, String::new())
+                    }
+                    Err(e) => (true, 0, false, Vec::new(), rtt, e),
+                },
+                Err(e) => (false, 0, false, Vec::new(), 0.0, e.to_string()),
+            }
+        };
+
+    let verdict = if !reachable {
+        "unreachable"
+    } else if !publish_acked {
+        "publish_silent_on_lan"
+    } else if our_entry_returned {
+        "confirmed_unnamespaced_keyword_publish_then_retrieve"
+    } else if search_responded {
+        "publish_acked_search_answered_without_our_entry"
+    } else {
+        "publish_acked_search_silent"
+    };
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-ed2k-dict-probe/v1")),
+        ("generated_at", s(utc_iso(ms))),
+        ("mode", s("ed2k-dict-probe")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("public_kad_contacted", b(false)),
+        ("evidence_valid_for_pass", b(false)),
+        ("keyword", s(&keyword)),
+        ("keyword_hash_algorithm", s("MD4(UTF8(term)) -> CUInt128::SetValueBE")),
+        ("keyword_key", s(id_hex(&key))),
+        ("keyword_key_is_namespaced", b(false)),
+        ("file_name", s(&filename)),
+        ("file_size", n(size as f64)),
+        ("ed2k_hash", s(id_hex(&file_hash))),
+        ("ed2k_part_size", n(ED2K_PART_SIZE as f64)),
+        ("ed2k_link", s(&link)),
+        ("publish_frame_bytes", n(publish_frame.len() as f64)),
+        ("rate_limit_pps", n(rate)),
+        ("local_kad_id", s(id_hex(&client.id))),
+        ("distance_top32", n(top_chunk(&client.id, &key) as f64)),
+        ("lan_bypass_required", b(top_chunk(&client.id, &key) > SEARCHTOLERANCE)),
+        ("reachable", b(reachable)),
+        ("bootstrap_contacts", n(boot_contacts as f64)),
+        ("bootstrap_rtt_ms", n(boot_rtt)),
+        ("bootstrap_error", s(boot_err)),
+        ("publish_acked", b(publish_acked)),
+        ("publish_key_echo_matches", b(publish_echo)),
+        ("publish_load", n(publish_load as f64)),
+        ("publish_rtt_ms", n(publish_rtt)),
+        ("publish_error", s(publish_err)),
+        ("search_responded", b(search_responded)),
+        ("search_answers", n(answers as f64)),
+        ("our_entry_returned", b(our_entry_returned)),
+        ("returned_tags", J::Arr(tags_seen.iter().map(|x| s(x.clone())).collect())),
+        ("search_rtt_ms", n(search_rtt)),
+        ("search_error", s(search_err)),
+        ("verdict", s(verdict)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s("ADR-011 L1：局域网友好节点上的 eMule 关键词字典互操作。Key = MD4(UTF-8(term))，无命名空间前缀；条目 fileID 是真实 ed2k_hash。只发往 RFC1918 地址，0 个公网报文，public_kad_contacted=false、evidence_valid_for_pass=false。注意：若这台 aMule 同时连着公共 KAD，它可能为自己持有的索引条目做 TTL 续期并把测试条目重发一次；本探针因此只用唯一的无意义关键词，并在报告中保留该副作用说明。")),
+    ]))
+}
+
+// ------------------------------------------- ADR-011 L2: KAD source index --
+//
+// L1 proved a real aMule will store and serve our *keyword* entry. That alone
+// still cannot make an old client download anything: the file hash also needs a
+// *source* entry (IP/TCP/UDP ports) in the KAD source dictionary. This probe
+// publishes both halves with PUBLISH_KEY_REQ (0x43) + PUBLISH_SOURCE_REQ (0x44),
+// then reads both back with SEARCH_KEY_REQ (0x33) + SEARCH_SOURCE_REQ (0x34).
+//
+// LAN-only, RFC1918 hard check, 0 public packets, no spike status change.
+#[derive(Default)]
+struct L2SourceArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    rate: f64,
+}
+
+fn run_l2_source_probe(args: &L2SourceArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <RFC1918 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：l2-source-probe 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 {
+        return Err("--port 必须 > 0".into());
+    }
+    let dest = SocketAddr::from((ip, port));
+    let rate = if args.rate > 0.0 && args.rate <= 1.0 { args.rate } else { 0.2 };
+
+    let ms = unix_ms();
+    let keyword = format!("coldrevive-l2-src-{ms}");
+    let filename = format!("coldrevive-l2-src-{ms}.txt");
+    let content = format!("ColdRevive L2 source-index interop probe {ms}\n").into_bytes();
+    let file_size = content.len() as u64;
+    let file_hash = ed2k_hash(&content);
+    let keyword_key = kad_keyword_hash(&keyword);
+    let link = format!("ed2k://|file|{filename}|{file_size}|{}|/", id_hex(&file_hash));
+
+    let mut client = Client::bind_any("l2-source-probe", node_id("l2-source-probe"))
+        .map_err(|e| format!("bind lan socket: {e}"))?;
+    let local_udp_port = client.addr().port();
+    let source_id = node_id("l2-source-clienthash");
+    // 4662 is the standard eD2k TCP port; the probe does not listen on it (no
+    // transfer is attempted here), but the published source must advertise a
+    // nonzero TCP port or aMule's CIndexed::AddSources rejects the entry.
+    let advertised_tcp_port: u16 = 4662;
+    let tags = source_tags(advertised_tcp_port, local_udp_port, file_size);
+    let mut limiter = Limiter::new(rate);
+
+    let key_entry = IndexEntry {
+        source_id: file_hash,
+        tags: vec![Tag::str1(TAG_FILENAME, &filename), Tag::int4(TAG_FILESIZE, file_size as u32)],
+    };
+    let key_frame = publish_key_req(&keyword_key, &[key_entry]);
+    let src_frame = publish_source_req(&file_hash, &source_id, &tags);
+    let ksearch_frame = search_key_req(&keyword_key);
+    let ssearch_frame = search_source_req(&file_hash, file_size);
+
+    // Step 0: prove bidirectional UDP reachability before publishing anything.
+    let boot = client.exchange(dest, &bootstrap_req(), op::BOOTSTRAP_RES,
+        "l2: BOOTSTRAP_REQ", "l2: BOOTSTRAP_RES", &mut limiter, None);
+    let (reachable, boot_contacts, boot_rtt, boot_err) = match &boot {
+        Ok((p, rtt)) => (true, parse_bootstrap_res(p).map(|r| r.contacts.len()).unwrap_or(0), *rtt, String::new()),
+        Err(e) => (false, 0, 0.0, e.to_string()),
+    };
+
+    // Step 1: keyword half (L1 path, re-run so both halves share one fileID).
+    let (key_acked, key_load, key_rtt, key_err) = if !reachable {
+        (false, -1, 0.0, "bootstrap 未通过，跳过发布".into())
+    } else {
+        match client.exchange(dest, &key_frame, op::PUBLISH_RES,
+            "l2: PUBLISH_KEY_REQ (0x43)", "l2: PUBLISH_RES (keyword)", &mut limiter, None) {
+            Ok((p, rtt)) => (true, parse_publish_res(&p).map(|r| r.load as i64).unwrap_or(-1), rtt, String::new()),
+            Err(e) => (false, -1, 0.0, e.to_string()),
+        }
+    };
+
+    // Step 2: source half (0x44) — the new L2 wire path.
+    let (src_acked, src_key_echo, src_load, src_rtt, src_err) = if !reachable {
+        (false, false, -1, 0.0, "bootstrap 未通过，跳过发布".into())
+    } else {
+        match client.exchange(dest, &src_frame, op::PUBLISH_RES,
+            "l2: PUBLISH_SOURCE_REQ (0x44)", "l2: PUBLISH_RES (source)", &mut limiter, None) {
+            Ok((p, rtt)) => match parse_publish_res(&p) {
+                Ok(r) => (true, r.key == file_hash, r.load as i64, rtt, String::new()),
+                Err(e) => (true, false, -1, rtt, e),
+            },
+            Err(e) => (false, false, -1, 0.0, e.to_string()),
+        }
+    };
+
+    // Step 3: read the keyword entry back.
+    let (ksearch_ok, ksearch_answers, key_entry_returned, ksearch_rtt, ksearch_err) =
+        if !key_acked { (false, 0, false, 0.0, "关键词发布未确认，跳过查询".into()) } else {
+            match client.exchange(dest, &ksearch_frame, op::SEARCH_RES,
+                "l2: SEARCH_KEY_REQ (0x33)", "l2: SEARCH_RES (keyword)", &mut limiter, None) {
+                Ok((p, rtt)) => match parse_search_res(&p) {
+                    Ok(sr) => (true, sr.answers.len(), sr.answers.iter().any(|a| a.source_id == file_hash), rtt, String::new()),
+                    Err(e) => (true, 0, false, rtt, e),
+                },
+                Err(e) => (false, 0, false, 0.0, e.to_string()),
+            }
+        };
+
+    // Step 4: read the source entry back and check the returned source tags.
+    let (ssearch_ok, ssearch_answers, our_source_returned, returned_tags, ssearch_rtt, ssearch_err) =
+        if !src_acked { (false, 0, false, Vec::<String>::new(), 0.0, "源发布未确认，跳过查询".into()) } else {
+            match client.exchange(dest, &ssearch_frame, op::SEARCH_RES,
+                "l2: SEARCH_SOURCE_REQ (0x34)", "l2: SEARCH_RES (source)", &mut limiter, None) {
+                Ok((p, rtt)) => match parse_search_res(&p) {
+                    Ok(sr) => {
+                        let mut found = false;
+                        let mut seen = Vec::new();
+                        for a in &sr.answers {
+                            if a.source_id == source_id {
+                                found = true;
+                            }
+                            for t in &a.tags {
+                                let v = match &t.value {
+                                    TagValue::Str(v) => v.clone(),
+                                    TagValue::U8(v) => v.to_string(),
+                                    TagValue::U16(v) => v.to_string(),
+                                    TagValue::U32(v) => v.to_string(),
+                                    TagValue::U64(v) => v.to_string(),
+                                    TagValue::Hash16(h) => sha1::hex(h),
+                                    TagValue::Raw(_, v) => sha1::hex(v),
+                                };
+                                seen.push(format!("{}={v}", tag_name_display(&t.name)));
+                            }
+                        }
+                        (true, sr.answers.len(), found, seen, rtt, String::new())
+                    }
+                    Err(e) => (true, 0, false, Vec::new(), rtt, e),
+                },
+                Err(e) => (false, 0, false, Vec::new(), 0.0, e.to_string()),
+            }
+        };
+
+    let verdict = if !reachable { "unreachable" }
+        else if !key_acked { "keyword_publish_silent" }
+        else if !src_acked { "source_publish_silent" }
+        else if key_entry_returned && our_source_returned {
+            "confirmed_dual_track_keyword_and_source_publish_then_retrieve"
+        } else if key_entry_returned { "keyword_ok_source_not_returned" }
+        else if our_source_returned { "source_ok_keyword_not_returned" }
+        else { "both_publishes_acked_but_no_entry_returned" };
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-l2-source-probe/v1")),
+        ("generated_at", s(utc_iso(ms))),
+        ("mode", s("l2-source-probe")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("public_kad_contacted", b(false)),
+        ("evidence_valid_for_pass", b(false)),
+        ("keyword", s(&keyword)),
+        ("keyword_key", s(id_hex(&keyword_key))),
+        ("keyword_key_is_namespaced", b(false)),
+        ("file_name", s(&filename)),
+        ("file_size", n(file_size as f64)),
+        ("ed2k_file_hash", s(id_hex(&file_hash))),
+        ("ed2k_link", s(&link)),
+        ("source_id", s(id_hex(&source_id))),
+        ("advertised_tcp_port", n(advertised_tcp_port as f64)),
+        ("advertised_udp_port", n(local_udp_port as f64)),
+        ("source_tag_count", n(tags.len() as f64)),
+        ("publish_source_frame_bytes", n(src_frame.len() as f64)),
+        ("publish_source_layout", s("<fileID 16><sourceID 16><tagcount u8><Kad ReadTag tags>")),
+        ("rate_limit_pps", n(rate)),
+        ("reachable", b(reachable)),
+        ("bootstrap_contacts", n(boot_contacts as f64)),
+        ("bootstrap_rtt_ms", n(boot_rtt)),
+        ("bootstrap_error", s(boot_err)),
+        ("keyword_publish_acked", b(key_acked)),
+        ("keyword_publish_load", n(key_load as f64)),
+        ("keyword_publish_rtt_ms", n(key_rtt)),
+        ("keyword_publish_error", s(key_err)),
+        ("source_publish_acked", b(src_acked)),
+        ("source_publish_key_echo_matches", b(src_key_echo)),
+        ("source_publish_load", n(src_load as f64)),
+        ("source_publish_rtt_ms", n(src_rtt)),
+        ("source_publish_error", s(src_err)),
+        ("keyword_search_responded", b(ksearch_ok)),
+        ("keyword_search_answers", n(ksearch_answers as f64)),
+        ("keyword_entry_returned", b(key_entry_returned)),
+        ("keyword_search_rtt_ms", n(ksearch_rtt)),
+        ("keyword_search_error", s(ksearch_err)),
+        ("source_search_responded", b(ssearch_ok)),
+        ("source_search_answers", n(ssearch_answers as f64)),
+        ("our_source_returned", b(our_source_returned)),
+        ("returned_source_tags", J::Arr(returned_tags.iter().map(|x| s(x.clone())).collect())),
+        ("source_search_rtt_ms", n(ssearch_rtt)),
+        ("source_search_error", s(ssearch_err)),
+        ("verdict", s(verdict)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s("ADR-011 L2 索引面：对同一 fileID 分别发 0x43 关键词条目与 0x44 源条目，再用 0x33 / 0x34 取回。仅 RFC1918 目标，0 个公网报文，不判 pass、不回填 spikes.json。0x44 的距离校验基于 fileID（不是 keyword key），LAN 源地址由 aMule 的 IsLanIP 豁免；源 IP 取自 UDP 报头，无需在 tag 中提供。若该 aMule 同时连着公共 KAD，它可能为持有的条目做 TTL 续期并重发一次，故关键词与文件名均使用唯一无意义串。")),
+    ]))
+}
+
 // ---------------------------------------------------------------- live gate --
 
 #[derive(Default)]
@@ -1257,22 +1978,93 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
                     && is_global_ipv4(contact_addr(c).ip())
             }).cloned().collect()
         };
+        // A contact's *advertised* KadID may be stale: eMule keeps answering from
+        // an old ID for a while, and aMule's Process2Publish/SearchKeyRequest then
+        // silently drops the request (v2.4.17 observed exactly this: the node
+        // answered 0x21 but timed out on PUBLISH/SEARCH at the same UDP address).
+        //
+        // KADEMLIA2_REQ carries `check` = the recipient's own KadID, and aMule
+        // drops the packet silently when `check` != its own id. So a 0x29 answer
+        // proves liveness AND the real KadID. Only verified peers may be publish /
+        // search targets: a tolerance-zone match on an unverified ID is the 0/10
+        // timeout pattern, not an index-layer rejection.
         let mut seen: HashSet<SocketAddr> = HashSet::new();
+        let mut verified: HashSet<SocketAddr> = HashSet::new();
+        let verified_zone = |contacts: &[Contact], verified: &HashSet<SocketAddr>| -> Vec<Contact> {
+            contacts.iter().filter(|c| {
+                c.udp != 0
+                    && is_global_ipv4(contact_addr(c).ip())
+                    && verified.contains(&contact_addr(c))
+                    && top_chunk(&c.id, &key) <= SEARCHTOLERANCE
+            }).cloned().collect()
+        };
         let mut hops = 0usize;
-        let mut in_zone: Vec<Contact> = zone_contacts(&known);
-        // Keep walking the table until we have enough in-zone candidates OR the
-        // walk plateaus (a full hop adds no new in-zone contact). A single
-        // in-zone contact is insufficient: its *reported* KadID may be stale vs
-        // its live KadID, and aMule's Process2Publish/SearchKeyRequest then
-        // silently drops the request (observed: a node answered KADEMLIA2_REQ but
-        // timed out on PUBLISH/SEARCH at the same UDP address).
-        while hops < MAX_FIND_HOPS && in_zone.len() < PUBLISH_FANOUT {
-            let before = in_zone.len();
-            // Query the ALPHA_QUERY closest known contacts each hop (aMule
-            // routing), not just 2 -- otherwise the table cannot close in on
-            // the key's SEARCHTOLERANCE zone.
-            let candidates: Vec<Contact> = closest(&key, &known, ALPHA_QUERY)
-                .into_iter().cloned().collect();
+        let mut stale_hops = 0usize;
+        let mut widened_hops = 0usize;
+        // Walk the 2^24 funnel until enough *verified* in-zone responders exist.
+        //
+        // The loop must NOT exit when the routing table stops growing. A plateau
+        // means "we learned no new contacts", not "we have nothing left to ask":
+        // after the crawl, `known` holds 110-130 contacts of which only ~10 (the
+        // first two hops' candidates) were ever verified, and a publish target must
+        // be BOTH verified and in-zone. Breaking on plateau therefore abandoned
+        // 90% of the table unverified and published to 0-1 nodes per sample. Keep
+        // spending the hop budget on *verifying* candidates we already have; the
+        // only real exits are the hop ceiling or an exhausted candidate list.
+        while hops < MAX_FIND_HOPS && verified_zone(&known, &verified).len() < MIN_ZONE_TARGETS {
+            let before = known.len();
+            // Query the ALPHA_QUERY *unqueried* contacts nearest the key, taken
+            // from the WHOLE table. The window used to be `ALPHA_QUERY * 6` (=30),
+            // which capped the walk structurally: once those 30 were `seen`,
+            // `candidates` came back empty and the loop exited at hop 7 with
+            // queried=33 while `known` held 138-165 still-unqueried contacts
+            // (v2.4.21: closest_top_chunk stalled at ~2^23, i.e. one hop above the
+            // 2^24 boundary, and only 0-1 in-zone targets ever appeared).
+            // FRONTIER GUARD -- this is what a Kademlia lookup actually is.
+            //
+            // v2.4.22 took the closest *unqueried* contact from the whole table
+            // with no distance ceiling. Once the handful of near contacts had
+            // been asked (2-3 hops), every later hop had to reach 700M-1400M away,
+            // and those far peers answered with near-uniform contact sets. The
+            // crawl therefore oscillated instead of descending: replaying the
+            // v2.4.22 raw records per hop shows queried distances going
+            // 43M -> 54M -> 272M -> 743M -> 38M -> 266M -> 1342M, and the 2198
+            // contacts it harvested were only 1.14% in-zone (2.9x random) -- it
+            // descended roughly 1.5 bits in 16 hops.
+            //
+            // A real lookup only ever asks nodes inside the band it has already
+            // reached: keep querying the closest unqueried contact while its
+            // distance stays within FRONTIER_FACTOR x the best distance seen so
+            // far. The band never widens on its own, so progress is monotone.
+            // Only when the band is exhausted do we widen once (and count it),
+            // which is the honest statement "nobody closer is learnable".
+            let best = known
+                .iter()
+                .filter(|c| c.udp != 0 && is_global_ipv4(contact_addr(c).ip()))
+                .map(|c| top_chunk(&c.id, &key))
+                .min()
+                .unwrap_or(u32::MAX);
+            let frontier_cap = ((best as u64) * FRONTIER_FACTOR)
+                .max(SEARCHTOLERANCE as u64)
+                .min(u32::MAX as u64) as u32;
+            let pick = |cap: Option<u32>| -> Vec<Contact> {
+                closest(&key, &known, known.len())
+                    .into_iter()
+                    .filter(|c| !seen.contains(&contact_addr(c)))
+                    .filter(|c| c.udp != 0 && is_global_ipv4(contact_addr(c).ip()))
+                    .filter(|c| cap.map_or(true, |m| top_chunk(&c.id, &key) <= m))
+                    .take(ALPHA_QUERY)
+                    .cloned()
+                    .collect()
+            };
+            let mut candidates = pick(Some(frontier_cap));
+            if candidates.is_empty() {
+                // Frontier exhausted: widen to the whole table, but record it, so
+                // a run that never leaves the band is distinguishable from one
+                // that had to fall back to blind probing.
+                candidates = pick(None);
+                widened_hops += 1;
+            }
             if candidates.is_empty() {
                 break;
             }
@@ -1294,6 +2086,8 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
                     "live: KADEMLIA2_RES", &mut limiter, if obf { Some(&c.id) } else { None },
                 ) {
                     Ok((p, _)) => {
+                        // Answered with `check` == its own id => claimed KadID is real.
+                        verified.insert(addr);
                         if let Ok(r) = parse_find_node_res(&p) {
                             learned.extend(r.contacts);
                         }
@@ -1309,28 +2103,65 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
                     known.push(c);
                 }
             }
-            in_zone = zone_contacts(&known);
-            // Plateau: two full hops added no new in-zone contact -> stop walking.
-            if hops >= 2 && in_zone.len() == before {
-                break;
+            // Track a plateau for reporting only -- it is NOT an exit condition.
+            // Two zero-growth hops used to break the loop at hop 3-5 with 16 hops
+            // available, which is why round A/B came back with 7-12 verified
+            // contacts out of 86-127 known.
+            if known.len() == before {
+                stale_hops += 1;
+            } else {
+                stale_hops = 0;
             }
         }
-        let tolerance_reached = !in_zone.is_empty();
-        // KAD publish/search semantics: store the key on the K closest nodes we
-        // know (not just the first in-zone contact). Among these, at least one is
-        // likely to have a live KadID genuinely inside the tolerance zone.
-        let publish_targets: Vec<Contact> = closest(&key, &known, PUBLISH_FANOUT)
-            .into_iter().cloned().collect();
+        let zone_all = zone_contacts(&known);
+        let zone_verified = verified_zone(&known, &verified);
+        let tolerance_reached = !zone_verified.is_empty();
+        // --- D1 distance diagnostics -------------------------------------------
+        // top_chunk() is the top-8-bit XOR distance, so <= SEARCHTOLERANCE (2^24)
+        // means "in zone". Reporting the minimum over the whole table vs over
+        // verified peers separates two very different failures: a *routing* miss
+        // (nothing close exists in `known` -> the funnel never got there) from a
+        // *verification* miss (close contacts exist but were never confirmed, so
+        // they are ineligible as targets).
+        let global = |c: &Contact| c.udp != 0 && is_global_ipv4(contact_addr(c).ip());
+        let closest_all = known.iter().filter(|c| global(c)).map(|c| top_chunk(&c.id, &key)).min();
+        let closest_verified = known
+            .iter()
+            .filter(|c| global(c) && verified.contains(&contact_addr(c)))
+            .map(|c| top_chunk(&c.id, &key))
+            .min();
+        // Publish only to verified in-zone responders, up to KAD's replication
+        // factor. A larger blind fan-out at stale IDs produces timeouts, not data.
+        let publish_targets: Vec<Contact> =
+            zone_verified.iter().take(PUBLISH_FANOUT).cloned().collect();
         fields.push(("iteration_hops", n(hops as f64)));
+        fields.push(("frontier_widened_hops", n(widened_hops as f64)));
         fields.push(("known_contacts", n(known.len() as f64)));
-        fields.push(("zone_contacts", n(in_zone.len() as f64)));
+        fields.push(("verified_contacts", n(verified.len() as f64)));
+        fields.push(("zone_contacts", n(zone_all.len() as f64)));
+        fields.push(("zone_verified_contacts", n(zone_verified.len() as f64)));
+        fields.push(("queried_contacts", n(seen.len() as f64)));
+        fields.push(("stale_hops", n(stale_hops as f64)));
+        fields.push(("closest_top_chunk", n(closest_all.map(|v| v as f64).unwrap_or(-1.0))));
+        fields.push((
+            "closest_verified_top_chunk",
+            n(closest_verified.map(|v| v as f64).unwrap_or(-1.0)),
+        ));
         fields.push(("tolerance_reached", b(tolerance_reached)));
+        fields.push(("publish_target_policy", s("verified_in_zone")));
         fields.push(("publish_targets", J::Arr(publish_targets.iter().map(|c| s(contact_addr(c).to_string())).collect())));
+
+        // The v2.4.21 "index-op policy probe" has been removed. aMule's
+        // CIndexed::SendValidKeywordResult only builds a SEARCH_RES *inside*
+        // `if (m_Keyword_map.find(keyID) != end())`; on a miss it falls through
+        // and sends nothing at all. A private-namespace key is stored by nobody,
+        // so every probe was guaranteed silent by design -- it measured nothing
+        // and its 9/9 silence was misread as a peer-side gate. See PLAN.md §15.
 
         if !tolerance_reached {
             fields.push(("publish_res", b(false)));
             fields.push(("hit", b(false)));
-            fields.push(("skipped", s("no contact inside SEARCHTOLERANCE; publishing would be silently dropped (S2.criteria #2)")));
+            fields.push(("skipped", s("no verified contact inside SEARCHTOLERANCE (a 0x29 answer is the KadID proof); publishing would be silently dropped (S2.criteria #2)")));
             attempts.push(J::Obj(fields.into_iter().map(|(k, v)| (k.to_string(), v)).collect()));
             continue;
         }
@@ -1435,6 +2266,480 @@ fn run_live(args: &LiveArgs) -> Result<J, String> {
     ]))
 }
 
+// ------------------------------------------------------- split A/B probe --
+//
+// S2 PLAN §21. `live` publishes and searches from ONE process: the same socket,
+// the same source port, the same local KadID. That is a closed loop through a
+// third-party index, but it is not literally "A publishes, B retrieves".
+// `split-probe` splits the two roles into two processes:
+//
+//   split-probe --stage publish   runs as node `split-a`, publishes to the
+//                                 tolerance zone, and writes the addresses that
+//                                 acknowledged plus the entry's source id to a
+//                                 handoff file.
+//   split-probe --stage search    runs LATER, in its own process, as node
+//                                 `split-b`: different socket (different source
+//                                 port), different local KadID seed, different
+//                                 bootstrap entry. It never saw the publish -- it
+//                                 only knows the key and the acking address -- and
+//                                 it re-derives the whole tolerance zone itself
+//                                 before asking.
+//
+// The gate is the same `live_gate`, so every red line (approval record, G0
+// sample/rate match, user-supplied bootstrap, attestation) applies unchanged.
+
+#[derive(Default)]
+struct SplitArgs {
+    bootstrap: Option<PathBuf>,
+    sample_size: Option<usize>,
+    rate_limit: Option<f64>,
+    attest: bool,
+    stage: Option<String>,
+    handoff: Option<PathBuf>,
+}
+
+struct Discovery {
+    known: Vec<Contact>,
+    verified: HashSet<SocketAddr>,
+    hops: usize,
+    widened: usize,
+    closest: Option<u32>,
+    bootstrap_ok: bool,
+    bootstrap_contacts: usize,
+    bootstrap_error: String,
+}
+
+impl Discovery {
+    fn zone_verified(&self, key: &KadId) -> Vec<Contact> {
+        self.known
+            .iter()
+            .filter(|c| {
+                c.udp != 0
+                    && is_global_ipv4(contact_addr(c).ip())
+                    && self.verified.contains(&contact_addr(c))
+                    && top_chunk(&c.id, key) <= SEARCHTOLERANCE
+            })
+            .cloned()
+            .collect()
+    }
+}
+
+/// Same funnel as `run_live`: bootstrap, then KADEMLIA2_REQ/RES descent with the
+/// frontier ceiling, stopping once MIN_ZONE_TARGETS verified in-zone peers exist
+/// or the hop budget runs out. Extracted so the B side can walk its own route
+/// instead of reusing A's contacts.
+fn discover_zone(
+    client: &mut Client,
+    limiter: &mut Limiter,
+    start: SocketAddr,
+    key: &KadId,
+    hops_budget: usize,
+    tag: &str,
+) -> Discovery {
+    let mut d = Discovery {
+        known: Vec::new(),
+        verified: HashSet::new(),
+        hops: 0,
+        widened: 0,
+        closest: None,
+        bootstrap_ok: false,
+        bootstrap_contacts: 0,
+        bootstrap_error: String::new(),
+    };
+    match client.exchange(
+        start,
+        &bootstrap_req(),
+        op::BOOTSTRAP_RES,
+        &format!("{tag}: bootstrap request"),
+        &format!("{tag}: bootstrap response"),
+        limiter,
+        None,
+    ) {
+        Ok((p, _)) => {
+            d.bootstrap_ok = true;
+            match parse_bootstrap_res(&p) {
+                Ok(r) => {
+                    d.bootstrap_contacts = r.contacts.len();
+                    d.known = r.contacts;
+                }
+                Err(e) => d.bootstrap_error = e,
+            }
+        }
+        Err(e) => d.bootstrap_error = e.to_string(),
+    }
+    let enough = |known: &Vec<Contact>, verified: &HashSet<SocketAddr>| -> usize {
+        known
+            .iter()
+            .filter(|c| {
+                c.udp != 0
+                    && is_global_ipv4(contact_addr(c).ip())
+                    && verified.contains(&contact_addr(c))
+                    && top_chunk(&c.id, key) <= SEARCHTOLERANCE
+            })
+            .count()
+    };
+    let mut seen: HashSet<SocketAddr> = HashSet::new();
+    while d.hops < hops_budget && enough(&d.known, &d.verified) < MIN_ZONE_TARGETS {
+        let best = d
+            .known
+            .iter()
+            .filter(|c| c.udp != 0 && is_global_ipv4(contact_addr(c).ip()))
+            .map(|c| top_chunk(&c.id, key))
+            .min()
+            .unwrap_or(u32::MAX);
+        let cap = ((best as u64) * FRONTIER_FACTOR)
+            .max(SEARCHTOLERANCE as u64)
+            .min(u32::MAX as u64) as u32;
+        let pick = |ceiling: Option<u32>| -> Vec<Contact> {
+            closest(key, &d.known, d.known.len())
+                .into_iter()
+                .filter(|c| !seen.contains(&contact_addr(c)))
+                .filter(|c| c.udp != 0 && is_global_ipv4(contact_addr(c).ip()))
+                .filter(|c| ceiling.map_or(true, |m| top_chunk(&c.id, key) <= m))
+                .take(ALPHA_QUERY)
+                .cloned()
+                .collect()
+        };
+        let mut candidates = pick(Some(cap));
+        if candidates.is_empty() {
+            candidates = pick(None);
+            d.widened += 1;
+        }
+        if candidates.is_empty() {
+            break;
+        }
+        let mut learned: Vec<Contact> = Vec::new();
+        for c in candidates {
+            let addr = contact_addr(&c);
+            if !seen.insert(addr) {
+                continue;
+            }
+            let req = find_node_req(key, &c.id, 0x0B);
+            if let Ok((p, _)) = client.exchange(
+                addr,
+                &req,
+                op::RES,
+                &format!("{tag}: KADEMLIA2_REQ (tolerance iteration)"),
+                &format!("{tag}: KADEMLIA2_RES"),
+                limiter,
+                None,
+            ) {
+                d.verified.insert(addr);
+                if let Ok(r) = parse_find_node_res(&p) {
+                    learned.extend(r.contacts);
+                }
+            }
+        }
+        d.hops += 1;
+        for c in learned {
+            if !d.known.iter().any(|k| k.id == c.id) {
+                d.known.push(c);
+            }
+        }
+    }
+    d.closest = d
+        .known
+        .iter()
+        .filter(|c| c.udp != 0 && is_global_ipv4(contact_addr(c).ip()))
+        .map(|c| top_chunk(&c.id, key))
+        .min();
+    d
+}
+
+fn kad_from_hex(text: &str) -> Option<KadId> {
+    if text.len() != 32 {
+        return None;
+    }
+    let mut out = [0u8; 16];
+    for (i, chunk) in text.as_bytes().chunks(2).enumerate() {
+        let hi = (chunk[0] as char).to_digit(16)?;
+        let lo = (chunk[1] as char).to_digit(16)?;
+        out[i] = (hi * 16 + lo) as u8;
+    }
+    Some(out)
+}
+
+fn run_split_probe(args: &SplitArgs) -> Result<J, String> {
+    let stage = args.stage.clone().unwrap_or_default();
+    if stage != "publish" && stage != "search" {
+        return Err("split-probe 需要 --stage publish|search".into());
+    }
+    let handoff = args.handoff.clone().ok_or("split-probe 需要 --handoff <file>")?;
+    let gate_args = LiveArgs {
+        bootstrap: args.bootstrap.clone(),
+        sample_size: args.sample_size,
+        rate_limit: args.rate_limit,
+        attest: args.attest,
+        check_only: false,
+        obfuscate: false,
+    };
+    let (ok, blockers, info) = live_gate(&gate_args);
+    let gate = obj(vec![
+        ("passed", b(ok)),
+        ("blockers", J::Arr(blockers.iter().map(|x| s(x.clone())).collect())),
+        ("info", J::Arr(info.iter().map(|x| s(x.clone())).collect())),
+        ("attested", b(args.attest)),
+        ("check_only", b(false)),
+    ]);
+    if !ok {
+        return Err(format!("门禁未通过：{}", blockers.join("; ")));
+    }
+    let boot_text = fs::read_to_string(gate_args.bootstrap.as_ref().unwrap())
+        .map_err(|e| format!("bootstrap read: {e}"))?;
+    let nodes = parse_bootstrap_file(&boot_text)?;
+    if nodes.is_empty() {
+        return Err("bootstrap 文件无有效节点".into());
+    }
+    let sample = args.sample_size.unwrap_or(3).min(SAMPLE_KEYS.len());
+    let rate = gate_args.rate_limit.unwrap_or(0.2);
+
+    let mut entries: Vec<J> = Vec::new();
+
+    if stage == "publish" {
+        // --- A: publish -------------------------------------------------------
+        let mut client = Client::bind_any("split-a", node_id("split-a"))
+            .map_err(|e| format!("bind split-a: {e}"))?;
+        let local = client.addr();
+        let mut limiter = Limiter::new(rate);
+        let mut handoff_lines: Vec<String> = Vec::new();
+        for (i, logical) in SAMPLE_KEYS.iter().take(sample).enumerate() {
+            let key = namespaced_key(logical);
+            let d = discover_zone(&mut client, &mut limiter, nodes[i % nodes.len()], &key, MAX_FIND_HOPS, "split-a");
+            let zone = d.zone_verified(&key);
+            let targets: Vec<Contact> = zone.iter().take(PUBLISH_FANOUT).cloned().collect();
+            let entry = IndexEntry {
+                source_id: node_id(&format!("split-a-descriptor-{i}")),
+                tags: descriptor_tags(logical, "split-a", local.port()),
+            };
+            let mut accepted: Vec<String> = Vec::new();
+            let mut detail: Vec<J> = Vec::new();
+            for t in &targets {
+                let addr = contact_addr(t);
+                let r = client.exchange(
+                    addr,
+                    &publish_key_req(&key, &[entry.clone()]),
+                    op::PUBLISH_RES,
+                    "split-a: publish namespaced Key",
+                    "split-a: publish response",
+                    &mut limiter,
+                    None,
+                );
+                let mut o: Vec<(&str, J)> = vec![("addr", s(addr.to_string())), ("ok", b(r.is_ok()))];
+                match &r {
+                    Ok((p, rtt)) => {
+                        accepted.push(addr.to_string());
+                        o.push(("rtt_ms", n(*rtt)));
+                        o.push(("load", n(parse_publish_res(p).map(|x| x.load).unwrap_or(0) as f64)));
+                    }
+                    Err(e) => o.push(("error", s(e.to_string()))),
+                }
+                detail.push(obj(o));
+            }
+            if !accepted.is_empty() {
+                handoff_lines.push(format!(
+                    "v1\t{i}\t{logical}\t{}\t{}\t{}",
+                    id_hex(&key),
+                    id_hex(&entry.source_id),
+                    accepted.join(",")
+                ));
+            }
+            entries.push(obj(vec![
+                ("seq", n(i as f64)),
+                ("logical", s(*logical)),
+                ("key_id", s(id_hex(&key))),
+                ("source_id", s(id_hex(&entry.source_id))),
+                ("bootstrap", s(nodes[i % nodes.len()].to_string())),
+                ("bootstrap_ok", b(d.bootstrap_ok)),
+                ("bootstrap_contacts", n(d.bootstrap_contacts as f64)),
+                ("bootstrap_error", s(d.bootstrap_error.clone())),
+                ("iteration_hops", n(d.hops as f64)),
+                ("frontier_widened_hops", n(d.widened as f64)),
+                ("known_contacts", n(d.known.len() as f64)),
+                ("verified_contacts", n(d.verified.len() as f64)),
+                ("zone_verified_contacts", n(zone.len() as f64)),
+                ("closest_top_chunk", n(d.closest.map(|v| v as f64).unwrap_or(-1.0))),
+                ("publish_targets", J::Arr(targets.iter().map(|c| s(contact_addr(c).to_string())).collect())),
+                ("publish_detail", J::Arr(detail)),
+                ("accepted_count", n(accepted.len() as f64)),
+            ]));
+        }
+        let body = if handoff_lines.is_empty() {
+            "v1\n".to_string()
+        } else {
+            format!("v1\n{}\n", handoff_lines.join("\n"))
+        };
+        if let Some(parent) = handoff.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| format!("handoff dir: {e}"))?;
+            }
+        }
+        fs::write(&handoff, body).map_err(|e| format!("handoff write: {e}"))?;
+        return Ok(obj(vec![
+            ("schema", s("coldrevive.m0.s2-kad-split/v1")),
+            ("generated_at", s(utc_iso(unix_ms()))),
+            ("stage", s("publish")),
+            ("side", s("A")),
+            ("node_label", s("split-a")),
+            ("local_kad_id", s(id_hex(&node_id("split-a")))),
+            ("local_addr", s(local.to_string())),
+            ("public_kad_contacted", b(true)),
+            ("evidence_valid_for_pass", b(false)),
+            ("s2_status", s("not_run")),
+            ("gate", gate),
+            ("handoff_file", s(handoff.display().to_string())),
+            ("entries", J::Arr(entries)),
+            ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+            ("note", s("A 侧：只发布并记录确认地址与 source id；不查询。判定由 B 侧独立进程完成，结论由执行人回填 spikes.json。")),
+        ]));
+    }
+
+    // --- B: search ------------------------------------------------------------
+    let text = fs::read_to_string(&handoff).map_err(|e| format!("handoff read: {e}"))?;
+    let mut client =
+        Client::bind_any("split-b", node_id("split-b")).map_err(|e| format!("bind split-b: {e}"))?;
+    let local = client.addr();
+    let mut limiter = Limiter::new(rate);
+    let mut hits = 0usize;
+    for (row, line) in text.lines().filter(|l| l.starts_with("v1\t")).enumerate() {
+        let f: Vec<&str> = line.split('\t').collect();
+        if f.len() < 6 {
+            continue;
+        }
+        let logical = f[2].to_string();
+        let key = match kad_from_hex(f[3]) {
+            Some(k) => k,
+            None => continue,
+        };
+        let want_source = match kad_from_hex(f[4]) {
+            Some(k) => k,
+            None => continue,
+        };
+        let ack_addrs: Vec<SocketAddr> = f[5]
+            .split(',')
+            .filter_map(|a| a.parse::<SocketAddr>().ok())
+            .collect();
+        // A different bootstrap entry than A used for this row, so the route is
+        // not simply A's route replayed.
+        let start = nodes[(row + 3) % nodes.len()];
+        let d = discover_zone(&mut client, &mut limiter, start, &key, MAX_FIND_HOPS, "split-b");
+        let zone = d.zone_verified(&key);
+        // Query the addresses that acknowledged A first, then B's own zone.
+        let mut targets: Vec<SocketAddr> = ack_addrs.clone();
+        for c in &zone {
+            let a = contact_addr(c);
+            if !targets.contains(&a) {
+                targets.push(a);
+            }
+        }
+        let mut queried: Vec<J> = Vec::new();
+        let mut hit = false;
+        let mut answered = 0usize;
+        for addr in &targets {
+            let r = client.exchange(
+                *addr,
+                &search_key_req(&key),
+                op::SEARCH_RES,
+                "split-b: search namespaced Key",
+                "split-b: search response",
+                &mut limiter,
+                None,
+            );
+            let mut o: Vec<(&str, J)> = vec![
+                ("addr", s(addr.to_string())),
+                ("source", s(if ack_addrs.contains(addr) { "a_ack" } else { "b_own_zone" })),
+            ];
+            match &r {
+                Ok((p, rtt)) => {
+                    answered += 1;
+                    let mut found = false;
+                    let mut answers = 0usize;
+                    let mut tags_seen: Vec<String> = Vec::new();
+                    if let Ok(sr) = parse_search_res(p) {
+                        answers = sr.answers.len();
+                        for a in &sr.answers {
+                            if a.source_id == want_source {
+                                found = true;
+                                for t in &a.tags {
+                                    tags_seen.push(format!(
+                                        "{}={}",
+                                        String::from_utf8_lossy(&t.name),
+                                        match &t.value {
+                                            TagValue::Str(v) => v.clone(),
+                                            TagValue::U16(v) => v.to_string(),
+                                            TagValue::U32(v) => v.to_string(),
+                                            TagValue::U64(v) => v.to_string(),
+                                            TagValue::U8(v) => v.to_string(),
+                                            TagValue::Hash16(h) => sha1::hex(h),
+                                            TagValue::Raw(_, v) => sha1::hex(v),
+                                        }
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    if found {
+                        hit = true;
+                    }
+                    o.push(("responded", b(true)));
+                    o.push(("rtt_ms", n(*rtt)));
+                    o.push(("answers", n(answers as f64)));
+                    o.push(("hit", b(found)));
+                    o.push(("returned_tags", J::Arr(tags_seen.iter().map(|x| s(x.clone())).collect())));
+                }
+                Err(e) => {
+                    o.push(("responded", b(false)));
+                    o.push(("error", s(e.to_string())));
+                }
+            }
+            queried.push(obj(o));
+        }
+        if hit {
+            hits += 1;
+        }
+        entries.push(obj(vec![
+            ("seq", s(f[1].to_string())),
+            ("logical", s(logical)),
+            ("key_id", s(f[3].to_string())),
+            ("expected_source_id", s(f[4].to_string())),
+            ("a_ack_addrs", J::Arr(ack_addrs.iter().map(|a| s(a.to_string())).collect())),
+            ("bootstrap", s(start.to_string())),
+            ("bootstrap_ok", b(d.bootstrap_ok)),
+            ("bootstrap_contacts", n(d.bootstrap_contacts as f64)),
+            ("bootstrap_error", s(d.bootstrap_error.clone())),
+            ("iteration_hops", n(d.hops as f64)),
+            ("frontier_widened_hops", n(d.widened as f64)),
+            ("known_contacts", n(d.known.len() as f64)),
+            ("verified_contacts", n(d.verified.len() as f64)),
+            ("zone_verified_contacts", n(zone.len() as f64)),
+            ("closest_top_chunk", n(d.closest.map(|v| v as f64).unwrap_or(-1.0))),
+            ("queried", J::Arr(queried)),
+            ("responded_count", n(answered as f64)),
+            ("hit", b(hit)),
+        ]));
+    }
+    let total = entries.len();
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-split/v1")),
+        ("generated_at", s(utc_iso(unix_ms()))),
+        ("stage", s("search")),
+        ("side", s("B")),
+        ("node_label", s("split-b")),
+        ("local_kad_id", s(id_hex(&node_id("split-b")))),
+        ("local_addr", s(local.to_string())),
+        ("public_kad_contacted", b(true)),
+        ("evidence_valid_for_pass", b(false)),
+        ("s2_status", s("not_run")),
+        ("evidence_basis", s("两个独立进程：不同 socket/源端口、不同本地 KadID 种子、不同 bootstrap 入口；同一主机同一公网 IP")),
+        ("gate", gate),
+        ("handoff_file", s(handoff.display().to_string())),
+        ("entries", J::Arr(entries)),
+        ("entries_count", n(total as f64)),
+        ("hit_count", n(hits as f64)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s("B 侧：独立进程独立 socket，按 handoff 的 Key 自行重走 tolerance zone，再查询 A 的确认地址与自己的在区集合。程序不置 pass。")),
+    ]))
+}
+
 /// Minimal parser for the user-supplied bootstrap JSON:
 /// `[{"ip":"1.2.3.4","port":4672}, ...]`. No dependencies, no bundled defaults.
 fn parse_bootstrap_file(text: &str) -> Result<Vec<SocketAddr>, String> {
@@ -1507,6 +2812,11 @@ fn print_usage() {
     println!("  kad-mini selftest                  codec / hash assertions, no sockets");
     println!("  kad-mini loopback [--keys N] [--rate R]   real 0xE4 frames on 127.0.0.1");
     println!("  kad-mini lan-probe --ip IP --port UDP     RFC1918-only real-client probe, no publish");
+    println!("  kad-mini lan-index-probe --ip IP --port UDP   RFC1918-only PUBLISH/SEARCH roundtrip (PLAN §18.6 D)");
+    println!("  kad-mini ed2k-dict-probe --ip IP --port UDP [--keyword TERM]   RFC1918-only eMule keyword dictionary (ADR-011 L1)");
+    println!("  kad-mini l2-source-probe --ip IP --port UDP   RFC1918-only 0x43+0x44 / 0x33+0x34 dual-track (ADR-011 L2)");
+    println!("  kad-mini split-probe --stage publish|search --bootstrap FILE --handoff FILE \\");
+    println!("            --sample-size N --rate-limit R --attest-i-am-the-experiment-operator  (PLAN §21 A/B)");
     println!("  kad-mini live --check             inspect the real-network gate, send nothing");
     println!("  kad-mini live --bootstrap FILE --sample-size N --rate-limit R \\");
     println!("            --attest-i-am-the-experiment-operator\n");
@@ -1533,6 +2843,44 @@ fn main() {
                 rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
             };
             run_lan_probe(&args).map(|r| (r, "kad-lan-probe", 0))
+        }
+        "lan-index-probe" => {
+            let args = LanIndexArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+                bisect: argv.iter().any(|a| a == "--bisect"),
+                tag_probe: argv.iter().any(|a| a == "--tag-probe"),
+            };
+            run_lan_index_probe(&args).map(|r| (r, "kad-lan-index-probe", 0))
+        }
+        "ed2k-dict-probe" => {
+            let args = Ed2kDictArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                keyword: arg_value(&argv, "--keyword"),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+            };
+            run_ed2k_dict_probe(&args).map(|r| (r, "kad-ed2k-dict-probe", 0))
+        }
+        "l2-source-probe" => {
+            let args = L2SourceArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+            };
+            run_l2_source_probe(&args).map(|r| (r, "kad-l2-source-probe", 0))
+        }
+        "split-probe" => {
+            let args = SplitArgs {
+                bootstrap: arg_value(&argv, "--bootstrap").map(PathBuf::from),
+                sample_size: arg_value(&argv, "--sample-size").and_then(|v| v.parse().ok()),
+                rate_limit: arg_value(&argv, "--rate-limit").and_then(|v| v.parse().ok()),
+                attest: argv.iter().any(|a| a == "--attest-i-am-the-experiment-operator"),
+                stage: arg_value(&argv, "--stage"),
+                handoff: arg_value(&argv, "--handoff").map(PathBuf::from),
+            };
+            run_split_probe(&args).map(|r| (r, "kad-split", 0))
         }
         "live" => {
             let args = LiveArgs {
@@ -1685,15 +3033,34 @@ fn run_selftest() -> Result<J, String> {
     ];
     let mut tb = Buf::new();
     write_tags(&mut tb, &tags).unwrap();
-    checks.push(("tags.roundtrip", read_tags(&mut Cur::new(&tb.0)).unwrap() == tags, "aMule CTag"));
+    checks.push(("tags.roundtrip", read_tags(&mut Cur::new(&tb.0)).unwrap() == tags, "aMule CFileDataIO::ReadTag (Kad)"));
 
     // namespace
     checks.push(("namespace.changes_id", namespaced_key("x") != plain_key("x"), "SHA1 prefix truncated to 128-bit"));
     checks.push(("namespace.id_len", namespaced_key("x").len() == 16, "KAD is 128-bit"));
 
+    // ADR-011 L1: eMule's keyword Key is MD4(UTF-8(term)), not SHA-1.
+    checks.push(("md4.empty", sha1::hex(&md4(b"")) == "31d6cfe0d16ae931b73c59d7e0c089c0", "RFC 1320"));
+    checks.push(("md4.abc", sha1::hex(&md4(b"abc")) == "a448017aaf21d8525fc10ae87aa6729d", "RFC 1320"));
+    checks.push(("ed2k.keyword_hash_is_md4", kad_keyword_hash("abc") == md4(b"abc"), "aMule KadGetKeywordHash (Kademlia.cpp)"));
+    checks.push(("ed2k.keyword_hash_is_unnamespaced", kad_keyword_hash("abc") != namespaced_key("abc"), "ADR-011 compat track"));
+    checks.push(("ed2k.file_hash_single_part", ed2k_hash(b"abc") == md4(b"abc"), "eD2k MD4 / 9.28 MB parts"));
+
+    // ADR-011 L2: exact-PARTSIZE files take aMule's "Red" hash (extra empty
+    // part). Reusing crates.io ed2k::Ed2k (Blue) would give a fileID no old
+    // client can download. Vector from src/KnownFile.cpp SetFileSize comments.
+    let exact_part = vec![0x33u8; ED2K_PART_SIZE];
+    let mut red_input = Vec::from(md4(&exact_part));
+    red_input.extend_from_slice(&md4(&[]));
+    checks.push(("ed2k.exact_part_uses_amule_red_hash", ed2k_hash(&exact_part) == md4(&red_input), "aMule ThreadTasks.cpp / KnownFile.cpp"));
+    checks.push(("ed2k.exact_part_rejects_blue_hash", ed2k_hash(&exact_part) != md4(&md4(&exact_part)), "crates.io ed2k::Ed2kBlue is NOT eMule-compatible"));
+    checks.push(("ed2k.part_hash_count_at_boundary", ed2k_part_hashes(&exact_part).len() == 2, "aMule m_iED2KPartHashCount"));
+    checks.push(("ed2k.part_hash_count_below_boundary", ed2k_part_hashes(b"abc").is_empty(), "aMule: files < PARTSIZE have no hashset"));
+
     // all message roundtrips
     let key = namespaced_key("selftest");
     let entries = vec![IndexEntry { source_id: node_id("d"), tags: tags.clone() }];
+    let src_tags = source_tags(4662, 4672, 1234);
     let roundtrips = vec![
         ("bootstrap_res", parse_bootstrap_res(&parse_frame(&bootstrap_res(&c, &[c.clone()])).unwrap().1).is_ok()),
         ("hello", parse_hello(&parse_frame(&hello(op::HELLO_REQ, &c, &[])).unwrap().1).is_ok()),
@@ -1703,6 +3070,18 @@ fn run_selftest() -> Result<J, String> {
         ("publish_res", parse_publish_res(&parse_frame(&publish_res(&key, 0)).unwrap().1).is_ok()),
         ("search_key_req", parse_search_key_req(&parse_frame(&search_key_req(&key)).unwrap().1).is_ok()),
         ("search_res", parse_search_res(&parse_frame(&search_res(&c.id, &key, &entries)).unwrap().1).is_ok()),
+        ("publish_source_req", {
+            let frame_bytes = publish_source_req(&key, &c.id, &src_tags);
+            let (opcode, p) = parse_frame(&frame_bytes).unwrap();
+            opcode == op::PUBLISH_SOURCE_REQ
+                && parse_publish_source_req(p).map(|r| r.file_id == key && r.tags == src_tags).unwrap_or(false)
+        }),
+        ("search_source_req", {
+            let frame_bytes = search_source_req(&key, 1234);
+            let (opcode, p) = parse_frame(&frame_bytes).unwrap();
+            opcode == op::SEARCH_SOURCE_REQ
+                && parse_search_source_req(p).map(|r| r.file_id == key && r.file_size == 1234).unwrap_or(false)
+        }),
     ];
     for (name, ok) in roundtrips {
         checks.push((Box::leak(format!("msg.{name}").into_boxed_str()), ok, "roundtrip"));

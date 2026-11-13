@@ -69,8 +69,17 @@ pub const TAG_FILENAME: u8 = 0x01;
 pub const TAG_FILESIZE: u8 = 0x02;
 pub const TAG_FILESIZE_HI: u8 = 0x3A;
 pub const TAG_KADMISCOPTIONS: u8 = 0xF2;
+pub const TAG_ENCRYPTION: u8 = 0xF3;
 pub const TAG_SOURCEUPORT: u8 = 0xFC;
+pub const TAG_SOURCEPORT: u8 = 0xFD;
+pub const TAG_SOURCEIP: u8 = 0xFE;
 pub const TAG_SOURCETYPE: u8 = 0xFF;
+
+// src/kademlia/kademlia/Search.cpp, case STOREFILE (non-firewalled branch).
+// 1 = HighID source; 4 = HighID source of a >4 GiB file; 3/5 = firewalled;
+// 6 = firewalled with direct UDP callback. Publishing without a SOURCETYPE
+// tag makes Process2PublishSourceRequest drop the entry (m_bSource == false).
+pub const SOURCETYPE_HIGHID: u8 = 1;
 
 pub const NAMESPACE: &str = "ColdRevive_V1:";
 pub const ID_LEN: usize = 16; // KAD ID space is 128-bit, NOT SHA-1's 160-bit.
@@ -240,6 +249,8 @@ pub fn opcode_name(op: u8) -> &'static str {
         op::SEARCH_KEY_REQ => "KADEMLIA2_SEARCH_KEY_REQ",
         op::SEARCH_RES => "KADEMLIA2_SEARCH_RES",
         op::PUBLISH_KEY_REQ => "KADEMLIA2_PUBLISH_KEY_REQ",
+        op::PUBLISH_SOURCE_REQ => "KADEMLIA2_PUBLISH_SOURCE_REQ",
+        op::SEARCH_SOURCE_REQ => "KADEMLIA2_SEARCH_SOURCE_REQ",
         op::PUBLISH_RES => "KADEMLIA2_PUBLISH_RES",
         op::PING => "KADEMLIA2_PING",
         op::PONG => "KADEMLIA2_PONG",
@@ -284,6 +295,24 @@ impl Tag {
     }
 
     pub fn encode(&self, b: &mut Buf) -> Result<(), String> {
+        // KAD tag framing is NOT the ed2k/met framing.
+        //
+        // aMule's KAD paths (PUBLISH_KEY_REQ, SEARCH_RES) read tags with
+        // `CFileDataIO::ReadTag`, which does:
+        //     type = ReadUInt8();
+        //     name = ReadString(false);          // uint16 length + bytes, ALWAYS
+        //     switch (type) { ... default: throw "Invalid Kad tag type" }
+        // whereas the ed2k/met path (`CTag::CTag(CFileDataIO&, bool)` and
+        // `CTag::WriteNewEd2kTag`) uses `[type|0x80][name:1]` for numeric names.
+        // We originally wrote the ed2k form here; every tag then threw inside
+        // aMule's `Process2PublishKeyRequest` and no PUBLISH_RES was ever sent
+        // (v2.4.26, PLAN §19). Numeric names on the wire are a length-1 string:
+        // `TAG_FILENAME` is literally `wxT("\x01")`.
+        //
+        // `ReadTag`'s switch also has NO case for TAGTYPE_STR1..STR22 and none
+        // for TAGTYPE_BLOB, so strings must always be TAGTYPE_STRING here --
+        // the compact STRn types that `WriteNewEd2kTag` would pick are invalid
+        // on this path.
         let ty = match &self.value {
             TagValue::U8(_) => tag_type::UINT8,
             TagValue::U16(_) => tag_type::UINT16,
@@ -291,23 +320,11 @@ impl Tag {
             TagValue::U64(_) => tag_type::UINT64,
             TagValue::Hash16(_) => tag_type::HASH16,
             TagValue::Raw(t, _) => *t,
-            TagValue::Str(s) => {
-                let n = s.len();
-                if (1..=16).contains(&n) {
-                    tag_type::STR1 + (n as u8) - 1
-                } else {
-                    tag_type::STRING
-                }
-            }
+            TagValue::Str(_) => tag_type::STRING,
         };
-        if self.name.len() == 1 {
-            b.u8(ty | 0x80);
-            b.u8(self.name[0]);
-        } else {
-            b.u8(ty);
-            b.u16(self.name.len() as u16);
-            b.raw(&self.name);
-        }
+        b.u8(ty);
+        b.u16(self.name.len() as u16);
+        b.raw(&self.name);
         match &self.value {
             TagValue::U8(v) => b.u8(*v),
             TagValue::U16(v) => b.u16(*v),
@@ -316,9 +333,7 @@ impl Tag {
             TagValue::Hash16(v) => b.raw(v),
             TagValue::Raw(_, v) => b.raw(v),
             TagValue::Str(s) => {
-                if ty == tag_type::STRING {
-                    b.u16(s.len() as u16);
-                }
+                b.u16(s.len() as u16);
                 b.raw(s.as_bytes());
             }
         }
@@ -326,15 +341,12 @@ impl Tag {
     }
 
     pub fn decode(c: &mut Cur<'_>) -> Result<Self, String> {
-        let raw_ty = c.u8()?;
-        let short_name = raw_ty & 0x80 != 0;
-        let ty = raw_ty & 0x7F;
-        let name = if short_name {
-            vec![c.u8()?]
-        } else {
-            let n = c.u16()? as usize;
-            c.raw(n)?.to_vec()
-        };
+        let ty = c.u8()?;
+        if (0x11..=0x26).contains(&ty) || ty == 0x07 {
+            return Err(format!("tag type 0x{ty:02x} is not readable by aMule's Kad ReadTag"));
+        }
+        let n = c.u16()? as usize;
+        let name = c.raw(n)?.to_vec();
         let value = match ty {
             tag_type::UINT8 => TagValue::U8(c.u8()?),
             tag_type::UINT16 => TagValue::U16(c.u16()?),
@@ -349,11 +361,7 @@ impl Tag {
                 let n = c.u16()? as usize;
                 TagValue::Str(String::from_utf8_lossy(c.raw(n)?).into_owned())
             }
-            t if (tag_type::STR1..=tag_type::STR16).contains(&t) => {
-                let n = (t - tag_type::STR1 + 1) as usize;
-                TagValue::Str(String::from_utf8_lossy(c.raw(n)?).into_owned())
-            }
-            tag_type::BLOB | tag_type::BSOB => {
+            tag_type::BSOB => {
                 let n = c.u32()? as usize;
                 TagValue::Raw(ty, c.raw(n)?.to_vec())
             }
@@ -664,6 +672,81 @@ pub fn parse_search_res(payload: &[u8]) -> Result<SearchRes, String> {
     Ok(SearchRes { sender, target, answers })
 }
 
+// ---------------------------------------------- L2: KAD source dictionary --
+//
+// src/kademlia/net/KademliaUDPListener.cpp::SendPublishSourcePacket /
+// Process2PublishSourceRequest, and kademlia/Search.cpp case STOREFILE.
+//
+// PUBLISH_SOURCE_REQ (0x44), Kad2 only, contact version >= 4:
+//     <fileID 16> <sourceID 16> <tagcount u8> <tags...>
+// Note the differences from PUBLISH_KEY_REQ (0x43):
+//   * there is NO u16 entry count -- the packet carries exactly one source;
+//   * the tag count is ONE byte (CFileDataIO::WriteTagPtrList), not two;
+//   * `distance = myKadID XOR fileID` is checked against SEARCHTOLERANCE, i.e.
+//     the target node must be near the FILE hash, not the keyword hash;
+//   * an entry with no TAG_SOURCETYPE tag is silently discarded.
+// The source's IP/UDP port are taken from the datagram header (m_uIP /
+// m_uUDPport); TAG_SOURCEIP is added by the receiver. Only TCP port, UDP port
+// override, size and type need to be sent as tags.
+
+pub struct PublishSourceReq {
+    pub file_id: KadId,
+    pub source_id: KadId,
+    pub tags: Vec<Tag>,
+}
+
+pub fn publish_source_req(file_id: &KadId, source_id: &KadId, tags: &[Tag]) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(file_id);
+    b.id(source_id);
+    write_tags(&mut b, tags).expect("tag encode is infallible for these types");
+    frame(op::PUBLISH_SOURCE_REQ, &b.0)
+}
+
+pub fn parse_publish_source_req(payload: &[u8]) -> Result<PublishSourceReq, String> {
+    let mut c = Cur::new(payload);
+    let file_id = c.id()?;
+    let source_id = c.id()?;
+    let tags = read_tags(&mut c)?;
+    Ok(PublishSourceReq { file_id, source_id, tags })
+}
+
+/// The tag set a non-firewalled (HighID) eMule publishes for itself as a source.
+/// Mirrors `Search.cpp` case STOREFILE, `theApp->IsFirewalled() == false`.
+pub fn source_tags(tcp_port: u16, udp_port: u16, file_size: u64) -> Vec<Tag> {
+    vec![
+        Tag::int1(TAG_SOURCETYPE, SOURCETYPE_HIGHID),
+        Tag::int2(TAG_SOURCEPORT, tcp_port),
+        Tag::int2(TAG_SOURCEUPORT, udp_port),
+        Tag::int4(TAG_FILESIZE, file_size.min(u32::MAX as u64) as u32),
+        Tag::int1(TAG_ENCRYPTION, 0),
+    ]
+}
+
+/// SEARCH_SOURCE_REQ (0x34): `<fileID 16> <startPosition u16> <fileSize u64>`.
+/// `Process2SearchSourceRequest` masks startPosition with 0x7FFF.
+pub fn search_source_req(file_id: &KadId, file_size: u64) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(file_id);
+    b.u16(0);
+    b.u64(file_size);
+    frame(op::SEARCH_SOURCE_REQ, &b.0)
+}
+
+pub struct SearchSourceReq {
+    pub file_id: KadId,
+    pub start_position: u16,
+    pub file_size: u64,
+}
+
+pub fn parse_search_source_req(payload: &[u8]) -> Result<SearchSourceReq, String> {
+    let mut c = Cur::new(payload);
+    let file_id = c.id()?;
+    let start_position = c.u16()? & 0x7FFF;
+    let file_size = c.u64()?;
+    Ok(SearchSourceReq { file_id, start_position, file_size })
+}
+
 pub fn id_hex(id: &KadId) -> String {
     hex(id)
 }
@@ -910,11 +993,11 @@ pub fn md5(message: &[u8]) -> [u8; 16] {
         }
         let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
         for i in 0..64 {
-            let (f, g) = match i {
-                0..=15 => ((b & c) | ((!b) & d), i),
-                16..=31 => ((d & b) | ((!d) & c), (5 * i + 1) % 16),
-                32..=47 => (b ^ c ^ d, (3 * i + 5) % 16),
-                _ => (c ^ (b | !d), (7 * i) % 16),
+            let f = match i {
+                0..=15 => (b & c) | ((!b) & d),
+                16..=31 => (d & b) | ((!d) & c),
+                32..=47 => b ^ c ^ d,
+                _ => c ^ (b | !d),
             };
             let g = if i < 16 {
                 i
@@ -947,9 +1030,261 @@ pub fn md5(message: &[u8]) -> [u8; 16] {
     out
 }
 
+// --- MD4 (RFC 1320) -------------------------------------------------------
+// aMule uses CryptoPP::Weak::MD4 in two places ADR-011's compatibility track
+// needs: `KadGetKeywordHash()` (keyword dictionary Key) and the eD2k file hash
+// (MD4 over 9.28 MB part hashes). The probe stays dependency-free, so MD4 is
+// implemented here with known-answer vectors below.
+pub fn md4(message: &[u8]) -> [u8; 16] {
+    const S1: [u32; 4] = [3, 7, 11, 19];
+    const S2: [u32; 4] = [3, 5, 9, 13];
+    const S3: [u32; 4] = [3, 9, 11, 15];
+    const K2: u32 = 0x5A82_7999;
+    const K3: u32 = 0x6ED9_EBA1;
+    const R2: [usize; 16] = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15];
+    const R3: [usize; 16] = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
+
+    let mut msg = message.to_vec();
+    let bit_len = (message.len() as u64).wrapping_mul(8);
+    msg.push(0x80);
+    while msg.len() % 64 != 56 {
+        msg.push(0);
+    }
+    msg.extend_from_slice(&bit_len.to_le_bytes());
+
+    let mut h = [0x6745_2301u32, 0xEFCD_AB89, 0x98BA_DCFE, 0x1032_5476];
+    for chunk in msg.chunks(64) {
+        let mut x = [0u32; 16];
+        for (i, w) in x.iter_mut().enumerate() {
+            *w = u32::from_le_bytes([
+                chunk[4 * i],
+                chunk[4 * i + 1],
+                chunk[4 * i + 2],
+                chunk[4 * i + 3],
+            ]);
+        }
+        let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
+        // Each step updates `a`, then rotates (a,b,c,d) <- (d,a,b,c).
+        // 16 steps x 3 rounds = 48 rotations, so the registers are back in
+        // their original alignment when the results are folded in.
+        for i in 0..16 {
+            let f = (b & c) | ((!b) & d);
+            a = a.wrapping_add(f).wrapping_add(x[i]).rotate_left(S1[i % 4]);
+            let t = a;
+            a = d;
+            d = c;
+            c = b;
+            b = t;
+        }
+        for i in 0..16 {
+            let g = (b & c) | (b & d) | (c & d);
+            a = a
+                .wrapping_add(g)
+                .wrapping_add(x[R2[i]])
+                .wrapping_add(K2)
+                .rotate_left(S2[i % 4]);
+            let t = a;
+            a = d;
+            d = c;
+            c = b;
+            b = t;
+        }
+        for i in 0..16 {
+            let f = b ^ c ^ d;
+            a = a
+                .wrapping_add(f)
+                .wrapping_add(x[R3[i]])
+                .wrapping_add(K3)
+                .rotate_left(S3[i % 4]);
+            let t = a;
+            a = d;
+            d = c;
+            c = b;
+            b = t;
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+    }
+    let mut out = [0u8; 16];
+    for (i, word) in h.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
+/// `KadGetKeywordHash` (src/kademlia/kademlia/Kademlia.cpp):
+/// `MD4(unicode2UTF8(term))` -> `CUInt128::SetValueBE`. `ToByteArray` is the
+/// inverse of `SetValueBE`, so the 16 bytes on the wire ARE the MD4 digest.
+/// No lowercasing / trimming / Unicode normalisation happens in this function.
+pub fn kad_keyword_hash(term: &str) -> KadId {
+    md4(term.as_bytes())
+}
+
+/// eMule part size = 9500 KiB = 9_728_000 bytes (ADR-004: "MD4 / 9.28 MB").
+pub const ED2K_PART_SIZE: usize = 9_500 * 1024;
+
+/// eD2k file hash (`fileID`): MD4 of the file when it is SMALLER than one part,
+/// otherwise MD4 of the concatenation of every part's MD4. AICH is out of scope.
+/// This value is what an old client uses as `fileID` in the keyword dictionary;
+/// faking it produces files that can be found but never downloaded.
+///
+/// ## Exact-multiple rule (v2.4.31 — L2 corrected an L1 wrong assumption)
+///
+/// Two mutually incompatible ED2K hashes exist for files whose size is an exact
+/// multiple of `PARTSIZE`: the "Red" variant appends the MD4 of an empty part,
+/// the "Blue" variant does not. crates.io `ed2k::Ed2k` defaults to **Blue** and
+/// calls it "official"; aMule (the interoperability target of ADR-011) uses
+/// **Red**. Verified three ways at aMule `6a110563`:
+///
+///   * `src/KnownFile.cpp` `CKnownFile::SetFileSize` documents test vectors:
+///     a 1*PARTSIZE file has 2 part hashes, the last being
+///     `31D6CFE0D16AE931B73C59D7E0C089C0` (MD4 of empty input), and file hash
+///     `A72CA8DF7F07154E217C236C89C17619`.
+///   * `src/ThreadTasks.cpp` `CHashingTask::CreateNextPartHash` explicitly
+///     pushes `g_emptyMD4Hash` when `partLength == PARTSIZE && file.Eof()`.
+///   * `src/KnownFile.cpp` `CreateHashFromHashlist` MD4s the whole hash list.
+///
+/// `m_iED2KPartHashCount = size / PARTSIZE; if != 0 { +1 }` — so a file of
+/// exactly N parts has N+1 part hashes. Using Blue here would give a *different*
+/// `fileID` from every real eMule/aMule client for those files: the entry would
+/// be searchable but permanently undownloadable. L1's 63-byte probe file never
+/// crossed the boundary, so the bug stayed invisible until L2 source publishing.
+pub fn ed2k_hash(data: &[u8]) -> KadId {
+    if data.len() < ED2K_PART_SIZE {
+        return md4(data);
+    }
+    let mut part_hashes = Vec::with_capacity((data.len() / ED2K_PART_SIZE + 1) * 16);
+    for chunk in data.chunks(ED2K_PART_SIZE) {
+        part_hashes.extend_from_slice(&md4(chunk));
+    }
+    if data.len() % ED2K_PART_SIZE == 0 {
+        // aMule's "special part hash" for a file ending on a part boundary.
+        part_hashes.extend_from_slice(&md4(&[]));
+    }
+    md4(&part_hashes)
+}
+
+/// Full eMule part-hash list, for `OP_HASHSETANSWER` / `0x44` file-size tags.
+/// `parts.len()` equals `m_iED2KPartHashCount`: 0 for files < PARTSIZE,
+/// otherwise `ceil(size / PARTSIZE) + 1` when size is a multiple, else the
+/// number of non-empty parts.
+pub fn ed2k_part_hashes(data: &[u8]) -> Vec<[u8; 16]> {
+    if data.len() < ED2K_PART_SIZE {
+        return Vec::new();
+    }
+    let mut parts: Vec<[u8; 16]> = data.chunks(ED2K_PART_SIZE).map(md4).collect();
+    if data.len() % ED2K_PART_SIZE == 0 {
+        parts.push(md4(&[]));
+    }
+    parts
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn md4_known_vectors() {
+        assert_eq!(hex(&md4(b"")), "31d6cfe0d16ae931b73c59d7e0c089c0");
+        assert_eq!(hex(&md4(b"a")), "bde52cb31de33e46245e05fbdbd6fb24");
+        assert_eq!(hex(&md4(b"abc")), "a448017aaf21d8525fc10ae87aa6729d");
+        assert_eq!(hex(&md4(b"message digest")), "d9130a8164549fe818874806e1c7014b");
+        assert_eq!(hex(&md4(b"abcdefghijklmnopqrstuvwxyz")), "d79e1c308aa5bbcdeea8ed63df412da9");
+    }
+
+    #[test]
+    fn keyword_hash_is_unnamespaced_md4() {
+        // Source-verified in ADR-011: eMule's keyword Key is MD4(UTF-8(term)),
+        // NOT SHA-1 and NOT the ColdRevive namespaced Key.
+        assert_eq!(kad_keyword_hash("abc"), md4(b"abc"));
+        assert_ne!(kad_keyword_hash("abc"), namespaced_key("abc"));
+        assert_ne!(kad_keyword_hash("abc"), plain_key("abc"));
+        // The C++ function does no case folding.
+        assert_ne!(kad_keyword_hash("ABC"), kad_keyword_hash("abc"));
+        // A non-ASCII term is hashed as raw UTF-8 bytes.
+        assert_eq!(kad_keyword_hash("冷"), md4("冷".as_bytes()));
+    }
+
+    #[test]
+    fn ed2k_hash_single_and_multi_part() {
+        assert_eq!(ed2k_hash(b"abc"), md4(b"abc"));
+        let mut data = vec![0x5Au8; ED2K_PART_SIZE];
+        data.extend_from_slice(b"tail");
+        let mut expected_input = Vec::new();
+        expected_input.extend_from_slice(&md4(&data[..ED2K_PART_SIZE]));
+        expected_input.extend_from_slice(&md4(&data[ED2K_PART_SIZE..]));
+        assert_eq!(ed2k_hash(&data), md4(&expected_input));
+        assert_ne!(ed2k_hash(&data), md4(&data));
+        assert_eq!(ed2k_part_hashes(&data).len(), 2);
+
+        // v2.4.31: aMule/eMule append the MD4 of an EMPTY part whenever the
+        // file size is an exact multiple of PARTSIZE. L1 had asserted the
+        // opposite ("Blue"), which would produce a fileID no old client can
+        // ever download. See the doc comment on ed2k_hash for the source trail.
+        let exact = vec![0x33u8; ED2K_PART_SIZE * 2];
+        let mut three_parts = Vec::new();
+        three_parts.extend_from_slice(&md4(&exact[..ED2K_PART_SIZE]));
+        three_parts.extend_from_slice(&md4(&exact[ED2K_PART_SIZE..]));
+        three_parts.extend_from_slice(&md4(&[]));
+        assert_eq!(ed2k_hash(&exact), md4(&three_parts));
+        assert_eq!(ed2k_part_hashes(&exact).len(), 3);
+        assert_ne!(ed2k_hash(&exact), md4(&three_parts[..32])); // Blue != Red
+    }
+
+    /// aMule `src/KnownFile.cpp` `CKnownFile::SetFileSize` documents a real
+    /// 1*PARTSIZE file: part hash `4891ED2E...`, special empty part hash
+    /// `31D6CFE0...`, resulting file hash `A72CA8DF7F07154E217C236C89C17619`.
+    /// Recomputing it from those two hashes independently confirms both our MD4
+    /// and the Red rule against the upstream implementation's own vector.
+    #[test]
+    fn ed2k_hash_matches_amule_documented_one_part_file() {
+        let part = [
+            0x48, 0x91, 0xED, 0x2E, 0x5C, 0x9C, 0x49, 0xF4,
+            0x42, 0x14, 0x5A, 0x3A, 0x5F, 0x60, 0x82, 0x99,
+        ];
+        let empty = md4(&[]);
+        assert_eq!(hex(&empty), "31d6cfe0d16ae931b73c59d7e0c089c0");
+        let mut concat = Vec::from(part);
+        concat.extend_from_slice(&empty);
+        assert_eq!(hex(&md4(&concat)), "a72ca8df7f07154e217c236c89c17619");
+        assert_ne!(hex(&md4(&part)), "a72ca8df7f07154e217c236c89c17619");
+    }
+
+    #[test]
+    fn publish_source_req_matches_amule_layout() {
+        let file = kad_keyword_hash("file");
+        let src = node_id("l2-source");
+        let tags = source_tags(4662, 4672, 1234);
+        let f = publish_source_req(&file, &src, &tags);
+        let (opcode, payload) = parse_frame(&f).unwrap();
+        assert_eq!(opcode, op::PUBLISH_SOURCE_REQ);
+        assert_eq!(&payload[..16], &file);
+        assert_eq!(&payload[16..32], &src);
+        assert_eq!(payload[32], tags.len() as u8); // ONE byte, not u16
+        let parsed = parse_publish_source_req(payload).unwrap();
+        assert_eq!(parsed.file_id, file);
+        assert_eq!(parsed.source_id, src);
+        assert_eq!(parsed.tags, tags);
+        // SOURCETYPE is mandatory or the receiver drops the entry entirely.
+        assert!(parsed.tags.iter().any(|t| t.name == [TAG_SOURCETYPE]));
+        // Tags must use the Kad ReadTag layout (u16 name length), never 0x80.
+        assert_eq!(payload[34], 0x01); // name length low byte of first tag
+    }
+
+    #[test]
+    fn search_source_req_layout() {
+        let file = ed2k_hash(b"abc");
+        let f = search_source_req(&file, 9_728_001);
+        let (opcode, payload) = parse_frame(&f).unwrap();
+        assert_eq!(opcode, op::SEARCH_SOURCE_REQ);
+        assert_eq!(payload.len(), 16 + 2 + 8);
+        let parsed = parse_search_source_req(payload).unwrap();
+        assert_eq!(parsed.file_id, file);
+        assert_eq!(parsed.start_position, 0);
+        assert_eq!(parsed.file_size, 9_728_001);
+    }
 
     #[test]
     fn frame_roundtrip() {
@@ -1012,6 +1347,38 @@ mod tests {
         let mut b = Buf::new();
         write_tags(&mut b, &tags).unwrap();
         assert_eq!(read_tags(&mut Cur::new(&b.0)).unwrap(), tags);
+    }
+
+    #[test]
+    fn tag_kad_layout_matches_amule_readtag() {
+        // Byte-exact vector for aMule's `CFileDataIO::ReadTag` (Kad path):
+        //   type(1) + name_len(2, LE) + name + [value]
+        // A numeric name is a length-1 string (`TAG_FILENAME = wxT("\x01")`),
+        // NOT the ed2k `type|0x80` short form. Getting this wrong makes every
+        // PUBLISH throw inside aMule before it can send PUBLISH_RES.
+        let mut b = Buf::new();
+        Tag::str1(TAG_FILENAME, "hi").encode(&mut b).unwrap();
+        assert_eq!(b.0, vec![0x02, 0x01, 0x00, 0x01, 0x02, 0x00, b'h', b'i']);
+
+        let mut b = Buf::new();
+        Tag::int4(TAG_FILESIZE, 1024).encode(&mut b).unwrap();
+        assert_eq!(b.0, vec![0x03, 0x01, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00]);
+
+        // Strings are always TAGTYPE_STRING (0x02); the compact STRn range is
+        // rejected by ReadTag's switch, so a 3-char value must not become 0x13.
+        let mut b = Buf::new();
+        Tag::str1(TAG_FILENAME, "abc").encode(&mut b).unwrap();
+        assert_eq!(b.0[0], 0x02);
+        assert_eq!(b.0.len(), 9);
+        assert_eq!(&b.0[6..], b"abc");
+    }
+
+    #[test]
+    fn tag_decode_rejects_types_amule_cannot_read() {
+        // 0x1E = TAGTYPE_STR14: accepted by CTag::CTag but NOT by ReadTag, which
+        // throws "Invalid Kad tag type 0x1e" and aborts the whole publish.
+        let raw = [0x1E, 0x01, 0x00, 0x01, b'x'];
+        assert!(Tag::decode(&mut Cur::new(&raw)).is_err());
     }
 
     #[test]
@@ -1152,7 +1519,8 @@ mod crypto_tests {
         // recipient by passing `target` as our_node_id: obfuscate used
         // StoreCryptValue(target), so deobfuscate's try-0 branch recovers it.
         let back = deobfuscate(&env, OUR_UDP_KEY, &target).expect("deobfuscate (try-0) must succeed");
-        assert_eq!(back, inner);
+        // deobfuscate returns (inner_frame, peer_sender_verify_key).
+        assert_eq!(back.0, inner);
         // A genuinely wrong recipient id AND wrong verify key must fail.
         let wrong = node_id("not-the-recipient");
         assert!(deobfuscate(&env, 0x12345678, &wrong).is_none());
@@ -1170,6 +1538,6 @@ mod crypto_tests {
         // recovers it; the try-0 branch (wrong id) is simply skipped.
         let back = deobfuscate(&env, rvk, &node_id("whatever"))
             .expect("deobfuscate (try-2) must succeed");
-        assert_eq!(back, inner);
+        assert_eq!(back.0, inner);
     }
 }

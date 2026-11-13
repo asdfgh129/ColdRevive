@@ -1,7 +1,7 @@
 # ColdRevive .gitignore
 
-# Rust / Cargo
-/target/
+# Rust / Cargo（含 tests/spikes/s2/* 下的独立 spike crate）
+**/target/
 **/*.rs.bk
 *.pdb
 Cargo.lock.bak

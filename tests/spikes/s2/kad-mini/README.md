@@ -36,6 +36,10 @@ cargo run -- loopback         # 真实报文回环闭环，输出 JSON 报告
 cargo run -- lan-probe --ip <RFC1918_IP> --port <UDP>   # 真实客户端互操作探测，不发布 Key
 cargo run -- live --check --bootstrap <PUBLIC_LIST> --sample-size 3 --rate-limit 0.2 \
                              --attest-i-am-the-experiment-operator   # 只检查实网门禁，不发送任何报文
+cargo run -- split-probe --stage publish --bootstrap <PUBLIC_LIST> --handoff <TSV> \
+                             --sample-size 3 --rate-limit 0.2 --attest-i-am-the-experiment-operator  # A 侧：只发布
+cargo run -- split-probe --stage search  --bootstrap <PUBLIC_LIST> --handoff <TSV> \
+                             --sample-size 3 --rate-limit 0.2 --attest-i-am-the-experiment-operator  # B 侧：独立取回
 ```
 
 `lan-probe` 硬编码拒绝非私有地址（10/8、172.16/12、192.168/16、127/8），只发
@@ -58,7 +62,8 @@ cargo run -- live --check --bootstrap <PUBLIC_LIST> --sample-size 3 --rate-limit
 | Kademlia2 opcode 全表 | 见 `src/wire.rs::op` | `src/include/protocol/kad2/Client2Client/UDP.h` |
 | Contact 布局（25 字节） | `ID16 + IP4 + UDP2 + TCP2 + Ver1` | `KademliaUDPListener.cpp::Process2BootstrapRequest` |
 | Tag 类型 / 名称 | `src/wire.rs::tag_type` | `src/include/tags/TagTypes.h` / `FileTags.h` |
-| Tag 编码 | `type[|0x80] + name + value` | `src/Tag.cpp::WriteNewEd2kTag` / `CTag::CTag` |
+| Tag 编码（Kad 路径） | `type + u16(name_len) + name + value`；数值名 = 长度 1 的字符串；字符串一律 `0x02` | `src/SafeFile.cpp::CFileDataIO::ReadTag` / `WriteTag` |
+| Tag 编码（ed2k/met 路径，**Kad 上无效**） | `type[\|0x80] + name + value` | `src/Tag.cpp::WriteNewEd2kTag` / `CTag::CTag` |
 | Tag 列表计数 | 1 字节 | `src/SafeFile.cpp::WriteTagPtrList` / `ReadTagPtrList` |
 | `PUBLISH_KEY_REQ` 布局 | `key16 + count:u16 + (sourceID16 + tagcount:u8 + tags)*` | `Search.cpp::StorePacket` / `Process2PublishKeyRequest` |
 | `SEARCH_RES` 布局 | `sender16 + target16 + count:u16 + (answer16 + tagcount:u8 + tags)*` | `Process2SearchResponse` / `ProcessSearchResponse` |
@@ -161,3 +166,95 @@ v2.4.7 复验：新探测解出 `0xE4` 明文的 521 B payload / **20 个联系�
 报告落在 `../reports/kad-lan-probe-*.json`（已忽略），固定
 `public_kad_contacted=false`、`evidence_valid_for_pass=false`、`publish_sent=false`。
 LAN 节点**不是公共 KAD 证据**，也禁止在其上发布测试 Key。
+
+## 8. 两进程 A/B（`split-probe`，2026-11-10）
+
+`live` 的发布与查询来自同一进程：同一 socket、同一源端口、同一本地 KadID。它已足够证明
+「第三方节点存储并服务我们的条目」，但不满足 `S2.criteria` 第 1 条字面上的「A 发布、**B** 命中」。
+`split-probe` 把两个角色拆成两个进程，并复用同一个 `live_gate`（批准记录、G0 参数一致性、
+公网 bootstrap 校验、`--attest-i-am-the-experiment-operator` 全部保留；缺 attest 时直接拒绝、0 报文）：
+
+| 侧 | 节点标签 | 职责 | 报告固定字段 |
+| :--- | :--- | :--- | :--- |
+| A | `split-a` | 走完整的 bootstrap + 前沿护栏漏斗，只向 `verified ∧ 在区` 目标发布，把「Key / 条目 source id / 确认地址」写进 handoff（TSV） | `public_kad_contacted=true`、`evidence_valid_for_pass=false` |
+| B | `split-b` | 另一个进程：`bind_any` 得到不同源端口、不同本地 KadID 种子、不同 bootstrap 入口；只从 handoff 取 Key，**自己重走一遍 tolerance zone**，再查 A 的确认地址与自己的在区集合 | 同上 |
+
+实测（2026-11-10）：A = `e465a455…` / 端口 61195，B = `0dab3f81…` / 端口 49876，
+B 用 62 个 `0x21` 自建路由表后发 `0x33`，`SEARCH_RES` 返回的条目 source id 与 A 相同，
+且 descriptor 里写着 `node=split-a;wake_port=61195` —— **条目由 A 创建，B 取回**。
+两道判别因此都不依赖程序自述：source id 由 A 生成、端口由操作系统分配。
+
+两个阶段都**不**写 `s2_status`，也不置 pass；结论只能由人写进 `spikes.json`。
+
+## 9. eMule 关键词字典互通（`ed2k-dict-probe`，ADR-011 L1，2026-11-11）
+
+`live` / `split-probe` 用的是 `ColdRevive_V1:` 命名空间 Key（SHA-1）；旧客户端算不出这些 Key。
+ADR-011 的**兼容轨**要求把文件同时发布到 eMule 自己的关键词字典，因此哈希算法必须换：
+
+| 轨 | 算法 | 出处 |
+| :--- | :--- | :--- |
+| 私有轨 | `SHA1("ColdRevive_V1:kw:" + term)[0..16]` | PROTO §1 |
+| **兼容轨** | `MD4(UTF8(term))` → `CUInt128::SetValueBE` | `Kademlia.cpp::KadGetKeywordHash` |
+
+`UInt128.cpp::ToByteArray` 是 `SetValueBE` 的逆，线上 16 字节就是 MD4 摘要原值；
+该函数不做小写化、trim 或 Unicode 归一化（归一化由调用方负责）。**两套算法不得复用同一函数**。
+条目的 `fileID` 必须是真实内容导出的 `ed2k_hash`：`MD4(file)`（单分块）或
+`MD4(concat(MD4(9_728_000 B 分块)))`；伪造 fileID 会让旧客户端搜到却永远下不动。
+
+```
+cargo run -- ed2k-dict-probe --ip <RFC1918 IPv4> --port <KAD UDP> [--keyword TERM]
+```
+
+流程：RFC1918 硬校验 → `BOOTSTRAP_REQ` 证明双向 UDP → `0x43` 发布无前缀关键词条目 →
+`0x33` 取回 → 产出标准 `ed2k://|file|<name>|<size>|<hash>|/` 链接。
+报告固定 `public_kad_contacted=false` / `evidence_valid_for_pass=false`，不判 pass。
+关键词默认取唯一无意义词，避免撞进真实用户的关键词桶；若该 aMule 同时连着公共 KAD，
+它可能为自己持有的索引条目做 TTL 续期并重发一次，报告 `note` 保留该副作用说明。
+
+实测（2026-11-11，`172.16.29.209:41296`）：`PUBLISH_RES load=1`（7.0 ms）、
+`SEARCH_RES` 1 条答案（11.7 ms）、`our_entry_returned=true`，
+verdict = `confirmed_unnamespaced_keyword_publish_then_retrieve`。详见 [PLAN §22](../PLAN.md)。
+
+## 10. 源字典与 L2（`l2-source-probe`，2026-11-11）
+
+关键词条目只让旧客户端**搜到**文件，要能下载还须同一 `fileID` 在 KAD 源字典里有源条目。
+`wire.rs` 新增 `publish_source_req` / `parse_publish_source_req` / `source_tags` /
+`search_source_req` / `parse_search_source_req` / `ed2k_part_hashes`，`main.rs` 新增 `l2-source-probe`：
+
+```
+PUBLISH_SOURCE_REQ (0x44) = <fileID 16><sourceID 16><tagcount u8><Kad ReadTag tags...>
+SEARCH_SOURCE_REQ  (0x34) = <fileID 16><startPosition u16><fileSize u64>
+```
+
+源码核实要点（逐条出处见 [PROTO §2.2.1](../../../../docs/04-protocol/PROTO.md)）：
+**没有** `0x43` 里的 `u16` 条目数；tag 数为 1 字节；`SEARCHTOLERANCE` 校验用 `fileID`
+（不是 keyword key）；`TAG_SOURCETYPE (0xFF)` 缺失时处理器直接丢弃且**不回 `PUBLISH_RES`**；
+源 IP / UDP 端口由接收方取自 UDP 报头，不由 tag 提供。HighID 源 tag 集照 `Search.cpp`
+的 `STOREFILE` 分支：`0xFF=1` / `0xFD` TCP / `0xFC` KAD UDP / `0x02` 大小 / `0xF3=0`。
+
+```
+cargo run -- l2-source-probe --ip <RFC1918 IPv4> --port <KAD UDP> [--rate 0.2]
+```
+
+流程：RFC1918 硬校验 → `BOOTSTRAP_REQ` 证明双向 → 对同一 `fileID` 分别发 `0x43` 关键词条目与
+`0x44` 源条目 → 用 `0x33` / `0x34` 各自取回。报告固定
+`public_kad_contacted=false` / `evidence_valid_for_pass=false`，不判 pass、不回填 `spikes.json`。
+
+实测（`172.16.29.209:41296`，`reports/kad-l2-source-probe-20261111023613.json`）：
+两笔 `PUBLISH_RES` 均 `load=1`（源发布 key 回显匹配，65 B / 5 tags）、`0x33` 与 `0x34`
+各 1 条答案、`our_entry_returned=true`、`our_source_returned=true`，
+verdict = `confirmed_dual_track_keyword_and_source_publish_then_retrieve`。
+
+### 10.1 连带修正：`ed2k_hash` 的 Red 分块边界（**更正 §9**）
+
+§9 记的「精确整数倍不补空分块」**已撤回**。aMule / eMule 采用 Red 规则：文件大小恰为
+`PARTSIZE = 9_728_000` 整数倍时额外追加 `MD4("") = 31D6CFE0…` 再对整表做 MD4
+（`KnownFile.cpp::SetFileSize` / `ThreadTasks.cpp::CreateNextPartHash` /
+`KnownFile.cpp::CreateHashFromHashlist`）。crates.io `ed2k` 的默认 Blue 变体不补，
+直接复用会生成与所有旧客户端不同的 `fileID`：搜得到、永远下不动。
+`wire.rs::ed2k_hash` 已修正并加上游已知答案向量回归；另修掉 MD4 中一组遗留的重复 `g` 计算。
+`cargo test` 21/21、`selftest` 48/48、`loopback` 5/5 发布 + 5/5 命中、0 协议错误。
+详见 [PLAN §23.2](../PLAN.md) 与 [PROTO §2.2.3](../../../../docs/04-protocol/PROTO.md)。
+
+> 索引面（③）由本节验证；**传输面（②④）** 见同仓 [ed2k-mini](../ed2k-mini/README.md)。
+> 二者都只在 RFC1918 / 回环上跑，本轮 0 个公网报文。

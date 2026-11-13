@@ -1,0 +1,15 @@
+[package]
+name = "coldrevive-ed2k-mini"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "ADR-011 L2 spike: minimal standard eD2k client-to-client TCP stack (download + upload), zero dependencies"
+
+[[bin]]
+name = "ed2k-mini"
+path = "src/main.rs"
+
+# Intentionally zero dependencies. The MD4 / eD2k hash and the KAD tag codec
+# are pulled in by `#[path]` from the sibling kad-mini probe so there is exactly
+# ONE implementation of the hash in this repository (see src/main.rs).
+[dependencies]

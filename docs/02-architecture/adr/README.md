@@ -2,15 +2,15 @@
 doc_id: DOC-05
 title: 架构决策记录集（ADR 索引）
 category: 架构决策
-version: 2.0
+version: 2.2
 status: 持续维护
 owner: 架构组
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # 架构决策记录集（ADR 索引）
 
-> 编号 DOC-05 · 版本 2.0 · 状态 持续维护 · 责任人 架构组 · 更新 2026-11-09
+> 编号 DOC-05 · 版本 2.2 · 状态 持续维护 · 责任人 架构组 · 更新 2026-11-11
 > 一份 ADR 只记录**一个**技术抉择：上下文、选项、结论、后果、复核时点。状态为「待定」的 ADR 由 M0 Spike 或里程碑门禁触发定稿。
 
 ## 1. 决策清单
@@ -18,17 +18,32 @@ updated: 2026-11-09
 | ADR | 议题 | 决策 | 状态 | 复核时点 |
 | :--- | :--- | :--- | :--- | :--- |
 | [ADR-001](ADR-001-kad-network.md) | 复用公共 eMule KAD 还是自建私有 DHT | 默认 `public` 借力引导，保留 `private` / `hybrid` 切换 | 🟡 待定 | M0 / S2 |
-| [ADR-002](ADR-002-bt-engine.md) | BT 引擎选 `rqbit` 还是 `libtorrent` FFI | 先 `rqbit`，S1 不过则切 FFI | 🟡 待定 | M0 / S1 |
+| [ADR-002](ADR-002-bt-engine.md) | BT 引擎选 `rqbit` 还是 `libtorrent` FFI | 采用 `rqbit`（S1 4/4 `verified` 后采纳），握手拦截自实现 | ✅ 已接受 | M0 / S1（2026-11-11 依 S1 4/4 `verified` 回填 `S1.status=pass` 定稿） |
 | [ADR-003](ADR-003-ui-delivery.md) | UI 交付形态 | 守护进程内嵌 HTTP/WS + 可关闭 UI 进程 | ✅ 已接受 | — |
-| [ADR-004](ADR-004-ed2k-scope.md) | 是否内置完整 eD2K 协议栈 | v1 仅计算 MD4 哈希；全栈与补源排 v2 | ✅ 已接受 | M5 前复核 |
+| [ADR-004](ADR-004-ed2k-scope.md) | 是否内置完整 eD2K 协议栈 | v1 即计算 MD4 哈希；**全栈由 ADR-011 提前至 v1**，哈希转译类补源仍 v2 | ✅ 已接受（部分取代） | 已于 2026-11-11 复核 |
 | [ADR-005](ADR-005-incentive.md) | 是否引入贡献积分 / 全局信用 | 后置 P2，须先解决抗女巫与信用伪造 | 🟡 待定 | M4 |
 | [ADR-006](ADR-006-metadata-distribution.md) | 元数据分发方式 | KAD 只存描述符；种子走 HTTP / magnet `xs` | ✅ 已接受 | — |
 | [ADR-007](ADR-007-tracker.md) | 是否完全取代 Tracker | 否，Tracker 降级为可选加速层 | ✅ 已接受 | — |
 | [ADR-008](ADR-008-websocket.md) | 状态推送机制 | WebSocket，禁止 UI 轮询 | ✅ 已接受 | — |
 | [ADR-009](ADR-009-sharing-model.md) | 共享模型 | 常态共享目录（体验层）+ 按需唤醒（实现层） | ✅ 已接受 | — |
 | [ADR-010](ADR-010-rust-tokio.md) | 语言与运行时 | Rust + Tokio | ✅ 已接受 | — |
+| [ADR-011](ADR-011-ed2k-interop.md) | eD2k 双向互操作边界 | v1 优先兼容旧客户端：全部文件公开、实现标准 eD2k 栈、否决唤醒网关 | ✅ 已接受 | M1 / M4；L1 / L2 探针已于 2026-11-11 落地（见下注） |
 
-**统计**：10 项决策，7 项已接受、3 项待 M0/M4 定稿。
+**统计**：11 项决策，9 项已接受、2 项待定（ADR-001 待所有者签署 `public`/`private` 默认模式、ADR-005 待 M4）。
+
+> **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
+> RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、
+> [PROTO §2.2](../../04-protocol/PROTO.md) 与 [CHANGELOG 2.4.31](../../../CHANGELOG.md)。
+> 按 §4「**已接受的 ADR 不修改正文**」，实施进度与实测证据记录在上述文档与变更记录中，
+> **不回写 ADR-011 正文**；ADR-011 的决策、范围与复核时点一字未动。
+
+> **G0 待签署项（2026-11-11）**：[ADR-002](ADR-002-bt-engine.md) 已于 2026-11-11 依 S1 四条判据
+> 全部 `verified` 证据回填 `S1.status = pass` 并定稿为「已接受」（选项 A：采用 `rqbit`，握手拦截
+> 自实现）；[ADR-001](ADR-001-kad-network.md) 的定稿条件自 2026-11-10 `S2 = pass` 起已满足，
+> 但该 ADR 明文要求「定稿与 `public`/`private` 的签署由项目所有者执行」，**状态列仍为「待定」**，
+> 属治理待办而非技术缺口；[ADR-005](ADR-005-incentive.md) 复核时点为 M4，按 ADR 自身复核时点
+> 以 M4 为准，M0 阶段不强制定稿（与 [ROADMAP M0 交付物](../../06-plan/ROADMAP.md) 的「ADR-005
+> 定稿」表述存在口径差异，按 ADR 自身复核时点优先）。
 
 ## 2. 与 DR 编号的关系
 

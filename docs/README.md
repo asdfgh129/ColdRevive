@@ -2,10 +2,10 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.4
+version: 2.5
 status: 有效
 owner: 架构组
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # 文档体系说明与导航
@@ -62,6 +62,7 @@ updated: 2026-11-09
 | DOC-17 | 术语表 GLOSSARY | [08-reference/GLOSSARY.md](08-reference/GLOSSARY.md) | 有效 |
 | DOC-18 | 讨论记录映射 | [08-reference/DISCUSSION-MAP.md](08-reference/DISCUSSION-MAP.md) | 有效 |
 | DOC-19 | 参考资料与待核实项 | [08-reference/REFERENCES.md](08-reference/REFERENCES.md) | 有效 |
+| DOC-21 | 法务评审材料包（S8） | [07-operations/LEGAL-REVIEW.md](07-operations/LEGAL-REVIEW.md) | 草稿 |
 
 ## 4. Front Matter 规范
 
@@ -80,6 +81,28 @@ updated: YYYY-MM-DD
 ```
 
 `status` 语义：`草稿` 内容未稳定；`待评审` 等待 G0 门禁；`有效` 已冻结可执行；`持续维护` 活文档（风险、计划、ADR）；`已废止` 仅存于 `09-archive/`。
+
+### 4.1 状态流转矩阵
+
+> 本表是 `status` 字段的唯一流转依据。**没有「已审定」这个状态**——终态写 `有效`，
+> 外部评审（法务 / 安全）通过是进入 `有效` 的前置条件之一，不单独构成状态值。
+
+| 从 → 到 | 触发条件 | 必要证据 |
+| :--- | :--- | :--- |
+| 草稿 → 待评审 | 正文自洽、交叉引用无断链、责任人确认可送审 | `build_docs.py --check` 通过 |
+| 待评审 → 有效 | **G0 通过**：S1–S8 全部有结论且技术路线冻结（[TECH-STACK §2](02-architecture/TECH-STACK.md)）；涉合规项须法务结论或登记豁免 | 测试报告、指标快照、未通过项与豁免说明（[TEST §7](05-quality/TEST.md)） |
+| 待评审 → 有效（豁免路径） | 门禁项由项目所有者书面决定豁免 | 豁免记录（决策人 / 日期 / 理由 / 残余风险）+ 风险登记册同步更新 |
+| 有效 → 已废止 | 被新版本取代 | 移入 `09-archive/`，索引页保留条目并加废止横幅 |
+| 任意 → 持续维护 | 判定为活文档（风险、计划、ADR、待决问题） | 在索引页 `DOCS` 清单标注 |
+
+单份文档改状态时必须**原子同步四处**，漏一处即自相矛盾：
+
+1. 该文档 front matter 的 `status:` **和** 正文首段的「状态」文字（同一文件两处）；
+2. 本文件 §3 清单表的对应行；
+3. `index.html` 的 `DOCS` 数组 `s:` 字段（手工维护，非构建产物）；
+4. `CHANGELOG.md` 记一条，并递增该文档 `version`、更新 `updated`。
+
+改完运行 `python3 scripts/build_docs.py --check`，再全量构建使索引页内嵌内容刷新。
 
 ## 5. 交叉引用规则
 
@@ -105,7 +128,8 @@ updated: YYYY-MM-DD
 
 - 文档体系版本记录在 `CHANGELOG.md`；单文档版本记录在各自 front matter。
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
-- 协议（DOC-09）任何变更必须递增 `PROTOCOL_VERSION` 并新增 ADR，禁止静默修改。
+- 协议（DOC-09）**私有契约字段**（§3 `WAKEUP_REQ` / `WAKEUP_ACK`）变更必须递增 `PROTOCOL_VERSION`、新增 ADR 并更新 T0 golden，禁止静默修改。
+- **映射修订例外**：只改 §1 / §2 的**外部 KAD / eD2k 集成映射**（如 v2.3 的 Kad tag 帧头、v2.4 的双轨 Key、v2.5 的 `0x44` / `0x34` 载荷与 eD2k TCP 序列）且不动 §3 字段时，按 [PROTO §4](04-protocol/PROTO.md) 只递增该文档的 `version` 并记录源码依据，`PROTOCOL_VERSION` 与 T0 golden 保持不变。本条与 PROTO §4 是同一规则的两处表述。
 
 ## 8. 构建与校验
 

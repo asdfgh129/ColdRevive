@@ -2,15 +2,15 @@
 doc_id: DOC-04
 title: 技术选型与 M0 Spike 清单
 category: 架构
-version: 2.0
+version: 2.3
 status: 待评审
 owner: 架构组 / 内核组
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # 技术选型与 M0 Spike 清单
 
-> 编号 DOC-04 · 版本 2.0 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-09
+> 编号 DOC-04 · 版本 2.2 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-11
 > 本文记录技术栈选择、备选方案、**必须由 M0 验证的假设**。选型变更须新增 [ADR](adr/README.md)。
 
 ## 1. 选型总表
@@ -22,7 +22,7 @@ updated: 2026-11-09
 | 本地存储 | **SQLite (WAL, rusqlite)** | Sled | 事务、迁移、5 万行轻松；运维可查 |
 | 文件监控 | `notify` crate | 平台原生 API | 跨平台 inotify / FSEvents |
 | BT 引擎 | `rqbit`（M0 验证） | `libtorrent` FFI | 纯 Rust 优先；若不支持 Pause/Resume 或握手拦截则切 FFI |
-| eD2K 哈希 | `ed2k-rs` / `ed2k` | 自实现 MD4 分块 | v1 仅需哈希；AICH 可不做 |
+| eD2K 哈希 / 传输栈 | **仓内可审计的自实现**（`tests/spikes/s2/{kad-mini,ed2k-mini}`，G0 后迁入 `cr-ed2k`） | `ed2k-rs` / `ed2k` **仅作哈希参考**，不作依赖 | V-04 已确认两个 crate 均为 hash-only、无传输栈且停更；`ed2k` 默认 Blue 与 eMule Red 分块边界不兼容（死条目）。[ADR-011](adr/ADR-011-ed2k-interop.md) 已把标准 eD2k 栈提前至 v1；AICH 可不做 |
 | KAD / DHT | 基于 Kademlia 实现适配层（参考 `mainline` / `libp2p` 思路） | 复用 aMule KAD 代码 | **eMule KAD 与 Mainline DHT 不兼容，必须双栈**；M0 重点 Spike |
 | HTTP / WS | `axum` + `tower` | `hyper` 直接 | 同端口静态资源 + RPC + WS，路由清晰 |
 | 信令序列化 | JSON（v1）→ Protobuf（可演进） | MessagePack | v1 便于调试，报文字节数受控 |
@@ -46,6 +46,63 @@ updated: 2026-11-09
 | S8 | 法律与合规边界（P2P 工具、索引发布、默认配置） | 法务评审 | 调整默认发布策略与免责/举报机制 |
 
 **风险映射**：S1 → R-05、S2 → R-02、S3 → R-03、S4/S5/S7 → R-06/R-07、S6 → R-04、S8 → R-11，详见 [RISK](../05-quality/RISK.md)。
+
+> **当前状态（2026-11-10）**：**S2 = `pass`** —— 公共 KAD 的第三方节点接受并返回了我们的命名空间条目
+> （`PUBLISH_RES load=1` → `SEARCH_RES` 命中，5 个 tag 原样返回）；随后以两个独立进程补做 A/B
+> （`split-a` 发布 / `split-b` 不同 socket、KadID 种子与 bootstrap 入口独立取回），返回的 descriptor
+> 携带 A 的源端口，确认跨节点可取回。证据：`tests/spikes/spikes.json` 的
+> `observations.p4_execution_v2427` 与 `ab_two_process_2026_11_10`，过程见 [PLAN §20–§21](../../tests/spikes/s2/PLAN.md)。
+> 该结论只覆盖「接纳性」；「按运营速率的污染判定」（R-02）仍需 M4 前按实测拒绝率复审。
+> S8 由所有者豁免登记为 `pass`（无书面法务意见，R-11 保留）；**S1 四条判据已于 2026-11-11 全部 `verified`，`S1.status` 已回填为 `pass`，[ADR-002](adr/ADR-002-bt-engine.md) 据此定稿为「已接受」；S4 / S7 已于同日经真实量测回填 `pass`，S3 / S5 / S6 保持 `not_run`（见下）。G0 仍须 S3/S5/S6 结论与 ADR-001 所有者签署**。
+>
+> **S1 判据补齐（2026-11-11，不改变 `S1.status`）**：`tests/spikes/s1/` 新增
+> `cargo run -- two-peer`，用两个独立 librqbit 9.1.0 Session 在 `127.0.0.1` 跑标准 BT Peer Wire：
+> leecher 从空目录起，传输到 262144/1048576 时 `pause` 900 ms 位图不变，`unpause` 后跑完，
+> 64/64 片 SHA-1 匹配、内容逐字节一致；连续 4 轮一致，C3/C4 由 `partial` 升为 `verified`。
+> 加上历史 `probe` 报告的 C1/C2，**S1 判据 4/4 齐备**。报告
+> `tests/spikes/s1/reports/s1-two-peer-*.json`，证据在 `spikes.json` 的 `S1.observations.two_peer`，
+> 细节见 [S1 README](../../tests/spikes/s1/README.md) 与 [ADR-002 §S1 判据补齐](adr/ADR-002-bt-engine.md)。
+> 边界：同主机双 Session、无第三方 BT 客户端 / 跨主机 / NAT / 公网，不构成 G3 兼容性或性能证据。
+> `crate.rqbit` 阻塞项已解除（`S1.blocked_by` 置空）；[ADR-002](adr/ADR-002-bt-engine.md)
+> 已于 2026-11-11 依 S1 4/4 `verified` 回填 `S1.status=pass` 并定稿为「已接受」（选项 A：采用 `rqbit`，握手拦截自实现）。
+>
+> **ADR-011 L1 / L2 已于 2026-11-11 落地（不改变上面的 Spike 状态）**：L1 用 `MD4` 无前缀关键词
+> 在真实 aMule 上完成字典互通；L2 补齐 `0x44` / `0x34` 源字典，并在 `tests/spikes/s2/ed2k-mini`
+> 实现最小标准 eD2k TCP 下载/上传栈 + 最小上传队列。回归：`kad-mini` 21/21 + 48/48 + 5/5，
+> `ed2k-mini` 31/31 + 26/26 + 3/3 回环闭环，真实 eMule `HELLO` 握手成功。
+> **全部为 RFC1918 / 127.0.0.1 证据、0 个公网报文，不判 pass、不回填 `spikes.json`**；
+> 按 G0 冻结未创建生产 crate。详见 [PLAN §22–§23](../../tests/spikes/s2/PLAN.md) 与
+> [PROTO §2.2](../04-protocol/PROTO.md)。
+
+> **S3 已启动（2026-11-11，v2.4.34）**：`tests/spikes/s3/` 新增零依赖双栈探针，本地双 HashMap
+> （KAD 16B + BT 20B）在顺序 + 并发读写下**串扰/泄漏 = 0**（S3-C1 verified），双栈索引估算
+> 10k/栈 ≈2.26 MiB、50k/栈 ≈11.08 MiB，均远低于 NFR-05 的 100 MB（S3-C2 verified 结构性上界）；
+> 但属本地数据结构证据，不做真实 DHT 网络加入，`S3.status` 保持 `not_run`，最终 pass 须 M1 真实双栈集成 + G3 矩阵。
+
+> **S1 第三方客户端互操作轮已执行（2026-11-11，G3 素材，不改变 `S1.status`）**：按用户指令以本机
+> **Motrix Next**（捆绑 `motrixnext-aria2c.exe` = aria2 1.36.0，download-only 构建）作第三方 seeder：
+> 其对确定性 `payload.bin/payload.torrent`（128 片 × 16 KiB，infohash `2b77301a…`）做种并监听
+> `127.0.0.1:16881`，`cargo run -- cross-lee --peer 127.0.0.1:16881` 由 rqbit 直连拉取，
+> **128/128 片全部 SHA-1 校验通过**（`all_pieces_verified=true`，2 MiB 全量）。
+> 排错记录：首轮 aria2 因旧 `.aria2` 控制文件 + `--check-integrity=false` 处于 Leecher 态（0 字节），
+> 修复后以 `--check-integrity=true` 进入 Seeder 态。证据 `tests/spikes/s1/reports/s1-cross-lee-*.json`，
+> 登记 `spikes.json` 的 `S1.observations.cross_client_round`（operator attest 已依用户指令满足）。
+> **S1 维持 `pass`**，本结果仅作 G3 兼容性矩阵素材。
+>
+> **S4–S7 推进（2026-11-11）**：
+> - **S4 `pass`**：`tests/spikes/s4/` 以真实 Rust `HashMap<[u8;20], ShadowRow>` 模型（COLD 轻量 handle，
+>   不含 Bitfield / 逐片哈希，符合 DATA §5）+ Windows 工作集采样：1 万文件 ≈7.79 MiB（含 SQLite 缓存）、
+>   5 万 ≈15.9 MiB（同时满足 NFR-05 ≥5 万容量）、20 万 ≈53 MiB，均 ≪ 100 MB，R-06 去险，
+>   fallback（索引分库 / 惰性加载）未触发。
+> - **S7 `pass`**：`tests/spikes/s7/s7_bench.py` 流式哈希 4 GB（262144 片 SHA-1 + 全文件 SHA-256 +
+>   `.torrent` 序列化）耗时 **4.14 s / 989 MB/s**、峰值 RSS **29.3 MiB**、Idle 优先级，R-07 去险，
+>   fallback（分片自适应 + 增量哈希）未触发。
+> - **S5 `not_run`（分析就绪）**：NFR-03 双层控制——令牌桶硬上限 20% 上行（可本地单元验证）+
+>   uTP/LEDBAT 退让（rqbit 9.1.0 支持 uTP，S1 已证真实分片传输）；但「前台劣化 ≤5%」须真实拥塞链路，
+>   回环队列延迟恒 ~0 无法触发 LEDBAT 退让，M1/G3 实测回填。见 `tests/spikes/s5/README.md`。
+> - **S6 `not_run`（分析就绪）**：穿透栈（UPnP + NAT-PMP + UDP 打洞 + 中继/LowID 回退）覆盖全 4 类 NAT，
+>   分析型含中继可达率 ≥95%（> R-04 的 70% 阈值）；量化判据须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。
+>   见 `tests/spikes/s6/nat-matrix.md`。
 
 ## 3. 参考项目与可复用资产
 

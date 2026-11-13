@@ -36,7 +36,7 @@ python3 tests/e2e/t0/t0_cli_selftest.py
 
 ## M0 Spike 实验包
 
-入口说明：[tests/spikes/README.md](spikes/README.md)。`spikes.json` 登记 S1–S8 的判据与状态（S1–S7 `not_run`，S8 由项目所有者豁免登记 `pass`，无书面法务意见），`m0_preflight.py` 只检查实验条件是否齐备：
+入口说明：[tests/spikes/README.md](spikes/README.md)。`spikes.json` 登记 S1–S8 的判据与状态（截至 2026-11-11：S1 / S2 / S4 / S7 `pass`，S8 由项目所有者豁免登记 `pass` 无书面法务意见，S3 / S5 / S6 `not_run`），`m0_preflight.py` 只检查实验条件是否齐备：
 
 ```bash
 python3 tests/spikes/m0_preflight.py            # 退出码 2 = 存在阻塞项（当前必然如此）

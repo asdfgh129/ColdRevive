@@ -1,0 +1,11 @@
+[package]
+name = "s4-shadow-index"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "s4-shadow-index"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3

@@ -2,17 +2,17 @@
 doc_id: ADR-002
 title: BT 引擎选 rqbit 还是 libtorrent FFI
 category: 架构决策
-version: 1.1
-status: 待定
+version: 1.3
+status: 已接受
 owner: 内核组
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # ADR-002：BT 引擎选 `rqbit` 还是 `libtorrent` FFI
 
 | 项 | 值 |
 | :--- | :--- |
-| 状态 | **待定**（M0 / S1 后定稿） |
+| 状态 | **已接受**（2026-11-11 依 S1 双 peer 4/4 `verified` 证据回填 `S1.status=pass` 并定稿；自实现握手拦截层实现 C1，选项 A 维持） |
 | 决策者 | 内核组 / 架构组 |
 | 相关 | [TECH-STACK S1](../TECH-STACK.md) · [RISK R-05](../../05-quality/RISK.md) · [ARCH §4 M-11](../ARCH.md) |
 
@@ -39,6 +39,38 @@ ColdRevive 的冷热调度依赖三个能力：**按需实例化做种上下文�
 选项 A 仍成立，握手拦截作为 `cr-engine` 外围组件落地；若生命周期不满足，
 再按 `libtorrent` FFI 或精简做种层降级。S1 状态仍为 `not_run`，此处只登记观测、不出选型结论。
 
+## S1 判据补齐（2026-11-11）
+
+`tests/spikes/s1/` 新增 `cargo run -- two-peer`，把上面两处 `partial` 补齐。依据 librqbit 9.1.0
+源码核实的 `SessionOptions.listen` / `ConnectionOptions` / `AddTorrentOptions.initial_peers` /
+`AddTorrentOptions.ratelimits` / `ManagedTorrent::wait_until_completed`，建立**两个独立 Session**：
+seeder 预置 1 MiB 完整样本、仅 `127.0.0.1` 入站 TCP 监听、上传限速 256 KiB/s；
+leecher 空目录、`paused: true` 实例化、`initial_peers = [seeder_addr]`、仅主动出站；
+DHT / tracker / LSD 全部禁用，无公网报文。
+
+| 观测 | 结果（连续 4 轮一致） |
+| :--- | :--- |
+| leecher 起点 | `progress_bytes = 0`、`is_paused = true` |
+| 传输中途 | 30 ms 时 `progress_bytes = 262144 / 1048576`（16 片，分片整数倍） |
+| 中途 `pause` 后 | `is_paused = true`，停留 900 ms 位图仍为 262144，**不前进、不回退** |
+| `unpause` 跑完 | `finished = true`、`progress_bytes = 1048576` |
+| 双端计数器 | seeder `uploaded_bytes = 1048576`；leecher 恢复后 `fetched_bytes = 786432`（48 片） |
+| 落盘校验 | 64/64 片 SHA-1 匹配、0 mismatch、内容逐字节等于确定性样本 |
+
+**结论**：S1-C3（传输中途暂停/恢复不丢位图）与 S1-C4（真实双 peer 分片传输 + 逐片校验）
+由 `partial` 升为 `verified`；连同 [§S1 Demo 观测](#s1-demo-观测2026-11-09) 的 C1/C2，
+**S1 四条判据已全部有 `verified` 证据**，本报告与上文「S1 Demo 观测」的 `s1-probe-*.json` 需合起来读。
+报告：`tests/spikes/s1/reports/s1-two-peer-*.json`，证据登记在 `spikes.json` 的
+`S1.observations.two_peer`；细节与边界见 [S1 README §4–§6](../../../tests/spikes/s1/README.md)。
+
+**证据边界**：同一主机两个 librqbit Session，无第三方 BT 客户端、无跨主机、无 NAT、无公网；
+限速回环不构成性能证据。C1 的握手拦截仍是自实现层，**不是引擎暴露的回调**，选型论证不变。
+
+**治理状态**：`S1.status` 已于 2026-11-11 由实验执行人依 `two-peer` 4/4 `verified` 证据手工回填为
+`pass`。本 ADR 据此依 [ADR 索引 §4](README.md)「已接受的 ADR 不修改正文」原则定稿为「已接受」，
+结论为**选项 A：采用 `rqbit`**；握手拦截由自实现层（`cr-engine` 外围）落地，不要求引擎暴露回调。
+后续每里程碑复审 `rqbit` 上游维护状态（见 [RISK R-12](../../05-quality/RISK.md)）。
+
 ## 选项
 
 | 选项 | 优点 | 缺点 |
@@ -49,11 +81,13 @@ ColdRevive 的冷热调度依赖三个能力：**按需实例化做种上下文�
 
 ## 决策
 
-**暂定选项 A**，但以 **S1 Spike 为硬门禁**：先写最小 Demo，验证「拦截 Handshake → 动态加载种子 → 正常完成标准下载」全链路。按上文 S1 观测，握手拦截一项改为评估自实现拦截层 / 代理层，不要求引擎暴露回调。
+**选项 A（已采纳）**：以 **S1 Spike 为硬门禁**已通过 —— 最小 Demo 验证了「拦截 Handshake → 动态加载种子 → 正常完成标准下载」全链路，其中握手拦截由自实现层实现（不要求引擎暴露回调）。
 
 - S1 通过 → 采用 `rqbit`，按 [ARCH §4](../ARCH.md) 落地 M-11，拦截层放在 `cr-engine` 外围。
 - S1 不通过 → 切换 `libtorrent` FFI；仍不通过则评估选项 C 的精简做种层。
-- 待补：双 peer 真实分片传输 + 传输中途暂停恢复（S1-C3/C4 目前为 `partial`）。
+- **2026-11-11 已完成**：双 peer 真实分片传输与传输中途暂停恢复（S1-C3/C4 由 `partial` 升为
+  `verified`，见「S1 判据补齐」）；`S1.status` 已由实验执行人依证据回填为 `pass`，本 ADR 据此
+  定稿为「已接受」，选项 A 采纳。后续复审见 [RISK R-12](../../05-quality/RISK.md)。
 
 **无论选择哪个**，业务 crate 一律只依赖 `cr-engine` 的 `Engine` Trait，禁止直接引用具体库（见 [TECH-STACK §5](../TECH-STACK.md)）。
 
@@ -65,7 +99,9 @@ ColdRevive 的冷热调度依赖三个能力：**按需实例化做种上下文�
 
 ## 复核时点
 
-M0 Spike S1 结论出具后立即定稿；此后每里程碑复审上游维护状态。
+本 ADR 已于 2026-11-11 依 S1 4/4 `verified` 证据定稿为「已接受」；此后每里程碑复审 `rqbit`
+上游维护状态（[RISK R-12](../../05-quality/RISK.md)）。若 `rqbit` 停更或缺失关键能力，按
+[RISK R-12] 处理并重新评估选项 B / C。
 
 ## 相关文档
 

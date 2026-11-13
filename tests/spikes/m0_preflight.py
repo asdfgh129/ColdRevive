@@ -200,6 +200,19 @@ def main() -> int:
                                         "t0.observers", "t0.wired",
                                         "network.ports", "toolchain.cargo"}
                             for c in blockers)
+    # G0 的真实判据是「S1–S8 全部有结论」；工程阻塞项只是其中一部分，单列出来避免误读。
+    g0_pending_spikes = [k for k, v in spike_status.items() if v["status"] == "not_run"]
+    s1_obs = next((s.get("observations", {}) for s in spikes["spikes"] if s["id"] == "S1"), {})
+    if "two_peer" in s1_obs and spike_status["S1"]["status"] == "not_run":
+        s1_action = ("S1 四条判据已全部 verified（probe + two-peer 双 Session 真实分片传输）；"
+                     "S1.status 仍 not_run，须实验执行人依证据手工回填，"
+                     "并认定回环证据是否满足 README §6 第 3 条")
+    elif spike_status["S1"]["status"] != "not_run":
+        s1_action = "S1 已有结论；按证据复核 ADR-002 定稿条件"
+    else:
+        s1_action = ("cargo 已就绪：在 tests/spikes/s1/ 编译最小 Demo，"
+                     "核对 rqbit 的按需实例化 / 握手拦截能力")
+
     report = {
         "schema": "coldrevive.m0.preflight/v1",
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -208,11 +221,12 @@ def main() -> int:
         "g0_ready": g0_ready,
         "t0_real_ready": t0_real_ready,
         "spikes": spike_status,
+        "g0_pending_spikes": g0_pending_spikes,
         "checks": checks,
         "blockers": [c["id"] for c in blockers],
         "warnings": [c["id"] for c in warnings],
         "next_actions": [
-            "cargo 已就绪：在 tests/spikes/s1/ 编译最小 Demo，核对 rqbit 的按需实例化 / 握手拦截能力",
+            s1_action,
             "S2 实网小样本实验已获人工批准，仍须限速、最小样本并逐次记录；本地回环模拟只能作为预演",
             "S8 已由项目所有者豁免登记；无书面法律意见，M4 公测前须复核 R-11",
             "安装任一第三方 BT 客户端并编译 M1 二进制后，才能把 CliAdapter.wired 置为 True",
@@ -238,6 +252,7 @@ def main() -> int:
         print(f"G0 就绪: {g0_ready} | T0 真实验收就绪: {t0_real_ready} | "
               f"阻塞项 {len(blockers)} 个 / 提醒 {len(warnings)} 个")
         print("Spike 状态: " + ", ".join(f"{k}={v['status']}" for k, v in spike_status.items()))
+        print("G0 未结 Spike: " + (", ".join(g0_pending_spikes) or "无"))
         print(f"报告: {out.relative_to(ROOT).as_posix()}")
         print("[NOTE] 本脚本不产出任何 Spike 结论；结论须由实验执行人按证据手工回填 spikes.json。")
         for a in report["next_actions"]:

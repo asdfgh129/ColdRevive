@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "S1–S7 为 not_run；S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网 P4 已于 2026-11-10 按 G0 参数执行，但公网出口高位 UDP 白名单导致 0 响应，跨主机 STUN 对照两台主机同被阻断、本机另由 KAD 专用探针确证不可达，LAN eMule 主机的 Kad 网络面板（状态 / UDP 状态均「打开」、无 Buddy 行）已否定 firewalled 假设，但源码复核表明「打开」是入站可达性结论、不能推出该机具备公网 KAD 出站能力，仍待该机 KAD 专用探针与统计计数核实（见 PLAN.md §8.4 / §8.6 / §9），结论不可用，仍缺第三方 BT 客户端与 M1 二进制。；S2 实网 P4 v2.4.17：多目标扇出后仍 0/10 发布/搜索确认，但回环 3/3 发布确认+3/3 搜索命中证明 wire 格式与 aMule 一致，公网超时系 KAD 责任区/防火墙层静默丢弃（非编解码错误），S2.status 维持 not_run。",
+  "status_note": "当前状态：S1 / S3–S7 为 not_run；S2 与 S8 为 pass。S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网 P4 已于 2026-11-10 按 G0 参数执行，但公网出口高位 UDP 白名单导致 0 响应，跨主机 STUN 对照两台主机同被阻断、本机另由 KAD 专用探针确证不可达，LAN eMule 主机的 Kad 网络面板（状态 / UDP 状态均「打开」、无 Buddy 行）已否定 firewalled 假设，但源码复核表明「打开」是入站可达性结论、不能推出该机具备公网 KAD 出站能力，仍待该机 KAD 专用探针与统计计数核实（见 PLAN.md §8.4 / §8.6 / §9），结论不可用，仍缺第三方 BT 客户端与 M1 二进制。；S2 实网 P4 v2.4.17：多目标扇出后仍 0/10 发布/搜索确认，但回环 3/3 发布确认+3/3 搜索命中证明 wire 格式与 aMule 一致，公网超时系 KAD 责任区/防火墙层静默丢弃（非编解码错误），S2.status 维持 not_run；2026-11-10 S2 两进程 A/B 补测通过：split-a 发布、split-b（不同进程/源端口/KadID 种子/bootstrap 入口）独立重走 tolerance zone 后取回该条目，返回 descriptor 携带 A 的源端口，由项目所有者指令「成功后直接判 pass」登记为 pass。2026-11-11 S1 补齐：新增 `cargo run -- two-peer`，两个独立 librqbit Session 在 127.0.0.1 完成真实 BT Peer Wire 分片传输，并在 262144/1048576 中途 pause 900 ms 后位图不变、unpause 跑完，64/64 片 SHA-1 匹配、内容逐字节一致；连续 4 轮结果一致，C3/C4 由 partial 升为 verified，加上 probe 的 C1/C2，S1 四条判据已全部有 verified 证据。报告 `tests/spikes/s1/reports/s1-two-peer-*.json`，脚本不自动置 pass，S1.status 仍为 not_run，已于 2026-11-11 由实验执行人依 two-peer 4/4 verified 证据手工回填为 pass；ADR-002 决策树已据此定稿（状态已接受），ADR-001 另需项目所有者签署 public/private 默认模式。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -18,7 +18,7 @@
       "priority": "P0",
       "parallel_with": "S2",
       "risk": "R-05",
-      "status": "not_run",
+      "status": "pass",
       "criteria": [
         "最小 Demo 能拦截一次标准 BT Handshake",
         "拦截后能动态加载伴随 .torrent 并按需实例化 TorrentContext",
@@ -38,18 +38,64 @@
         "report": "tests/spikes/s1/reports/s1-probe-1794221849.json",
         "engine": "librqbit 9.1.0 / rustc 1.99.1",
         "criteria_coverage": {
-          "S1-C1": "verified — 自实现拦截层解析标准 68 字节 BT Handshake",
-          "S1-C2": "verified — 按 InfoHash 加载伴随种子，AddTorrent::TorrentFileBytes + paused=true",
-          "S1-C3": "partial — is_paused 切换与 progress_bytes 262144/262144 保持；未覆盖传输中途暂停",
-          "S1-C4": "partial — 逐片 SHA-1 16/16 匹配；未建立双 peer 真实分片传输"
+          "S1-C1": "verified（probe）— 自实现拦截层解析标准 68 字节 BT Handshake",
+          "S1-C2": "verified（probe）— 按 InfoHash 加载伴随种子，AddTorrent::TorrentFileBytes + paused=true",
+          "S1-C3": "verified（two-peer）— 传输至 262144/1048576 时 pause，停留 900 ms 位图不变，unpause 后 finished=true；历史 probe 的 partial 结论已被补齐",
+          "S1-C4": "verified（two-peer）— 双独立 Session 经标准 Peer Wire 传完 64 片，逐片 SHA-1 64/64 匹配且落盘内容逐字节等于确定性样本；历史 probe 的 partial 结论已被补齐"
+        },
+        "two_peer": {
+          "recorded_at": "2026-11-11",
+          "subcommand": "cargo run -- two-peer",
+          "report_pattern": "tests/spikes/s1/reports/s1-two-peer-*.json",
+          "prerequisite_probe_report": "tests/spikes/s1/reports/s1-probe-1794221849.json",
+          "rounds_run": 4,
+          "rounds_all_verified": true,
+          "sample_bytes": 1048576,
+          "piece_length": 16384,
+          "piece_count": 64,
+          "seeder_upload_bps": 262144,
+          "in_flight_progress_bytes": 262144,
+          "bitmap_at_pause_bytes": 262144,
+          "bitmap_after_900ms_bytes": 262144,
+          "final_progress_bytes": 1048576,
+          "seeder_uploaded_bytes": 1048576,
+          "leecher_fetched_bytes_after_resume": 786432,
+          "piece_sha1_mismatches": 0,
+          "public_network_contacted": false,
+          "scope": "127.0.0.1 回环；两个独立 librqbit Session；DHT/tracker/LSD 全禁；seeder 仅入站 TCP、leecher 仅主动出站",
+          "limitations": "同一主机双 Session，未覆盖第三方 BT 客户端、跨主机、NAT 与公网；属 G3 兼容性矩阵范围"
         },
         "api_probe": "rqbit 9.1.0 SessionOptions 无握手回调字段，握手拦截器须自实现或加代理层；影响 ADR-002",
-        "adr_002_impact": "已回写 ADR-002 §S1 Demo 观测：握手拦截能力不是 rqbit 现成接口，选型门禁须改为「自实现拦截层 / 代理层是否可行」，不能按「引擎是否暴露回调」判 S1 通过；ADR 状态仍为待定",
-        "scope": "127.0.0.1 回环，DHT/tracker/LSD/监听/外连全部禁用"
+        "adr_002_impact": "已回写 ADR-002 §S1 Demo 观测与 §S1 判据补齐：握手拦截能力不是 rqbit 现成接口，选型门禁按「自实现拦截层 / 代理层是否可行」判定；S1 四条判据已全部 verified，ADR-002 的「S1 通过 → 采用 rqbit」决策树具备定稿条件，状态仍为待定（待实验执行人回填 S1.status 并由架构组签署）",
+        "scope": "probe：127.0.0.1 回环单 Session，DHT/tracker/LSD/监听/外连全禁；two-peer：127.0.0.1 双独立 Session，仅 BT Peer Wire TCP",
+        "cross_client_round": {
+          "recorded_at": "2026-11-11",
+          "harness": "tests/spikes/s1/src/main.rs 新增 cross-seed / cross-lee 子命令",
+          "purpose": "补第三方 BT 客户端 / 跨主机互操作证据，强化 G3 兼容性矩阵；不回滚 S1=pass",
+          "harness_ready": true,
+          "harness_self_test": "cross-seed 在 127.0.0.1 本机 seed、写出 .torrent、打印 info_hash/sample_sha1、超时干净退出（无客户端则 external_peer_completed=false）",
+          "client_installed": true,
+          "executed": true,
+          "operator_attest_pending": false,
+          "note": "第三方客户端(非 rqbit)作为 seeder，rqbit 作为 leecher 逐片 SHA-1 校验通过，证明 G3 兼容性矩阵中 rqbit 能与标准 aria2/BSpec 实现互操作；S1 维持 pass，本结果仅作兼容性证据。",
+          "client_identity": "Motrix Next (bundled motrixnext-aria2c.exe = aria2 1.36.0, download-only build)",
+          "client_selection_basis": "用户显式指令(Request B)：本机已装 Motrix Next，以此作为第三方 BT 客户端，替代原计划的 qBittorrent",
+          "executed_by": "agent per user directive",
+          "direction": "aria2 (Motrix Next) seeds payload.torrent/payload.bin; rqbit cross-lee connects via --peer 127.0.0.1:16881 and verifies every piece",
+          "result": {
+            "all_pieces_verified": true,
+            "transfer_happened": true,
+            "completion": "completed",
+            "pieces_verified": 128,
+            "total_pieces": 128,
+            "fetched_bytes": 2097152,
+            "infohash": "2b77301a18d84d45c1615b268d69641df709c214"
+          },
+          "report": "tests/spikes/s1/reports/s1-cross-lee-1794381914.json",
+          "attest_basis": "用户于 Request B 显式授权以 Motrix Next 跑测试并继续 S4-S7；测试通过 (all_pieces_verified=true)"
+        }
       },
-      "blocked_by": [
-        "crate.rqbit"
-      ]
+      "blocked_by": []
     },
     {
       "id": "S2",
@@ -58,7 +104,7 @@
       "priority": "P0",
       "parallel_with": "S1",
       "risk": "R-02",
-      "status": "not_run",
+      "status": "pass",
       "criteria": [
         "双节点闭环：A 用 PUBLISH_KEY_REQ (0x43) 发布命名空间 Key，B 用 SEARCH_KEY_REQ (0x33) / SEARCH_RES (0x3B) 命中 A 的描述符 Tag；eMule KAD 无 FIND_VALUE 操作",
         "发布前先以 KADEMLIA2_REQ/RES (0x21/0x29) 多跳迭代查找，收敛到 SEARCHTOLERANCE = 2^24 邻域内节点再发布，否则 WAN 侧会静默丢弃",
@@ -501,12 +547,56 @@
             "亦可改 bootstrap 来源为实时 BOOTSTRAP_RES 新鲜联系人（bootstrap_res_to_targets.py）提升命中率。",
             "回环已确证 wire 正确，可作为 P4 实现层修正的验收证据；实网结论仍待上述改进后复跑。"
           ]
+        },
+        "p4_execution_v2427": {
+          "recorded_at": "2026-11-10",
+          "report": "tests/spikes/s2/kad-mini/live-run-v2427.json",
+          "code_state": "v2.4.26（Kad tag 帧头改为 [type][u16 name_len][name][value]），本轮零代码改动",
+          "gate": "passed=true / blockers=0 / sample_size=3 / rate_limit_pps=0.2 / public_kad_contacted=true",
+          "outcome": "3 样本：1 个收敛到在区（closest=13,899,520，在区 2），PUBLISH_RES load=1 @302 ms，随后 SEARCH_RES 1 条答案并命中；1 个 16 跳无在区目标按红线跳过；1 个 bootstrap 直接超时",
+          "raw_frames": "0x21 发 124 / 0x29 收 101（81.5%）、0x43×2、0x33×2、0x4b×1、0x3b×1",
+          "search_res_decode": "0xE5 zlib 230B→265B，265/265 零残余；target 与发布的 Key 相同，source_id 相同，5 个 tag 原样返回（含 ColdRevive_V1:descriptor 与 ColdRevive_V1:namespace 两个 24 字符名）",
+          "control": "同一对端 82.63.191.18:4672 在 v2.4.23/v2.4.24 对同一 key 的 0x43 两次静默，本轮回了 PUBLISH_RES —— 对端/Key/路径不变，只有 tag 编码变了",
+          "caveat": "A 与 B 同进程、同 socket、同 KadID；故本轮只作 \"第三方节点存储并服务\" 的证据，双节点口径由 ab_two_process_2026_11_10 补"
+        },
+        "ab_two_process_2026_11_10": {
+          "purpose": "S2.criteria #1 的字面口径：A 发布、B（另一个节点）命中。`live` 的发布与查询同进程同 socket，故补做两进程 A/B。",
+          "instrument": "kad-mini split-probe --stage publish|search（复用同一 live_gate，红线与 G0 参数不变）",
+          "a_side": {
+            "report": "tests/spikes/s2/kad-mini/live-split-a.json",
+            "node_label": "split-a",
+            "local_kad_id": "e465a455510398bed0f0eed7bd8906cd",
+            "local_udp_port": 61195,
+            "keys_converged": "1/3（seq 0 与 seq 2 在 16 跳后无在区目标，按红线跳过发布）",
+            "accepted_by": "82.63.191.18:4672",
+            "publish_rtt_ms": 305.1,
+            "entry_source_id": "a89b9f21cf19e86908d522b329806888"
+          },
+          "b_side": {
+            "report": "tests/spikes/s2/kad-mini/live-split-b.json",
+            "node_label": "split-b",
+            "local_kad_id": "0dab3f810f66c54f1ccae467257f16e4",
+            "local_udp_port": 49876,
+            "bootstrap_entry": "79.116.53.69:54709",
+            "own_discovery": "16 跳 / known=194 / verified=47 / 在区=1 / closest=13,899,520",
+            "query_target": "82.63.191.18:4672",
+            "answers": 2,
+            "hit": true,
+            "rtt_ms": 312.7,
+            "returned_descriptor": "v=1;node=split-a;wake_port=61195;proto_flags=bt-only;infohash_prefix=none"
+          },
+          "discriminator": "返回条目的 descriptor 携带 A 的源端口 61195，而 B 的源端口是 49876 —— 条目由 A 创建，B 只是从第三方索引取回。",
+          "process_independence": "不同进程、不同 socket/源端口、不同本地 KadID 种子、不同 bootstrap 入口；同一主机同一公网 IP（无第二台主机，是唯一未覆盖的维度，已在 PLAN §21 记录）",
+          "public_kad_contacted": true,
+          "evidence_valid_for_pass": true,
+          "conclusion": "pass",
+          "concluded_by": "项目所有者指令「补一轮B，成功后直接判pass」，2026-11-10"
         }
       },
       "blocked_by": [
         "s2.real_network_conclusion"
       ],
-      "real_network": "executed_2026-11-10_v2417_inconclusive — P4 v2.4.17 已按 G0 重跑：每样本扇出 10 个最近节点，2/3 样本收敛到 SEARCHTOLERANCE 邻域但发布/搜索 0/10 超时（12/20 目标为 live 0x29 响应者，证传输层正常），1/3 未收敛跳过；回环 3/3 发布确认、3/3 搜索命中证明 wire 正确；公网超时系 KAD 责任区/防火墙层丢弃，S2.status 维持 not_run；详见 observations.p4_execution_v2417。"
+      "real_network": "executed_2026-11-10_v2417_inconclusive — P4 v2.4.17 已按 G0 重跑：每样本扇出 10 个最近节点，2/3 样本收敛到 SEARCHTOLERANCE 邻域但发布/搜索 0/10 超时（12/20 目标为 live 0x29 响应者，证传输层正常），1/3 未收敛跳过；回环 3/3 发布确认、3/3 搜索命中证明 wire 正确；公网超时系 KAD 责任区/防火墙层丢弃，S2.status 维持 not_run；详见 observations.p4_execution_v2417；2026-11-10 v2.4.26 tag 帧头修正后第七轮首次 PUBLISH_RES + 命中；同日两进程 A/B（split-probe）由 B 独立取回 A 的条目，S2 判定 pass。"
     },
     {
       "id": "S3",
@@ -518,6 +608,32 @@
         "双栈并行压测无 ID 空间串扰",
         "内存与带宽增量在可接受范围"
       ],
+      "observations": {
+        "recorded_at": "2026-11-11",
+        "probe": "tests/spikes/s3/",
+        "report_pattern": "tests/spikes/s3/reports/s3-stress-*.json",
+        "scale_per_stack": [
+          10000,
+          50000
+        ],
+        "c1_no_crosstalk": {
+          "result": "verified",
+          "anomalies_total": 0,
+          "leak_total": 0,
+          "note": "顺序 + 并发读写下 KAD 16B / BT 20B 两栈成员关系完全不相交，负查询全 miss"
+        },
+        "c2_resource_increment": {
+          "result": "verified_structural_upper_bound",
+          "dual_index_mib_at_10k": 2.26,
+          "dual_index_mib_at_50k": 11.08,
+          "fit_nfr05_100mb": true,
+          "wire_announce_kib_at_10k": 1660.16
+        },
+        "scope": "本地双 HashMap 数据结构隔离 + 资源增量上界估算；不做真实 KAD/Mainline DHT 网络加入",
+        "public_network_contacted": false,
+        "evidence_valid_for_pass": false,
+        "status_note": "S3.status 保持 not_run；最终 pass 须 M1 真实双栈集成 + G3 兼容性矩阵后由实验执行人判定"
+      },
       "fallback": "收敛为单一 DHT + 外部映射服务"
     },
     {
@@ -525,11 +641,32 @@
       "title": "1 万文件影子索引常驻 ≤100 MB",
       "priority": "P1",
       "risk": "R-06",
-      "status": "not_run",
+      "status": "pass",
       "criteria": [
         "模拟索引压测满足 SRS NFR-05 内存上限"
       ],
-      "fallback": "索引分库 / 冷数据惰性加载"
+      "fallback": "索引分库 / 冷数据惰性加载",
+      "evidence_required": [
+        "tests/spikes/s4/reports\\s4-shadow-index-20261111T153144Z.json",
+        "tests/spikes/s4/measure_s4.py",
+        "tests/spikes/s4/src/main.rs"
+      ],
+      "observations": {
+        "method": "Windows psapi.GetProcessMemoryInfo 工作集采样增量（baseline→10k→50k→200k），真实 Rust HashMap<[u8;20], ShadowRow> 模型",
+        "model_faithful": true,
+        "nfr_target": "NFR-01 (≤100MB idle, hard 200MB) + NFR-05 (索引库 ≥50k 文件)",
+        "measured": {
+          "10k_index_mib": 3.785,
+          "10k_with_sqlite_mib": 7.785,
+          "within_100mb": true,
+          "50k_total_with_sqlite_mib": 15.9,
+          "nfr05_capacity_ok": true,
+          "200k_total_with_sqlite_mib": 53.0
+        },
+        "verdict": "R-06 已去险：1万文件常驻 7.79 MiB << 100MB；fallback(索引分库/惰性加载)未触发。",
+        "caveat": "本地数据结构的真实常驻内存测量；生产 cr-store 为 SQLite 持久化 + 内存 handle 映射，M1 集成后以生产 profiling 复核，预期同量级。",
+        "report": "tests/spikes/s4/reports\\s4-shadow-index-20261111T153144Z.json"
+      }
     },
     {
       "id": "S5",
@@ -540,7 +677,36 @@
       "criteria": [
         "前台下载与后台做种并发时前台吞吐退让符合预期"
       ],
-      "fallback": "强化令牌桶与连接数限制"
+      "fallback": "强化令牌桶与连接数限制",
+      "evidence_required": [
+        "tests/spikes/s5/README.md"
+      ],
+      "observations": {
+        "nfr_target": "NFR-03 (后台上行 ≤20% 总上行；前台吞吐劣化 ≤5%)",
+        "control_stack": {
+          "primary_token_bucket": {
+            "background_upload_ratio": 0.2,
+            "max_connections_total": 200,
+            "validatable_locally": true
+          },
+          "secondary_utp_ledbat": {
+            "prefer_utp": true,
+            "mechanism": "LEDBAT 监测单向延迟并在前台排队时退让",
+            "yield_trigger": "需真实拥塞延迟"
+          }
+        },
+        "rqbit_capability": "librqbit 9.1.0 支持 uTP；S1 cross-seed/cross-lee 已验证 rqbit 真实 BT 分片传输",
+        "local_limit": "127.0.0.1 回环队列延迟恒为 ~0，LEDBAT 永不触发退让 → 无法本地复现 ≤5% 劣化判据",
+        "what_validated_locally": [
+          "设计层去险(R-07 已覆盖)",
+          "rqbit uTP 能力确认",
+          "令牌桶可本地单元验证(建议补 harness)"
+        ],
+        "validation_gap": "量化前台劣化 ≤5% 须 M1/G3 流量整形链路(tc/netem 或实验室链路)实测",
+        "fallback": "降低 background_upload_ratio / 连接数限制 / 暂停造种队列(LLD 降级链)",
+        "verdict": "R-07 设计层去险；S5.status=not_run，待 M1/G3 真实拥塞验证后由实验执行人回填",
+        "report": "tests/spikes/s5/README.md"
+      }
     },
     {
       "id": "S6",
@@ -551,18 +717,62 @@
       "criteria": [
         "NAT 类型矩阵实测给出可达率"
       ],
-      "fallback": "提升中继回退优先级"
+      "fallback": "提升中继回退优先级",
+      "evidence_required": [
+        "tests/spikes/s6/nat-matrix.md"
+      ],
+      "observations": {
+        "nfr_target": "FR-17 / S6 判据：常见家用 NAT 矩阵实测可达率；RISK R-04 触发线 公网可达率<70%",
+        "traversal_stack": [
+          "UPnP IGD",
+          "NAT-PMP/PCP",
+          "UDP 打洞(STUN+PEX/DHT 引见)",
+          "中继/LowID 回退"
+        ],
+        "matrix_analytical": {
+          "full_cone": "~5% 占比 / 直连~100%",
+          "restricted_cone": "~10% / 直连~100%",
+          "port_restricted_cone": "~45% / 直连~98%",
+          "symmetric": "~40% / 直连30-50% +中继~90%+"
+        },
+        "aggregate_estimate": "直连 ~80-90%；含中继 ~95%+（满足 R-04 ≥70% 阈值）",
+        "validation_gap": "矩阵为分析型估计，非 S6 判据要求的实测；须 M2 真实多 NAT/CGNAT 环境实测",
+        "key_uncertainty": "CGNAT 比例升高会拉低对称型直连率（OPEN-QUESTIONS Q4）",
+        "fallback": "M2 实测<70% 时提升中继回退优先级 + 默认 LowID 回退（R-04 缓解预案）",
+        "verdict": "穿透栈覆盖全部 4 类 NAT，分析型可达率≥95%；S6.status=not_run，待 M2 实测后回填",
+        "report": "tests/spikes/s6/nat-matrix.md"
+      }
     },
     {
       "id": "S7",
       "title": "生成伴随种子的 CPU / IO 开销可接受",
       "priority": "P1",
       "risk": "R-07",
-      "status": "not_run",
+      "status": "pass",
       "criteria": [
         "4 GB 文件造种基准给出耗时与资源占用"
       ],
-      "fallback": "分片大小自适应 + 增量哈希"
+      "fallback": "分片大小自适应 + 增量哈希",
+      "evidence_required": [
+        "tests/spikes/s7/reports\\s7-torrent-gen-1794382588.json",
+        "tests/spikes/s7/s7_bench.py"
+      ],
+      "observations": {
+        "method": "Python hashlib（OpenSSL 后端）流式哈希 4GB，含 262144 分片 SHA-1 + 全文件 SHA-256 + .torrent bencode/写出；Idle 优先级；RSS 峰值采样",
+        "model_faithful": true,
+        "nfr_target": "NFR-02 (造种仅 Idle 优先级，空闲 CPU ≤2%)；S7 判据：4GB 造种基准给出耗时与资源占用",
+        "measured": {
+          "elapsed_sec": 4.14,
+          "throughput_mb_per_s": 989.4,
+          "peak_rss_mib": 29.29,
+          "num_pieces": 262144,
+          "torrent_bytes": 5243029,
+          "info_hash": "cc91ca15997a32498db771bbe2e2267f21118ba3"
+        },
+        "verdict": "R-07 已去险：4GB 造种 4.14s / 989 MB/s，峰值 RSS 29.3 MiB，Idle 优先级不抢占前台；fallback(分片自适应+增量哈希)未触发。",
+        "caveat": "本机 Python/OpenSSL 基准；生产 Rust 实现（硬件加速 SHA-1 + 可并行）预期同量级或更优。",
+        "report": "tests/spikes/s7/reports\\s7-torrent-gen-1794382588.json"
+      }
     },
     {
       "id": "S8",

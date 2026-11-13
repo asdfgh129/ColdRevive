@@ -74,7 +74,7 @@ flowchart TB
 | L2 | 发现与网络 | 双 DHT 发布/查询、命名空间、NAT 连通性 | KAD Adapter、Mainline Adapter、NAT |
 | L3 | 信令与激活 | 私有唤醒协议、鉴权、限流、信誉 | WakeServer、WakeClient、Reputation |
 | L4 | 调度与治理 | 冷热分级、LRU、握手拦截、阈值/QoS | SeedScheduler、HandshakeGuard、QoS |
-| L5 | 数据面 | 标准 BT 下载/做种、可选 eD2K 补源 | BT Engine、eD2K Adapter |
+| L5 | 数据面 | 标准 BT 下载/做种 + 标准 eD2K 下载/上传（ADR-011）；哈希转译类跨协议补源仍 v2 | BT Engine、eD2K Adapter |
 | L6 | 接入与生态 | Web UI、JSON-RPC、WS、CLI、插件、MCP | HttpServer、RpcBridge、UI |
 | L7 | 横切 | 安全、隐私、可观测性、合规 | 全层 |
 
@@ -121,14 +121,14 @@ flowchart TB
 | M-02 | `cr-hash` 指纹计算 | L1 | SHA-256 / MD4(eD2K) / BT 分片 SHA-1，Idle 优先级 | M-01 |
 | M-03 | `cr-torrent` 伴随种子生成 | L1 | 分片、InfoHash、`.torrent` 序列化与缓存 | M-02 |
 | M-04 | `cr-store` 影子索引库 | L1 | SQLite Schema、迁移、冷热状态持久化 | — |
-| M-05 | `cr-kad` KAD 适配 | L2 | 命名空间 Key、发布/续期/查询、结果去重 | M-04 |
+| M-05 | `cr-kad` KAD 适配 | L2 | 双轨 Key（专属命名空间 + eMule MD4 关键词哈希）、发布/续期/查询、结果去重 | M-04 |
 | M-06 | `cr-dht` Mainline DHT 适配 | L2 | Peer 发布、160-bit ID 映射、兼容旧客户端 | M-03 |
 | M-07 | `cr-nat` 连通性 | L2 | UPnP/NAT-PMP、UDP 打洞、HighID/LowID 判定 | — |
 | M-08 | `cr-wake` 唤醒信令 | L3 | UDP RPC、Challenge-Response、限流、黑名单 | M-04, M-07 |
 | M-09 | `cr-sched` 冷热调度 | L4 | LRU 活跃池、切入/切出、阈值与降级 | M-04, M-10 |
 | M-10 | `cr-guard` 握手拦截 | L4 | 无状态 Reactor、解析 Handshake InfoHash、被动唤醒 | M-04 |
 | M-11 | `cr-engine` BT 引擎 | L5 | 标准下载/做种、暂停/恢复、分片校验 | M-03 |
-| M-12 | `cr-ed2k` 跨协议补源（P2） | L5 | MD4 分块 → BT 分片的哈希转译与拼接 | M-11 |
+| M-12 | `cr-ed2k` eD2k 传输栈（P0）+ 跨协议补源（P2/v2） | L5 | 标准 eD2k 下载/上传、最小上传队列、双轨关键词发布；哈希转译排 v2（[ADR-011](adr/ADR-011-ed2k-interop.md)） | M-02, M-05, M-11 |
 | M-13 | `cr-qos` 资源治理 | L4 | 令牌桶、uTP/LEDBAT、内存/连接/CPU 阈值 | 全层 |
 | M-14 | `cr-api` 接入层 | L6 | HTTP 静态服务、WS、JSON-RPC、REST、CLI | 全层 |
 | M-15 | `cr-reputation` 信誉（P2） | L3 | 节点评分、贡献积分、抗女巫 | M-08 |

@@ -1,0 +1,13 @@
+[package]
+name = "coldrevive-s3-dualstack"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "ADR-011/S3 spike: dual-stack (KAD 128-bit + Mainline 160-bit) index isolation & resource overhead probe"
+
+[[bin]]
+name = "s3-dualstack"
+path = "src/main.rs"
+
+[dependencies]
+serde_json = "1"

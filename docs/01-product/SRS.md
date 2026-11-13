@@ -39,7 +39,9 @@ updated: 2026-11-09
 | FR-20 | aria2 兼容 JSON-RPC（含 `rpc-secret` 鉴权与 CORS 控制） | P1 | AriaNg / Aria2 Explorer 可直接接入 |
 | FR-21 | WebSocket 状态推送（禁止高频 HTTP 轮询） | P1 | 空闲时 RPC 请求数趋近 0 |
 | FR-22 | CLI、REST/OpenAPI、浏览器插件接口 | P2 | 覆盖自动化与「浏览即下载」场景 |
-| FR-23 | 跨协议补源：从 eD2K 网络补齐 BT 缺失分片 | P2 | 需哈希转译层，v2 评估后再排期 |
+| FR-23 | 跨协议补源：从 eD2K 网络补齐 BT 缺失分片 | P2 | 需哈希转译层，v2 评估后再排期（范围已由 [ADR-011](../02-architecture/adr/ADR-011-ed2k-interop.md) 收窄为哈希转译） |
+| FR-24 | 检索公共 eMule 关键词字典并产出标准 `ed2k://` 链接 | P0 | Key 用无前缀 `MD4(UTF-8(term))`；结果可交由任意旧客户端下载（ADR-011 L1） |
+| FR-25 | 标准 eD2k 下载/上传（含最小上传队列）+ 全部共享文件双轨发布 | P0 | `fileID` 必须是真实 `ed2k_hash`；不实现 credit 体系（ADR-011 L2） |
 | FR-24 | 节点信誉、贡献积分、冷启动激励 | P2 | 抗女巫，防刷分，见 [ADR-005](../02-architecture/adr/ADR-005-incentive.md) |
 
 ### 1.1 需求追踪

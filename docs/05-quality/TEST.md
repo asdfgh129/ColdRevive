@@ -2,15 +2,15 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.2
+version: 2.3
 status: 待评审
 owner: 测试组
-updated: 2026-11-09
+updated: 2026-11-11
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.2 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-09
+> 编号 DOC-12 · 版本 2.3 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-11
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 ## 1. 测试分层
@@ -51,7 +51,17 @@ updated: 2026-11-09
 
 > T0 只在 `127.0.0.1` 运行，除 S2 专项外不接触公共 KAD。T1（局域网双机）通过后才与 T0 共同构成 G1 证据，见 [ROADMAP §3](../06-plan/ROADMAP.md)。
 
-**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。当前 S1–S7 为 `not_run`，S8 由项目所有者豁免登记为 `pass`（无书面意见）；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**P4 已于 2026-11-10 显式执行但 inconclusive**（3 × `BOOTSTRAP_REQ`、0 响应、0 发布；执行环境过滤公网高位 UDP，`S2.status` 仍 `not_run`，须在无过滤网络重跑，详见 [PLAN.md §7](../../tests/spikes/s2/PLAN.md)）；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
+**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。当前 S1–S7 为 `not_run`，S8 由项目所有者豁免登记为 `pass`（无书面意见）；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
+
+**ADR-011 L1 / L2 探针证据（2026-11-11，不构成 T0/T1 或 Spike 结论）**：[S2 实验包](../../tests/spikes/README.md)
+在 `127.0.0.1` 与 RFC1918 上另产出两组回归 —— `kad-mini`（`cargo test` 21/21、`selftest` 48/48、
+`loopback` 发布 ACK 5/5 + 命中 5/5、`l2-source-probe` 在真实 aMule 上完成 `0x43`+`0x44` 双轨发布与
+`0x33`+`0x34` 双轨取回）与 `ed2k-mini`（`cargo test` 31/31、`selftest` 26/26、
+3/3 真实 TCP 回环完成下载/上传分片闭环、真实 eMule `HELLO` 握手成功）。
+报告固定 `public_network_contacted=false` / `evidence_valid_for_pass=false`，**0 个公网报文**。
+缺口依旧：该 LAN 对端共享文件数为 0，能力「从旧客户端下载」只能靠自两端回环证明，须在 M1
+换真有共享文件的对端补测；`OP_SETREQFILEID (0x4F)` 的源码/客户端差异登记为开放观测。
+详见 [PLAN §23](../../tests/spikes/s2/PLAN.md)。
 
 ## 3. 兼容性矩阵（必须全绿）
 

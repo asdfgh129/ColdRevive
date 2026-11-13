@@ -1,3 +1,8 @@
 /reports/*
 !/reports/.gitkeep
 __pycache__/
+# 各 spike 的本地运行捕获；正式报告统一写到 reports/（已被上面排除）
+*.out.json
+*.err.txt
+*.err
+live-*.json
