@@ -20,7 +20,7 @@ updated: 2026-11-11
 | **Q1** | 公共 KAD 网络对 `ColdRevive_V1:` **按运营速率**发布是否视为污染？<br>（接纳性已解决：2026-11-10 S2 `pass`，`PUBLISH_RES` + 跨进程取回） | 决定 [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 默认模式与「生态借力」是否成立 | S2 / R-02 | M4 前 |
 | **Q2** | 中文分词方案与关键词 Key 数量的性价比拐点在哪？ | 搜索召回率与 KAD 负载的权衡（默认 8 个 Key 未经验证） | R-13 | M0 压测 |
 | **Q3** | 伴随种子的分片大小策略（固定 vs 自适应）与跨客户端兼容取舍 | 造种开销、Swarm 合并可能性 | S7 | M1 |
-| **Q4** | 私有唤醒 UDP 在对称 NAT / CGNAT 下的实际成功率 | 决定是否加大中继投入 | S6 / R-04 | M2 |
+| **Q4** | 私有唤醒 UDP 在对称 NAT / CGNAT 下的实际成功率 | 决定是否加大中继投入 | S6 / R-04 / [G0-REVIEW §5](G0-REVIEW.md) | M2 |
 | **Q5** | 是否向公共 Mainline DHT 发布影子索引（可能放大「虚假在线」观感） | 兼容性与生态礼貌的边界 | [ADR-007](../02-architecture/adr/ADR-007-tracker.md) | M2 |
 | **Q6** | 激励机制是否必要、如何抗女巫 | 长期节点留存 | [ADR-005](../02-architecture/adr/ADR-005-incentive.md) | M4 |
 | **Q7** | 跨协议补源（MD4 9.28 MB ↔ BT 动态分片）**哈希转译**投入产出比<br>（范围已由 [ADR-011](../02-architecture/adr/ADR-011-ed2k-interop.md) 收窄；eD2k 传输栈已排 v1） | v2 是否排期 | [ADR-004](../02-architecture/adr/ADR-004-ed2k-scope.md) / R-10 | M5 前 |
@@ -96,3 +96,8 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 - [DOC-05 ADR 索引](../02-architecture/adr/README.md)
 - [DOC-13 RISK 风险登记册](../05-quality/RISK.md)
 - [DOC-14 ROADMAP 里程碑](../06-plan/ROADMAP.md)
+
+> **2026-11-13 先导观测（Q4 未结案）**：`tests/spikes/s6/stun_probe.py` 在本机真实出口取得
+> 首个 NAT 样本——单层 cone 类 NAT、公网 WAN IP、公网 UDP 可达、二跳为公网地址（未见 CGNAT），
+> 但 **UPnP IGD 与 NAT-PMP 均不可用**。这只覆盖 1/4 类 NAT，不能回答对称 NAT / CGNAT 的成功率；
+> Q4 仍须 M2 多环境实测，且中继投入决策须考虑「穿透栈第一层不可用」这一实测前提。

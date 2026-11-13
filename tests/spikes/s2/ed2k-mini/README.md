@@ -6,10 +6,11 @@
 
 ## 1. 为什么放在 `tests/spikes/` 而不是 `src/crates/cr-ed2k`
 
-[ROADMAP G0](../../../../docs/06-plan/ROADMAP.md) 尚未通过（S1 / S3–S7 仍 `not_run`），
-[src/README.md](../../../../src/README.md) 明令「技术路线冻结后才创建 `Cargo.toml` 与 crate 实现」。
-ADR-011 批准的 L2 产物 `cr-ed2k`（M-12）因此在 G0 前不落在生产 workspace。
-本 spike 持有**可审计、已跑通的参考实现**，G0 通过后整体迁入 `src/crates/cr-ed2k`，
+[ROADMAP G0](../../../../docs/06-plan/ROADMAP.md) 于 2026-11-13 已由项目所有者批准[条件冻结](../../../../docs/06-plan/G0-REVIEW.md)（本节写作时为「未通过」，S1 / S3–S7 当时仍 `not_run`）；当前 S3 / S5 / S6 仍 `not_run` 但已豁免 G0 时点结论、M1/M2 必测回填，
+[src/README.md](../../../../src/README.md) 的门禁是「技术路线冻结后才创建 `Cargo.toml` 与 crate 实现」——
+该门禁现已满足（条件冻结生效），但 **M1 二进制与 `CliAdapter` 工程接线未完成**，
+ADR-011 批准的 L2 产物 `cr-ed2k`（M-12）因此仍暂不落在生产 workspace。
+本 spike 持有**可审计、已跑通的参考实现**，M1 按门禁接线后整体迁入 `src/crates/cr-ed2k`，
 不改变 P1「零协议侵入」：只实现标准 eD2K 报文，不改其格式。
 
 零依赖。`MD4` / `ed2k_hash` / KAD tag codec 通过 `#[path]` 从

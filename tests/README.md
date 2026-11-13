@@ -32,7 +32,7 @@ python3 tests/e2e/t0/t0_harness.py --self-check
 python3 tests/e2e/t0/t0_cli_selftest.py
 ```
 
-**当前状态：观测层已实现，真实链路仍未接线。** `CliAdapter.wired = False`，`--mode real` 一律把真实用例标记为 `BLOCKED` 并以退出码 2 结束；stub 自检报告的 `evidence_valid` 恒为 `false`。这是刻意防呆，避免把「没跑」显示成「绿」。CLI v1 契约与 20 条真实取数映射已落地（见骨架 README §5.1），但 M1 二进制、第三方 BT 客户端与真实伴随种子尚缺。M0 技术路线冻结后按骨架 §5 完成剩余接线，再以 T0 + T1 共同构成 G1 证据。
+**当前状态：观测层已实现，真实链路仍未接线。** `CliAdapter.wired = False`，`--mode real` 一律把真实用例标记为 `BLOCKED` 并以退出码 2 结束；stub 自检报告的 `evidence_valid` 恒为 `false`。这是刻意防呆，避免把「没跑」显示成「绿」。CLI v1 契约与 20 条真实取数映射已落地（见骨架 README §5.1），但 M1 二进制、第三方 BT 客户端与真实伴随种子尚缺。M0 技术路线已于 2026-11-13 条件冻结（见 [G0-REVIEW](../docs/06-plan/G0-REVIEW.md)），但 M1 二进制与真实伴随种子仍缺；按骨架 §5 完成剩余接线后，再以 T0 + T1 共同构成 G1 证据。
 
 ## M0 Spike 实验包
 

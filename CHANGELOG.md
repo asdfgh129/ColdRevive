@@ -2,6 +2,57 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.37] - 2026-11-13 — G0 条件冻结生效 + S3/S5/S6 真实量测 + 工程门禁收敛
+
+> 范围声明：本轮**不改任何 Spike 的 `status`**（S3/S5/S6 仍 `not_run`），不虚判 `pass`，
+> **不创建生产 crate**（M1 工程接线仍未完成）。项目所有者于本轮显式作出两项治理决策：
+> ① [ADR-001](docs/02-architecture/adr/ADR-001-kad-network.md) 签署默认模式 **`public`**（1.1 待定 → 1.2 已接受）；
+> ② 批准 **G0 条件冻结（conditional pass）**——豁免 S3/S5/S6 在 G0 时点给出最终结论，M1/M2 必测回填。
+> 评审记录见 [G0-REVIEW](docs/06-plan/G0-REVIEW.md)（新增 DOC-22），机读决策见 `spikes.json` 的 `g0_review`。
+
+### 新增真实实验（三项，全部标记 `evidence_valid_for_pass=false`）
+
+- **S3 `tests/spikes/s3/dualstack_io.py`**：真实 UDP 双栈并发 + 共享端口 demux（KAD 16B / Mainline 20B），
+  注入 1437 个跨命名空间畸形帧 → **1437/1437 拒绝、0 误路由、0 丢包**；总带宽 **3.276 Mbit/s**
+  ≈ 两栈之和，RSS 增量 **0.93 MiB**。C2 的「带宽增量」由估算升级为实测。
+  排错留痕：首版 demux 仅校验最小长度，160 个错宽 ID 帧被误收；改为精确 ID 宽度校验后归零。
+- **S5 `tests/spikes/s5/qos_bench.py`**：真实 TCP 双流 + 真实时钟令牌桶 + 64 Mbit/s 应用层瓶颈整形
+  + LEDBAT 式延迟退让模型。令牌桶硬上限成立（后台 ≤20.25% 链路），但
+  **默认 ratio=0.2 时前台劣化 20.12%**（退让模型 15.0%）、ratio=0.05 → 6.19%、
+  **ratio=0.02 → 4.03%**。结论：**NFR-03 ≤5% 在默认配置下未达成，R-07 由 🟡 上调 🟠**，
+  M1 默认值须按实测回调并启用 fallback 链。报告 `reports/s5-qos-final-ratio0{20,05,02}.json`。
+- **S6 `tests/spikes/s6/stun_probe.py`**：RFC 5389 STUN + SSDP + NAT-PMP + 二跳 traceroute 的
+  **首个真实 NAT 样本**：`192.168.1.210` → `112.5.60.4:36764`，跨 4 台 STUN（2 个目的 IP）映射不变（cone 类），
+  公网 UDP 可达（RTT≈245 ms），**UPnP IGD 与 NAT-PMP 均不可用**，二跳公网、未见 CGNAT。
+  R-04 不再按「UPnP 可用」假设估计；Q4 仍未结案，须 M2 多 NAT 实测。
+  排错留痕：首版误把 STUN family `0x02` 当 IPv4（实际 IPv4=`0x01`），4 个有效响应被误判为解码失败。
+
+### 工程门禁收敛
+
+- `m0_preflight.py` 的「至少一个第三方 BT 客户端」改为**证据驱动**：除 PATH 标准名外，识别已安装的
+  Motrix Next `motrixnext-aria2c.exe`，且**只有** `spikes.json` 的 `S1.cross_client_round` 记录
+  `executed=true` 且 `all_pieces_verified=true` 时才计 OK（不把「文件存在」误判成「互通通过」）。
+  阻塞项 **3 → 2**（剩余：M1 二进制、CliAdapter.wired，均属 M1 工程接线）。
+- `m0_preflight.py` 报告新增 `g0_governance` 字段并在控制台打印治理状态；
+  明确 **条件冻结不改变 `g0_ready` 算法、不自动清除任何 Spike 结论**。
+
+### 文档同步
+
+- 新增 [DOC-22 G0-REVIEW](docs/06-plan/G0-REVIEW.md)：八项结论矩阵、豁免边界与退回条款、
+  ADR 状态、残余风险、工程门禁、M1/M2/M4 复核时点；`docs/README.md` 2.5 → 2.6 补 DOC-22 行。
+- `ADR-001` 1.1 → 1.2（待定 → 已接受，所有者签署 `public`）；`adr/README.md` 统计 9 → 10 已接受、2 → 1 待定。
+- `TECH-STACK` 2.3 → 2.4、`ROADMAP` 2.7 → 2.8（§6 状态行 + 本轮条目 + **G0 缺口清单第三次更新**）、
+  `RISK`（R-04 观测收窄 / R-07 等级上调 + 冻结后风险复核节）、`OPEN-QUESTIONS` Q4 先导观测注记。
+- `tests/spikes/README.md` 顶部状态行、§3 起跑顺序、§5 S3/S5/S6 段落、§6 第 4 条补唯一豁免说明；
+  `s3/README.md` / `s5/README.md`（新增 §8 量测表 + 4 项 harness 排错留痕） / `s6/nat-matrix.md`（新增 §8 先导实测）。
+- `spikes.json`：`status_note` 重写为当前口径，新增 `g0_review`，S3/S5/S6 的 `observations` 与 `evidence_required` 补本轮证据。
+
+### 剩余工作（冻结后）
+
+M1 出口：S3 真实双栈集成 + G3 矩阵、S5 真实拥塞链路 rqbit uTP 实测 ≤5%、按门禁创建 crate 骨架；
+M2：S6 四类 NAT（含 CGNAT）可达率实测，R-04 阈值 ≥70%；M4 前：R-02 拒绝率复审、R-11 书面法务意见。
+任一 M1/M2 实测不达标须按各 spike fallback 降级并重新提交冻结评审。
+
 ## [2.4.36] - 2026-11-11 — G0 推进：S1 第三方客户端互操作轮通过 + S4/S7 `pass`、S5/S6 分析就绪
 
 > 范围声明：本轮依用户指令以本机 **Motrix Next** 作第三方 BT 客户端执行 S1 跨客户端一轮（通过，`S1.status` 维持

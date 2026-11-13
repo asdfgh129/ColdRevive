@@ -2,10 +2,10 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.7
+version: 2.8
 status: 持续维护
 owner: 项目组
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # 开发计划与里程碑（ROADMAP）
@@ -104,13 +104,15 @@ ColdRevive
 ## 6. 当前状态（起始 2026-11-09，更新至 2026-11-11）
 
 > 本节按时间追加观测，**较早条目保留当时口径**，最新状态以本节末尾条目与
-> `spikes.json` 为准。截至 2026-11-11：`S1 / S2 / S4 / S7 / S8 = pass`（S4/S7 于 2026-11-11 经真实量测回填）；
-> `S3 / S5 / S6 = not_run`（S3 首轮结构性证据已产出、S5/S6 分析就绪），**G0 未通过**。
+> `spikes.json` 为准。截至 2026-11-13：**G0 已由项目所有者批准「条件冻结」（conditional pass）**：
+> `S1 / S2 / S4 / S7 / S8 = pass`，`S3 / S5 / S6` 保持 `not_run` 但豁免 G0 时点结论，M1/M2 必须实测回填。
+> [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 已签署 `public` 默认模式并定稿；
+> 评审记录见 [G0-REVIEW](G0-REVIEW.md)。T0 真实验收仍未就绪（M1 二进制 / CliAdapter 两项阻塞）。
 > 其中「立即下一步 / 换网 / 重跑 P4」等条目属 2026-11-09～10 的历史排期，
 > 已被 v2.4.14 / v2.4.26 的字节序与 Kad tag 编码修复推翻，**不再作为当前执行依据**，
 > 保留仅为决策演化链；当前应执行的是本节末尾「G0 剩余缺口清单」。
 
-- 阶段：**设计冻结候选，M0 进行中（Spike 首批观测已产出，G0 未通过）**。
+- 阶段：**设计冻结候选，M0 进行中（Spike 首批观测已产出，G0 未通过）**〔2026-11-11 口径；2026-11-13 起 G0 已条件冻结，见本节末尾〕。
 - 已完成：文档体系工程化（v2.4 自包含索引页，21 份 DOC + 10 份 ADR）、项目目录骨架、风险登记册、测试与计划基线。
 - 已就位：**[T0 双节点验收骨架](../../tests/e2e/t0/README.md)**（21 条用例、断言引擎、双实例编排、JSON 报告）+ **CLI v1 契约与 20 条真实观测映射**（`t0_cli.py` / `t0_cli_selftest.py`）+ **[M0 Spike 实验包](../../tests/spikes/README.md)**（S1–S8 判据、`spikes.json` 状态登记、`m0_preflight.py` 就绪度检查）。
 - 当前 `CliAdapter.wired = False`：`--mode real` 仍 `BLOCKED`（1 PASS / 20 BLOCKED，退出码 2），**不构成 G1 门禁证据**。接线清单见骨架 README §5，用例判据见 [TEST §2.1](../05-quality/TEST.md)。
@@ -148,14 +150,21 @@ ColdRevive
   **边界**：只判「接纳性」；R-02 的「按运营速率是否被当污染」仍需 M4 前按实测拒绝率复审，见 [RISK R-02](../05-quality/RISK.md)。
 - **ADR-011 L1 / L2 已在探针层落地（2026-11-11，v2.4.31）**：L1 用 `MD4` 无前缀关键词在真实 aMule 上打通字典互通；L2 补齐 `0x44` / `0x34` 源字典与最小标准 eD2k TCP 下载/上传栈 + 最小上传队列（`tests/spikes/s2/ed2k-mini`）。回归：`kad-mini` 21/21 + 48/48 + 5/5、`ed2k-mini` 31/31 + 26/26 + 3/3 回环闭环、真实 eMule `HELLO` 握手成功；`PROTO.md` 升 v2.5 补 §2.2，`PROTOCOL_VERSION = 1` 与 T0 golden 未动。**证据全部是 RFC1918 / 127.0.0.1、0 个公网报文，不判 pass、不回填 `spikes.json`，G0 仍未通过**。缺口：该 LAN 对端共享文件数为 0，「从旧客户端下载」只有自两端回环证据，M1 须换真有共享文件的对端补测并实测 credit 排队代价（R-15）；Q9 / V-04 已结案，新增 [Q10](OPEN-QUESTIONS.md)（`capabilities.ed2k` 语义）待 M1 定稿。详见 [PLAN §22–§23](../../tests/spikes/s2/PLAN.md)。
 - **S1 判据已齐备（2026-11-11，v2.4.32）**：`tests/spikes/s1/` 新增 `cargo run -- two-peer`，两个独立 librqbit 9.1.0 Session 在 `127.0.0.1` 完成标准 BT Peer Wire 分片传输（1 MiB / 64 片，seeder 上传限速 256 KiB/s）。leecher 从 `progress=0` 起，在 262144/1048576 中途 `pause` 900 ms 位图不前进、不回退，`unpause` 后 `finished=true` / 1048576；seeder `uploaded_bytes=1048576`、leecher 恢复后 `fetched_bytes=786432`（48 片），落盘 64/64 片 SHA-1 匹配、0 mismatch、逐字节等于确定性样本。**连续 4 轮结果一致**，C3/C4 由 `partial` 升为 `verified`，连同 `probe` 的 C1/C2，**S1 四条判据 4/4 齐备**；`probe` 子命令回归无变化。证据 `reports/s1-two-peer-*.json`，登记于 `spikes.json` 的 `S1.observations.two_peer`；见 [S1 README](../../tests/spikes/s1/README.md) 与 [ADR-002 §S1 判据补齐](../02-architecture/adr/ADR-002-bt-engine.md)。
-  **边界与治理**：全部为 `127.0.0.1` 回环、0 个公网报文；同主机双 Session，未覆盖第三方 BT 客户端 / 跨主机 / NAT（属 G3）。`crate.rqbit` 阻塞项已解除（`S1.blocked_by` 置空）。`S1.status` 已于 2026-11-11 由实验执行人依 `two-peer` 4/4 `verified` 证据手工回填为 `pass`，[ADR-002](../02-architecture/adr/ADR-002-bt-engine.md) 据此定稿为「已接受」（选项 A：采用 `rqbit`）；[ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 定稿条件已满足但仍待项目所有者签署 `public`/`private` 默认模式（治理动作，非技术缺口）。
+  **边界与治理**：全部为 `127.0.0.1` 回环、0 个公网报文；同主机双 Session，未覆盖第三方 BT 客户端 / 跨主机 / NAT（属 G3）。`crate.rqbit` 阻塞项已解除（`S1.blocked_by` 置空）。`S1.status` 已于 2026-11-11 由实验执行人依 `two-peer` 4/4 `verified` 证据手工回填为 `pass`，[ADR-002](../02-architecture/adr/ADR-002-bt-engine.md) 据此定稿为「已接受」（选项 A：采用 `rqbit`）；[ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 定稿条件已满足但仍待项目所有者签署 `public`/`private` 默认模式（治理动作，非技术缺口）〔该签署已于 2026-11-13 完成，`public`，见本节末尾〕。
 - **S3 已启动（2026-11-11，v2.4.34）**：`tests/spikes/s3/` 新增零依赖双栈探针，本地双 HashMap（KAD 16B + BT 20B）在顺序 + 并发读写下**串扰/泄漏 = 0**（S3-C1 verified），双栈索引估算 10k/栈 ≈2.26 MiB、50k/栈 ≈11.08 MiB，均远低于 NFR-05 的 100 MB（S3-C2 verified 结构性上界）。属本地数据结构证据，不做真实 DHT 网络加入；`S3.status` 保持 `not_run`，最终 pass 须 M1 真实双栈集成 + G3 兼容性矩阵。详见 [S3 README](../../tests/spikes/s3/README.md)。
 - 未开始：`Cargo.toml` 与 crate 骨架（按 M0 门禁刻意推迟，见 [src/README.md](../../src/README.md)；L2 参考实现按同一门禁暂放 `tests/spikes/`，G0 通过后迁入 `cr-ed2k`）、S4–S7 全部实验（1 万文件影子索引、uTP 退让、NAT 矩阵、4 GB 造种基准）。S3 已启动（[双栈结构化探针](../../tests/spikes/s3/README.md)，S3-C1/C2 结构性 verified，`status` 仍 `not_run`）。仍缺第三方 BT 客户端与 M1 二进制，`CliAdapter.wired` 保持 `False`；实时阻塞项以 `m0_preflight.py` 输出为准。
 - **G0 剩余缺口清单（2026-11-11）**：① S1 状态回填（**已于 2026-11-11 完成**：`S1.status=pass`，[ADR-002](../02-architecture/adr/ADR-002-bt-engine.md) 定稿）；② S3–S7 五项实验尚未开工；③ [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 定稿与所有者签署（[ADR-002](../02-architecture/adr/ADR-002-bt-engine.md) 已于 2026-11-11 定稿）；④ 技术路线冻结评审。`m0_preflight.py` 当前报 `G0 就绪: False`、3 个阻塞项（第三方 BT 客户端、M1 二进制、CliAdapter 接线），这三项偏向 T0/G1 工程接线，**装齐它们并不能替代上述 G0 判据**。
 - **S1 第三方客户端互操作轮已执行并通过（2026-11-11）**：按用户指令以本机 **Motrix Next**（捆绑 aria2 1.36.0）作第三方 seeder，rqbit `cross-lee` 直连 `127.0.0.1:16881` 拉取确定性 payload（128 片 × 16 KiB），**128/128 片 SHA-1 全部校验通过**（`all_pieces_verified=true`）。`S1.status` 维持 `pass`，结果仅作 G3 兼容性矩阵素材，登记 `spikes.json` 的 `cross_client_round`（operator attest 依用户指令满足）。
 - **S4–S7 已推进（2026-11-11）**：**S4 = `pass`**（`tests/spikes/s4/` 真实 Rust 影子索引模型 + Windows 工作集实测：1 万文件 ≈7.79 MiB ≪ 100 MB，5 万 ≈15.9 MiB 兼满足 NFR-05，20 万 ≈53 MiB 仍有余量；R-06 去险）；**S7 = `pass`**（4 GB 造种基准 4.14 s / 989 MB/s、峰值 RSS 29.3 MiB、Idle 优先级；R-07 去险）；**S5 / S6 = `not_run`（分析就绪）**——S5 的 NFR-03 双层控制（令牌桶 20% 上限 + uTP/LEDBAT）中「前台劣化 ≤5%」须真实拥塞链路实测（M1/G3），S6 的 NAT 矩阵为分析型估计（含中继可达率 ≥95%），量化判据须 M2 真实多 NAT 实测；均按治理规则不虚判 `pass`。
 - **G0 剩余缺口清单（2026-11-11 第二次更新）**：① ~~S1 状态回填~~ ✅；② ~~S4 / S7~~ ✅；剩余：S3 / S5 / S6 结论（S3 待 M1 真实双栈集成 + G3 矩阵；S5 待 M1/G3 真实拥塞实测；S6 待 M2 多 NAT 实测）；③ [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 定稿与所有者签署；④ 技术路线冻结评审。`m0_preflight.py` 报 `G0 就绪: False`：`g0_pending_spikes = S3,S5,S6`，其余 3 个 MISSING 为 T0/G1 工程接线（M1 二进制、CliAdapter、第三方下载器 PATH 标准名——Motrix Next 已装机并在 S1 证明互通，仅名称未在 PATH）。**装齐工程项不能替代上述 G0 判据**。
-- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：v2.4.10 跨主机 STUN 对照在本机与 LAN eMule 机器上同得 `BLOCKED` / 退出码 2；v2.4.11 新增 KAD 专用探针确证本机不可达；v2.4.12 该机 `Kad 网络` 面板否证 firewalled 假设，但源码复核显示「打开」是入站 DNAT 即可满足的入站测试；v2.4.13 该机 KAD 专用探针已执行得 0/3 / 退出码 2，本机另用新鲜 10 目标宽扫 0/10，并按 eMule 官方帮助澄清「下载/搜索正常」不等于 KAD 出站可用（详见 [PLAN.md §10](../../tests/spikes/s2/PLAN.md)）。**工程决策已与归因解耦：本网无独立客户端被证明可跑 P4，直接换到高位 UDP 未被过滤的网络** → 先跑诊断得 0 并刷新 `nodes.dat`，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`。剩余 `Kademlia` 方法搜索 / 该机新鲜宽扫 / 统计计数只用于收窄归因，不阻塞换网；~~S1 补齐双 peer 传输~~（**已于 2026-11-11 完成，见上**），S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+
+- **G0 条件冻结生效（2026-11-13，v2.4.37）**：项目所有者显式签署 [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 默认模式 `public`（定稿「已接受」），并批准 **G0 条件冻结**——豁免 S3 / S5 / S6 在 G0 时点给出最终结论（状态仍 `not_run`、不虚判），M1/M2 按 [G0-REVIEW §3](G0-REVIEW.md) 必测回填；任一不达标须按 fallback 降级并重新提交冻结评审。
+- **本轮三项真实量测（2026-11-13）**：
+  - S3：`tests/spikes/s3/dualstack_io.py` 真实 UDP 双栈并发，1437/1437 跨命名空间畸形帧被拒、**0 误路由 / 0 丢包**，总带宽 3.28 Mbit/s（≈两栈之和）、RSS Δ0.93 MiB，C2 带宽由估算升级为实测。
+  - S5：`tests/spikes/s5/qos_bench.py` 真实 TCP 双流 + 令牌桶 + 瓶颈整形：后台上行硬卡 ≤20.25% 成立，**但默认 20% 配置前台劣化 20.12%**（退让模型 15.0%），ratio=0.05 → 6.19%，**ratio=0.02 → 4.03%**。结论：NFR-03 ≤5% 在默认配置下**未达成**，M1 默认值须按实测回调，R-07 未完全去险。
+  - S6：`tests/spikes/s6/stun_probe.py` 取得首个真实 NAT 样本：`192.168.1.210` → 映射 `112.5.60.4:36764`，跨 4 台 STUN 映射不变（cone 类）、公网 UDP 可达；**UPnP IGD 与 NAT-PMP 均不可用**，二跳为公网、未见 CGNAT。穿透栈实际依赖打洞与中继，R-04 不可按「UPnP 可用」假设估计。
+- **工程门禁收敛（2026-11-13）**：`m0_preflight.py` 的第三方 BT 客户端检查改为证据驱动识别 Motrix Next / aria2（须 S1 `cross_client_round` 已执行且 `all_pieces_verified=true`），由 `MISSING` 转 `OK`，阻塞项 **3 → 2**；剩余均为 M1 工程接线（M1 二进制、CliAdapter），不属 G0 判据。
+- **G0 剩余缺口清单（2026-11-13 第三次更新 / 冻结后）**：① ~~S1 状态回填~~ ✅；② ~~S4 / S7 量测~~ ✅；③ ~~ADR-001 签署~~ ✅（2026-11-13 `public`）；④ ~~技术路线冻结评审~~ ✅（条件冻结，见 G0-REVIEW）；**剩余为 M1/M2 必测回填项**：S3（M1 真实双栈 + G3 矩阵）、S5（M1/G3 真实拥塞链路 uTP 实测 ≤5%）、S6（M2 四类 NAT 可达率）；以及 M1 工程接线（M1 二进制、CliAdapter.wired）与 M4 前复核（R-02 拒绝率、R-11 书面法务意见）。`m0_preflight.py` 仍报 `G0 就绪: False`（2 个工程阻塞项 + `g0_pending_spikes = S3,S5,S6` 治理豁免项），`--mode real` 继续 `BLOCKED`。- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：v2.4.10 跨主机 STUN 对照在本机与 LAN eMule 机器上同得 `BLOCKED` / 退出码 2；v2.4.11 新增 KAD 专用探针确证本机不可达；v2.4.12 该机 `Kad 网络` 面板否证 firewalled 假设，但源码复核显示「打开」是入站 DNAT 即可满足的入站测试；v2.4.13 该机 KAD 专用探针已执行得 0/3 / 退出码 2，本机另用新鲜 10 目标宽扫 0/10，并按 eMule 官方帮助澄清「下载/搜索正常」不等于 KAD 出站可用（详见 [PLAN.md §10](../../tests/spikes/s2/PLAN.md)）。**工程决策已与归因解耦：本网无独立客户端被证明可跑 P4，直接换到高位 UDP 未被过滤的网络** → 先跑诊断得 0 并刷新 `nodes.dat`，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`。剩余 `Kademlia` 方法搜索 / 该机新鲜宽扫 / 统计计数只用于收窄归因，不阻塞换网；~~S1 补齐双 peer 传输~~（**已于 2026-11-11 完成，见上**），S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
 
 ## 相关文档
 

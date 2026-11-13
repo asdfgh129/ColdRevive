@@ -11,7 +11,7 @@
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
 | 文档版本 | v2.4（索引页自包含 + T0 验收骨架 + CLI 契约与 M0 实验包） |
 | 验收骨架 | [T0 双节点 Demo](tests/e2e/t0/README.md) 已就位：CLI v1 契约与 20 条真实观测映射已落地，真实链路未接线，非 G1 证据 |
-| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1–S7 `not_run`、S8 已豁免 `pass`；`cargo` 已就绪，[S1 Demo](tests/spikes/s1/README.md)、[S2 实验](tests/spikes/s2/README.md) 与[最小 eMule KAD 客户端](tests/spikes/s2/kad-mini/README.md)（真实 `0xE4` wire 回环 5/5、LAN 真实 eMule 互操作探测）已产出观测，均不构成 G0 结论；判据口径已按源码回写至 [PROTO §2.0](docs/04-protocol/PROTO.md)，[S2 实网排期](tests/spikes/s2/PLAN.md) P0–P3 完成；**v2.4.14 更正**：早期 P4 与所有探针的 0 响应源于我方把 KAD 联系人 IP 字节序读反（线上为点分十进制反序），包全发给了错误地址；修正后本机 10 目标宽扫 **9/10 收到真实 `BOOTSTRAP_RES`**，高位 UDP 一直可用，P4 两度重跑已真实连上公共 KAD（`0xE5` 压缩响应 + `0x21/0x29` 迭代），但 3/3 样本未收敛到 `SEARCHTOLERANCE` 邻域而跳过发布 —— 当前瓶颈是客户端收敛宽度，不需换网（见 [PLAN.md §11](tests/spikes/s2/PLAN.md)）；`S2.status` 仍 `not_run`；剩余阻塞见 `m0_preflight.py` |
+| M0 起跑线 | [Spike 实验包](tests/spikes/README.md)：S1 / S2 / S4 / S7 `pass`、S3 / S5 / S6 `not_run`（G0 条件冻结豁免）、S8 已豁免 `pass`；`cargo` 已就绪，[S1 Demo](tests/spikes/s1/README.md)、[S2 实验](tests/spikes/s2/README.md) 与[最小 eMule KAD 客户端](tests/spikes/s2/kad-mini/README.md)（真实 `0xE4` wire 回环 5/5、LAN 真实 eMule 互操作探测）已产出观测，均不构成 G0 结论；判据口径已按源码回写至 [PROTO §2.0](docs/04-protocol/PROTO.md)，[S2 实网排期](tests/spikes/s2/PLAN.md) P0–P3 完成；**v2.4.14 更正**：早期 P4 与所有探针的 0 响应源于我方把 KAD 联系人 IP 字节序读反（线上为点分十进制反序），包全发给了错误地址；修正后本机 10 目标宽扫 **9/10 收到真实 `BOOTSTRAP_RES`**，高位 UDP 一直可用，P4 两度重跑已真实连上公共 KAD（`0xE5` 压缩响应 + `0x21/0x29` 迭代），但 3/3 样本未收敛到 `SEARCHTOLERANCE` 邻域而跳过发布 —— 当前瓶颈是客户端收敛宽度，不需换网（见 [PLAN.md §11](tests/spikes/s2/PLAN.md)）；`S2.status` 仍 `not_run`；剩余阻塞见 `m0_preflight.py` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
 | 原始想法 | [docs/09-archive/chat.md](docs/09-archive/chat.md) |
 | 历史基线 | [docs/09-archive/ColdRevive-项目开发文档-v2.0.md](docs/09-archive/ColdRevive-项目开发文档-v2.0.md)（已废止，勿作为依据） |
@@ -60,7 +60,7 @@ ColdRevive/
 └── .workbuddy/memory/         工作区记忆（勿删）
 ```
 
-> `src/` 目前只含目录说明，尚未建立可编译工程。按 [ROADMAP](docs/06-plan/ROADMAP.md) 的 M0 门禁，技术路线冻结后才创建 `Cargo.toml` 与 crate 骨架，避免提前固化未经 Spike 验证的选型。`tests/e2e/t0/` 是纯 Python 验收骨架，不依赖 Rust 工具链，也不改变这条门禁。
+> `src/` 目前只含目录说明，尚未建立可编译工程。[G0 条件冻结](docs/06-plan/G0-REVIEW.md) 已于 2026-11-13 生效，按 [ROADMAP](docs/06-plan/ROADMAP.md) 门禁已允许创建 `Cargo.toml` 与 crate 骨架；但 M1 二进制 / `CliAdapter` 两项工程接线仍未完成，本轮未创建生产 crate。`tests/e2e/t0/` 是纯 Python 验收骨架，不依赖 Rust 工具链，也不改变这条门禁。
 
 ## 文档工作流
 

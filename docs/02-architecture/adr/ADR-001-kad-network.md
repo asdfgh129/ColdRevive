@@ -2,18 +2,18 @@
 doc_id: ADR-001
 title: 复用公共 eMule KAD 还是自建私有 DHT
 category: 架构决策
-version: 1.1
-status: 待定
-owner: 架构组
-updated: 2026-11-09
+version: 1.2
+status: 已接受
+owner: 项目所有者
+updated: 2026-11-13
 ---
 
 # ADR-001：复用公共 eMule KAD 还是自建私有 DHT
 
 | 项 | 值 |
 | :--- | :--- |
-| 状态 | **待定**（M0 / S2 后定稿） |
-| 决策者 | 架构组 |
+| 状态 | **已接受**（2026-11-13 项目所有者签署，M0 / S2 后定稿） |
+| 决策者 | 项目所有者（签署） / 架构组（起草） |
 | 相关 | [ADR-007](ADR-007-tracker.md) · [TECH-STACK S2](../TECH-STACK.md) · [RISK R-02](../../05-quality/RISK.md) |
 
 ## 背景
@@ -48,6 +48,13 @@ ColdRevive 需要一个支持关键词与文件哈希检索的去中心化索引
 > 而是 Kad tag 帧头编码错误（详见 [PLAN §19–§21](../../../tests/spikes/s2/PLAN.md)）。
 > 因此「生态借力」的**技术前提成立**；但「按运营速率是否被当污染」（R-02 的另一半）仍须 M4 前复审，
 > 选项 4（`hybrid` 切换）保留不动。**定稿与 public/private 的签署仍由项目所有者执行，本文件不改状态。**
+>
+> **2026-11-13 签署完成（v1.2）**：项目所有者于 G0 冻结评审中显式选择 **`public` 默认模式**，
+> 本 ADR 由「待定」定稿为「**已接受**」，[决策](#决策) 段的选项 C 由「暂定」正式生效。
+> 依据：`S2.status = pass`（实网 `PUBLISH_RES load=1` → `SEARCH_RES` 命中，双进程 A/B 跨节点取回），
+> 定稿条件已满足。签署范围**仅覆盖默认模式选择**；R-02 的「按运营速率是否被当污染」仍须 M4 前复审，
+> `private` / `hybrid` 切换能力与 S2 实网限速约束均保留不变。
+> 评审记录见 [G0-REVIEW §4](../../06-plan/G0-REVIEW.md)，机读决策见 `tests/spikes/spikes.json` 的 `g0_review.adr_001`。
 
 ## 选项
 
@@ -59,7 +66,7 @@ ColdRevive 需要一个支持关键词与文件哈希检索的去中心化索引
 
 ## 决策
 
-**暂定选项 C**：配置 `bootstrap_mode` 默认 `public`，支持 `private` / `hybrid` 切换；所有 Key 强制使用
+**已定稿选项 C（2026-11-13 项目所有者签署）**：配置 `bootstrap_mode` 默认 `public`，支持 `private` / `hybrid` 切换；所有 Key 强制使用
 `ColdRevive_V1:` 命名空间哈希输入（详见 [PROTO §1](../../04-protocol/PROTO.md)），并对发布做限速（默认 20/s，
 须按 `SEARCHTOLERANCE` 与迭代查找成本复核）。
 
@@ -75,7 +82,7 @@ ColdRevive 需要一个支持关键词与文件哈希检索的去中心化索引
 
 ## 复核时点
 
-M0 Spike S2 **实网小样本（P4）**结束后立即定稿；仅完成 P0–P3（协议核实、wire 回环、LAN 互操作、门禁参数）不构成定稿依据。**2026-11-10 S2 已 `pass`（实网 `PUBLISH_RES` + 命中 + 两进程 A/B 取回），定稿条件已满足，待所有者签署 `public` 默认模式。** 公测阶段（M4）按实际索引层拒绝率复审。
+M0 Spike S2 **实网小样本（P4）**结束后立即定稿；仅完成 P0–P3（协议核实、wire 回环、LAN 互操作、门禁参数）不构成定稿依据。**2026-11-10 S2 已 `pass`（实网 `PUBLISH_RES` + 命中 + 两进程 A/B 取回），定稿条件已满足；2026-11-13 项目所有者已签署 `public` 默认模式，本 ADR 定稿为「已接受」。** 公测阶段（M4）按实际索引层拒绝率复审（R-02 / G0-REVIEW §7）。
 
 ## 相关文档
 

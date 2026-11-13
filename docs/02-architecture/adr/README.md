@@ -17,7 +17,7 @@ updated: 2026-11-11
 
 | ADR | 议题 | 决策 | 状态 | 复核时点 |
 | :--- | :--- | :--- | :--- | :--- |
-| [ADR-001](ADR-001-kad-network.md) | 复用公共 eMule KAD 还是自建私有 DHT | 默认 `public` 借力引导，保留 `private` / `hybrid` 切换 | 🟡 待定 | M0 / S2 |
+| [ADR-001](ADR-001-kad-network.md) | 复用公共 eMule KAD 还是自建私有 DHT | 默认 `public` 借力引导，保留 `private` / `hybrid` 切换 | ✅ 已接受（2026-11-13 所有者签署） | M0 / S2 |
 | [ADR-002](ADR-002-bt-engine.md) | BT 引擎选 `rqbit` 还是 `libtorrent` FFI | 采用 `rqbit`（S1 4/4 `verified` 后采纳），握手拦截自实现 | ✅ 已接受 | M0 / S1（2026-11-11 依 S1 4/4 `verified` 回填 `S1.status=pass` 定稿） |
 | [ADR-003](ADR-003-ui-delivery.md) | UI 交付形态 | 守护进程内嵌 HTTP/WS + 可关闭 UI 进程 | ✅ 已接受 | — |
 | [ADR-004](ADR-004-ed2k-scope.md) | 是否内置完整 eD2K 协议栈 | v1 即计算 MD4 哈希；**全栈由 ADR-011 提前至 v1**，哈希转译类补源仍 v2 | ✅ 已接受（部分取代） | 已于 2026-11-11 复核 |
@@ -29,7 +29,7 @@ updated: 2026-11-11
 | [ADR-010](ADR-010-rust-tokio.md) | 语言与运行时 | Rust + Tokio | ✅ 已接受 | — |
 | [ADR-011](ADR-011-ed2k-interop.md) | eD2k 双向互操作边界 | v1 优先兼容旧客户端：全部文件公开、实现标准 eD2k 栈、否决唤醒网关 | ✅ 已接受 | M1 / M4；L1 / L2 探针已于 2026-11-11 落地（见下注） |
 
-**统计**：11 项决策，9 项已接受、2 项待定（ADR-001 待所有者签署 `public`/`private` 默认模式、ADR-005 待 M4）。
+**统计**：11 项决策，10 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 
 > **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
 > RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、
@@ -37,6 +37,11 @@ updated: 2026-11-11
 > 按 §4「**已接受的 ADR 不修改正文**」，实施进度与实测证据记录在上述文档与变更记录中，
 > **不回写 ADR-011 正文**；ADR-011 的决策、范围与复核时点一字未动。
 
+> **G0 签署已完成（2026-11-13）**：[ADR-001](ADR-001-kad-network.md) 由项目所有者签署
+> `public` 默认模式并定稿为「已接受」；同次评审批准 G0 条件冻结（S3/S5/S6 豁免 G0 时点结论，
+> 状态仍 `not_run`，M1/M2 必测）。机读决策见 `tests/spikes/spikes.json` 的 `g0_review`，
+> 详见 [G0-REVIEW](../../06-plan/G0-REVIEW.md)。下方 2026-11-11 条目保留为决策演化记录。
+>
 > **G0 待签署项（2026-11-11）**：[ADR-002](ADR-002-bt-engine.md) 已于 2026-11-11 依 S1 四条判据
 > 全部 `verified` 证据回填 `S1.status = pass` 并定稿为「已接受」（选项 A：采用 `rqbit`，握手拦截
 > 自实现）；[ADR-001](ADR-001-kad-network.md) 的定稿条件自 2026-11-10 `S2 = pass` 起已满足，

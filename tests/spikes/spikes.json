@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态：S1 / S3–S7 为 not_run；S2 与 S8 为 pass。S8 于 2026-11-09 由项目所有者决定豁免并手工登记为 pass（无书面法务意见，R-11 风险保留）。Spike 结论只能由实验执行人根据证据手工改为 pass / fail / fallback，脚本禁止自动置 pass。本机 rustc/cargo 1.99.1 已就绪，S2 实网实验已获人工批准，最小 eMule KAD 客户端（tests/spikes/s2/kad-mini/）已完成真实 wire 回环验证；实网 P4 已于 2026-11-10 按 G0 参数执行，但公网出口高位 UDP 白名单导致 0 响应，跨主机 STUN 对照两台主机同被阻断、本机另由 KAD 专用探针确证不可达，LAN eMule 主机的 Kad 网络面板（状态 / UDP 状态均「打开」、无 Buddy 行）已否定 firewalled 假设，但源码复核表明「打开」是入站可达性结论、不能推出该机具备公网 KAD 出站能力，仍待该机 KAD 专用探针与统计计数核实（见 PLAN.md §8.4 / §8.6 / §9），结论不可用，仍缺第三方 BT 客户端与 M1 二进制。；S2 实网 P4 v2.4.17：多目标扇出后仍 0/10 发布/搜索确认，但回环 3/3 发布确认+3/3 搜索命中证明 wire 格式与 aMule 一致，公网超时系 KAD 责任区/防火墙层静默丢弃（非编解码错误），S2.status 维持 not_run；2026-11-10 S2 两进程 A/B 补测通过：split-a 发布、split-b（不同进程/源端口/KadID 种子/bootstrap 入口）独立重走 tolerance zone 后取回该条目，返回 descriptor 携带 A 的源端口，由项目所有者指令「成功后直接判 pass」登记为 pass。2026-11-11 S1 补齐：新增 `cargo run -- two-peer`，两个独立 librqbit Session 在 127.0.0.1 完成真实 BT Peer Wire 分片传输，并在 262144/1048576 中途 pause 900 ms 后位图不变、unpause 跑完，64/64 片 SHA-1 匹配、内容逐字节一致；连续 4 轮结果一致，C3/C4 由 partial 升为 verified，加上 probe 的 C1/C2，S1 四条判据已全部有 verified 证据。报告 `tests/spikes/s1/reports/s1-two-peer-*.json`，脚本不自动置 pass，S1.status 仍为 not_run，已于 2026-11-11 由实验执行人依 two-peer 4/4 verified 证据手工回填为 pass；ADR-002 决策树已据此定稿（状态已接受），ADR-001 另需项目所有者签署 public/private 默认模式。",
+  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -632,9 +632,34 @@
         "scope": "本地双 HashMap 数据结构隔离 + 资源增量上界估算；不做真实 KAD/Mainline DHT 网络加入",
         "public_network_contacted": false,
         "evidence_valid_for_pass": false,
-        "status_note": "S3.status 保持 not_run；最终 pass 须 M1 真实双栈集成 + G3 兼容性矩阵后由实验执行人判定"
+        "status_note": "S3.status 保持 not_run；C1 已在结构层与线级 demux 双重 verified，C2 内存上界与带宽均已实测。最终 pass 须 M1 真实双栈集成 + G3 矩阵。2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论。",
+        "wire_io_2026_11_13": {
+          "harness": "tests/spikes/s3/dualstack_io.py",
+          "report": "tests/spikes/s3/reports/s3-dualstack-io-20261113T062159Z.json",
+          "method": "共享 UDP 端口 + 两个独立命名空间发送 socket，真实数据报并发收发 + 跨命名空间畸形帧注入",
+          "result": {
+            "kad_mbps": 1.638,
+            "dht_mbps": 1.638,
+            "total_mbps": 3.276,
+            "pps_per_stack": 800,
+            "loss_pct": 0.0,
+            "misrouted_frames": 0,
+            "malformed_injected": 1437,
+            "malformed_rejected": 1437,
+            "rss_delta_mib": 0.93
+          },
+          "c2_bandwidth": "由估算（wire_announce_kib_at_10k）升级为真实量测：双栈总带宽 ≈ 两栈之和，无异常放大",
+          "evidence_valid_for_pass": false,
+          "note": "本地真实 UDP I/O 证据；按 README §6 第 3 条仅作附件，不单独支撑 pass"
+        }
       },
-      "fallback": "收敛为单一 DHT + 外部映射服务"
+      "fallback": "收敛为单一 DHT + 外部映射服务",
+      "evidence_required": [
+        "tests/spikes/s3/reports/s3-stress-*.json",
+        "tests/spikes/s3/reports/s3-dualstack-io-*.json",
+        "tests/spikes/s3/src/main.rs",
+        "tests/spikes/s3/dualstack_io.py"
+      ]
     },
     {
       "id": "S4",
@@ -679,7 +704,10 @@
       ],
       "fallback": "强化令牌桶与连接数限制",
       "evidence_required": [
-        "tests/spikes/s5/README.md"
+        "tests/spikes/s5/README.md",
+        "tests/spikes/s5/qos_bench.py",
+        "tests/spikes/s5/reports/s5-qos-final-ratio020.json",
+        "tests/spikes/s5/reports/s5-qos-final-ratio002.json"
       ],
       "observations": {
         "nfr_target": "NFR-03 (后台上行 ≤20% 总上行；前台吞吐劣化 ≤5%)",
@@ -700,12 +728,49 @@
         "what_validated_locally": [
           "设计层去险(R-07 已覆盖)",
           "rqbit uTP 能力确认",
-          "令牌桶可本地单元验证(建议补 harness)"
+          "令牌桶硬上限已由 qos_bench.py 真实量测验证（≤配置占比）",
+          "并发瓶颈与 fallback 旋钮已量化（ratio 0.02 可把本地劣化压到 ≤5%）"
         ],
-        "validation_gap": "量化前台劣化 ≤5% 须 M1/G3 流量整形链路(tc/netem 或实验室链路)实测",
+        "validation_gap": "量化前台劣化 ≤5% 须 M1/G3 在真实拥塞链路（tc/netem 或实验室链路）用 rqbit uTP 实测；本地模型只给出参数方向与 fallback 阈值",
         "fallback": "降低 background_upload_ratio / 连接数限制 / 暂停造种队列(LLD 降级链)",
-        "verdict": "R-07 设计层去险；S5.status=not_run，待 M1/G3 真实拥塞验证后由实验执行人回填",
-        "report": "tests/spikes/s5/README.md"
+        "verdict": "R-07 设计层去险，但 NFR-03 ≤5% 判据在默认配置下未达成，已定位 fallback 旋钮；S5.status=not_run，2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论，M1/G3 必须实测回填",
+        "report": "tests/spikes/s5/README.md",
+        "local_qos_2026_11_13": {
+          "harness": "tests/spikes/s5/qos_bench.py",
+          "reports": [
+            "tests/spikes/s5/reports/s5-qos-final-ratio020.json",
+            "tests/spikes/s5/reports/s5-qos-final-ratio005.json",
+            "tests/spikes/s5/reports/s5-qos-final-ratio002.json"
+          ],
+          "method": "真实 TCP socketpair 双流 + 真实时钟令牌桶 + 64 Mbit/s 应用层瓶颈整形 + LEDBAT 式延迟退让机理模型（非 librqbit uTP）",
+          "measurements": [
+            {
+              "bg_ratio": 0.2,
+              "background_share_max": 0.2025,
+              "degradation_bucket_only_pct": 20.12,
+              "degradation_with_yield_pct": 15.0,
+              "meets_5pct": false
+            },
+            {
+              "bg_ratio": 0.05,
+              "background_share_max": 0.0527,
+              "degradation_bucket_only_pct": 6.185,
+              "degradation_with_yield_pct": 6.155,
+              "meets_5pct": false
+            },
+            {
+              "bg_ratio": 0.02,
+              "background_share_max": 0.0227,
+              "degradation_bucket_only_pct": 4.55,
+              "degradation_with_yield_pct": 4.03,
+              "meets_5pct": true
+            }
+          ],
+          "key_finding": "NFR-03 第一半（后台上行 ≤20%）由令牌桶确定性满足；但默认 20% 配置下前台劣化约 20%（退让模型亦仅回到 15%），≤5% 目标不达成。按 fallback 链把 background_upload_ratio 降到 0.02 后本地劣化 4.03–4.55%，进入目标区间。",
+          "action": "M1 默认 qos.background_upload_ratio 需按实测回调（不得直接用 0.2 声称满足 NFR-03）；RISK R-07 等级与触发线据此复核",
+          "evidence_valid_for_pass": false,
+          "note": "本地瓶颈整形 + 退让机理模型，不是真实 uTP/LEDBAT 协议栈；按 README §6 第 3 条不能单独支撑 pass"
+        }
       }
     },
     {
@@ -719,7 +784,9 @@
       ],
       "fallback": "提升中继回退优先级",
       "evidence_required": [
-        "tests/spikes/s6/nat-matrix.md"
+        "tests/spikes/s6/nat-matrix.md",
+        "tests/spikes/s6/stun_probe.py",
+        "tests/spikes/s6/reports/s6-nat-20261113T061908Z.json"
       ],
       "observations": {
         "nfr_target": "FR-17 / S6 判据：常见家用 NAT 矩阵实测可达率；RISK R-04 触发线 公网可达率<70%",
@@ -737,10 +804,34 @@
         },
         "aggregate_estimate": "直连 ~80-90%；含中继 ~95%+（满足 R-04 ≥70% 阈值）",
         "validation_gap": "矩阵为分析型估计，非 S6 判据要求的实测；须 M2 真实多 NAT/CGNAT 环境实测",
-        "key_uncertainty": "CGNAT 比例升高会拉低对称型直连率（OPEN-QUESTIONS Q4）",
+        "key_uncertainty": "CGNAT 比例升高会拉低对称型直连率（OPEN-QUESTIONS Q4）；本轮先导样本显示本机 UPnP/NAT-PMP 均不可用，穿透栈第一层假设须在 M2 按真实环境复核",
         "fallback": "M2 实测<70% 时提升中继回退优先级 + 默认 LowID 回退（R-04 缓解预案）",
-        "verdict": "穿透栈覆盖全部 4 类 NAT，分析型可达率≥95%；S6.status=not_run，待 M2 实测后回填",
-        "report": "tests/spikes/s6/nat-matrix.md"
+        "verdict": "分析型含中继可达率 ≥95%（> R-04 70% 阈值）+ 1 个真实 NAT 先导样本；S6.status=not_run，2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论，M2 多 NAT 实测后回填",
+        "report": "tests/spikes/s6/nat-matrix.md",
+        "pilot_2026_11_13": {
+          "harness": "tests/spikes/s6/stun_probe.py",
+          "report": "tests/spikes/s6/reports/s6-nat-20261113T061908Z.json",
+          "method": "RFC 5389 STUN Binding（同一本地 UDP 端口访问 4 台服务器 / 2 个不同目的 IP）+ SSDP M-SEARCH + NAT-PMP 外部地址请求 + 二跳 traceroute",
+          "real_sample": {
+            "local_ip": "192.168.1.210",
+            "gateway": "192.168.1.254",
+            "mapped_address": "112.5.60.4:36764",
+            "stun_responded": 4,
+            "stun_total": 6,
+            "rtt_ms_approx": 245,
+            "nat_type_observed": "cone_or_no_nat（映射地址不随目的 IP:port 变化，非对称型）",
+            "confidence": "medium",
+            "public_udp_egress_ok": true,
+            "upnp_igd_available": false,
+            "nat_pmp_available": false,
+            "second_hop": "112.5.60.1（公网）",
+            "cgnat_suspected": false
+          },
+          "key_finding": "本机为单层 NAT、公网 WAN IP、非对称型；但穿透栈前两层 UPnP IGD 与 NAT-PMP 在本环境均不可用，可达性依赖 UDP 打洞与中继/LowID 回退，R-04 不能按「UPnP 可用」假设估计",
+          "matrix_coverage": "1 / 4 类 NAT 真实样本，其余仍为分析型估计",
+          "evidence_valid_for_pass": false,
+          "note": "单出口单样本，不满足 S6 判据「NAT 类型矩阵实测给出可达率」"
+        }
       }
     },
     {
@@ -800,5 +891,39 @@
       "evidence_note": "本项为项目所有者豁免，不是法务书面意见；不得据此声称已取得外部法律意见。",
       "note": "原为外部依赖、反馈周期最长；2026-11-09 由项目所有者决定豁免，风险保留。"
     }
-  ]
+  ],
+  "g0_review": {
+    "recorded_at": "2026-11-13",
+    "decision": "conditional_freeze_approved",
+    "decided_by": "项目所有者（用户于 2026-11-13 会话中显式选择）",
+    "g0_status": "conditional_pass",
+    "adr_001": {
+      "status": "已接受",
+      "default_mode": "public",
+      "signed_by": "项目所有者",
+      "signed_at": "2026-11-13",
+      "basis": "S2.status=pass（实网 PUBLISH_RES + SEARCH_RES 命中 + 两进程 A/B 跨节点取回），定稿条件已满足"
+    },
+    "conditional_freeze": {
+      "exempted_spikes": [
+        "S3",
+        "S5",
+        "S6"
+      ],
+      "status_unchanged": true,
+      "meaning": "豁免的是「G0 时点须齐备八项最终结论」这一时点要求，不是判这三项 pass；spikes.json 中状态仍为 not_run",
+      "precedent": "S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见、R-11 保留）",
+      "must_validate": {
+        "S3": "M1 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵；判据 C1 无串扰 / C2 资源增量",
+        "S5": "M1/G3 带流量整形的真实拥塞链路上以 rqbit uTP 实测前台吞吐劣化 ≤5%（NFR-03）",
+        "S6": "M2 在 Full/Restricted/Port-restricted/Symmetric 四类真实 NAT（含 CGNAT）逐类实测可达率，R-04 阈值 ≥70%"
+      },
+      "rollback": "任一 M1/M2 实测不达标时，按各 spike 的 fallback 链降级，并重新提交技术路线冻结评审；不得在 M1 之后继续以豁免状态代替结论"
+    },
+    "engineering_blockers": [
+      "M1 二进制与下载器环境变量",
+      "CliAdapter.wired（须 M1 二进制与观测齐备后置 True）"
+    ],
+    "review_doc": "docs/06-plan/G0-REVIEW.md"
+  }
 }

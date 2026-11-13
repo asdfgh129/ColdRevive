@@ -1,6 +1,9 @@
 # 源码目录（src/）
 
-> **当前状态**：目录骨架阶段。按 [ROADMAP M0](../docs/06-plan/ROADMAP.md) 门禁，技术路线冻结后才创建 `Cargo.toml` 与 crate 实现，避免提前固化未经 Spike 验证的选型。
+> **当前状态**：目录骨架阶段。[G0 技术路线条件冻结](../docs/06-plan/G0-REVIEW.md) 已于 2026-11-13 由项目所有者批准，
+> 按 [ROADMAP M0](../docs/06-plan/ROADMAP.md) 门禁**已允许**创建 `Cargo.toml` 与 crate 实现；
+> 但 M1 二进制与 `CliAdapter.wired` 两项工程接线仍未完成（`m0_preflight.py` 报 2 个阻塞项），本轮未创建生产 crate。
+> S3 / S5 / S6 仍为 `not_run`（豁免 G0 时点结论，M1/M2 必测回填），详见 G0-REVIEW §3 与 §6。
 
 ## 规划结构
 

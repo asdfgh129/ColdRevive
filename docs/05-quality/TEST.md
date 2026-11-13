@@ -51,7 +51,7 @@ updated: 2026-11-11
 
 > T0 只在 `127.0.0.1` 运行，除 S2 专项外不接触公共 KAD。T1（局域网双机）通过后才与 T0 共同构成 G1 证据，见 [ROADMAP §3](../06-plan/ROADMAP.md)。
 
-**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。当前 S1–S7 为 `not_run`，S8 由项目所有者豁免登记为 `pass`（无书面意见）；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
+**M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；仍缺第三方 BT 客户端与 M1 二进制、`CliAdapter.wired` 为 `False`，因此 T0 真实链路仍不可执行。
 
 **ADR-011 L1 / L2 探针证据（2026-11-11，不构成 T0/T1 或 Spike 结论）**：[S2 实验包](../../tests/spikes/README.md)
 在 `127.0.0.1` 与 RFC1918 上另产出两组回归 —— `kad-mini`（`cargo test` 21/21、`selftest` 48/48、

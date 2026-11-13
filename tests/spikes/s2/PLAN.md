@@ -1617,6 +1617,10 @@ SEARCH_KEY_REQ            -> SEARCH_RES   1 条答案, 11.7 ms, our_entry_return
 
 ### 23.0 为什么仍在 `tests/spikes/`：G0 未通过
 
+> **2026-11-13 更新**：本节记录的是 v2.4.31 当时口径。G0 已于 2026-11-13 由项目所有者批准
+> [条件冻结](../../../docs/06-plan/G0-REVIEW.md)，技术路线冻结已生效；但 M1 二进制与 `CliAdapter` 接线未完成，
+> 本 L2 参考实现**仍留在 `tests/spikes/`**，待 M1 按门禁迁入 `cr-ed2k`。下方历史论证保留供追溯。
+
 [ROADMAP G0](../../../docs/06-plan/ROADMAP.md) 未通过（S1 / S3–S7 仍 `not_run`），
 [src/README.md](../../../src/README.md) 规定「技术路线冻结后才创建 `Cargo.toml` 与 crate 实现」。
 因此 L2 产物是 `kad-mini` 新增的 `l2-source-probe` 与新 spike crate `ed2k-mini`，

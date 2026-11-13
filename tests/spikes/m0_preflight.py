@@ -131,6 +131,27 @@ def build_checks(cfg: dict[str, Any], spikes: dict[str, Any],
 
     dl = {name: which_version(name) for name in DOWNLOADERS}
     dl_ok = any(v["available"] for v in dl.values())
+    # 非标准名的已装客户端：Motrix Next 捆绑 motrixnext-aria2c.exe（aria2）。
+    # 只有 spikes.json 的 S1.cross_client_round 记录过「已执行且逐片校验通过」才计为可用，
+    # 避免把「文件存在」误判成「互操作能力通过」。
+    by_id_all = {s["id"]: s for s in spikes["spikes"]}
+    cc = (by_id_all.get("S1", {}).get("observations", {}) or {}).get("cross_client_round", {}) or {}
+    interop_proven = bool(cc.get("executed")) and bool(
+        (cc.get("result") or {}).get("all_pieces_verified"))
+    motrix_paths = []
+    if sys.platform == "win32":
+        pf = os.environ.get("ProgramFiles", r"C:\Program Files")
+        motrix_paths.append(Path(pf) / "MotrixNext" / "motrixnext-aria2c.exe")
+    motrix = {"available": False, "path": "", "version": "", "interop_proven": interop_proven}
+    for p in motrix_paths:
+        if p.is_file():
+            v = which_version(str(p), timeout=3.0)
+            motrix.update({"available": True, "path": str(p), "version": v["version"]})
+            break
+    dl["motrix_next_aria2"] = motrix
+    dl_ok = dl_ok or (motrix["available"] and interop_proven)
+    dl["_note"] = ("非标准名客户端需同时满足「可执行文件存在」与「S1 cross_client_round "
+                   "实测通过」才计入 OK；此项只反映 G3 互操作前置，不替代 M1 二进制门禁")
     add("downloader.any", "至少一个第三方 BT 客户端", dl_ok, dl, ["T0-08", "G3"])
 
     bins = check_binaries()
@@ -202,6 +223,16 @@ def main() -> int:
                             for c in blockers)
     # G0 的真实判据是「S1–S8 全部有结论」；工程阻塞项只是其中一部分，单列出来避免误读。
     g0_pending_spikes = [k for k, v in spike_status.items() if v["status"] == "not_run"]
+    # 治理层条件冻结只记录，不改变 g0_ready 算法，也不自动清除任何 Spike 结论
+    gov = spikes.get("g0_review") or {}
+    g0_governance = {
+        "decision": gov.get("decision", "none"),
+        "g0_status": gov.get("g0_status", "not_reviewed"),
+        "adr_001_default_mode": (gov.get("adr_001") or {}).get("default_mode", ""),
+        "conditional_freeze_exempted": (gov.get("conditional_freeze") or {}).get("exempted_spikes", []),
+        "review_doc": gov.get("review_doc", ""),
+        "note": "治理层条件冻结不改 Spike 状态；g0_ready 仍按工程阻塞项计算",
+    }
     s1_obs = next((s.get("observations", {}) for s in spikes["spikes"] if s["id"] == "S1"), {})
     if "two_peer" in s1_obs and spike_status["S1"]["status"] == "not_run":
         s1_action = ("S1 四条判据已全部 verified（probe + two-peer 双 Session 真实分片传输）；"
@@ -222,6 +253,7 @@ def main() -> int:
         "t0_real_ready": t0_real_ready,
         "spikes": spike_status,
         "g0_pending_spikes": g0_pending_spikes,
+        "g0_governance": g0_governance,
         "checks": checks,
         "blockers": [c["id"] for c in blockers],
         "warnings": [c["id"] for c in warnings],
@@ -229,7 +261,8 @@ def main() -> int:
             s1_action,
             "S2 实网小样本实验已获人工批准，仍须限速、最小样本并逐次记录；本地回环模拟只能作为预演",
             "S8 已由项目所有者豁免登记；无书面法律意见，M4 公测前须复核 R-11",
-            "安装任一第三方 BT 客户端并编译 M1 二进制后，才能把 CliAdapter.wired 置为 True",
+            "第三方 BT 客户端已就绪（Motrix Next / aria2，经 S1 跨客户端轮证明互通）；"
+            "仍须编译 M1 二进制后才能把 CliAdapter.wired 置为 True",
         ],
     }
 
@@ -253,6 +286,11 @@ def main() -> int:
               f"阻塞项 {len(blockers)} 个 / 提醒 {len(warnings)} 个")
         print("Spike 状态: " + ", ".join(f"{k}={v['status']}" for k, v in spike_status.items()))
         print("G0 未结 Spike: " + (", ".join(g0_pending_spikes) or "无"))
+        if g0_governance["decision"] == "conditional_freeze_approved":
+            print("G0 治理: 条件冻结已获项目所有者批准 "
+                  f"(ADR-001={g0_governance['adr_001_default_mode']}，"
+                  f"豁免 G0 时点结论 {', '.join(g0_governance['conditional_freeze_exempted'])}；"
+                  "Spike 状态不变、g0_ready 算法不变)")
         print(f"报告: {out.relative_to(ROOT).as_posix()}")
         print("[NOTE] 本脚本不产出任何 Spike 结论；结论须由实验执行人按证据手工回填 spikes.json。")
         for a in report["next_actions"]:

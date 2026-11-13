@@ -2,10 +2,10 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.5
+version: 2.6
 status: 有效
 owner: 架构组
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # 文档体系说明与导航
@@ -63,6 +63,7 @@ updated: 2026-11-11
 | DOC-18 | 讨论记录映射 | [08-reference/DISCUSSION-MAP.md](08-reference/DISCUSSION-MAP.md) | 有效 |
 | DOC-19 | 参考资料与待核实项 | [08-reference/REFERENCES.md](08-reference/REFERENCES.md) | 有效 |
 | DOC-21 | 法务评审材料包（S8） | [07-operations/LEGAL-REVIEW.md](07-operations/LEGAL-REVIEW.md) | 草稿 |
+| DOC-22 | G0 技术路线冻结评审记录 | [06-plan/G0-REVIEW.md](06-plan/G0-REVIEW.md) | 已接受 |
 
 ## 4. Front Matter 规范
 

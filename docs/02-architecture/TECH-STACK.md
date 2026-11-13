@@ -2,7 +2,7 @@
 doc_id: DOC-04
 title: 技术选型与 M0 Spike 清单
 category: 架构
-version: 2.3
+version: 2.4
 status: 待评审
 owner: 架构组 / 内核组
 updated: 2026-11-11
@@ -103,6 +103,18 @@ updated: 2026-11-11
 > - **S6 `not_run`（分析就绪）**：穿透栈（UPnP + NAT-PMP + UDP 打洞 + 中继/LowID 回退）覆盖全 4 类 NAT，
 >   分析型含中继可达率 ≥95%（> R-04 的 70% 阈值）；量化判据须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。
 >   见 `tests/spikes/s6/nat-matrix.md`。
+
+> **G0 条件冻结与 2026-11-13 补充证据**：项目所有者已签署 [ADR-001](adr/ADR-001-kad-network.md)
+> 默认模式 `public` 并批准 **G0 条件冻结**（S3/S5/S6 豁免 G0 时点结论，状态仍 `not_run`，M1/M2 必测回填），
+> 详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)。本轮新增三项真实量测：
+> - **S3**：真实 UDP 双栈 I/O（`tests/spikes/s3/dualstack_io.py`），1437/1437 跨命名空间畸形帧拒绝、
+>   0 误路由 / 0 丢包、总带宽 3.28 Mbit/s ≈ 两栈之和、RSS Δ0.93 MiB；C2 带宽由估算升级为实测。
+> - **S5**：`tests/spikes/s5/qos_bench.py` 证实令牌桶硬上限成立（后台 ≤20.25% 链路），
+>   但**默认 20% 配置前台劣化 20.12%**、退让模型 15.0%，ratio=0.02 才降到 4.03%——
+>   **NFR-03 ≤5% 在默认配置下未达成，M1 默认值须按实测回调，R-07 未完全去险**。
+> - **S6**：`tests/spikes/s6/stun_probe.py` 真实先导样本 `112.5.60.4:36764`（cone 类、公网 UDP 可达），
+>   **UPnP IGD / NAT-PMP 在本环境均不可用**，R-04 不能按「UPnP 可用」假设估计。
+> 工程门禁：第三方 BT 客户端检查已按 S1 互通证据修正为 `OK`，preflight 阻塞项 3 → 2（均为 M1 接线）。
 
 ## 3. 参考项目与可复用资产
 
