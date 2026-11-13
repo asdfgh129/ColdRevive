@@ -1,0 +1,15 @@
+[package]
+name = "coldrevived"
+version.workspace = true
+edition.workspace = true
+description = "M1: 双节点守护进程（HTTP / UDP KAD / 唤醒 / 标准 BT 种子端 / 本地 tracker）"
+
+[dependencies]
+cr-core = { path = "../../crates/cr-core" }
+cr-hash = { path = "../../crates/cr-hash" }
+cr-indexer = { path = "../../crates/cr-indexer" }
+cr-torrent = { path = "../../crates/cr-torrent" }
+cr-store = { path = "../../crates/cr-store" }
+cr-kad = { path = "../../crates/cr-kad" }
+cr-wake = { path = "../../crates/cr-wake" }
+cr-api = { path = "../../crates/cr-api" }

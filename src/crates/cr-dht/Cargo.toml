@@ -1,0 +1,7 @@
+[package]
+name = "cr-dht"
+version.workspace = true
+edition.workspace = true
+description = "M3 (W3.2): Mainline DHT 适配（骨架）"
+
+[dependencies]

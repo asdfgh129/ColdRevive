@@ -1,0 +1,7 @@
+[package]
+name = "cr-hash"
+version.workspace = true
+edition.workspace = true
+description = "M1: SHA-1 / SHA-256 / HMAC-SHA256 与十六进制工具（零依赖）"
+
+[dependencies]

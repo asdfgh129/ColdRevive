@@ -1,0 +1,7 @@
+[package]
+name = "cr-notify"
+version.workspace = true
+edition.workspace = true
+description = "跨平台通知（可选，骨架）"
+
+[dependencies]

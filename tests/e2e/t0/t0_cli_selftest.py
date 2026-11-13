@@ -89,12 +89,25 @@ def run() -> int:
         except t0_cli.CliUnavailableError as exc:
             checks.append(("二进制缺失必须抛异常", True, str(exc)[:80]))
 
-        # 5. 20 条映射齐全，且 wired 仍为 False（防呆）
+        # 5. 20 条映射齐全；M1 代码层已接线 (wired=True)，但环境级防呆必须仍生效：
+        #    本机缺任一真实二进制时，real 观测仍须抛 NotWiredError（CI 保持 BLOCKED）。
         import t0_adapters
         checks.append(("观测映射 20 条齐全", len(t0_cli.OBSERVE_PLAN) == 20,
                        f"size={len(t0_cli.OBSERVE_PLAN)}"))
-        checks.append(("防呆：wired 仍为 False", t0_adapters.CliAdapter.wired is False,
+        checks.append(("M1 代码层已接线", t0_adapters.CliAdapter.wired is True,
                        f"wired={t0_adapters.CliAdapter.wired}"))
+        saved = {env: os.environ.pop(env, None) for env in cfg["bin"].values()}
+        try:
+            adapter = t0_adapters.CliAdapter()
+            try:
+                adapter.observe("T0-04", ctx)
+                checks.append(("环境级防呆：二进制缺失仍 BLOCKED", False, "未抛 NotWiredError"))
+            except t0_adapters.NotWiredError as exc:
+                checks.append(("环境级防呆：二进制缺失仍 BLOCKED", True, str(exc)[:80]))
+        finally:
+            for env, value in saved.items():
+                if value is not None:
+                    os.environ[env] = value
     finally:
         if harness is not None:
             harness.cleanup()

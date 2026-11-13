@@ -1,0 +1,7 @@
+[package]
+name = "cr-engine"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W5.1): Engine Trait 抽象，屏蔽 rqbit / libtorrent 差异（骨架）"
+
+[dependencies]

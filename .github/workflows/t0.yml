@@ -16,6 +16,9 @@ jobs:
         with:
           python-version: '3.13'
 
+      - name: Compile and test Cargo workspace (M1 std-only crates)
+        run: cargo test --workspace --offline
+
       - name: Compile T0 and M0 scripts
         run: python3 -m py_compile tests/e2e/t0/*.py tests/spikes/*.py
 
@@ -35,22 +38,26 @@ jobs:
           python3 - <<'PY'
           import json
           r = json.load(open('/tmp/m0-preflight.json', encoding='utf-8'))
-          assert r['g0_ready'] is False, 'M1 未实现时不得宣称 G0 就绪'
-          assert r['t0_real_ready'] is False, '真实链路未接线时不得宣称就绪'
+          assert r['g0_ready'] is False, 'CI 未配置真实二进制时不得宣称 G0 工程就绪'
+          assert r['t0_real_ready'] is False, '未配置二进制时不得宣称真实链路就绪'
 
-          # 除 S8 的项目所有者豁免外，Spike 结论只能由实验执行人依据实网证据手工回填；
-          # 脚本不得自动置 pass，S1–S7 必须保持 not_run。
-          allowed_manual = {'S8'}
+          # Spike 结论只能由实验执行人据证据手工回填；脚本不得自动置 pass。
+          # 已由所有者 / 执行人依证据回填的 id 白名单，且必须在 spikes.json 留有证据字段。
+          manual_adjudicated = {'S1', 'S2', 'S4', 'S7', 'S8'}
+          src = json.load(open('tests/spikes/spikes.json', encoding='utf-8'))
+          by_id = {s['id']: s for s in src['spikes']}
           for sid, s in r['spikes'].items():
               status = s['status']
-              if sid in allowed_manual:
-                  assert status in ('not_run', 'pass'), sid + ' 状态异常: ' + status
-              else:
-                  assert status == 'not_run', sid + ' 结论不得由脚本自动置为 pass'
+              assert status in ('not_run', 'pass', 'fail', 'fallback'), sid + ' 状态异常: ' + status
+              if status != 'not_run':
+                  assert sid in manual_adjudicated, sid + ' 不得由脚本自动回填'
+                  rec = by_id[sid]
+                  assert rec.get('observations') or rec.get('resolution') or rec.get('legal_review'), \
+                      sid + ' 缺回填证据'
+                  assert status != 'pass' or sid in manual_adjudicated
 
           # S8 若登记为 pass，必须能追溯到所有者豁免，且不得伪造书面法务意见。
-          src = json.load(open('tests/spikes/spikes.json', encoding='utf-8'))
-          s8 = next(s for s in src['spikes'] if s['id'] == 'S8')
+          s8 = by_id['S8']
           if s8['status'] == 'pass':
               legal = s8.get('legal_review') or {}
               assert s8.get('resolution') == 'waived_by_owner', 'S8 pass 必须登记为所有者豁免'
@@ -73,7 +80,7 @@ jobs:
           print('OK:', report['summary']['passed'], 'PASS, evidence_valid=false')
           PY
 
-      - name: Real mode stays BLOCKED until M1 wiring
+      - name: Real mode stays BLOCKED without M1 binaries on CI
         run: |
           set +e
           python3 tests/e2e/t0/t0_accept.py --mode real > /tmp/t0-real.log 2>&1
@@ -81,7 +88,7 @@ jobs:
           set -e
           test "$rc" -eq 2
           grep -q 'BLOCKED' /tmp/t0-real.log
-          echo "OK: real mode blocked with exit code 2"
+          echo "OK: no binaries on CI -> real mode blocked with exit code 2"
 
       - name: Upload T0 reports
         uses: actions/upload-artifact@v4

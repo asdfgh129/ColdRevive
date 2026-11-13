@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.8
+version: 2.9
 status: 持续维护
 owner: 项目组
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.6 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-11
+> 编号 DOC-14 · 版本 2.9 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-13
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -104,10 +104,11 @@ ColdRevive
 ## 6. 当前状态（起始 2026-11-09，更新至 2026-11-11）
 
 > 本节按时间追加观测，**较早条目保留当时口径**，最新状态以本节末尾条目与
-> `spikes.json` 为准。截至 2026-11-13：**G0 已由项目所有者批准「条件冻结」（conditional pass）**：
-> `S1 / S2 / S4 / S7 / S8 = pass`，`S3 / S5 / S6` 保持 `not_run` 但豁免 G0 时点结论，M1/M2 必须实测回填。
+> `spikes.json` 为准。截至 2026-11-13：**G0 已由项目所有者批准「条件冻结」（conditional pass）**，
+> M1 已依此开工并跑通 T0 真实链路（21/21 PASS、`evidence_valid=true`）；
+> 但 **T1 与 S3/S5/S6 必测回填未完成，G1 未通过，M2 仍被门禁阻塞**。
 > [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 已签署 `public` 默认模式并定稿；
-> 评审记录见 [G0-REVIEW](G0-REVIEW.md)。T0 真实验收仍未就绪（M1 二进制 / CliAdapter 两项阻塞）。
+> 评审记录见 [G0-REVIEW](G0-REVIEW.md)，机读进度见 `spikes.json` 的 `m1_progress`。
 > 其中「立即下一步 / 换网 / 重跑 P4」等条目属 2026-11-09～10 的历史排期，
 > 已被 v2.4.14 / v2.4.26 的字节序与 Kad tag 编码修复推翻，**不再作为当前执行依据**，
 > 保留仅为决策演化链；当前应执行的是本节末尾「G0 剩余缺口清单」。
@@ -165,6 +166,10 @@ ColdRevive
   - S6：`tests/spikes/s6/stun_probe.py` 取得首个真实 NAT 样本：`192.168.1.210` → 映射 `112.5.60.4:36764`，跨 4 台 STUN 映射不变（cone 类）、公网 UDP 可达；**UPnP IGD 与 NAT-PMP 均不可用**，二跳为公网、未见 CGNAT。穿透栈实际依赖打洞与中继，R-04 不可按「UPnP 可用」假设估计。
 - **工程门禁收敛（2026-11-13）**：`m0_preflight.py` 的第三方 BT 客户端检查改为证据驱动识别 Motrix Next / aria2（须 S1 `cross_client_round` 已执行且 `all_pieces_verified=true`），由 `MISSING` 转 `OK`，阻塞项 **3 → 2**；剩余均为 M1 工程接线（M1 二进制、CliAdapter），不属 G0 判据。
 - **G0 剩余缺口清单（2026-11-13 第三次更新 / 冻结后）**：① ~~S1 状态回填~~ ✅；② ~~S4 / S7 量测~~ ✅；③ ~~ADR-001 签署~~ ✅（2026-11-13 `public`）；④ ~~技术路线冻结评审~~ ✅（条件冻结，见 G0-REVIEW）；**剩余为 M1/M2 必测回填项**：S3（M1 真实双栈 + G3 矩阵）、S5（M1/G3 真实拥塞链路 uTP 实测 ≤5%）、S6（M2 四类 NAT 可达率）；以及 M1 工程接线（M1 二进制、CliAdapter.wired）与 M4 前复核（R-02 拒绝率、R-11 书面法务意见）。`m0_preflight.py` 仍报 `G0 就绪: False`（2 个工程阻塞项 + `g0_pending_spikes = S3,S5,S6` 治理豁免项），`--mode real` 继续 `BLOCKED`。- 立即下一步见 [OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)：v2.4.10 跨主机 STUN 对照在本机与 LAN eMule 机器上同得 `BLOCKED` / 退出码 2；v2.4.11 新增 KAD 专用探针确证本机不可达；v2.4.12 该机 `Kad 网络` 面板否证 firewalled 假设，但源码复核显示「打开」是入站 DNAT 即可满足的入站测试；v2.4.13 该机 KAD 专用探针已执行得 0/3 / 退出码 2，本机另用新鲜 10 目标宽扫 0/10，并按 eMule 官方帮助澄清「下载/搜索正常」不等于 KAD 出站可用（详见 [PLAN.md §10](../../tests/spikes/s2/PLAN.md)）。**工程决策已与归因解耦：本网无独立客户端被证明可跑 P4，直接换到高位 UDP 未被过滤的网络** → 先跑诊断得 0 并刷新 `nodes.dat`，再由实验执行人显式**重跑 S2 P4 实网小样本**（最小 3 条 Key、0.2 包/秒、逐次原始记录、三桶分类），再由人工回填 `S2.status`。剩余 `Kademlia` 方法搜索 / 该机新鲜宽扫 / 统计计数只用于收窄归因，不阻塞换网；~~S1 补齐双 peer 传输~~（**已于 2026-11-11 完成，见上**），S3–S7 在 G0 前补齐；G0 通过后编译 M1 二进制，再按骨架 §5 完成第 6～9 项接线。
+
+- **M1 开工与 T0 真实验收（2026-11-13，v2.4.38）**：门禁复核结论——**M1 可开工**（G0 条件冻结已签署；preflight 的 2 个剩余阻塞项恰为 M1 自身工程接线），**M2 不可开工**（§2 依赖 M1/G1）。本轮按 [src/README.md](../../src/README.md) 创建根 `Cargo.toml` + 17 crate + 3 bin（全部 std-only，`cargo test --workspace --offline` 27 单测全绿），实现 `coldrevived` / `coldrevive-cli` 的 CLI v1 契约与 20 条真实观测；`CliAdapter.wired` 置 `True` 并保留环境级防呆。设三个二进制环境变量后 `--mode real` **21/21 PASS、FAIL 0、`evidence_valid=true`**（报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`），数据面由第三方 aria2 真实完成 BT 下载与逐片 SHA-1 校验。首轮 3 个失败（状态跃迁累积 / 重放误报重复激活 / `residual_pids` 误判）均已如实记录并修复后复跑全绿。
+- **M2 合法前置（2026-11-13）**：M2 侧 10 个 crate 仅建骨架；按 S5 实测把 `background_upload_ratio` 默认由 `0.2` 回调为 `0.02`（[CONFIG](../04-protocol/CONFIG.md) 2.1）；`cr-nat` 登记 S6 四类 NAT + CGNAT 矩阵与 R-04 ≥70% 阈值；`cr-engine` 固定 `Engine` Trait 边界。**以上均不宣称 G2 达标，也不改变 S3/S5/S6 的 `not_run` 状态。**
+- **G0 剩余缺口清单（2026-11-13 第四次更新 / M1 开工后）**：① ~~S1 状态回填~~ ✅；② ~~S4 / S7 量测~~ ✅；③ ~~ADR-001 签署~~ ✅；④ ~~技术路线冻结评审~~ ✅；⑤ ~~M1 二进制 / CliAdapter 工程接线~~ ✅（本轮完成）；⑥ ~~T0 单机回环真实链路~~ ✅（21/21 PASS）；**剩余（G1 出口 / M2 前置）**：T1 局域网双机 + 真实 NAT 全链路；S3 真实双栈集成 + G3 矩阵；S5 真实拥塞链路 rqbit uTP ≤5% 实测；S6（M2）四类 NAT 可达率实测；M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**`T0 evidence_valid=true` 只覆盖 T0，不等于 G1；M2 保持 `blocked_by_G1`。** `m0_preflight.py` 的 `g0_ready` 算法按 [G0-REVIEW §6](G0-REVIEW.md) 保持不变，工程阻塞项清零但豁免项未结案时会打印提示。
 
 ## 相关文档
 

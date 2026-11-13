@@ -4,9 +4,13 @@
 > **G0 已于 2026-11-13 由项目所有者批准「条件冻结」（conditional pass）**：[ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md)
 > 签署 `public` 默认模式；S3/S5/S6 豁免 G0 时点结论（状态仍 `not_run`，不虚判），M1/M2 必测回填。
 > 评审记录 [G0-REVIEW](../../docs/06-plan/G0-REVIEW.md)，机读决策 `spikes.json` 的 `g0_review`。
+> **2026-11-13 M1 开工补记**：T0 真实链路 21/21 PASS（`evidence_valid=true`），但 **T1 与 S3/S5/S6 必测回填未完成**，
+> G1 未通过、M2 仍 `blocked_by_G1`；三项状态**继续 `not_run`**，各补 `m1_2026_11_13` 证据条目
+> （`evidence_valid_for_pass=false`），机读进度见 `spikes.json` 的 `m1_progress`。
+> M1 的 Cargo Workspace 与生产二进制在仓库根 `Cargo.toml` / `src/`，不在本实验包内。
 > 本目录是「实验的准备与就绪度检查 + 证据产出」，**不是结论本身**；结论唯一入口是 `spikes.json`。
 > S1 的四条判据已于 2026-11-11 全部 `verified`（见下方 §4），但状态仍未回填。
-> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P3 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环、LAN 互操作、`0xE5` 解包、tolerance 收敛）已完成；**v2.4.14 更正**：早期 P4 / 探针的 0 响应不是环境阻断，而是 KAD 联系人 4 字节 IP 被按点分顺序读取（线上是反序），所有包发往错误地址；修正后本机 10 目标宽扫 **9/10 收到真实 `BOOTSTRAP_RES`**，高位 UDP 一直可用，P4 两度重跑已连上公共 KAD，但 3/3 样本未收敛到 `SEARCHTOLERANCE` 邻域而跳过发布。`udp_egress_check.py` 的 STUN 结果只说明 STUN 被过滤，**不是 KAD 代理指标**；不需要换网或开防火墙。**2026-11-10 结论**：根因是 Kad tag 帧头被写成 ed2k/met 的 `[type|0x80][name:1]`（aMule 的 Kad 路径用 `CFileDataIO::ReadTag`，名字恒为 `u16 长度 + 字节`），修正后公网 `PUBLISH_RES` 与 `SEARCH_RES` 命中均出现，两进程 A/B 补测通过，**S2 已判 `pass`**，详见 [PLAN.md §19–§21](s2/PLAN.md)。仍缺第三方 BT 客户端与 M1 二进制，`m0_preflight.py` 会把剩余阻塞项逐条列出。
+> 本机已具备 `rustc` / `cargo` 1.99.1，S1 最小 Demo 已跑通；S2 实网实验的人工批准已登记在 `spikes.json` 的 `public_kad_approval`，[实施排期](s2/PLAN.md) P0–P3 与[最小 eMule KAD 客户端](s2/kad-mini/README.md)（真实 wire 回环、LAN 互操作、`0xE5` 解包、tolerance 收敛）已完成；**v2.4.14 更正**：早期 P4 / 探针的 0 响应不是环境阻断，而是 KAD 联系人 4 字节 IP 被按点分顺序读取（线上是反序），所有包发往错误地址；修正后本机 10 目标宽扫 **9/10 收到真实 `BOOTSTRAP_RES`**，高位 UDP 一直可用，P4 两度重跑已连上公共 KAD，但 3/3 样本未收敛到 `SEARCHTOLERANCE` 邻域而跳过发布。`udp_egress_check.py` 的 STUN 结果只说明 STUN 被过滤，**不是 KAD 代理指标**；不需要换网或开防火墙。**2026-11-10 结论**：根因是 Kad tag 帧头被写成 ed2k/met 的 `[type|0x80][name:1]`（aMule 的 Kad 路径用 `CFileDataIO::ReadTag`，名字恒为 `u16 长度 + 字节`），修正后公网 `PUBLISH_RES` 与 `SEARCH_RES` 命中均出现，两进程 A/B 补测通过，**S2 已判 `pass`**，详见 [PLAN.md §19–§21](s2/PLAN.md)。第三方 BT 客户端（Motrix Next / aria2）与 M1 二进制已于 2026-11-13 就位；`m0_preflight.py` 仍按原算法报告环境阻塞项，不因 M1 开工而自动清除任何 Spike 结论。
 
 > **2026-11-11 追加（ADR-011 L1 / L2）**：`s2/` 新增 [ed2k-mini](s2/ed2k-mini/README.md) 最小标准 eD2k
 > 传输栈，并在 `kad-mini` 新增 `l2-source-probe`（`0x44` / `0x34` 源字典）。二者是**探针 / 参考实现**，

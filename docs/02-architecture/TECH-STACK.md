@@ -2,15 +2,15 @@
 doc_id: DOC-04
 title: 技术选型与 M0 Spike 清单
 category: 架构
-version: 2.4
+version: 2.5
 status: 待评审
 owner: 架构组 / 内核组
-updated: 2026-11-11
+updated: 2026-11-13
 ---
 
 # 技术选型与 M0 Spike 清单
 
-> 编号 DOC-04 · 版本 2.2 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-11
+> 编号 DOC-04 · 版本 2.5 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-13
 > 本文记录技术栈选择、备选方案、**必须由 M0 验证的假设**。选型变更须新增 [ADR](adr/README.md)。
 
 ## 1. 选型总表
@@ -115,6 +115,14 @@ updated: 2026-11-11
 > - **S6**：`tests/spikes/s6/stun_probe.py` 真实先导样本 `112.5.60.4:36764`（cone 类、公网 UDP 可达），
 >   **UPnP IGD / NAT-PMP 在本环境均不可用**，R-04 不能按「UPnP 可用」假设估计。
 > 工程门禁：第三方 BT 客户端检查已按 S1 互通证据修正为 `OK`，preflight 阻塞项 3 → 2（均为 M1 接线）。
+
+> **M1 开工补记（2026-11-13，v2.5）**：依条件冻结建立根 `Cargo.toml` + 17 crate + 3 bin，
+> **M1 实现刻意保持 std-only 零第三方依赖**（`cargo test --workspace --offline` 27 单测全绿），
+> 目的是让 G1 前的工程接线不受 crates.io 可达性影响。§1 选型表中的 Tokio / rusqlite / notify /
+> rqbit / axum 均**尚未引入生产代码**，仍按各自里程碑落地：M2 引入 `rqbit`（ADR-002 选项 A）、
+> `rusqlite`、Tokio/axum 时须另立 ADR 并复核 G1。`coldrevived` 当前的最小 HTTP / UDP / BT 种子端
+> 是 M1 验证用实现，不是最终架构。T0 `--mode real` 已 21/21 PASS，但 T1 与 S3/S5/S6 必测回填
+> 未完成，**G1 未通过、M2 仍 `blocked_by_G1`**，见 [G0-REVIEW §9](../06-plan/G0-REVIEW.md)。
 
 ## 3. 参考项目与可复用资产
 

@@ -2,7 +2,7 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.6
+version: 2.7
 status: 有效
 owner: 架构组
 updated: 2026-11-13
@@ -129,6 +129,9 @@ updated: YYYY-MM-DD
 
 - 文档体系版本记录在 `CHANGELOG.md`；单文档版本记录在各自 front matter。
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
+- **v2.7（2026-11-13，M1 开工补记）**：DOC-04 → 2.5、DOC-11 → 2.1（S5 实测标定默认值）、
+  DOC-13 → 2.2、DOC-14 → 2.9、DOC-22 → 1.1；本轮未新增 DOC 编号，未改 `PROTOCOL_VERSION` 与 T0 golden。
+  T0 real 21/21 PASS 只覆盖单机回环，G1 仍需 T1 与 S3/S5/S6 必测回填，M2 保持 `blocked_by_G1`。
 - 协议（DOC-09）**私有契约字段**（§3 `WAKEUP_REQ` / `WAKEUP_ACK`）变更必须递增 `PROTOCOL_VERSION`、新增 ADR 并更新 T0 golden，禁止静默修改。
 - **映射修订例外**：只改 §1 / §2 的**外部 KAD / eD2k 集成映射**（如 v2.3 的 Kad tag 帧头、v2.4 的双轨 Key、v2.5 的 `0x44` / `0x34` 载荷与 eD2k TCP 序列）且不动 §3 字段时，按 [PROTO §4](04-protocol/PROTO.md) 只递增该文档的 `version` 并记录源码依据，`PROTOCOL_VERSION` 与 T0 golden 保持不变。本条与 PROTO §4 是同一规则的两处表述。
 

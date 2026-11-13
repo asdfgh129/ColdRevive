@@ -1,0 +1,7 @@
+[package]
+name = "cr-nat"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W3.3): NAT 类型枚举与 S6 实测矩阵口径（骨架）"
+
+[dependencies]

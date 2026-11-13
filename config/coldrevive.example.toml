@@ -39,7 +39,10 @@ memory_soft_limit_mb = 100
 memory_hard_limit_mb = 200
 
 [qos]
-background_upload_ratio = 0.2
+# S5 真实量测（2026-11-13, tests/spikes/s5/qos_bench.py）：0.2 时前台劣化 20.12%，
+# 0.05 → 6.19%，0.02 → 4.03%；NFR-03 要求 ≤5%，故默认值回调为 0.02。
+# 注意：这只是按实测回调配置，S5.status 仍为 not_run，须 M1/G3 真实拥塞链路 uTP 实测回填。
+background_upload_ratio = 0.02
 max_connections_total = 200
 prefer_utp = true
 

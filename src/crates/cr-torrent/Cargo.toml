@@ -1,0 +1,8 @@
+[package]
+name = "cr-torrent"
+version.workspace = true
+edition.workspace = true
+description = "M1: 伴随种子生成、bencode 与真实 InfoHash / 逐片 SHA-1 校验"
+
+[dependencies]
+cr-hash = { path = "../cr-hash" }

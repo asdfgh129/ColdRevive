@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -210,6 +211,54 @@ def framework_check(ctx: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def setup_real_env(cfg: dict[str, Any], harness: Any, fixture: Any) -> tuple[bool, str]:
+    """M1 接线：写双节点配置、启动 A/B 守护进程、等待健康检查。
+
+    只做真实环境准备，不产生任何观测值、不判任何 pass。任一二进制缺失或健康
+    检查失败时返回 (False, 原因)，调用方把本次 real 运行标记为 BLOCKED。
+    """
+    binaries = {
+        name: os.environ.get(env, "").strip()
+        for name, env in (("daemon", cfg["bin"]["daemon_env"]),
+                          ("cli", cfg["bin"]["cli_env"]),
+                          ("downloader", cfg["bin"]["downloader_env"]))
+    }
+    for name, path in binaries.items():
+        if not path or not Path(path).is_file():
+            return False, f"{name} 二进制未就绪: {path or '<未设置>'}"
+
+    nodes_cfg = {
+        "bind": cfg["bind"],
+        "nodes": cfg["nodes"],
+        "sample_path": str(fixture.path),
+        "keywords": list(fixture.keywords),
+        "namespace": cfg["protocol"]["namespace"],
+        "workdir": str(harness.workdir),
+        "golden_req": str(harness.golden_dir / "wakeup_req.v1.json"),
+        "golden_ack": str(harness.golden_dir / "wakeup_ack.v1.json"),
+        "downloader": binaries["downloader"],
+        "challenge_window_sec": cfg["protocol"]["challenge_window_sec"],
+    }
+    config_path = harness.workdir / "t0-nodes.json"
+    config_path.write_text(json.dumps(nodes_cfg, ensure_ascii=False, indent=2) + "\n",
+                           encoding="utf-8")
+    os.environ["COLDREVIVE_T0_CONFIG"] = str(config_path)
+
+    for node, spec in cfg["nodes"].items():
+        argv = harness.render_argv(
+            cfg["launch"]["daemon_argv"], daemon=binaries["daemon"],
+            config=str(config_path), node=node, bind=cfg["bind"],
+            http_port=str(spec["http_port"]), wake_udp_port=str(spec["wake_udp_port"]),
+            bt_port=str(spec["bt_port"]),
+        )
+        harness.spawn(f"daemon-{node}", argv)
+    for node, spec in cfg["nodes"].items():
+        url = f"http://{cfg['bind']}:{spec['http_port']}/health"
+        if not harness.wait_health(url, float(cfg["timeouts_sec"]["startup"])):
+            return False, f"节点 {node} 健康检查未通过: {url}"
+    return True, "A/B 双节点已启动且健康检查通过"
+
+
 def print_list(cases: list[dict[str, Any]]) -> None:
     print(f"T0 用例清单（门禁 G1，共 {len(cases)} 条）")
     print(f"{'ID':<8}{'组':<12}{'必需':<6}{'流程':<16}标题")
@@ -240,7 +289,7 @@ def build_report(mode: str, adapter: Any, cfg: dict[str, Any], fixture: Any,
     if mode == "stub":
         reason = "STUB 合成观测：仅验证编排与断言引擎，不可作为 G1 门禁证据"
     elif not wired:
-        reason = "CliAdapter 未接线：观测采集层已实现，但 M1 二进制与真实环境未就绪"
+        reason = "本次运行的真实二进制或双节点链路未就绪（M1 代码层已接线，环境未就绪）"
     elif summary["failed"] or summary["blocked"]:
         reason = "存在 FAIL / BLOCKED 用例"
     else:
@@ -249,8 +298,8 @@ def build_report(mode: str, adapter: Any, cfg: dict[str, Any], fixture: Any,
     next_actions: list[str] = []
     if mode == "stub":
         next_actions = [
-            "完成 M0 的 S1/S2/S8 并冻结技术路线（CLI v1 契约与 20 条观测映射已就位）",
-            "编译 M1 二进制、安装第三方 BT 客户端后以 --mode real 重新执行",
+            "G0 条件冻结已生效，M1 二进制与 CliAdapter 代码层已接线；下一步为真实链路复跑",
+            "设置三个二进制环境变量后以 --mode real 重新执行（stub 结果永远不构成证据）",
         ]
     elif not wired:
         next_actions = []
@@ -264,8 +313,8 @@ def build_report(mode: str, adapter: Any, cfg: dict[str, Any], fixture: Any,
             unset = [k for k, v in preflight.get("binaries", {}).items() if not v]
             if unset:
                 next_actions.append("未设置环境变量: " + ", ".join(unset))
-        next_actions.append("按 t0_config.json 的 launch 契约启动 A / B 两个守护进程，接入第三方 BT 客户端")
-        next_actions.append("G0 通过、真实伴随种子与指标埋点齐备后，才把 CliAdapter.wired 置为 True")
+            next_actions.append("按 t0_config.json 的 launch 契约启动 A / B 两个守护进程，接入第三方 BT 客户端")
+            next_actions.append("设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实文件路径后重跑 --mode real")
     else:
         failed = [r["id"] for r in results if r["status"] != "PASS"]
         if failed:
@@ -325,10 +374,13 @@ def main() -> int:
         fixture = harness.prepare()
         ctx = harness.context()
 
-        if mode == "real" and not getattr(adapter, "wired", False):
-            print("[BLOCKED] CliAdapter 未接线：真实链路尚不可执行。", file=sys.stderr)
-            print("          见 tests/e2e/t0/README.md §5 接线清单；本次结果不计入 G1。",
-                  file=sys.stderr)
+        if mode == "real":
+            ready, why = setup_real_env(cfg, harness, fixture)
+            adapter.wired = ready
+            if not ready:
+                print(f"[BLOCKED] {why}", file=sys.stderr)
+                print("          见 tests/e2e/t0/README.md §5 接线清单；本次结果不计入 G1。",
+                      file=sys.stderr)
 
         for case in cases:
             cid, title = case["id"], case["title"]

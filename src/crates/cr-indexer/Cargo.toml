@@ -1,0 +1,8 @@
+[package]
+name = "cr-indexer"
+version.workspace = true
+edition.workspace = true
+description = "M1 (W2.1/W2.2): 共享目录文件事实采集，零依赖"
+
+[dependencies]
+cr-hash = { path = "../cr-hash" }

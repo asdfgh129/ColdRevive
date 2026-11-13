@@ -1,0 +1,8 @@
+[package]
+name = "cr-store"
+version.workspace = true
+edition.workspace = true
+description = "M1 (W2.4): 影子索引与 COLD/WAKING/HOT 状态，JSON 持久化"
+
+[dependencies]
+cr-core = { path = "../cr-core" }

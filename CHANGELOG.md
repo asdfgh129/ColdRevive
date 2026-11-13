@@ -2,6 +2,69 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.38] - 2026-11-13 — M1 开工：Cargo Workspace + 真实 CLI MVP + T0 real 21/21 PASS；M2 仍受 G1 阻塞
+
+> 范围声明：依 [G0-REVIEW](docs/06-plan/G0-REVIEW.md) 的条件冻结**开工 M1**（工程接线与 MVP 实现），
+> **不改变任何 Spike 的 `status`**（S3/S5/S6 仍 `not_run`），**不宣称 G1 通过、不启动 M2**。
+> 门禁复核结论：**M1 可开工**（G0 条件冻结已签署、剩余 2 个 preflight 阻塞项恰为 M1 自身接线）；
+> **M2 不可开工**（ROADMAP §2 依赖 M1/G1，T1 局域网双机与 S3/S5/S6 必测回填均未完成）。
+
+### 工程落地（真实可编译，非零桩）
+
+- 新增根 `Cargo.toml` + `Cargo.lock`：**17 个 crate + 3 个 bin**，`cargo test --workspace --offline` 通过
+  **27 个单测 / 0 失败**，全部 std-only、零第三方依赖（不依赖 crates.io 可达性）。
+- M1 真实实现：`cr-core`（最小 JSON / 配置 / trace_id）、`cr-hash`（SHA-1 / SHA-256 / HMAC-SHA256，含
+  RFC 4231 向量）、`cr-indexer`、`cr-torrent`（真实 bencode、InfoHash、逐片 SHA-1 校验）、`cr-store`
+  （COLD 轻量影子索引 + COLD/WAKING/HOT 幂等状态机）、`cr-kad`（专属命名空间 Key、KAD 128-bit /
+  Mainline 160-bit 双栈 ID、本地 UDP 发现）、`cr-wake`（PROTO v1 Challenge-Response + 8 类错误码）。
+- `coldrevived` / `coldrevive-cli` 按 [CLI v1 契约](tests/e2e/t0/README.md) 实现 20 条真实观测命令：
+  HTTP `/health` `/cli` `/torrent` `/announce` `/inject`、UDP KAD 发现与唤醒、最小标准 BT 种子端 +
+  本地 tracker。**数据面用第三方 aria2 1.36.0（Motrix Next）真实下载**，私有协议不进入 BT 分片。
+- `cr-engine` / `cr-qos` / `cr-nat` / `cr-sched` / `cr-guard` / `cr-dht` / `cr-api` / `cr-ed2k` /
+  `cr-reputation` / `cr-notify` / `coldrevive-agent` 为**骨架**（仅 trait / 常量 / 门禁标记），
+  按 ROADMAP 归属 M2/M3/M4，不实现、不宣称达标。
+
+### T0 真实验收（G1 的部分证据）
+
+- `CliAdapter.wired = True`（代码层接线），并保留**环境级防呆**：缺任一二进制时 `--mode real` 仍
+  `BLOCKED` / 退出码 2（CI 依赖该行为）。`t0_accept.py` 新增 `setup_real_env()`：写双节点配置、
+  按 `launch` 契约启动 A/B、等待健康检查，由 `harness.stop_all()` 清理。
+- 设 `COLDREVIVE_DAEMON` / `COLDREVIVE_CLI` / `T0_DOWNLOADER` 后执行 `--mode real`：
+  **21/21 PASS、FAIL 0、BLOCKED 0、`evidence_valid=true`**，报告
+  `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`。真实链路含：伴随种子真实 InfoHash 复算、
+  UDP WAKEUP_REQ/ACK、8 类故障注入、30 次唤醒时延采样、30 次复活成功率、aria2 逐片校验下载。
+- 首轮实跑诚实暴露 3 个缺陷并修复：① 重复唤醒导致状态跃迁累积 → 改幂等激活；② nonce 重放
+  判定「重复激活」误报 → 同上；③ `residual_pids` 把本次在用的 `.pid` 误判为残留 → 改为按进程
+  存活状态判定（Windows `tasklist` / Linux `/proc`）。修复后复跑 21/21 全绿。
+
+### M2 合法前置准备（不越过 G1）
+
+- S5 实测标定落地：`config/coldrevive.example.toml` 与 [CONFIG](docs/04-protocol/CONFIG.md) 的
+  `background_upload_ratio` 默认由 `0.2` 回调为 **`0.02`**（实测 0.2 → 20.12%、0.05 → 6.19%、
+  0.02 → 4.03%；NFR-03 ≤5%）。**这只是配置回调，S5 仍 `not_run`**。
+- `cr-qos` 登记实测表与令牌桶模型；`cr-nat` 登记 S6 四类 NAT + CGNAT 矩阵与 R-04 ≥70% 阈值；
+  `cr-engine` 固定 `Engine` Trait 边界（ADR-002 选项 A）。
+- `spikes.json` 新增 `m1_progress` 与 `g0_review.m1_engineering_wiring`，S3/S5/S6 各补
+  `m1_2026_11_13` 证据条目（均 `evidence_valid_for_pass=false`），**状态保持 `not_run`**。
+
+### 边界与剩余工作（G1 / M2 仍关闭）
+
+`T0 evidence_valid=true` **只证明 T0 单机回环链路通过**，不等于 G1：还缺 ① **T1 局域网双机 +
+真实 NAT 全链路**；② S3 真实双栈集成 + G3 矩阵；③ S5 真实拥塞链路 rqbit uTP ≤5% 实测；
+④ S6（M2）四类 NAT 可达率实测。因此 **M2 保持 `blocked_by_G1`**，不得据本轮结果启动。
+`m0_preflight.py` 的 `g0_ready` 算法按 G0-REVIEW §6 保持不变；工程阻塞项清零但豁免项未结案时
+新增控制台提示，避免被误读为「八项 Spike 结论齐备」。
+
+### 文档与 CI 同步
+
+- [ROADMAP](docs/06-plan/ROADMAP.md) 2.8 → 2.9、[G0-REVIEW](docs/06-plan/G0-REVIEW.md) 1.0 → 1.1、
+  [CONFIG](docs/04-protocol/CONFIG.md) 2.0 → 2.1、[README](README.md)、`src/README.md`、
+  `tests/README.md`、`tests/e2e/t0/README.md` §3/§5；`t0_cli_selftest.py` 由「断言 wired=False」
+  改为「代码层 wired=True + 环境级防呆仍 BLOCKED」。
+- `.github/workflows/t0.yml`：新增 `cargo test --workspace --offline`；修正已过期的
+  「S1–S7 必须 `not_run`」断言（改为人工回填白名单 + 证据字段校验）；real 模式防呆步骤改为
+  「CI 无二进制时应 BLOCKED」。
+
 ## [2.4.37] - 2026-11-13 — G0 条件冻结生效 + S3/S5/S6 真实量测 + 工程门禁收敛
 
 > 范围声明：本轮**不改任何 Spike 的 `status`**（S3/S5/S6 仍 `not_run`），不虚判 `pass`，

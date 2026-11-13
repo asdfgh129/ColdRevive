@@ -1,0 +1,7 @@
+[package]
+name = "cr-guard"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W4.4): 握手拦截器（骨架）"
+
+[dependencies]

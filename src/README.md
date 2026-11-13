@@ -1,9 +1,13 @@
 # 源码目录（src/）
 
-> **当前状态**：目录骨架阶段。[G0 技术路线条件冻结](../docs/06-plan/G0-REVIEW.md) 已于 2026-11-13 由项目所有者批准，
-> 按 [ROADMAP M0](../docs/06-plan/ROADMAP.md) 门禁**已允许**创建 `Cargo.toml` 与 crate 实现；
-> 但 M1 二进制与 `CliAdapter.wired` 两项工程接线仍未完成（`m0_preflight.py` 报 2 个阻塞项），本轮未创建生产 crate。
-> S3 / S5 / S6 仍为 `not_run`（豁免 G0 时点结论，M1/M2 必测回填），详见 G0-REVIEW §3 与 §6。
+> **当前状态**：[G0 条件冻结](../docs/06-plan/G0-REVIEW.md) 于 2026-11-13 生效后，**M1 已按门禁开工**：
+> 根 `Cargo.toml` / `Cargo.lock` 与 17 个 crate + 3 个 bin 已建立，`cargo test --workspace --offline`
+> 27 单测全绿；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
+> （`evidence_valid=true`，报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`）。
+> 全部 crate 采用 **std-only 零第三方依赖**，保证离线可复现；引入 rqbit / tokio / axum / rusqlite
+> 属 M2+，须另立 ADR 并复核 G1 门禁。
+> **M2 相关 crate 目前只是骨架**（trait / 常量 / 门禁标记），不实现、不宣称 G2 达标；
+> S3 / S5 / S6 仍 `not_run`，G1 还缺 T1 与必测回填，详见 [ROADMAP §6](../docs/06-plan/ROADMAP.md)。
 
 ## 规划结构
 

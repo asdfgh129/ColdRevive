@@ -2,7 +2,7 @@
 doc_id: DOC-22
 title: G0 技术路线冻结评审记录
 category: 计划跟踪
-version: 1.0
+version: 1.1
 status: 已接受
 owner: 项目所有者
 updated: 2026-11-13
@@ -10,7 +10,7 @@ updated: 2026-11-13
 
 # G0 技术路线冻结评审记录
 
-> 编号 DOC-22 · 版本 1.0 · 状态 **已接受** · 责任人 项目所有者 · 更新 2026-11-13
+> 编号 DOC-22 · 版本 1.1 · 状态 **已接受** · 责任人 项目所有者 · 更新 2026-11-13
 > 机读状态见 [`tests/spikes/spikes.json`](../../tests/spikes/spikes.json) 的 `g0_review` 字段；
 > 判据口径见 [spikes README §6](../../tests/spikes/README.md)，里程碑见 [ROADMAP §6](ROADMAP.md)。
 
@@ -93,8 +93,31 @@ updated: 2026-11-13
 
 ## 8. 证据路径
 
-- 机读决策：[`tests/spikes/spikes.json`](../../tests/spikes/spikes.json) → `g0_review`、`status_note`、S3/S5/S6 `observations`
+- 机读决策：[`tests/spikes/spikes.json`](../../tests/spikes/spikes.json) → `g0_review`、`status_note`、S3/S5/S6 `observations`、**`m1_progress` / `g0_review.m1_engineering_wiring`**
 - 实验框架：[spikes README](../../tests/spikes/README.md) · [S3 README](../../tests/spikes/s3/README.md) ·
   [S5 README](../../tests/spikes/s5/README.md) · [S6 矩阵](../../tests/spikes/s6/nat-matrix.md)
 - Harness：`tests/spikes/s3/dualstack_io.py` · `tests/spikes/s5/qos_bench.py` · `tests/spikes/s6/stun_probe.py`
 - 就绪度报告：`tests/spikes/reports/m0-preflight-*.json`（本地产物，不入库）
+
+## 9. M1 开工后的复核补记（2026-11-13，v1.1）
+
+**条件冻结的边界未被突破**：本轮只解除 §6 的两项**工程接线**阻塞，不改八项 Spike 结论矩阵，
+不把 §3 的豁免改成结论，也不改 `m0_preflight.py` 的 `g0_ready` 算法。
+
+| 项 | 冻结时点（§6） | M1 开工后 |
+| :--- | :--- | :--- |
+| `binaries.m1` | MISSING | 已解除：`cargo build` 产出 3 个二进制；real 运行前须显式设置三个环境变量 |
+| `t0.wired` | MISSING（`False`） | 代码层已接线（`True`）；**环境级防呆保留**，缺二进制时 real 仍 `BLOCKED` / 退出码 2 |
+| `g0_pending_spikes` | S3 / S5 / S6 | **不变**，仍 `not_run`（各补 `m1_2026_11_13` 证据条目，`evidence_valid_for_pass=false`） |
+| T0 real | 不可执行 | **21/21 PASS、`evidence_valid=true`**（仅 T0 单机回环，报告见 ROADMAP §6） |
+
+**G1 与 M2 状态**：按 [ROADMAP §2](ROADMAP.md)，G1 要求 T0 **/ T1** 全链路闭环，M2 依赖 M1。
+T1（局域网双机 + 真实 NAT）未执行，S3 真实双栈集成 + G3 矩阵、S5 真实拥塞链路 uTP 实测
+均未完成，S6 四类 NAT 实测属 M2 必测。因此：
+
+- **G1 未通过**，`T0 evidence_valid=true` 不得外推为 G1 证据；
+- **M2 保持 `blocked_by_G1`**，本轮只做了门禁允许的 crate 骨架、S5 配置默认值回调
+  （`0.2 → 0.02`，[CONFIG](../04-protocol/CONFIG.md) 2.1）与 S6 矩阵登记；
+- 任一 M1/M2 必测不达标仍按 §3 第 3 条退回条款降级并重新提交冻结评审。
+
+机读口径见 `spikes.json` 的 `m1_progress`（含 `g1_remaining` 与 `m2_gate`）。

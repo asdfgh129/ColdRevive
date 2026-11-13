@@ -262,7 +262,8 @@ def main() -> int:
             "S2 实网小样本实验已获人工批准，仍须限速、最小样本并逐次记录；本地回环模拟只能作为预演",
             "S8 已由项目所有者豁免登记；无书面法律意见，M4 公测前须复核 R-11",
             "第三方 BT 客户端已就绪（Motrix Next / aria2，经 S1 跨客户端轮证明互通）；"
-            "仍须编译 M1 二进制后才能把 CliAdapter.wired 置为 True",
+            "M1 二进制与 CliAdapter 代码层已接线，real 运行前设置 COLDREVIVE_DAEMON / "
+            "COLDREVIVE_CLI / T0_DOWNLOADER 三个真实路径即可",
         ],
     }
 
@@ -291,6 +292,10 @@ def main() -> int:
                   f"(ADR-001={g0_governance['adr_001_default_mode']}，"
                   f"豁免 G0 时点结论 {', '.join(g0_governance['conditional_freeze_exempted'])}；"
                   "Spike 状态不变、g0_ready 算法不变)")
+        if g0_ready and g0_pending_spikes:
+            print("[NOTE] g0_ready=True 仅表示工程阻塞项清零；"
+                  f"治理豁免项 {', '.join(g0_pending_spikes)} 仍未结案，"
+                  "不得据此宣称「八项 Spike 结论齐备」，M1/M2 必测回填仍须完成。")
         print(f"报告: {out.relative_to(ROOT).as_posix()}")
         print("[NOTE] 本脚本不产出任何 Spike 结论；结论须由实验执行人按证据手工回填 spikes.json。")
         for a in report["next_actions"]:

@@ -1,0 +1,7 @@
+[package]
+name = "cr-core"
+version.workspace = true
+edition.workspace = true
+description = "M1: 公共类型、配置、最小 JSON 编解码、trace_id 与协议常量"
+
+[dependencies]

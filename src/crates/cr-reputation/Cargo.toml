@@ -1,0 +1,7 @@
+[package]
+name = "cr-reputation"
+version.workspace = true
+edition.workspace = true
+description = "M4 (W4.2): 限流 / 黑名单 / 信誉（骨架）"
+
+[dependencies]

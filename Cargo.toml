@@ -1,0 +1,17 @@
+[workspace]
+resolver = "2"
+members = ["src/crates/*", "src/bins/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/asdfgh129/ColdRevive"
+
+[workspace.dependencies]
+# M1 全部 crate 采用 std-only（零第三方依赖），保证离线可编译、不受 crates.io 可达性影响。
+# M2 引入 rqbit / tokio / axum / rusqlite 时须另立 ADR 并复核 G1 门禁。
+
+[profile.release]
+opt-level = 2
+strip = true

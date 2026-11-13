@@ -1,8 +1,10 @@
 # T0 双节点验收骨架（tests/e2e/t0/）
 
-> **状态：观测层已实现，真实链路仍未接线。** 本目录提供 G1 门禁所需的用例清单、判据、编排、观测采集与报告格式，但 `coldrevived` / `coldrevive-cli` 尚未实现（M0 门禁后才创建 Cargo Workspace）。
+> **状态：M1 已接线，T0 真实链路已跑通（21/21 PASS、`evidence_valid=true`）。** 本目录提供 G1 门禁所需的用例清单、判据、编排、观测采集与报告格式。
 > **stub 自检的全部 PASS 只证明框架本身正确，不构成任何门禁证据。** 报告中的 `evidence_valid: false` 是刻意设计，禁止手工改成 `true`。
-> 接线进度：CLI v1 契约与 20 条真实观测映射已落地（`t0_cli.py`），`CliAdapter.wired` 仍为 `False`；当前阻塞项由 [M0 就绪度检查](../../spikes/README.md) 逐条列出。
+> 接线进度：CLI v1 契约与 20 条真实观测映射已落地（`t0_cli.py` / `t0_cli_selftest.py`），`CliAdapter.wired = True`（代码层）；`t0_accept.py` 会在 real 模式下启动 A/B 两个 `coldrevived` 实例并等待健康检查。
+> **环境级防呆**：缺任一二进制环境变量时 `--mode real` 仍 `BLOCKED` / 退出码 2（CI 依赖此行为）。
+> **边界**：T0 只覆盖 `127.0.0.1` 单机回环；G1 还需要 T1 局域网双机 + 真实 NAT 与 S3/S5/S6 必测回填，见 [G0-REVIEW §9](../../../docs/06-plan/G0-REVIEW.md)。
 
 ## 1. 定位
 
@@ -36,7 +38,8 @@ tests/fixtures/t0/
 └── sample/              运行时生成的确定性样本，不入库
 ```
 
-仅依赖 Python 3.9+ 标准库，不需要 `pip install`，不碰 `src/`，不创建 `Cargo.toml`。
+编排与断言层仅依赖 Python 3.9+ 标准库，不需要 `pip install`；real 模式的真实观测由
+`Cargo Workspace` 编译出的 `coldrevived` / `coldrevive-cli` 提供（本目录不直接构建 Rust 工程）。
 
 ## 3. 运行
 
@@ -47,10 +50,11 @@ python3 tests/e2e/t0/t0_accept.py --list
 # 2) 框架自检（默认模式）：用合成观测跑通编排与全部断言，验证脚本本身正确
 python3 tests/e2e/t0/t0_accept.py --self-test
 
-# 3) 真实验收：必须显式指定，且需完成 §5 接线与环境准备
+# 3) 真实验收：先编译 M1 二进制，再显式指定三个真实文件路径
+cargo build --workspace --offline
 COLDREVIVE_DAEMON=/path/to/coldrevived \
 COLDREVIVE_CLI=/path/to/coldrevive-cli \
-T0_DOWNLOADER=qbittorrent-nox \
+T0_DOWNLOADER=/path/to/aria2c \
 python3 tests/e2e/t0/t0_accept.py --mode real
 
 # 4) 观测层自检：验证 t0_cli 能取真实值、缺字段不合成、缺二进制抛异常
@@ -67,7 +71,11 @@ python3 tests/spikes/m0_preflight.py
 | `2` | 环境未就绪 / real 模式未接线 / 配置或报告错误 |
 | `3` | 报告写入失败 |
 
-`--mode real` 在当前骨架下会**明确报 `BLOCKED` 并以 2 退出**，不会静默通过。这是刻意的防呆：门禁最怕的是「没跑却显示绿」。
+`--mode real` 会由 `setup_real_env()` 写双节点配置、按 `launch` 契约启动 A/B 守护进程并等待 `/health`；
+`t0_accept.py` 结束时会 `stop_all()` 清理。三个环境变量缺失或指向的文件不存在时，一律
+`BLOCKED` 并退出码 2，绝不静默降级为 stub。2026-11-13 实跑：**21/21 PASS、FAIL 0、
+`evidence_valid=true`**（报告 `reports/t0-20261113T075155Z-real.json`），数据面由第三方
+aria2 1.36.0 标准 BT 完成下载并逐片 SHA-1 校验。该结果仍只是 T0 证据，不等于 G1。
 
 ## 4. 用例与判据来源
 
@@ -86,19 +94,21 @@ python3 tests/spikes/m0_preflight.py
 
 ## 5. 接线清单（M0 冻结 / M1 开发时逐项完成）
 
-当前 `CliAdapter.wired = False`，`--mode real` 的所有真实用例仍报 `BLOCKED`。状态标记：✅ 已落地 / ⏳ 待真实环境 / ⛔ 必须等 G0+M1。
+当前 `CliAdapter.wired = True`（代码层已接线）；**环境级防呆**在 `observe()` 里动态校验三个二进制，
+缺任一项抛 `NotWiredError`。状态标记：✅ 已落地 / ⏳ 待真实环境（G1 出口）/ ⛔ 必须等 G1+M1 出口条件。
 
 | # | 动作 | 状态 | 说明 |
 | :--- | :--- | :--- | :--- |
-| 1 | **S2 先行**：确认公共 KAD 接纳 `ColdRevive_V1:` 命名空间 | ⏳ | 实验方案与判据见 [tests/spikes/README.md](../../spikes/README.md)；`cargo` 已可用、实网批准已登记，真实 wire 本地回环已跑通（排期见 [PLAN.md](../../spikes/s2/PLAN.md)），仍待实网小样本结论。T0 只用本地双节点私有 KAD 子网，**不得向公共网络发布测试数据** |
-| 2 | **S1 并行**：`rqbit` 按需实例化 / Pause-Resume / 握手拦截 | ⏳ | 决定 `T0-07` 的观测方式；实验方案同上 |
-| 3 | 定稿 CLI 启动参数，替换 `launch` 占位契约 | ✅ | 已落为 `coldrevive.t0.cli-contract/v1`（`t0_config.json` + §5.1），状态为 `proposed-v1`，M1 定稿时确认 |
+| 1 | **S2 先行**：确认公共 KAD 接纳 `ColdRevive_V1:` 命名空间 | ✅ | S2 已判 `pass`（实网 `PUBLISH_RES` / `SEARCH_RES` + 双进程 A/B 取回）。T0 仍只用本地双节点私有 KAD 子网，**不得向公共网络发布测试数据** |
+| 2 | **S1 并行**：`rqbit` 按需实例化 / Pause-Resume / 握手拦截 | ✅ | S1 已判 `pass`（two-peer 4/4 verified + 第三方 aria2 128/128 片校验）；M1 数据面由第三方 aria2 承担，内置引擎属 M2 |
+| 3 | 定稿 CLI 启动参数，替换 `launch` 占位契约 | ✅ | `coldrevive.t0.cli-contract/v1`（`t0_config.json` + §5.1），M1 二进制已按此实现 |
 | 4 | 实现 `observe_t0_01`～`observe_t0_20` | ✅ | 20 条映射在 `t0_cli.OBSERVE_PLAN`；`t0_cli_selftest.py` 验证其不合成值 |
-| 5 | 把 `infohash_stub` 换成伴随 `.torrent` 的真实 InfoHash | ✅ 代码 / ⏳ 数据 | `t0_cli.torrent_infohash()` 按 BT 规范对 info 字典原始字节做 SHA-1；真实种子须由 M1 生成，`T0-06` 才有意义 |
-| 6 | 接入第三方下载器（`qbittorrent-nox` / `transmission-cli`） | ⏳ | 本机未安装；版本在兼容性矩阵锁定后才算 G3 证据 |
-| 7 | 指标来自真实 `trace_id` 埋点，不接受 stub 数组 | ⏳ | `metrics wake-latency` / `revival` 契约已定义，实现在 M1 |
-| 8 | 编译 M1 二进制并置 `wired = True`，同步改 CI | ⛔ | 必须先通过 G0；在此之前 CI 会拦截「悄悄把 `wired` 改成 `True`」的提交 |
-| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ⛔ | 两者共同构成 G1 证据 |
+| 5 | 把 `infohash_stub` 换成伴随 `.torrent` 的真实 InfoHash | ✅ | `t0_cli.torrent_infohash()` 按 BT 规范对 info 字典原始字节做 SHA-1；M1 生成真实种子，T0-06 已用真值 |
+| 6 | 接入第三方下载器 | ✅ | 本机 Motrix Next 捆绑 `motrixnext-aria2c.exe`（aria2 1.36.0），由 `T0_DOWNLOADER` 指定；G3 矩阵仍未锁定版本 |
+| 7 | 指标来自真实 `trace_id` 埋点，不接受 stub 数组 | ✅ | `metrics wake-latency/revival` 由 B 节点发起真实 UDP 唤醒往返采样（30 次），不读合成数组 |
+| 8 | 编译 M1 二进制并置 `wired = True`，同步改 CI | ✅ | 3 个二进制由 `cargo build --workspace --offline` 产出；CI 新增 workspace 单测并保留「无二进制时 real 必 BLOCKED」防呆 |
+| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ⛔ | T0 已 21/21 PASS；**T1 未执行**，两者共同构成 G1 证据。T1 与 S3/S5/S6 必测回填完成前 M2 保持阻塞 |
+| 10 | S3 / S5 / S6 必测回填 | ⛔ | 见 [G0-REVIEW §9](../../../docs/06-plan/G0-REVIEW.md)；三者 `status` 仍 `not_run`，不虚判 |
 
 随时可用 `python3 tests/spikes/m0_preflight.py` 复查上面哪些条件已齐备。该脚本**只查条件、不做实验、不产出 Spike 结论**。
 

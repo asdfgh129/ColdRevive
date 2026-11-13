@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。",
+  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -651,6 +651,12 @@
           "c2_bandwidth": "由估算（wire_announce_kib_at_10k）升级为真实量测：双栈总带宽 ≈ 两栈之和，无异常放大",
           "evidence_valid_for_pass": false,
           "note": "本地真实 UDP I/O 证据；按 README §6 第 3 条仅作附件，不单独支撑 pass"
+        },
+        "m1_2026_11_13": {
+          "evidence": "M1 cr-kad 在本地私有子网同时暴露 kad_id_128（SHA-256 前 16B）与 dht_id_160（SHA-1 20B），inspect kad 返回双栈 ID 列表；T0 真实链路 21/21 PASS",
+          "gap": "未做真实 Mainline DHT 网络加入与 G3 兼容性矩阵",
+          "evidence_valid_for_pass": false,
+          "status_unchanged": true
         }
       },
       "fallback": "收敛为单一 DHT + 外部映射服务",
@@ -770,6 +776,12 @@
           "action": "M1 默认 qos.background_upload_ratio 需按实测回调（不得直接用 0.2 声称满足 NFR-03）；RISK R-07 等级与触发线据此复核",
           "evidence_valid_for_pass": false,
           "note": "本地瓶颈整形 + 退让机理模型，不是真实 uTP/LEDBAT 协议栈；按 README §6 第 3 条不能单独支撑 pass"
+        },
+        "m1_2026_11_13": {
+          "evidence": "按 S5 实测把 cr-qos / config/coldrevive.example.toml 的 background_upload_ratio 默认值由 0.2 回调为 0.02（实测 4.03% < NFR-03 的 5%）",
+          "gap": "未做真实拥塞链路 + rqbit uTP 的 ≤5% 实测",
+          "evidence_valid_for_pass": false,
+          "status_unchanged": true
         }
       }
     },
@@ -831,6 +843,12 @@
           "matrix_coverage": "1 / 4 类 NAT 真实样本，其余仍为分析型估计",
           "evidence_valid_for_pass": false,
           "note": "单出口单样本，不满足 S6 判据「NAT 类型矩阵实测给出可达率」"
+        },
+        "m1_2026_11_13": {
+          "evidence": "cr-nat 骨架登记四类 NAT + CGNAT 矩阵与 R-04 ≥70% 阈值；M1 阶段未做多 NAT 实测",
+          "gap": "四类真实 NAT（含 CGNAT）可达率未测",
+          "evidence_valid_for_pass": false,
+          "status_unchanged": true
         }
       }
     },
@@ -924,6 +942,46 @@
       "M1 二进制与下载器环境变量",
       "CliAdapter.wired（须 M1 二进制与观测齐备后置 True）"
     ],
-    "review_doc": "docs/06-plan/G0-REVIEW.md"
+    "review_doc": "docs/06-plan/G0-REVIEW.md",
+    "m1_engineering_wiring": {
+      "recorded_at": "2026-11-13",
+      "resolved": [
+        "M1 二进制与下载器环境变量",
+        "CliAdapter.wired 代码层接线"
+      ],
+      "note": "两项工程接线已完成（cargo build 产出 coldrevived / coldrevive-cli / coldrevive-agent，T0 real 21/21 PASS）；但条件冻结的必测回填项与 T1 未完成，G1 / M2 门禁不因此解除。",
+      "environment_gate": "real 运行前须设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER；缺失时 --mode real 仍 BLOCKED（CI 依赖此行为）"
+    }
+  },
+  "m1_progress": {
+    "recorded_at": "2026-11-13",
+    "milestone": "M1",
+    "gate": "G1",
+    "status": "in_progress",
+    "workspace": {
+      "root_manifest": "Cargo.toml",
+      "crates": 17,
+      "bins": 3,
+      "dependency_policy": "std-only；cargo test --workspace --offline 可复现",
+      "unit_tests": "27 passed / 0 failed",
+      "m2_crates": "cr-engine / cr-qos / cr-nat / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 仅骨架，不宣称 G2"
+    },
+    "t0_real": {
+      "date": "2026-11-13",
+      "result": "21/21 PASS",
+      "evidence_valid": true,
+      "report": "tests/e2e/t0/reports/t0-20261113T075155Z-real.json",
+      "chain": "A 真实 SHA-256 → 伴随 .torrent → COLD 影子索引 → 本地私有 KAD 发布 → B KAD 发现 → UDP WAKEUP_REQ v1 → WAKEUP_ACK → 第三方 aria2 标准 BT 下载 → 逐片 SHA-1 校验 → B 入库闭环",
+      "scope": "127.0.0.1 单机双节点；未接触公共 KAD；不含 T1 局域网双机 / 真实 NAT"
+    },
+    "g1_remaining": [
+      "T1 局域网双机 + 真实 NAT 全链路验收未执行",
+      "S3：M1 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵未完成（M1 仅本地私有子网 UDP KAD）",
+      "S5：M1/G3 真实拥塞链路 + rqbit uTP 前台劣化 ≤5% 实测未完成",
+      "S6：M2 四类 NAT（含 CGNAT）可达率实测未完成"
+    ],
+    "m2_gate": "blocked_by_G1",
+    "note": "T0 evidence_valid=true 只证明 T0 真实链路通过，不等于 G1 门禁通过；M2 不得据此启动。",
+    "spike_status_changed": false
   }
 }

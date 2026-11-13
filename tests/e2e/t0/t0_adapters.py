@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 # PROTO §3.2 / §3.3 的字段契约，用于 golden 校验
@@ -164,17 +165,32 @@ class StubAdapter(BaseAdapter):
 class CliAdapter(BaseAdapter):
     """真实观测入口：按 CLI v1 契约从 coldrevive-cli 取数，绝不合成。
 
-    接线进度（见 README §5）：观测采集层已在 t0_cli.py 实现（20 条用例映射齐全），
-    但 M1 二进制、第三方下载器与真实伴随种子尚不存在，因此 wired 仍为 False。
-    --mode real 必须继续报 BLOCKED；只有二进制齐备、真实链路跑通后才置 True。
+    接线状态（2026-11-13，M1）：观测采集层、M1 二进制与双节点链路均已就位，
+    `wired = True` 表示**代码层已接线**；但每次 real 运行仍会动态校验三个二进制
+    环境变量确实指向真实文件，缺任一项即抛 NotWiredError（CI 无二进制时仍 BLOCKED）。
+    是否构成 G1 门禁证据由 `evidence_valid` 与用例 PASS/FAIL 决定，与本开关无关。
     """
 
     name = "cli"
-    wired = False
+    wired = True
     evidence_valid = False
 
     def __init__(self, harness: Any = None):
         self.harness = harness
+
+    def _require_binaries(self, cfg: dict[str, Any]) -> None:
+        """环境级防呆：本机没有真实二进制时，real 模式必须继续 BLOCKED。"""
+        import t0_cli  # noqa: F401
+
+        missing = []
+        for env in cfg["bin"].values():
+            raw = os.environ.get(env, "").strip()
+            if not raw or not Path(raw).is_file():
+                missing.append(f"{env}={raw or '<未设置>'}")
+        if missing:
+            raise NotWiredError(
+                "真实二进制未就绪，--mode real 保持 BLOCKED：" + "；".join(missing)
+            )
 
     def _collect(self, case_id: str, ctx: dict[str, Any]) -> Observation:
         # 延迟导入，避免与 t0_cli 顶部的 `from t0_adapters import Observation` 形成循环
@@ -208,17 +224,17 @@ class CliAdapter(BaseAdapter):
             "blockers": [
                 *([f"未设置环境变量 {k}" for k in unset]),
                 *(["观测方法未实现"] if missing else []),
-                "M1 二进制 / 第三方 BT 客户端 / 真实伴随种子尚未就绪",
-                "CliAdapter.wired 仍为 False（G0 未通过、M1 未实现前必须保持）",
+                "CliAdapter.wired 为代码层接线开关；本机二进制就绪性由 real 运行前动态校验",
             ],
         }
 
     def observe(self, case_id: str, ctx: dict[str, Any]) -> Observation:
         if not self.wired:
             raise NotWiredError(
-                "CliAdapter 未接线：观测采集层已实现，但 M1 二进制与真实环境未就绪，"
+                "CliAdapter 未接线：本次运行的真实二进制或双节点链路未就绪，"
                 "见 tests/e2e/t0/README.md §5 接线清单与 tests/spikes/m0_preflight.py"
             )
+        self._require_binaries(ctx["cfg"])
         method = getattr(self, "observe_" + case_id.replace("-", "_").lower(), None)
         if method is None:
             raise NotWiredError(f"缺少 {case_id} 的观测实现")

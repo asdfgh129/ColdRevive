@@ -2,16 +2,17 @@
 doc_id: DOC-11
 title: 配置规范（CONFIG）
 category: 协议
-version: 2.0
+version: 2.1
 status: 待评审
 owner: 内核组 / 运维组
-updated: 2026-11-09
+updated: 2026-11-13
 ---
 
 # 配置规范（CONFIG）
 
-> 编号 DOC-11 · 版本 2.0 · 状态 待评审 · 责任人 内核组 / 运维组 · 更新 2026-11-09
+> 编号 DOC-11 · 版本 2.1 · 状态 待评审 · 责任人 内核组 / 运维组 · 更新 2026-11-13
 > 可执行样例：[config/coldrevive.example.toml](../../config/coldrevive.example.toml)。所有默认值遵循「最小暴露」原则。
+> **v2.1**：`qos.background_upload_ratio` 默认由 `0.2` 回调为 `0.02`（S5 实测标定，见 §2 注记）。
 
 ## 1. 完整配置
 
@@ -48,7 +49,7 @@ memory_soft_limit_mb = 100
 memory_hard_limit_mb = 200
 
 [qos]
-background_upload_ratio = 0.2
+background_upload_ratio = 0.02
 max_connections_total = 200
 prefer_utp = true
 
@@ -78,7 +79,7 @@ cors_allowlist = []
 | scheduler | `idle_sleep_minutes` | 10 | 无活动自动休眠 |
 | scheduler | `wake_session_ttl_sec` | 7200 | 唤醒会话硬顶 |
 | scheduler | `memory_soft_limit_mb` / `memory_hard_limit_mb` | 100 / 200 | 越限触发降级链 |
-| qos | `background_upload_ratio` | 0.2 | 后台做种上行占比 |
+| qos | `background_upload_ratio` | **0.02** | 后台做种上行占比。S5 实测量测：0.2 → 前台劣化 20.12%、0.05 → 6.19%、0.02 → 4.03%（NFR-03 ≤5%）；默认值按实测回调，**不代表 S5 判 pass**，仍须 M1/G3 真实拥塞链路 + rqbit uTP 实测回填。见 [G0-REVIEW §5](../06-plan/G0-REVIEW.md) |
 | qos | `max_connections_total` | 200 | 全局连接数上限 |
 | qos | `prefer_utp` | true | uTP/LEDBAT 后台退让 |
 | security | `rpc_secret` | 空 | 为空时强制仅回环监听 |
@@ -108,7 +109,7 @@ cors_allowlist = []
 | :--- | :--- |
 | 机械硬盘 | `torrent_gen_concurrency = 1`，避免造种抢占 I/O |
 | SSD / 高性能主机 | 可提到 4 |
-| 上行带宽小 | `background_upload_ratio = 0.1`，保持 `prefer_utp = true` |
+| 上行带宽小 | `background_upload_ratio = 0.02`，保持 `prefer_utp = true`；不得回调到 0.1 / 0.2（S5 实测劣化 6.19% / 20.12%） |
 | > 1 万文件共享 | 调大 `max_active_seeds` 前先做 [TEST 内存压测](../05-quality/TEST.md) |
 | 私有小团体 | `bootstrap_mode = "private"`，见 [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) |
 | NAS / Docker | `bind = "0.0.0.0"` + 强 `rpc_secret` + 反向代理 TLS，见 [OPS §1](../07-operations/OPS.md) |

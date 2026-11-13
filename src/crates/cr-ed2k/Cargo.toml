@@ -1,0 +1,7 @@
+[package]
+name = "cr-ed2k"
+version.workspace = true
+edition.workspace = true
+description = "P2/M5 (W5.3): eD2k 跨协议补源（骨架）"
+
+[dependencies]

@@ -1,6 +1,6 @@
 # 测试目录（tests/）
 
-> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。当前为目录骨架 + T0 验收脚本骨架，尚无 Rust 测试代码。
+> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。M1 已建立 Cargo Workspace：27 个 Rust 单测随各 crate 内联；T0 真实链路已跑通。
 
 ## 目录划分
 
@@ -19,6 +19,9 @@
 入口说明：[tests/e2e/t0/README.md](e2e/t0/README.md)（判据来源、运行方式、报告格式、接线清单）。
 
 ```bash
+# Rust 单测（std-only，离线可复现）
+cargo test --workspace --offline
+
 # 列出 21 条用例及判据出处
 python3 tests/e2e/t0/t0_accept.py --list
 
@@ -28,18 +31,26 @@ python3 tests/e2e/t0/t0_accept.py --self-test
 # 环境与确定性样本自检
 python3 tests/e2e/t0/t0_harness.py --self-check
 
-# 观测采集层自检（验证不合成观测值，非 G1 验收）
+# 观测采集层自检（验证不合成观测值 + 环境级防呆，非 G1 验收）
 python3 tests/e2e/t0/t0_cli_selftest.py
+
+# 真实验收（需先 cargo build，并设三个二进制环境变量，见骨架 README §3）
+python3 tests/e2e/t0/t0_accept.py --mode real
 ```
 
-**当前状态：观测层已实现，真实链路仍未接线。** `CliAdapter.wired = False`，`--mode real` 一律把真实用例标记为 `BLOCKED` 并以退出码 2 结束；stub 自检报告的 `evidence_valid` 恒为 `false`。这是刻意防呆，避免把「没跑」显示成「绿」。CLI v1 契约与 20 条真实取数映射已落地（见骨架 README §5.1），但 M1 二进制、第三方 BT 客户端与真实伴随种子尚缺。M0 技术路线已于 2026-11-13 条件冻结（见 [G0-REVIEW](../docs/06-plan/G0-REVIEW.md)），但 M1 二进制与真实伴随种子仍缺；按骨架 §5 完成剩余接线后，再以 T0 + T1 共同构成 G1 证据。
+**当前状态：M1 代码层已接线，T0 真实链路 21/21 PASS、`evidence_valid=true`（2026-11-13）。**
+`CliAdapter.wired = True`，但每次 real 运行都动态校验 `COLDREVIVE_DAEMON` / `COLDREVIVE_CLI` /
+`T0_DOWNLOADER` 指向真实文件；缺任一项仍把用例标记为 `BLOCKED` 并以退出码 2 结束（CI 依赖此防呆）。
+stub 自检报告的 `evidence_valid` 恒为 `false`，不得当作 G1 证据。
+**边界**：T0 只覆盖单机回环；G1 还需 T1 局域网双机 + 真实 NAT 与 S3 / S5 / S6 必测回填，
+M2 仍 `blocked_by_G1`，见 [G0-REVIEW §9](../docs/06-plan/G0-REVIEW.md) 与 `spikes.json` 的 `m1_progress`。
 
 ## M0 Spike 实验包
 
-入口说明：[tests/spikes/README.md](spikes/README.md)。`spikes.json` 登记 S1–S8 的判据与状态（截至 2026-11-11：S1 / S2 / S4 / S7 `pass`，S8 由项目所有者豁免登记 `pass` 无书面法务意见，S3 / S5 / S6 `not_run`），`m0_preflight.py` 只检查实验条件是否齐备：
+入口说明：[tests/spikes/README.md](spikes/README.md)。`spikes.json` 登记 S1–S8 的判据与状态（S1 / S2 / S4 / S7 `pass`，S8 由项目所有者豁免登记 `pass` 无书面法务意见，S3 / S5 / S6 `not_run`）；M1 开工后的机读进度在 `m1_progress`，**G1 未通过、M2 仍 `blocked_by_G1`**。`m0_preflight.py` 只检查实验条件是否齐备：
 
 ```bash
-python3 tests/spikes/m0_preflight.py            # 退出码 2 = 存在阻塞项（当前必然如此）
+python3 tests/spikes/m0_preflight.py            # 退出码 2 = 存在工程阻塞项（默认未设二进制环境变量时）
 python3 tests/spikes/m0_preflight.py --json    # 机器可读输出
 ```
 
