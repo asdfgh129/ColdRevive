@@ -2,6 +2,24 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.45] - 2026-11-14 — 下载器随 Motrix Next→Rayburst 升级更正为 `aria2-next.exe` 3.1.0
+
+> 范围声明：仅文档与配置路径更正（app 升级导致），**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
+
+### 背景
+- 用户为两端一致，将 Motrix Next 升级为更名后的 **Rayburst**（安装目录 `C:\Program Files\Rayburst\`）。
+- 捆绑的 aria2 CLI 由 `motrixnext-aria2c.exe` 更名为 **`aria2-next.exe`**，版本由 aria2 1.36.0 变为 **aria2-next 3.1.0**；图形界面由 `motrix-next.exe` 变为 `rayburst.exe`。
+
+### 验证
+- 实测 `C:\Program Files\Rayburst\aria2-next.exe --version` → `aria2-next version 3.1.0`，且接受 ColdRevive `download()` 传入的全部参数
+  （`--bt-tracker` / `--enable-dht=false` / `--listen-port` / `--seed-time=0` / `--file-allocation=none` 等）无报错（exit 0）。
+
+### 改动
+- `tests/e2e/t1/README.md` §4 / §4.1：下载器统一改为 **Rayburst 捆绑 `aria2-next.exe`**（`C:\Program Files\Rayburst\aria2-next.exe`），并明确**不要用 `rayburst.exe` 图形界面**。
+- `README.md` T0 env 示例 `T0_DOWNLOADER` → `C:/Program Files/Rayburst/aria2-next.exe`。
+- `docs/02-architecture/TECH-STACK.md`：S1 历史记录保留「实测时 1.36.0」原貌，补充更名/升级说明（不篡改历史证据）。
+- 重新生成 `t1-config.json`（`--prepare-only`），其 `downloader` 字段改为 `C:/Program Files/Rayburst/aria2-next.exe`；并同步到 A 侧分发目录 `C:\ColdRevive-dist`。
+
 ## [2.4.44] - 2026-11-14 — T1 README 澄清 B 机无需源码，只需 tests/ + exe
 
 > 范围声明：仅文档澄清，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。

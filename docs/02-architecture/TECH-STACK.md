@@ -80,7 +80,7 @@ updated: 2026-11-13
 > 但属本地数据结构证据，不做真实 DHT 网络加入，`S3.status` 保持 `not_run`，最终 pass 须 M1 真实双栈集成 + G3 矩阵。
 
 > **S1 第三方客户端互操作轮已执行（2026-11-11，G3 素材，不改变 `S1.status`）**：按用户指令以本机
-> **Motrix Next**（捆绑 `motrixnext-aria2c.exe` = aria2 1.36.0，download-only 构建）作第三方 seeder：
+> **Motrix Next**（后更名为 **Rayburst**，捆绑 CLI 由 `motrixnext-aria2c.exe` 改为 `aria2-next.exe`；本轮 S1 实测时为 aria2 1.36.0，现升级为 aria2-next 3.1.0）作第三方 seeder：
 > 其对确定性 `payload.bin/payload.torrent`（128 片 × 16 KiB，infohash `2b77301a…`）做种并监听
 > `127.0.0.1:16881`，`cargo run -- cross-lee --peer 127.0.0.1:16881` 由 rqbit 直连拉取，
 > **128/128 片全部 SHA-1 校验通过**（`all_pieces_verified=true`，2 MiB 全量）。

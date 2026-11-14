@@ -108,7 +108,7 @@ cargo test --workspace --offline                # 31 个 Rust 单测（零第三
 cargo build --workspace --offline
 export COLDREVIVE_DAEMON="C:/path/to/ColdRevive/target/debug/coldrevived.exe"
 export COLDREVIVE_CLI="C:/path/to/ColdRevive/target/debug/coldrevive-cli.exe"
-export T0_DOWNLOADER="C:/Program Files/MotrixNext/motrixnext-aria2c.exe"
+export T0_DOWNLOADER="C:/Program Files/Rayburst/aria2-next.exe"
 python3 tests/e2e/t0/t0_accept.py --mode real
 ```
 
