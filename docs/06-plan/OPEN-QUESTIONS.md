@@ -109,3 +109,13 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 > `evidence_valid=false`，**不是新的 NAT 样本**：真实中继组件不等于真实 NAT 环境。
 > 2026-11-14 的 T1-08 现场 STUN 探针仍是同一出口单样本（cone 类、UPnP/NAT-PMP 不可用）。
 > S6 四类 NAT（含 CGNAT）实测与 R-04 ≥70% 阈值判定仍待用户提供多 NAT 环境后执行。
+>
+> **2026-11-14 W3.5① 补记（Q4 仍未结案）**：[条件探针](../../tests/spikes/probe_conditions.py)
+> 确认本机仅 1 类真实 NAT 出口、无 CGNAT、无全局 IPv6、虚拟交换出口不可达、无内核整形能力。
+> [精细分类探针](../../tests/spikes/s6/nat_behavior.py) 用带对照的 RFC 3489 Test II/III 把该出口细分为
+> **Endpoint-Independent Mapping + Address-and-Port-Dependent Filtering / port-restricted cone**（medium）；
+> 关键修复是备用地址直连对照必须使用**独立 socket**，否则会自开 NAT 放行项并产生 full cone 假阳性。
+> `coldrevive-nat` 的保守 `full-cone` 标签与该结论不矛盾。**这是分类样本，不是可达率。**
+> [四类 NAT 矩阵执行协议](../../tests/spikes/s6/nat_matrix.py) 已交付，本机 `--dry-run` /
+> `--aggregate` 均 `BLOCKED`、`matrix_coverage=0/4`；Q4 的对称 NAT / CGNAT 成功率
+> 仍须用户提供真实多 NAT 环境并签 attestation 逐类实测后，由实验执行人手工回填。

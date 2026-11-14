@@ -7,6 +7,14 @@
 > `evidence_valid=false`，**本轮没有改动任何 Spike 结论**（`m2_progress.spike_status_changed=false`），
 > 结论回填规则（本文 §6）原样有效。详见 [G0-REVIEW §11](../../docs/06-plan/G0-REVIEW.md)。
 
+> **【当前状态更正 · 2026-11-14 / v2.4.50 · W3.5①】** 按「先审计测试条件、只跑满足条件的实验」推进：
+> [条件探针](probe_conditions.py) 判定 S3 / S5 / S6 均为 `PARTIAL_RUNNABLE`（可跑附件实验、不可判 pass）；
+> 已跑 [S3 双机双栈集成](s3/m1_dualstack_integration.py) **17/17 PASS**、真实 uTP 5 轮复跑、
+> [S6 单出口精细分类](s6/nat_behavior.py) 与 [四类 NAT 矩阵协议](s6/nat_matrix.py) 干跑 `BLOCKED`。
+> **全部新增证据 `evidence_valid_for_pass=false`；S3 / S5 / S6 仍 `not_run`，`matrix_coverage=0/4`、
+> `g2_claim=false`、`spike_status_changed=false`。** 脚本一律不写 `spikes.json`、不自动置 pass；
+> 结论仍由实验执行人依 §6 手工回填。
+
 > **状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 为 `pass`；S3 / S5 / S6 `not_run`**（S8 由项目所有者豁免登记，无书面法务意见；S4/S7 经真实量测回填）。
 > **G0 已于 2026-11-13 由项目所有者批准「条件冻结」（conditional pass）**：[ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md)
 > 签署 `public` 默认模式；S3/S5/S6 豁免 G0 时点结论（状态仍 `not_run`，不虚判），M1/M2 必测回填。
@@ -63,6 +71,39 @@ python3 tests/spikes/m0_preflight.py --json
 | `1` | 脚本自身错误 |
 
 报告落在 `tests/spikes/reports/`，已由 `.gitignore` 排除。报告中的 `g0_ready` / `t0_real_ready` 只表示**条件是否齐备**，不表示实验通过。
+
+### 2.1 W3.5① 实验工具（2026-11-14 新增）
+
+```bash
+# ① 条件审计：只读真实探针，产出 S3/S5/S6 可测/不可测判定，不改任何结论
+python3 tests/spikes/probe_conditions.py --self-test
+python3 tests/spikes/probe_conditions.py --out tests/spikes/reports/conditions.json
+
+# ② S3：两台不同物理主机上的真实 M1 双栈集成（A 由脚本临时拉起并清理，B 常驻不改动）
+python3 tests/spikes/s3/m1_dualstack_integration.py --self-test
+python3 tests/spikes/s3/m1_dualstack_integration.py --rounds 60
+
+# ③ S6：单出口真实 NAT 精细分类（带独立 socket 对照，抗公共 STUN 偶发丢包）
+python3 tests/spikes/s6/nat_behavior.py --self-test
+python3 tests/spikes/s6/nat_behavior.py --timeout 2.0 --tries 2 --control-tries 4
+
+# ④ S6：四类真实 NAT（含 CGNAT）可达率矩阵执行协议；本机无环境，干跑如实 BLOCKED（退出码 2）
+python3 tests/spikes/s6/nat_matrix.py --self-test
+python3 tests/spikes/s6/nat_matrix.py --dry-run --condition-file <条件快照.json>
+python3 tests/spikes/s6/nat_matrix.py --aggregate tests/spikes/s6/reports
+# 真实环境齐备后（须由实验执行人签 attestation 并附真实 STUN 分类报告）：
+# python3 tests/spikes/s6/nat_matrix.py --mode real --class port-restricted-cone \
+#     --attest <attestation.json> --trials 30 --direct-cmd '<真实 CLI>' --relay-cmd '<真实 CLI>'
+```
+
+| 工具 | 产出 | 证据边界 |
+| :--- | :--- | :--- |
+| `probe_conditions.py` | 条件快照（真实 STUN / HTTP / CLI / IPv6 / 虚拟出口 / 权限） | 只描述条件，不产生 Spike 结论 |
+| `s3/m1_dualstack_integration.py` | 双机双栈 17/17 真实检查 | 私有 LAN 附件；缺 G3 矩阵与真实 Mainline DHT 加入 |
+| `s6/nat_behavior.py` | 1 类真实 NAT 的映射/过滤分类 | **分类样本 ≠ 可达率**；不计入矩阵覆盖率 |
+| `s6/nat_matrix.py` | 四类 + CGNAT 逐类 ≥30 次真实唤醒协议与聚合 | 干跑/缺项一律 `BLOCKED`；即便齐备也不置 pass |
+
+所有工具均为只读 / 低速 / 私有 LAN 探测，**不向公共 KAD / DHT 发布任何测试 Key**，不写 `spikes.json`。
 
 ## 3. 起跑顺序
 
@@ -138,6 +179,11 @@ python3 tests/spikes/m0_preflight.py --json
 3. `pass` 需要至少一次可复现的完整运行记录；本地模拟结果只能作为附件，不能单独支撑 `pass`。
 4. 八项结论齐备后形成 G0 报告，才能按 [src/README.md](../../src/README.md) 的门禁创建 `Cargo.toml` 与 crate 骨架。
    > **2026-11-13 所有者条件冻结（对上述第 4 条的唯一豁免）**：项目所有者批准豁免 S3/S5/S6 在 **G0 时点**给出最终结论（状态仍 `not_run`、不虚判），G0 判「条件通过」并可进入 M1；M1/M2 必测判据、退回条款与复核时点见 [G0-REVIEW §3](../../docs/06-plan/G0-REVIEW.md)。豁免先例为 S8。脚本不得据此自动把任何 spike 置 `pass`。
+
+5. **W3.5① 补记（2026-11-14）**：`PARTIAL_RUNNABLE` 表示「附件实验可跑、pass 条件不满足」，不是第三种结论。
+   本轮 S3 双机 17/17、S5 真实 uTP 复跑、S6 单出口精细分类均属第 3 条所指的**本地/私有 LAN 附件**；
+   `nat_matrix.py --dry-run` / `--aggregate` 的 `BLOCKED` 不得回填成「看起来通过」的默认值。
+   待真实四类 NAT（含 CGNAT）环境、G3 矩阵与 `tc/netem` 级拥塞链路齐备后，仍须由实验执行人手工改 `status`。
 
 > **S1 的口径认定（2026-11-11）**：第 3 条禁止「本地模拟结果」单独支撑 `pass`。
 > `two-peer` 跑的是**真实 librqbit 协议栈 + 标准 BT Peer Wire TCP**（非逻辑预演），且双端字节计数与逐片

@@ -1,0 +1,56 @@
+{
+  "schema": "coldrevive.s6.nat-matrix/v1",
+  "milestone": "M2/W3.5①",
+  "spike": "S6",
+  "gate": "G2 (未宣称达标)",
+  "r04_min_reachability": 0.70,
+  "min_trials_per_path": 30,
+  "required_classes": [
+    {
+      "id": "full-cone",
+      "label": "完全锥型 NAT",
+      "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
+      "paths": ["direct", "relay"]
+    },
+    {
+      "id": "restricted-cone",
+      "label": "地址限制锥型 NAT",
+      "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
+      "paths": ["direct", "relay"]
+    },
+    {
+      "id": "port-restricted-cone",
+      "label": "端口限制锥型 NAT",
+      "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
+      "paths": ["direct", "relay"]
+    },
+    {
+      "id": "symmetric",
+      "label": "对称型 NAT",
+      "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
+      "paths": ["direct", "relay"]
+    }
+  ],
+  "additional_environment": {
+    "id": "cgnat",
+    "label": "运营商级 NAT（CGNAT）",
+    "required": true,
+    "note": "四类 NAT 之外必须至少覆盖 1 个 CGNAT 出口；不单独计入 4 类覆盖率，但缺失时不得宣称矩阵完成"
+  },
+  "classification_method": "RFC 5389 STUN 映射行为 + RFC 3489/5780 CHANGE-REQUEST 过滤行为 + CGNAT 启发式；分类证据须来自真实 STUN 探针报告，不得由 attestation 自称类型替代",
+  "measurement_protocol": [
+    "每类 NAT 环境在两台**不同物理主机**上各启动 coldrevived，配置 nat 段并指向真实 STUN / 真实中继",
+    "由实验执行人签 attestation：真实网关 WAN IP、两端内网 IP、两台 machine_id、STUN 分类报告路径、CGNAT 证据",
+    "对每条路径（direct 打洞 / relay 回退）执行 ≥30 次真实唤醒；成功判据是收到真实 WAKEUP_ACK（status=OK）",
+    "记录每次真实 CLI 输出的 ok / ack_status / path / rtt_ms；超时、错误、字段缺失一律计入失败，不回填默认值",
+    "逐类产出 real 报告；--aggregate 只有在 4 类 + CGNAT 证据齐备且 evidence_valid=true 时才计算聚合可达率",
+    "脚本永远不改 spikes.json 的 status；pass / fail 由实验执行人依 evidence_required 手工回填"
+  ],
+  "evidence_policy": {
+    "no_auto_pass": true,
+    "no_synthetic_evidence": true,
+    "missing_or_failed": "BLOCKED",
+    "s6_status_always": "not_run",
+    "g2_claim_always": false
+  }
+}

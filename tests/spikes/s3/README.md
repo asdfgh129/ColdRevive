@@ -85,3 +85,23 @@ cargo run -- --scale 100000 --neg 200000
 **结论不变**：`S3.status = not_run`，本地证据按 README §6 第 3 条只是附件；最终 pass 须 M1 真实双栈集成 + G3 矩阵。
 2026-11-13 项目所有者批准 [G0 条件冻结](../../../docs/06-plan/G0-REVIEW.md)，豁免 S3 在 G0 时点给出结论，
 M1 出口必须回填，不达标则按 fallback（单栈 + 外部映射）降级并重新提交冻结评审。
+
+## 补充证据：M1 真实双栈跨主机集成（2026-11-14 / W3.5①）
+
+`m1_dualstack_integration.py` 把双栈判据从「本机数据结构 / 回环 UDP」推进到**两台不同物理主机上的真实 M1 守护进程**：
+
+- 环境：A `192.168.1.210 / DESKTOP-DJQSC95`、B `192.168.1.209 / DESKTOP-CCE53RF`；
+  A 由 harness 临时拉起并在结束时清理，B 常驻不改动；真实私有 LAN UDP / HTTP / CLI 观测；
+  `nat` 段缺省（M1 原行为）；**未向公共 KAD / DHT 发布任何测试 Key**。
+- 运行：`--self-test` 5/5（纯逻辑）；真实运行 **17/17 PASS**。
+- 观测：`inspect kad` 返回 4 个 `published_keys`，`kad_ids_128` 均 32 hex、`dht_ids_160` 均 40 hex、
+  两集合互不相交；独立 Python 复刻 `cr-kad` 算法与 Rust 守护进程真实输出**逐项一致**。
+- 串扰：真实 KAD key 在 A 命中 `KAD_FIND_RES(hit_node=A, count=1)`；160-bit DHT 形状 ID、
+  128-bit ID 当 key、截断 key、畸形帧一律不命中；跨主机 B 侧真实 UDP 往返亦返回真实 `KAD_FIND_RES`。
+- 并行压测：两线程并发各 60 帧真实 UDP，KAD 流 60/60 命中、DHT 流 0/60 命中、`misrouted=0`、
+  无丢包无错误；本机合计 13500 B / 24 ms，跨主机 B 侧 6720 B / 18 ms；压测后 `published_keys` 未被污染。
+
+报告：`reports/s3-m1-dualstack-w35.json`（本地产物、不入库）。
+
+**结论仍不变**：`evidence_valid=true` 但 `evidence_valid_for_pass=false`，按 README §6 第 3 条只是**附件**。
+仍缺 G3 第三方客户端兼容性矩阵、真实 Mainline DHT 公网加入与跨进程 RSS 增量；`S3.status` 保持 `not_run`。

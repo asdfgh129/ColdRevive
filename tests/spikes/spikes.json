@@ -657,14 +657,38 @@
           "gap": "未做真实 Mainline DHT 网络加入与 G3 兼容性矩阵",
           "evidence_valid_for_pass": false,
           "status_unchanged": true
+        },
+        "w35_m1_dualstack_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.5① 按用户指令「S3/S5/S6 符合测试条件的进行实验测试」执行条件审计后，S3 判定 PARTIAL_RUNNABLE，故只跑可跑的真实 M1 双栈跨主机集成实验，结果仅作附件",
+          "harness": "tests/spikes/s3/m1_dualstack_integration.py（--self-test 5/5 PASS 纯逻辑）",
+          "report": "tests/spikes/s3/reports/s3-m1-dualstack-w35.json（gitignored 本地证据）",
+          "environment": "两台不同物理主机 A=192.168.1.210 / DESKTOP-DJQSC95、B=192.168.1.209 / DESKTOP-CCE53RF；真实 coldrevived 双进程（A 由 harness 临时拉起并在结束时清理，B 常驻未改动）；真实私有 LAN UDP/HTTP/CLI；nat 段缺省（M1 原行为）；未向公共 KAD/DHT 发包",
+          "checks": "17/17 PASS（全部由真实 /health、inspect kad CLI、真实 UDP KAD_FIND_RES 观测得出）",
+          "observations": {
+            "dual_stack_ids": "A 的 inspect kad 返回 4 个 published_keys，kad_ids_128 均 32 hex / dht_ids_160 均 40 hex，两集合互不相交；独立 Python 复刻 cr-kad 算法与 Rust 守护进程真实输出逐项一致",
+            "crosstalk": "真实 KAD key 在 A 命中（KAD_FIND_RES hit_node=A count=1）；160-bit DHT 形状 ID、128-bit KAD ID 当 key、截断 key、畸形帧一律不命中（count=0 或静默丢弃）；跨主机 B 侧真实 UDP 往返亦返回真实 KAD_FIND_RES",
+            "parallel_stress": "两线程并发各 60 帧真实 UDP：KAD 流 60/60 命中、DHT 流 0/60 命中、misrouted=0、无丢包无错误；本机合计 13500 B / 24 ms；跨主机 B 侧 60 帧 6720 B / 18 ms、misrouted=0；压测后 A 的 published_keys 未被污染",
+            "bandwidth": "真实线上字节量测显示双栈合计吞吐≈两栈之和，无异常放大；跨进程 RSS 增量本轮未取，沿用既有结构层上界量测"
+          },
+          "gaps": ["G3 第三方客户端兼容性矩阵（M3 范围，本机无该资产）",
+                   "真实 Mainline DHT 公网加入（合规红线：不向公共 KAD/DHT 发布测试 Key）",
+                   "跨进程 RSS 增量未取"],
+          "evidence_valid": true,
+          "evidence_valid_for_pass": false,
+          "s3_status_after": "not_run",
+          "status_unchanged": true,
+          "note": "按 README §6 第 3 条，本地/私有 LAN 实测只能作附件；S3 最终 pass 仍须 G3 矩阵与真实双栈公网加入，由实验执行人手工回填"
         }
       },
       "fallback": "收敛为单一 DHT + 外部映射服务",
       "evidence_required": [
         "tests/spikes/s3/reports/s3-stress-*.json",
         "tests/spikes/s3/reports/s3-dualstack-io-*.json",
+        "tests/spikes/s3/reports/s3-m1-dualstack-*.json",
         "tests/spikes/s3/src/main.rs",
-        "tests/spikes/s3/dualstack_io.py"
+        "tests/spikes/s3/dualstack_io.py",
+        "tests/spikes/s3/m1_dualstack_integration.py"
       ]
     },
     {
@@ -715,7 +739,8 @@
         "tests/spikes/s5/reports/s5-qos-final-ratio020.json",
         "tests/spikes/s5/reports/s5-qos-final-ratio002.json",
         "tests/spikes/s5/utp/src/main.rs",
-        "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json"
+        "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json",
+        "tests/spikes/s5/utp/reports/s5-utp-real-20261114.json"
       ],
       "observations": {
         "nfr_target": "NFR-03 (后台上行 ≤20% 总上行；前台吞吐劣化 ≤5%)",
@@ -848,6 +873,35 @@
           "scope_limitation": "瓶颈为本机用户态整形，非 tc/netem 内核队列或跨主机真实拥塞链路；按 s5/README §6 第 3 条不能支撑 pass",
           "evidence_valid_for_pass": false,
           "status_unchanged": true
+        },
+        "utp_real_2026_11_14": {
+          "recorded_at": "2026-11-14T12:41:35Z",
+          "context": "M2/W3.5① 条件审计判定 S5=PARTIAL_RUNNABLE（可跑真实 uTP 栈复现、但无内核整形链路），故按条件复跑以复核 2026-11-13 结论",
+          "harness": "tests/spikes/s5/utp/（真实 librqbit-utp 0.7.0 二进制）",
+          "report": "tests/spikes/s5/utp/reports/s5-utp-real-20261114.json",
+          "config": {"link_mbps": 16, "seconds_per_phase": 3, "rounds": 5,
+                     "ratios": [0.2, 0.05, 0.02]},
+          "measurements": [
+            {"bg_ratio": 0.2, "background_actual_link_share_median": 0.1509,
+             "degradation_pct_median": 14.78, "degradation_pct_all": [16.4, 12.1, 14.78, 15.9, 13.17],
+             "meets_5pct": false},
+            {"bg_ratio": 0.05, "background_actual_link_share_median": 0.0468,
+             "degradation_pct_median": 4.58, "degradation_pct_all": [4.57, 4.85, 3.79, 5.11, 4.58],
+             "meets_5pct": true},
+            {"bg_ratio": 0.02, "background_actual_link_share_median": 0.0312,
+             "degradation_pct_median": 3.23, "degradation_pct_all": [3.23, 3.76, 3.23, 2.69, 2.43],
+             "meets_5pct": true}
+          ],
+          "source_finding_reconfirmed": "librqbit-utp 0.7.0 仅 Cubic、无 LEDBAT（src/lib.rs TODO + CongestionControllerKind + src/congestion/ 仅 cubic.rs）",
+          "conclusion": "5 轮复跑与 2026-11-13 三轮结论一致：默认 0.2 配置前台劣化 14.78% 不满足 ≤5%；0.05 档中位数 4.58%（单轮 5.11% 越线）、0.02 档 3.23% 全轮达标，仍只能靠令牌桶降级",
+          "condition_audit": {"shaping_tools": "tc/netem/ipfw/dummynet/wondershaper 均不存在",
+                              "admin": false, "wsl": "安全策略黑名单，未尝试也未绕过",
+                              "lan_link": "跨主机 100 Mbps 未整形（HTTP RTT 中位数 4.32 ms / p95 31.74 ms）"},
+          "scope_limitation": "瓶颈仍为本机用户态整形，非 tc/netem 内核队列或实验室受控拥塞链路；按 s5/README §6 第 3 条不能支撑 pass",
+          "evidence_valid": true,
+          "evidence_valid_for_pass": false,
+          "s5_status_after": "not_run",
+          "status_unchanged": true
         }
       }
     },
@@ -864,7 +918,13 @@
       "evidence_required": [
         "tests/spikes/s6/nat-matrix.md",
         "tests/spikes/s6/stun_probe.py",
-        "tests/spikes/s6/reports/s6-nat-20261113T061908Z.json"
+        "tests/spikes/s6/nat_behavior.py",
+        "tests/spikes/s6/nat_matrix.py",
+        "tests/spikes/s6/nat_matrix_config.json",
+        "tests/spikes/probe_conditions.py",
+        "tests/spikes/s6/reports/s6-nat-20261113T061908Z.json",
+        "tests/spikes/s6/reports/s6-nat-behavior-final.json",
+        "tests/spikes/s6/reports/s6-matrix-dryrun-final.json"
       ],
       "observations": {
         "nfr_target": "FR-17 / S6 判据：常见家用 NAT 矩阵实测可达率；RISK R-04 触发线 公网可达率<70%",
@@ -983,6 +1043,60 @@
           "observations": "真实中继计数 connections=3 / registered=3 / delivered=2 / dropped=0 / rejected=0；T2-07 强制 relay 路径下 B 收到 A 守护进程经真实 UDP 往返产生的 WAKEUP_ACK；T0 --mode real 21/21 回归（nat 段缺省时订阅线程不启动）",
           "matrix_coverage": "0 / 4 类真实 NAT（真实中继不等于真实 NAT 环境）",
           "note": "S6 判据仍是四类真实 NAT（含 CGNAT）逐类实测可达率；本轮只把中继从 mock 升级为可部署组件，S6.status 保持 not_run，不得据此宣称 G2 达标。R-04 ≥70% 阈值仍未判定",
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run"
+        },
+        "w35_condition_audit_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.5① 条件审计：先判定 S3/S5/S6 是否具备真实实测条件，再只跑满足条件的实验，避免把不可测环境虚判成通过",
+          "harness": "tests/spikes/probe_conditions.py（--self-test 5/5 PASS）",
+          "report": "tests/spikes/reports/conditions-w35-final.json（gitignored 本地证据）",
+          "verdicts": {"S3": "PARTIAL_RUNNABLE", "S5": "PARTIAL_RUNNABLE", "S6": "PARTIAL_RUNNABLE"},
+          "real_probes": {
+            "stun": "4 台真实公网 STUN 均回包，WAN IP 单一 112.5.60.4；不同映射端口只因每次新建 socket，已显式标注不得据此推断对称型 NAT",
+            "coldrevive_nat": "真实二进制 --json 回报 nat_type=full-cone（保守标签）、cgnat_suspected=false、public_udp_egress_ok=true",
+            "ipv6": "仅 fe80 链路本地地址、无 global unicast；IPv6 UDP 路由不可用（WinError 10051）",
+            "virtual_nat": "vEthernet (Default Switch) 172.26.96.1 出站不可达（WinError 10051），不能当作第二类独立真实 NAT",
+            "shaping": "无管理员权限；tc/netem/ipfw/dummynet/wondershaper 均不存在；WSL 被安全策略禁止且未绕过",
+            "second_host": "B 机 192.168.1.209 / DESKTOP-CCE53RF 可达，12 次真实 HTTP RTT 中位数 4.32 ms / p95 31.74 ms（未整形链路）"
+          },
+          "matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）",
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run"
+        },
+        "w35_nat_behavior_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.5① 对唯一一个真实 NAT 出口做**带对照的精细分类**（非可达率矩阵）",
+          "harness": "tests/spikes/s6/nat_behavior.py（--self-test 12/12 PASS 纯 wire/逻辑）",
+          "report": "tests/spikes/s6/reports/s6-nat-behavior-final.json（gitignored 本地证据）",
+          "method": "RFC 5389 同 socket 多目的映射测试 + RFC 3489 Test II/III CHANGE-REQUEST（flags 2/4/6）+ 独立 socket 的备用地址直连对照 + 对照 socket 上 flags=6 服务器能力正向对照；遍历全部 A 记录并对偶发丢包做有界重试",
+          "classification": {
+            "rfc4787": "Endpoint-Independent Mapping + Address-and-Port-Dependent Filtering",
+            "classic": "port-restricted cone",
+            "confidence": "medium"
+          },
+          "controls": "control_socket_isolated=true（关键：对照与测试若共用 socket 会自行打开 NAT 放行项，实测曾产生 full cone 假阳性）；server_capability_confirmed=true；alternate_validity flags 2/4/6 全 True；change_requests 2/4/6 在测试 socket 全部无应答",
+          "real_sample": "5 台 STUN 服务器 / 4 个不同目的 IP，同一本地 UDP 端口映射恒为 112.5.60.4:14848；hairpin 未收到（不据此断言不支持）；UPnP IGD / NAT-PMP 仍不可用；CGNAT 未检出，公网第二跳 112.5.60.1",
+          "methodology_note": "coldrevive-nat 的 full-cone 是未做过滤细分的保守标签；本探针带对照后细分为 port-restricted cone，二者不矛盾",
+          "scope": {"real_nat_classes_observed": 1,
+                    "classification_sample_coverage": "1 / 4 类真实 NAT（仅分类，非可达率）",
+                    "reachability_matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）",
+                    "two_distinct_hosts_behind_different_nat": false},
+          "evidence_valid": true,
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run",
+          "note": "单出口分类样本不构成 S6 判据「NAT 类型矩阵实测给出可达率」；R-04 ≥70% 阈值仍未判定"
+        },
+        "w35_matrix_harness_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.5① 交付四类真实 NAT（含 CGNAT）可达率矩阵的**执行协议**；本机缺少相应真实环境，故只做干跑",
+          "harness": "tests/spikes/s6/nat_matrix.py + nat_matrix_config.json（--self-test 10/10 PASS）",
+          "dry_run_report": "tests/spikes/s6/reports/s6-matrix-dryrun-final.json（status=BLOCKED，退出码 2）",
+          "aggregate_report": "tests/spikes/s6/reports/s6-matrix-aggregate-final.json（status=BLOCKED，matrix_complete=false，aggregate_reachability=null）",
+          "protocol": "每类 ≥30 次真实唤醒 / 每条路径（direct 打洞 + relay 回退）；成功只认真实 CLI 输出 ok=true 且 ack_status=OK；超时/缺字段/非 JSON 一律计失败；--mode real 必须由实验执行人签 attestation 并附真实 STUN 分类报告；--aggregate 仅在 4 类 + CGNAT 齐备时计算聚合可达率",
+          "dry_run_result": {"status": "BLOCKED", "matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）",
+                             "evidence_valid": false, "s6_status": "not_run", "g2_claim": false},
+          "no_false_claim": "真实公网 STUN 单出口样本不计入矩阵覆盖率；即便四类证据齐备，脚本仍标 s6_status=not_run，由实验执行人手工回填",
           "evidence_valid_for_pass": false,
           "s6_status_after": "not_run"
         }
@@ -1104,6 +1218,19 @@
       "g2_claim": false,
       "note": "条件冻结的必测回填未结案：S6 四类真实 NAT（含 CGNAT）矩阵、S3 真实双栈 + G3 矩阵、S5 真实拥塞链路 ≤5% 实测仍待执行；T2 的 mock 环境不构成任何一项的通过证据。退回条款（rollback）仍适用",
       "review_doc": "docs/06-plan/G0-REVIEW.md §11"
+    },
+    "w35_experiments_2026_11_14": {
+      "recorded_at": "2026-11-14",
+      "trigger": "用户指令「继续按下一步计划推进，s3/s5/s6 如果符合测试条件的可以进行实验测试」",
+      "method": "先跑 tests/spikes/probe_conditions.py 条件审计；S3/S5/S6 均判 PARTIAL_RUNNABLE（可跑附件实验，不可判 pass），据此只执行满足条件的真实实验",
+      "s3": "真实 M1 双栈双机集成 17/17 PASS（tests/spikes/s3/m1_dualstack_integration.py），只作附件；G3 矩阵与真实 Mainline DHT 公网加入仍缺",
+      "s5": "真实 librqbit-utp 0.7.0 五轮复跑，默认 0.2 档 14.78% > 5%、0.02 档 3.23%；仍为本机用户态整形，tc/netem 与实验室拥塞链路不可得",
+      "s6": "真实单出口精细分类 port-restricted cone（带独立 socket 对照）；四类 NAT + CGNAT 可达率矩阵 harness 已交付但干跑 BLOCKED、matrix_coverage=0/4",
+      "conditional_freeze_still_binding": true,
+      "s3_s5_s6_status": "unchanged — 全部 not_run",
+      "g2_claim": false,
+      "spike_status_changed": false,
+      "note": "条件冻结的三项必测回填仍未结案；所有新证据均标 evidence_valid_for_pass=false，结论由实验执行人依证据手工回填，脚本不自动置 pass"
     }
   },
   "m1_progress": {
@@ -1152,7 +1279,12 @@
       "cr_nat_additions": "endpoint.rs（端点/候选计划/tracker 决策，纯计算）+ holepunch.rs（NAT_PUNCH 帧、单 socket 打洞、relay_wake）+ stun.rs probe_with（可插拔接收）+ choose_strategy 抽出；修正 Traversal::run 的 CGNAT 启发式误判与 rsplit(':') 取端口缺陷",
       "config": "cr-core Config 新增可选 nat 段（enabled / stun_servers / gateway / upnp_location / relay / bt_external）；缺省时 T0/T1 行为逐字节不变",
       "contract_invariants": "PROTOCOL_VERSION=1、T0 golden 字段集合、CLI v1 既有命令返回值均未改；NAT_PUNCH 是新增控制面帧，不属于 golden",
-      "w34_relay": "W3.4 生产中继服务端：新增 cr-nat::relay_server（纯帧路由 REGISTER/RELAY/DELIVERED/ACK，目标未注册只计 dropped 不伪造应答，单帧 1 MiB 上限）、独立二进制 coldrevive-relay（--listen/--stats-file/--max-frame）、coldrevived/src/relay_sub.rs 持有者订阅线程（DELIVERED 负载经真实 UDP 送进本守护进程唤醒端口，再把真实 WAKEUP_ACK 回投来源会话 id）；relay::ephemeral_session_id 为请求侧生成一次性注册 id，避免与订阅连接抢占服务端注册表；relay.rs 增 set_read_timeout/write_raw。T2 的 mock 中继桥已替换为真实服务端，--self-test 仍用纯 wire mock 验证帧编解码。"
+      "w34_relay": "W3.4 生产中继服务端：新增 cr-nat::relay_server（纯帧路由 REGISTER/RELAY/DELIVERED/ACK，目标未注册只计 dropped 不伪造应答，单帧 1 MiB 上限）、独立二进制 coldrevive-relay（--listen/--stats-file/--max-frame）、coldrevived/src/relay_sub.rs 持有者订阅线程（DELIVERED 负载经真实 UDP 送进本守护进程唤醒端口，再把真实 WAKEUP_ACK 回投来源会话 id）；relay::ephemeral_session_id 为请求侧生成一次性注册 id，避免与订阅连接抢占服务端注册表；relay.rs 增 set_read_timeout/write_raw。T2 的 mock 中继桥已替换为真实服务端，--self-test 仍用纯 wire mock 验证帧编解码。",
+      "w35_condition_audit": "W3.5① 新增 tests/spikes/probe_conditions.py：只读、低速真实 STUN / HTTP / 二进制 CLI / IPv6 / 虚拟出口探针，产出 S3/S5/S6 条件快照；三者均判 PARTIAL_RUNNABLE（可跑附件实验、不可判 pass）",
+      "w35_s3": "W3.5① 新增 tests/spikes/s3/m1_dualstack_integration.py：两台不同物理主机真实 coldrevived 进程上的 M1 双栈集成，17/17 真实检查通过；A 由 harness 临时拉起并清理，B 常驻未改动",
+      "w35_s5": "W3.5① 用真实 librqbit-utp 0.7.0 栈 5 轮复跑 NFR-03：默认 0.2 档 14.78% 不达标、0.05 档 4.58%、0.02 档 3.23%；仍为本地用户态整形，不作 pass 证据",
+      "w35_s6": "W3.5① 新增 tests/spikes/s6/nat_behavior.py（真实 NAT 精细分类，带独立 socket 对照，实测单出口为 port-restricted cone）+ nat_matrix.py / nat_matrix_config.json（四类真实 NAT + CGNAT 可达率矩阵执行协议）；干跑与聚合均如实 BLOCKED、matrix_coverage=0/4",
+      "w35_harness_fixes": "自检暴露并修复 5 类真实缺陷：Python 关键字语法错误、STUN 帧长度断言错误、parse_attrs 切片误用、对照 socket 污染过滤测试导致 full cone 假阳性、条件快照硬编码 IPv6/虚拟出口观测；另补多 A 记录故障转移与有界重试抗公共 STUN 偶发丢包"
     },
     "validation": {
       "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
@@ -1161,12 +1293,18 @@
       "t2_report": "tests/e2e/t2/reports/t2-20261114T121322Z-local.json（gitignored 本地证据）",
       "t0_regression": "2026-11-14 W3.4 后 --mode real 复跑 21/21 PASS、evidence_valid=true；T0 配置无 nat 段，订阅线程不启动，行为不变（顺带修正 t0_cli.py 对 download 的 10s 观测超时为 190s，断言不变）",
       "t1_self_test_regression": "11/11 PASS（合成观测自检，evidence_valid=false）",
-      "t2_environment": "本机回环 + mock STUN + 真实 coldrevive-relay 服务端；真实 UDP/TCP/HTTP/CLI 观测，但无真实 NAT，不构成 S6 样本"
+      "t2_environment": "本机回环 + mock STUN + 真实 coldrevive-relay 服务端；真实 UDP/TCP/HTTP/CLI 观测，但无真实 NAT，不构成 S6 样本",
+      "w35_condition_probe": "probe_conditions.py --self-test 5/5 PASS；真实条件快照 tests/spikes/reports/conditions-w35-final.json：无管理员权限 / 无 tc / IPv6 无全局地址 / 虚拟交换出口不可达 / B 机可达",
+      "w35_s3_integration": "m1_dualstack_integration.py --self-test 5/5 PASS；真实双机 17/17 PASS，报告 tests/spikes/s3/reports/s3-m1-dualstack-w35.json；evidence_valid=true 但 evidence_valid_for_pass=false",
+      "w35_s5_utp": "真实 librqbit-utp 5 轮复跑，报告 tests/spikes/s5/utp/reports/s5-utp-real-20261114.json；结论与 2026-11-13 一致，evidence_valid_for_pass=false",
+      "w35_s6_behavior": "nat_behavior.py --self-test 12/12 PASS；真实单出口分类 port-restricted cone（medium），报告 tests/spikes/s6/reports/s6-nat-behavior-final.json",
+      "w35_s6_matrix": "nat_matrix.py --self-test 10/10 PASS；--dry-run 退出码 2 / status=BLOCKED；--aggregate status=BLOCKED、matrix_complete=false、aggregate_reachability=null",
+      "w35_regressions": "2026-11-14 W3.5① 全量回归：cargo test --workspace --offline 80 passed / 0 failed；cargo build --release --workspace --offline OK；T0 --mode real 21/21 PASS、evidence_valid=true（需设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实二进制环境变量）；T1 --self-test 11/11；T2 --self-test 3/3 + --mode local 10/10 PASS（报告 tests/e2e/t2/reports/t2-20261114T135902Z-local.json）；scripts/build_docs.py --check 36 份 Markdown 校验通过"
     },
     "remaining_for_g2": [
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；须用户提供真实多 NAT 环境",
-      "S3 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵",
-      "S5 真实拥塞链路（tc/netem 或跨主机）+ rqbit uTP 前台劣化 ≤5% 实测",
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，仍须用户提供真实多 NAT 环境并签 attestation 逐类 --mode real",
+      "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
+      "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
       "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",
       "中继生产化收尾：公网部署、TLS / 身份鉴权（当前 REGISTER 仅校验负载回显，无凭证）、多实例注册同步、连接限流与空闲超时、跨公网中继时延量测（W3.4 已交付可部署的帧路由核心 + 持有者订阅，本机回环验证）",
       "BT/TCP 打洞（当前 tracker 只使用 internal_port==bt_port 的真实显式映射）",
@@ -1177,7 +1315,9 @@
       "g2_claim": false,
       "no_auto_pass": "spike 结论仍由实验执行人据证据手工回填；脚本/工具不得自动置 pass",
       "no_false_claim": "T2 的 10/10 PASS 只证明接线正确性，不得据此宣称 S6/G2 达标",
-      "w34_relay_note": "真实中继服务端只补齐可信中继的部署组件，仍非四类 NAT 可达率实测；S6.status 保持 not_run，matrix_coverage 仍为 0/4"
+      "w34_relay_note": "真实中继服务端只补齐可信中继的部署组件，仍非四类 NAT 可达率实测；S6.status 保持 not_run，matrix_coverage 仍为 0/4",
+      "w35_note": "W3.5① 的 S3 17/17 双机集成、S5 真实 uTP 复跑、S6 单出口精细分类均为真实观测附件，但按 README §6 第 3 条不能单独支撑 pass；S3/S5/S6 状态全部保持 not_run，G2 未宣称达标，matrix_coverage 仍 0/4",
+      "w35_s6_discipline": "nat_behavior.py 只给出 1 类真实 NAT 的行为分类样本（port-restricted cone），不是可达率；nat_matrix.py 干跑/聚合均 BLOCKED；R-04 ≥70% 阈值仍未判定"
     },
     "spike_status_changed": false
   },

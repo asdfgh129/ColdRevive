@@ -135,6 +135,14 @@ updated: YYYY-MM-DD
 - **门禁现状更正（2026-11-14 / v2.4.47）**：上一条是 M1 开工时点的历史记录，不是当前状态。
   **G1 已于 2026-11-14 通过**（T0 21/21 + T1 `--mode real` 双机 11/11，均 `evidence_valid=true`），
   **M2 门禁解除并已开工**（cr-nat 接入复活路径、T2 本地预检 10/10）。S3/S5/S6 仍 `not_run`，G2 未达标。
+- **v2.4.50 补记（2026-11-14 / W3.5①）**：新增 [条件探针](../tests/spikes/probe_conditions.py)、
+  [S3 双机双栈集成](../tests/spikes/s3/m1_dualstack_integration.py)（17/17 PASS）、
+  [S6 NAT 行为分类](../tests/spikes/s6/nat_behavior.py) 与
+  [四类 NAT 矩阵执行协议](../tests/spikes/s6/nat_matrix.py)（干跑 `BLOCKED`）；
+  S5 真实 uTP 栈 5 轮复跑。全部为 `evidence_valid_for_pass=false` 的附件证据，
+  **S3 / S5 / S6 仍 `not_run`、`matrix_coverage=0/4`、G2 未达标**。
+  本轮改动落在 DOC-15（ROADMAP）、G0-REVIEW、OPEN-QUESTIONS 与 spikes 文档，
+  未改 `PROTOCOL_VERSION` 与 T0 golden。
 - 协议（DOC-09）**私有契约字段**（§3 `WAKEUP_REQ` / `WAKEUP_ACK`）变更必须递增 `PROTOCOL_VERSION`、新增 ADR 并更新 T0 golden，禁止静默修改。
 - **映射修订例外**：只改 §1 / §2 的**外部 KAD / eD2k 集成映射**（如 v2.3 的 Kad tag 帧头、v2.4 的双轨 Key、v2.5 的 `0x44` / `0x34` 载荷与 eD2k TCP 序列）且不动 §3 字段时，按 [PROTO §4](04-protocol/PROTO.md) 只递增该文档的 `version` 并记录源码依据，`PROTOCOL_VERSION` 与 T0 golden 保持不变。本条与 PROTO §4 是同一规则的两处表述。
 

@@ -180,6 +180,19 @@ T1 `--self-test` 11/11；`cargo test --workspace --offline` 74/74（W3.3 时点�
 > `matrix_coverage=0/4`、`s6_status_after=not_run`；**S3 / S5 / S6 状态仍全部 `not_run`**，
 > 下方「条件冻结边界仍未被突破」的结论原样有效。
 
+> **【W3.5① 补记 · 2026-11-14 / v2.4.50】**：按「先审计测试条件、只跑满足条件的实验」推进。
+> [条件探针](../../tests/spikes/probe_conditions.py) 判定 S3 / S5 / S6 均为 `PARTIAL_RUNNABLE`
+> （可跑附件实验、不可判 pass）：无管理员权限、无 `tc/netem`、WSL 被安全策略禁止、无全局 IPv6、
+> 虚拟交换出口不可达、仅 1 类真实 NAT 且无 CGNAT。
+> 本轮新增真实附件证据：S3 [双机双栈集成](../../tests/spikes/s3/m1_dualstack_integration.py) **17/17 PASS**；
+> S5 真实 `librqbit-utp` 5 轮复跑（默认 `0.2` 档 14.78% 不达标、`0.02` 档 3.23%）；
+> S6 [单出口精细分类](../../tests/spikes/s6/nat_behavior.py) 为 port-restricted cone（medium）
+> 及 [四类 NAT 矩阵执行协议](../../tests/spikes/s6/nat_matrix.py) 干跑 `BLOCKED`。
+> **全部 `evidence_valid_for_pass=false`；S3 / S5 / S6 仍 `not_run`、`matrix_coverage=0/4`、
+> `g2_claim=false`、`spike_status_changed=false`。** 分类样本不等于可达率，
+> 条件冻结的必测回填仍未结案，退回条款仍适用。机读见 `spikes.json` 的
+> `g0_review.w35_experiments_2026_11_14` 与 `m2_progress.scope_done.w35_*`。
+
 **§3 条件冻结的边界仍未被突破**：S3 / S5 / S6 的 `status` 全部保持 `not_run`，
 本轮所有新增证据的 `evidence_valid_for_pass` 均为 `false`。
 S6 的四类真实 NAT（含 CGNAT）可达率矩阵须 M2 在多个真实 NAT 环境逐类实测后，

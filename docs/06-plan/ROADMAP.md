@@ -201,11 +201,28 @@ ColdRevive
   T0 `--mode real` 回归 **21/21**。**`nat` 段缺省时订阅线程不启动，T0/T1 行为不变。**
   机读见 `spikes.json` 的 `m2_progress.scope_done.w34_relay` 与
   `S6.observations.w34_relay_2026_11_14`（`evidence_valid_for_pass=false`、`matrix_coverage=0/4`）。
-- **下一步计划（W3.5 候选，未开工）**：① **S6 四类真实 NAT（含 CGNAT）矩阵 harness** 的设计与
-  干跑（`s6/nat-matrix.md` 已有判据，实测数据仍须用户提供多 NAT 环境）；② 中继公网生产化
-  （TLS / 身份鉴权 / 多实例注册同步 / 限流 / 空闲超时 / 跨公网时延量测）；③ BT/TCP 打洞；
-  ④ M2 其余骨架 crate 的内置引擎与资源治理。**S3 / S5 / S6 状态仍 `not_run`，G2 未达标、未宣称**；
-  真实中继服务端不等于真实 NAT 环境，不得据 W3.4 回填 S6。
+- **M2/W3.5① 已落地（2026-11-14，v2.4.50）**：按「先审计测试条件、只跑满足条件的实验」推进。
+  ① 新增 [条件探针](../../tests/spikes/probe_conditions.py)：只读真实 STUN / HTTP / 二进制 CLI /
+  IPv6 / 虚拟出口探测，判定 S3 / S5 / S6 均为 `PARTIAL_RUNNABLE`（可跑附件实验、不可判 pass）——
+  无管理员权限、无 `tc/netem`、WSL 被安全策略禁止、无全局 IPv6、虚拟交换出口不可达、仅 1 类真实 NAT 且无 CGNAT。
+  ② **S3**：新增 [M1 双栈跨主机集成](../../tests/spikes/s3/m1_dualstack_integration.py)，两台不同物理主机上真实
+  `coldrevived` 进程，**17/17 PASS**（双栈 ID 32/40 hex 且互不相交、独立复刻与 Rust 输出逐项一致、并行压测
+  120 帧 `misrouted=0`、跨主机 UDP 真实往返、畸形帧不命中）。
+  ③ **S5**：真实 `librqbit-utp 0.7.0` 栈 5 轮复跑，默认 `0.2` 档前台劣化 **14.78%**（不达标），
+  `0.05` 档 4.58%、`0.02` 档 3.23%；仍为本机用户态整形，不构成 NFR-03 pass 证据。
+  ④ **S6**：新增 [NAT 行为精细分类](../../tests/spikes/s6/nat_behavior.py)（RFC 3489 Test II/III +
+  **独立对照 socket**，实测唯一出口为 `Endpoint-Independent Mapping + Address-and-Port-Dependent Filtering`
+  / port-restricted cone，medium）与 [四类 NAT 矩阵执行协议](../../tests/spikes/s6/nat_matrix.py)
+  （每类 ≥30 次真实唤醒 × direct/relay 两路径、签 attestation、成功只认真实 `WAKEUP_ACK`）；
+  `--dry-run` 与 `--aggregate` 均如实 `BLOCKED`、`matrix_coverage=0/4`。
+  **所有新证据一律 `evidence_valid_for_pass=false`；S3 / S5 / S6 状态仍 `not_run`，G2 未达标、未宣称**；
+  分类样本不等于可达率矩阵，真实公网 STUN 单出口不计入覆盖率。
+  机读见 `spikes.json` 的 `m2_progress.scope_done.w35_*`、`g0_review.w35_experiments_2026_11_14`
+  及 S3/S5/S6 的 `observations.w35_*`。
+- **下一步计划（W3.5② 候选，未开工）**：① 中继公网生产化（TLS / 身份鉴权 / 多实例注册同步 /
+  限流 / 空闲超时 / 跨公网时延量测）；② BT/TCP 打洞；③ M2 其余骨架 crate 的内置引擎与资源治理；
+  ④ 在用户提供四类真实 NAT（含 CGNAT）环境后逐类执行 `nat_matrix.py --mode real`，
+  由实验执行人手工回填 S6；⑤ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
 
 ## 相关文档
 

@@ -137,6 +137,27 @@ target/release/coldrevive-s5-utp-probe.exe \
 
 报告：`reports/s5-qos-final-ratio020.json` / `...ratio005.json` / `...ratio002.json`（本地产物、不入库）。
 
+## 10. 真实 uTP 栈 5 轮复跑（2026-11-14 / W3.5①）
+
+按 [条件探针](../probe_conditions.py) 判定 S5 = `PARTIAL_RUNNABLE`（真实 uTP 栈可复跑，但无内核整形链路），
+用同一份 `librqbit-utp 0.7.0` 真实协议栈把 §9 的 3 轮扩到 5 轮复核：
+
+| `background_upload_ratio` | 后台实际链路占比（中位） | 前台劣化（中位） | 各轮 | ≤5% |
+| :--- | :--- | :--- | :--- | :--- |
+| `0.2`（原默认） | 15.09% | **14.78%** | 16.4 / 12.1 / 14.78 / 15.9 / 13.17 | ❌ |
+| `0.05` | 4.68% | 4.58% | 4.57 / 4.85 / 3.79 / **5.11** / 4.58 | 中位达标、单轮越线 |
+| `0.02`（M1 回调值） | 3.12% | **3.23%** | 3.23 / 3.76 / 3.23 / 2.69 / 2.43 | ✅ 全轮 |
+
+结论与 §9 一致：源码复核再次确认 `librqbit-utp 0.7.0` 仅 `Cubic`、无 LEDBAT；
+≤5% 仍只能靠令牌桶 `ratio` 降级，**不是 uTP 自动退让达标**。
+
+条件审计补充：本机无管理员权限，`tc/netem/ipfw/dummynet/wondershaper` 均不存在，
+WSL 被安全策略禁止且未绕过，跨主机 100 Mbps LAN 未整形（HTTP RTT 中位 4.32 ms / p95 31.74 ms）。
+**瓶颈仍是本机用户态整形**，`evidence_valid_for_pass=false`，`S5.status` 保持 `not_run`。
+
+报告：`utp/reports/s5-utp-real-20261114.json`（本地产物、不入库）；
+机读登记在 `spikes.json` 的 `S5.observations.utp_real_2026_11_14`。
+
 > Harness 排错留痕：① 首版把前台与后台放在同一循环里串行发送，导致互相阻塞，改为独立线程；
 > ② 退让观测错用了平滑后的共享延迟，改为观测后台**自己报文**的排队延迟；
 > ③ 让出决策原本发生在消耗瓶颈令牌之后，被让出的令牌被白白丢弃，改为在申请令牌之前决策；

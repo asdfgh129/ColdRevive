@@ -2,6 +2,64 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.50] - 2026-11-14 — M2/W3.5①：S3/S5/S6 条件审计 + 符合条件的真实实验 + S6 矩阵执行协议
+
+> 范围声明：G1 已通过、M2 进行中。本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，
+> `g2_claim=false`、`spike_status_changed=false`、`matrix_coverage=0/4`；`PROTOCOL_VERSION=1`、
+> T0 golden 与 CLI v1 契约未改；workspace 仍 17 crate + 5 bin、std-only 零第三方依赖。
+> 所有新增证据一律标 `evidence_valid_for_pass=false`，只作附件；结论仍由实验执行人手工回填。
+
+### 背景
+- 用户指令：「继续按下一步计划推进，s3/s5/s6 如果符合测试条件的可以进行实验测试」。
+- 先做条件审计再决定可测范围，避免把不可测环境虚判成通过或把本地模拟当 pass 证据。
+
+### 条件审计（新增 `tests/spikes/probe_conditions.py`）
+- 只读真实探针：4 台公网 STUN、真实 `coldrevive-nat --json`、B 机 `/health` + `/cli`、跨主机 HTTP RTT、
+  IPv6 全局地址/路由、虚拟交换出口、 shaping 工具与管理权限。`--self-test` 5/5 PASS。
+- S3 / S5 / S6 均判 **`PARTIAL_RUNNABLE`**：可跑附件实验，不可判 pass。
+- 实测约束：无管理员权限；`tc/netem/ipfw/dummynet/wondershaper` 均不存在；WSL 被安全策略禁止且未绕过；
+  无全局 IPv6（`WinError 10051`）；`vEthernet (Default Switch) 172.26.96.1` 出站不可达，不能当作第二类独立真实 NAT；
+  仅 1 类真实 NAT 出口、未检出 CGNAT；跨主机 100 Mbps 未整形 LAN（HTTP RTT 中位 4.32 ms / p95 31.74 ms）。
+- 修正取证口径：条件探针每次 STUN 新建 socket，4 个不同映射端口**不得**据此推断对称型 NAT；分类须由
+  `nat_behavior.py` 的单 socket 对照完成。IPv6 / 虚拟出口由真实 socket 探测，不再硬编码。
+
+### S3：真实 M1 双栈跨主机集成（新增 `tests/spikes/s3/m1_dualstack_integration.py`）
+- 两台不同物理主机上的真实 `coldrevived` 进程；A 由 harness 临时拉起并在结束时清理，B 常驻未改动；
+  私有 LAN 真实 UDP/HTTP/CLI 观测，`nat` 段缺省（M1 原行为），未向公共 KAD/DHT 发包。
+- **17/17 PASS**：`inspect kad` 双栈 ID 32/40 hex 且互不相交；独立 Python 复刻 `cr-kad` 算法与 Rust
+  守护进程真实输出逐项一致；真实 KAD key 命中 `hit_node=A/count=1`；160-bit DHT 形状 ID、128-bit ID
+  当 key、截断 key、畸形帧一律不命中；两线程并发 120 帧 `misrouted=0`、无丢包；跨主机 B 侧并行亦无串扰；
+  压测后 `published_keys` 未被污染。`--self-test` 5/5 PASS（纯逻辑）。
+- 缺口仍在：G3 兼容性矩阵、真实 Mainline DHT 公网加入、跨进程 RSS 增量。
+
+### S5：真实 uTP 栈 5 轮复跑
+- `tests/spikes/s5/utp/reports/s5-utp-real-20261114.json`：默认 `0.2` 档前台劣化 **14.78%**（不达标），
+  `0.05` 档 4.58%（单轮 5.11% 越线）、`0.02` 档 3.23%（全轮达标）；`librqbit-utp 0.7.0` 仍仅 CUBIC、无 LEDBAT。
+- 结论与 2026-11-13 一致，但瓶颈仍为本机用户态令牌桶整形，不是 `tc/netem` 或实验室拥塞链路，**不能支撑 pass**。
+
+### S6：真实 NAT 行为精细分类 + 四类矩阵执行协议
+- 新增 `tests/spikes/s6/nat_behavior.py`（`--self-test` 12/12 PASS）：RFC 5389 同 socket 多目的映射 +
+  RFC 3489 Test II/III `CHANGE-REQUEST` flags 2/4/6 + **独立对照 socket** + 服务器能力正向对照 +
+  遍历全部 A 记录 + 有界重试抗偶发丢包。实测唯一出口为
+  `Endpoint-Independent Mapping + Address-and-Port-Dependent Filtering` / **port-restricted cone**（medium）。
+- **关键方法论修复**：备用地址直连对照若与过滤测试共用 socket，会自行打开 NAT 放行项，实测曾把
+  port-restricted cone 误判成 full cone；现强制两个真实不同本地端口。另修复 STUN 帧长度断言、
+  `parse_attrs` 切片误用、Python 关键字语法错误、公共 STUN 死节点 DNS 轮询导致的假 `undetermined`。
+- 新增 `tests/spikes/s6/nat_matrix.py` + `nat_matrix_config.json`（`--self-test` 10/10 PASS）：四类真实 NAT
+  + CGNAT、每类每条路径 ≥30 次真实唤醒、成功只认真实 `WAKEUP_ACK`、必须由实验执行人签 attestation、
+  超时/缺字段/非 JSON 一律计失败。`--dry-run` 退出码 2 / `status=BLOCKED`；`--aggregate`
+  `matrix_complete=false`、`aggregate_reachability=null`。**即便证据齐备脚本也不置 pass。**
+- `coldrevive-nat` 的 `full-cone` 是未做过滤细分的保守标签，与本次带对照的 `port-restricted cone` 不矛盾。
+- 分类样本**不是可达率**；`matrix_coverage` 仍 `0/4`（含 CGNAT 0/1），R-04 ≥70% 阈值未判定，G2 未达标。
+
+### 验证（全部真实观测）
+- `cargo test --workspace --offline` **80 passed / 0 failed**；`cargo build --release --workspace --offline` OK。
+- **T0 `--mode real` 21/21 PASS、`evidence_valid=true`**（需设置三个真实二进制环境变量）；
+  T1 `--self-test` 11/11；T2 `--self-test` 3/3 + `--mode local` **10/10 PASS**（`evidence_valid=false`）；
+  `scripts/build_docs.py --check` 36 份 Markdown 校验通过。
+- 机读口径见 `tests/spikes/spikes.json` 的 `m2_progress.scope_done.w35_*`、
+  `g0_review.w35_experiments_2026_11_14` 与 S3/S5/S6 的 `observations.w35_*`。
+
 ## [2.4.49] - 2026-11-14 — M2/W3.4：生产中继服务端 + 持有者订阅，T2 换用真实中继
 
 > 范围声明：G1 已通过、M2 进行中。本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，
