@@ -2,6 +2,15 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.43] - 2026-11-14 — T1 下载器明确为 Motrix Next 捆绑 aria2（非 GUI）
+
+> 范围声明：仅文档更正，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
+
+### 改动
+- `tests/e2e/t1/README.md` §4 与 §4.1 澄清：ColdRevive 的 `download()` 以子进程调用下载器并传入 aria2 专属参数（`--bt-tracker` / `--listen-port` / `--enable-dht=false` …），且等其下载完成后退出。**下载器必须用 Motrix Next 捆绑的 aria2 CLI `motrixnext-aria2c.exe`，不能用 `motrix-next.exe` 图形界面**（后者不认参数、不会退出）。
+- 实测 `C:\Program Files\MotrixNext\motrixnext-aria2c.exe --version` 输出 `aria2 version 1.36.0` 且接受上述全部参数；与 `bt.rs` 注释「Motrix Next 捆绑 aria2 1.36.0」一致。
+- Windows CMD 步骤的 `T0_DOWNLOADER` 与 `--downloader` 均改为该路径（带空格需加引号），并注明 B 机同理、无需额外安装 aria2、无需启动 Motrix 图形界面。
+
 ## [2.4.42] - 2026-11-14 — T1 README 新增 Windows CMD 操作小节
 
 > 范围声明：仅文档补充，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。

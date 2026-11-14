@@ -50,8 +50,9 @@
 
 ## 4. 如何在两台真实机器上跑 `--mode real`
 
-前置：两台物理主机处于真实 NAT 内网；B 主机**无需编译**（只需拷 `coldrevived.exe` + `aria2c` +
-仓库源码/夹具，从仓库根目录启动即可，配置路径已相对化、无需编辑）。
+前置：两台物理主机处于真实 NAT 内网；B 主机**无需编译**（只需拷 `coldrevived.exe` + 仓库源码/夹具，
+从仓库根目录启动即可，配置路径已相对化、无需编辑）。下载器用 **Motrix Next 捆绑的 aria2 CLI**
+（`motrixnext-aria2c.exe`，**不是** `motrix-next.exe` 图形界面），无需额外安装 aria2。
 
 ```bash
 # ① A 主机：生成「可移植」配置（路径相对仓库根，拷到 B 后无需改）；写出 tests/e2e/t1/.run/t1-config.json
@@ -86,14 +87,22 @@ python3 tests/e2e/t1/t1_accept.py --mode real --refresh-nat
 > 必须与执行命令在同一个窗口；路径引用用 `%CD%`；命令续行用 `^`（不是 bash 的 `\`）。
 > 因 config 已相对仓库根，B 机拿到文件后**零路径编辑**，进仓库根目录直接启动。
 
+> **下载器（关键）：用 Motrix Next 捆绑的 aria2 CLI，而不要用图形界面。**
+> ColdRevive 守护进程会以子进程方式调用下载器并传入 aria2 专属参数
+> （`--bt-tracker` / `--listen-port` / `--enable-dht=false` …），且等待其**下载完成后退出**。
+> Motrix Next 已捆绑 aria2 1.36.0，路径为 `C:\Program Files\MotrixNext\motrixnext-aria2c.exe`
+> （注意是 `motrixnext-aria2c.exe`，**不是** `motrix-next.exe` 那个 Electron 图形界面，
+> 后者不认 aria2 参数、也不会在下载后退出）。已实测该文件 `--version` 输出
+> `aria2 version 1.36.0` 且接受上述全部参数。**无需另外安装 aria2，也无需启动 Motrix 图形界面。**
+> 若你的安装路径不同，按实际位置替换下面所有 `C:\Program Files\MotrixNext\motrixnext-aria2c.exe`。
+
 ### 前提（A、B 两台都要）
 ```cmd
 REM 放行端口（管理员运行 CMD；A 示例，B 把 17800→17900 / 17801→17901 / 17802→17902）
 netsh advfirewall firewall add rule name=cr-http dir=in action=allow protocol=TCP localport=17800
 netsh advfirewall firewall add rule name=cr-wake dir=in action=allow protocol=UDP localport=17801
 netsh advfirewall firewall add rule name=cr-bt   dir=in action=allow protocol=TCP localport=17802
-REM B 装 aria2（一行，非编译器）：winget install aria2.aria2
-REM A 上确认 Python：py --version（不行就换 python）
+REM A 上确认 Python：py --version（不行就换 python）。下载器用 Motrix Next 捆绑的 aria2，无需额外安装。
 ```
 
 ### ① A 机：编译 + 生成可移植配置（同一个 CMD 窗口）
@@ -103,13 +112,10 @@ cd /d C:\Users\bemin\WorkBuddy\ColdRevive
 REM 编译 release（产物 target\release\coldrevived.exe）
 cargo build --release --workspace --offline
 
-REM 记下 aria2 路径，下面要用
-where aria2c
-
 REM 设置环境变量（仅本窗口有效）
 set COLDREVIVE_DAEMON=%CD%\target\release\coldrevived.exe
 set COLDREVIVE_CLI=%CD%\target\release\coldrevive-cli.exe
-set T0_DOWNLOADER=<上面 where aria2c 输出的路径>
+set T0_DOWNLOADER=C:\Program Files\MotrixNext\motrixnext-aria2c.exe
 set T1_HOST_A=<A 的 IP，例如 192.168.1.210>
 set T1_HOST_B=<B 的 IP，例如 192.168.1.211>
 
@@ -134,6 +140,7 @@ scp -r C:\Users\bemin\WorkBuddy\ColdRevive\* user@<B_IP>:C:/ColdRevive/
 scp C:\Users\bemin\WorkBuddy\ColdRevive\target\release\coldrevived.exe user@<B_IP>:C:/ColdRevive/target/release/
 ```
 B 上最终要有的：`coldrevived.exe` + 仓库源码 + `tests\fixtures\t0\golden\`（唤醒签名夹具）+ `tests\e2e\t1\.run\t1-config.json`。golden 和 config 已随源码一起拷，无需额外处理。
+**B 的下载器同样用其 Motrix Next 捆绑的 aria2**：`C:\Program Files\MotrixNext\motrixnext-aria2c.exe`（路径以 B 实际安装位置为准）。
 
 ### ③ B 机：从仓库根目录启动守护进程（CMD 窗口，保持开着别关）
 ```cmd
@@ -142,10 +149,10 @@ cd /d C:\ColdRevive
 REM 确认夹具在
 dir tests\fixtures\t0\golden\wakeup_req.v1.json
 
-REM 启动 B 守护进程（aria2 路径按 B 实际上填）
+REM 启动 B 守护进程（downloader 用 B 上 Motrix Next 捆绑的 aria2，路径带空格必须加引号）
 coldrevived.exe --config tests\e2e\t1\.run\t1-config.json ^
   --node-id B --bind <B_IP> --self-host <B_IP> ^
-  --workdir tests\e2e\t1\.run\B --downloader <B 上 aria2c 路径>
+  --workdir tests\e2e\t1\.run\B --downloader "C:\Program Files\MotrixNext\motrixnext-aria2c.exe"
 ```
 - 若报「找不到 VCRUNTIME140.dll」→ `winget install Microsoft.VCRedist.2015+.x64` 装一次即可。
 - 在 **A 机**验证 B 已起：`curl http://<B_IP>:17900/health` 应返回含 `status=ok`。
