@@ -50,25 +50,35 @@
 
 ## 4. 如何在两台真实机器上跑 `--mode real`
 
-前置：两台物理主机处于真实 NAT 内网，各自编译 M1 二进制、准备同一份配置与同一个样本文件；
-B 主机上的第三方 BT 客户端路径须真实存在。
+前置：两台物理主机处于真实 NAT 内网；B 主机**无需编译**（只需拷 `coldrevived.exe` + `aria2c` +
+仓库源码/夹具，从仓库根目录启动即可，配置路径已相对化、无需编辑）。
 
 ```bash
-# ① B 主机（远端）先启动；{config} 与本机的 t1-config.json 内容一致，nodes.*.host 指向两台机器的可达地址
-{daemon} --config {config} --node-id B --bind {B_IP} --self-host {B_IP} \
-         --workdir {B_WORKDIR} --downloader {ARIA2}
-
-# ② A 主机（本机）harness 启动 A，并对 B 做 /health 与远端 CLI 取数
-export COLDREVIVE_DAEMON=/path/to/coldrevived
-export COLDREVIVE_CLI=/path/to/coldrevive-cli
+# ① A 主机：生成「可移植」配置（路径相对仓库根，拷到 B 后无需改）；写出 tests/e2e/t1/.run/t1-config.json
+export T1_HOST_A=<A_IP> T1_HOST_B=<B_IP>
+export COLDREVIVE_DAEMON=$PWD/target/release/coldrevived
+export COLDREVIVE_CLI=$PWD/target/release/coldrevive-cli
 export T0_DOWNLOADER=/path/to/aria2c
+python3 tests/e2e/t1/t1_accept.py --mode real --prepare-only
+# 把这份 t1-config.json 拷到 B（连同整个仓库源码/夹具；B 上不编译）
+
+# ② B 主机（远端）：从仓库根目录启动守护进程（--config 用拷过去的相对配置，路径自动解析）
+cd /path/on/B/ColdRevive
+./target/release/coldrevived --config tests/e2e/t1/.run/t1-config.json \
+  --node-id B --bind <B_IP> --self-host <B_IP> \
+  --workdir tests/e2e/t1/.run/B --downloader /path/on/B/aria2c
+# 确认：在 A 上 curl http://<B_IP>:17900/health 应返回 status=ok
+
+# ③ A 主机：确认 B 已起，正式跑完整 harness
 export T1_HOST_A=<A_IP> T1_HOST_B=<B_IP> T1_REMOTE_PRESTARTED=1
 python3 tests/e2e/t1/t1_accept.py --mode real --refresh-nat
+# 报告 tests/e2e/t1/reports/t1-*-real.json；evidence_valid=true 且全用例 PASS → G1 解锁
 ```
 
 `--refresh-nat` 会现场调用 `tests/spikes/s6/stun_probe.py` 重新采集真实 NAT 报告；
 不带该参数则复用 S6 先导报告。`--mode real` **不会**替你远程拉起 B 进程，也不接受
-`T1_REMOTE_PRESTARTED` 之外的任何隐式确认。
+`T1_REMOTE_PRESTARTED` 之外的任何隐式确认。配置现已相对仓库根路径，B 端从仓库根启动即可，
+**无需任何路径编辑**（新增 `--prepare-only` 仅生成配置、不触发远端守卫）。
 
 ## 5. 已知 T1 设计缺口（必须在 G1 前解决）
 

@@ -267,17 +267,20 @@ class T1Runner:
                 "wake_udp_port": spec["wake_udp_port"],
                 "bt_port": spec["bt_port"],
             }
+        def rel(p: Any) -> str:
+            # 相对仓库根目录：跨机拷贝后只需从仓库根启动守护进程即可解析，无需改路径
+            return os.path.relpath(str(p), str(ROOT)).replace("\\", "/")
         content = {
             "suite": "T1",
             "schema": "coldrevive.daemon.config/v1",
             "bind": self.binds.get("A", "127.0.0.1"),
             "nodes": nodes,
-            "sample_path": str(self.sample),
+            "sample_path": rel(self.sample),
             "keywords": self.cfg["fixture"]["keywords"],
             "namespace": self.cfg["protocol"]["namespace"],
-            "workdir": str(self.workdir),
-            "golden_req": str(self.golden_dir / "wakeup_req.v1.json"),
-            "golden_ack": str(self.golden_dir / "wakeup_ack.v1.json"),
+            "workdir": rel(self.workdir),
+            "golden_req": rel(self.golden_dir / "wakeup_req.v1.json"),
+            "golden_ack": rel(self.golden_dir / "wakeup_ack.v1.json"),
             "downloader": self.binaries().get("downloader_env", ""),
             "challenge_window_sec": self.cfg["protocol"]["challenge_window_sec"],
         }
@@ -299,7 +302,7 @@ class T1Runner:
         log = (self.workdir / f"{node}.log").open("wb")
         self.logs.append(log)
         proc = subprocess.Popen(argv, stdout=log, stderr=subprocess.STDOUT,
-                                cwd=str(self.workdir))
+                                cwd=str(ROOT))
         self.procs[node] = proc
 
     def health(self, node: str) -> dict[str, Any] | None:
@@ -374,7 +377,8 @@ class T1Runner:
         env = {**os.environ, "COLDREVIVE_T0_CONFIG": str(self.config_path)}
         argv = [exe, "--json", "--node", node, command, *args]
         try:
-            p = subprocess.run(argv, capture_output=True, text=True, env=env, timeout=timeout)
+            p = subprocess.run(argv, capture_output=True, text=True, env=env,
+                                timeout=timeout, cwd=str(ROOT))
         except subprocess.TimeoutExpired as exc:
             raise UnavailableError(f"CLI 超时: {command}") from exc
         if p.returncode != 0:
@@ -593,6 +597,8 @@ def main() -> int:
     ap.add_argument("--mode", choices=["real"], default=None)
     ap.add_argument("--refresh-nat", action="store_true",
                     help="现场运行 STUN 探针采集真实 NAT 报告（默认复用 S6 先导报告）")
+    ap.add_argument("--prepare-only", action="store_true",
+                    help="仅生成可移植的 t1-config.json（路径相对仓库根，供远端 B 主机直接使用）；须配合 --mode real")
     ap.add_argument("--address-mode", choices=["aliases", "nic"],
                     default=None, help="单机预检地址模式（默认取 t1_config.json）")
     ap.add_argument("--keep-logs", action="store_true")
@@ -607,11 +613,21 @@ def main() -> int:
             print(f"{c['id']}  {c['title']}  ({c['group']}, {len(c['assertions'])} 条断言)")
         return 0
 
+    address_mode = args.address_mode or cfg["lan_precheck"]["default_address_mode"]
+    if args.prepare_only:
+        if args.mode != "real":
+            print("--prepare-only 必须配合 --mode real（且不再指定 --self-test/--lan-precheck）",
+                  file=sys.stderr)
+            return 2
+        runner = T1Runner(cfg, case_data, "real", args.refresh_nat, args.keep_logs, address_mode)
+        runner.prepare()
+        print(f"[PREPARE] 已生成可移植配置: {runner.config_path}")
+        print("          将该文件拷到 B 主机，从仓库根目录启动 coldrevived 即可（路径已相对化，无需编辑）")
+        return 0
     if sum(bool(x) for x in (args.self_test, args.lan_precheck, args.mode)) != 1:
         print("必须且只能指定 --self-test / --lan-precheck / --mode real 之一", file=sys.stderr)
         return 2
     mode = "self-test" if args.self_test else ("lan-precheck" if args.lan_precheck else "real")
-    address_mode = args.address_mode or cfg["lan_precheck"]["default_address_mode"]
     runner = T1Runner(cfg, case_data, mode, args.refresh_nat, args.keep_logs, address_mode)
     results: list[dict[str, Any]] = []
     env_facts: dict[str, Any] = {

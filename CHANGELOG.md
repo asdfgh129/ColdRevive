@@ -2,6 +2,21 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.41] - 2026-11-14 — T1 harness 配置可移植化（B 主机零路径编辑）
+
+> 范围声明：仅改 `tests/e2e/t1/t1_accept.py` 与文档，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
+> 目的：让第二台物理主机 B 无需安装编译环境——只需拷二进制 + 仓库源码/夹具，从仓库根目录启动即可。
+
+### 改动
+- `_write_config` 输出的 `workdir` / `sample_path` / `golden_req` / `golden_ack` 改为**相对仓库根**路径（`os.path.relpath(..., ROOT)`，统一为正斜杠）。
+- `spawn()` 与 `cli()` 的子进程 `cwd` 设为仓库根 `ROOT`，使相对路径在 A/B 两侧一致解析。
+- 新增 `--prepare-only`（须配合 `--mode real`）：仅生成可移植 `t1-config.json` 后退出，**不触发远端未预启动守卫**，便于先生成配置再拷到 B。
+- 校验：已用 `--prepare-only --mode real` 生成配置并确认四路径均为相对路径；`cargo build --release --workspace --offline` 通过。
+
+### 对二机实测的影响
+- B 主机只需 `coldrevived.exe` + `aria2c` + 仓库源码/夹具（`tests/fixtures/t0/golden/` 等），从仓库根 `cd` 后启动守护进程，**无需任何路径编辑**。
+- 完整步骤见 [T1 README §4](tests/e2e/t1/README.md)。
+
 ## [2.4.40] - 2026-11-13 — cr-nat NAT 穿透栈落地（M2 合法前置）；G1 / M2 / S6 门禁不变
 
 > 范围声明：依用户指令（准备第二台物理主机并先实现 NAT 穿透）落地 `cr-nat` 穿透栈，**作为 M2 的合法前置**，
