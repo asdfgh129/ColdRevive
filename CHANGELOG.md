@@ -2,6 +2,15 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.42] - 2026-11-14 — T1 README 新增 Windows CMD 操作小节
+
+> 范围声明：仅文档补充，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
+> 目的：把 §4 的 bash 步骤完整翻译为 Windows 命令提示符（CMD）写法，便于用户在两台物理机实测时直接照抄。
+
+### 改动
+- `tests/e2e/t1/README.md` 新增 **§4.1 Windows CMD 操作（A/B 机具体指令）**，包含：前置防火墙 `netsh` 规则、① A 编译+`--prepare-only` 生成配置、② 三选一文件传输（U 盘 robocopy / 局域网 `\\B\C$` / OpenSSH `scp`）、③ B 从仓库根启动守护进程、④ A 正式跑 `--mode real`、收尾与本地提交。
+- 强调 Windows 差异：`set`（仅本窗口有效）、`%CD%`、`^` 续行、`py`/`python`、B 端 `VCRUNTIME140.dll` 缺失处理；因 config 已相对化，B 端**零路径编辑**。
+
 ## [2.4.41] - 2026-11-14 — T1 harness 配置可移植化（B 主机零路径编辑）
 
 > 范围声明：仅改 `tests/e2e/t1/t1_accept.py` 与文档，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
