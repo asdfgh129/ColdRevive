@@ -166,9 +166,19 @@ T1（局域网双机 + 真实 NAT）未执行，S3 真实双栈集成 + G3 矩�
 `/nat/advertise`、`/announce` 私网/公网分流；`coldrevived/src/bt.rs` 支持空 peer 列表应答。
 **PROTOCOL_VERSION=1、T0 golden 字段、CLI v1 既有命令返回值全部未变。**
 
-**证据**：[T2 本地接线验收](../../tests/e2e/t2/README.md) `10/10 PASS`（mock STUN / mock 中继桥 +
+**证据**：[T2 本地接线验收](../../tests/e2e/t2/README.md) `10/10 PASS`（W3.3 时为 mock STUN / mock 中继桥 +
 真实 UDP/TCP/HTTP/CLI 观测，`evidence_valid=false`）；T0 `--mode real` 回归 21/21；
-T1 `--self-test` 11/11；`cargo test --workspace --offline` 74/74。
+T1 `--self-test` 11/11；`cargo test --workspace --offline` 74/74（W3.3 时点）。
+
+> **【W3.4 补记 · 2026-11-14 / v2.4.49】**：上述数字是 W3.3 时点。**M2/W3.4 已落地**
+> `cr-nat::relay_server` 纯帧路由 + 独立 `coldrevive-relay` 二进制 +
+> `coldrevived/src/relay_sub.rs` 持有者订阅；T2 的 mock 中继桥已换成**真实中继服务端**
+> （`--mode local` 仍 10/10，T2-07 实测 `delivered=2 / dropped=0`），
+> `cargo test --workspace --offline` **80/80**，T0 `--mode real` 回归仍 21/21、
+> T1 `--self-test` 11/11。**真实中继服务端 ≠ 真实 NAT 环境**，新增
+> `S6.observations.w34_relay_2026_11_14` 的 `evidence_valid_for_pass=false`、
+> `matrix_coverage=0/4`、`s6_status_after=not_run`；**S3 / S5 / S6 状态仍全部 `not_run`**，
+> 下方「条件冻结边界仍未被突破」的结论原样有效。
 
 **§3 条件冻结的边界仍未被突破**：S3 / S5 / S6 的 `status` 全部保持 `not_run`，
 本轮所有新增证据的 `evidence_valid_for_pass` 均为 `false`。

@@ -21,6 +21,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "coldrevive-relay"
+version = "0.1.0"
+dependencies = [
+ "cr-nat",
+]
+
+[[package]]
 name = "coldrevived"
 version = "0.1.0"
 dependencies = [

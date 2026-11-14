@@ -192,14 +192,20 @@ ColdRevive
      M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**S3/S5/S6 状态仍 `not_run`，不得据 T2 判 G2 达标。**
      机读口径：`spikes.json` 的 `m2_progress`、`t1_progress.design_gaps`、`S6.observations.m2_wiring_2026_11_14`。
 
-- **下一步计划（M2/W3.4，2026-11-14 口径收尾后启动）**：从 `m2_progress.remaining_for_g2`
-  中选择**可在本机闭环**的一项 —— **生产中继服务端 + 持有者侧中继订阅线程**。
-  `cr-nat::relay` 目前只有客户端侧帧协议（`REGISTER` / `RELAY` / `DELIVERED` / `ACK`），
-  [T2 本地接线验收](../../tests/e2e/t2/README.md) 用的是本地 mock 桥；W3.4 将补服务端
-  （注册 / 目标路由 / ACK / 连接管理）与 `coldrevived` 的中继订阅线程，并把 T2 的 mock 桥
-  替换为真实服务端做回归。**不改动 S3/S5/S6 状态，不宣称 G2 达标。**
-  其余 G2 出口（S6 四类真实 NAT 含 CGNAT 矩阵、S3 双栈 + G3 矩阵、S5 真实拥塞链路 ≤5%、
-  M2 其余骨架 crate、BT/TCP 打洞）仍须真实多 NAT / 跨主机环境或独立工程量，不因 W3.4 结案。
+- **M2/W3.4 已落地（2026-11-14，v2.4.49）**：把 `remaining_for_g2` 中可在本机闭环的
+  「生产中继服务端 + 持有者侧订阅」收口 —— `cr-nat::relay_server`（纯帧路由、目标未注册只计
+  `dropped` 不伪造应答、1 MiB 帧长上限）、独立 `coldrevive-relay` 二进制、`coldrevived/src/relay_sub.rs`
+  持有者订阅线程（真实 UDP 往返取回真实 `WAKEUP_ACK`）、`relay::ephemeral_session_id` 一次性会话注册。
+  [T2](../../tests/e2e/t2/README.md) 的 mock 中继桥已换成真实服务端，`--mode local` **10/10 PASS**
+  （`delivered=2 / dropped=0`）、`--self-test` 3/3；`cargo test --workspace --offline` **80/80**；
+  T0 `--mode real` 回归 **21/21**。**`nat` 段缺省时订阅线程不启动，T0/T1 行为不变。**
+  机读见 `spikes.json` 的 `m2_progress.scope_done.w34_relay` 与
+  `S6.observations.w34_relay_2026_11_14`（`evidence_valid_for_pass=false`、`matrix_coverage=0/4`）。
+- **下一步计划（W3.5 候选，未开工）**：① **S6 四类真实 NAT（含 CGNAT）矩阵 harness** 的设计与
+  干跑（`s6/nat-matrix.md` 已有判据，实测数据仍须用户提供多 NAT 环境）；② 中继公网生产化
+  （TLS / 身份鉴权 / 多实例注册同步 / 限流 / 空闲超时 / 跨公网时延量测）；③ BT/TCP 打洞；
+  ④ M2 其余骨架 crate 的内置引擎与资源治理。**S3 / S5 / S6 状态仍 `not_run`，G2 未达标、未宣称**；
+  真实中继服务端不等于真实 NAT 环境，不得据 W3.4 回填 S6。
 
 ## 相关文档
 

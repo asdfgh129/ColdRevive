@@ -2,13 +2,14 @@
   "suite": "T2",
   "schema": "coldrevive.t2.config/v1",
   "version": 1,
-  "milestone": "M2/W3.3",
+  "milestone": "M2/W3.3（接线）+ W3.4（生产中继服务端）",
   "gate": "G2 (未宣称达标)",
-  "description": "M2 跨 NAT 复活路径接线验收（本地预检）。用本机回环 + mock STUN + mock 中继桥验证 cr-nat 接入的候选计划、单 socket 打洞、中继回退与 tracker peer 地址协商；evidence_valid 恒为 false，不构成 S6 四类 NAT 实测。",
+  "description": "M2 跨 NAT 复活路径接线验收（本地预检）。用本机回环 + mock STUN + 真实 coldrevive-relay 服务端验证 cr-nat 接入的候选计划、单 socket 打洞、中继回退与 tracker peer 地址协商；中继只做帧路由，WAKEUP_ACK 由持有者订阅线程经真实 UDP 取得。evidence_valid 恒为 false，不构成 S6 四类 NAT 实测。",
   "environment": {
     "scope": "local-loopback-mock-nat",
     "two_distinct_hosts": false,
     "real_nat_required": false,
+    "relay": "coldrevive-relay 真实二进制（--listen :0 --stats-file），非 mock 桥",
     "note": "T0/T1 的真实双机证据由各自 harness 提供；本套件只验证 M2 接线，不能替代 S6 四类 NAT 矩阵实测"
   },
   "bind": "0.0.0.0",
@@ -55,11 +56,12 @@
   },
   "bin": {
     "daemon_env": "COLDREVIVE_DAEMON",
-    "cli_env": "COLDREVIVE_CLI"
+    "cli_env": "COLDREVIVE_CLI",
+    "relay_env": "COLDREVIVE_RELAY"
   },
   "evidence": {
     "evidence_valid": false,
     "s6_status": "not_run",
-    "reason": "本机回环 + mock STUN/mock 中继，不是四类真实 NAT 环境"
+    "reason": "本机回环 + mock STUN + 真实中继二进制，但无真实 NAT，不是四类真实 NAT 环境"
   }
 }

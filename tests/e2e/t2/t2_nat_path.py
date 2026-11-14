@@ -4,17 +4,18 @@
 验证 `cr-nat` 接入 `coldrevived` 后：
   - STUN 探测复用唤醒监听 socket（`nat probe listener`）；
   - 端点候选计划 / 真实 UDP 打洞与唤醒复用同一 socket（`nat plan` / `nat wake`）；
-  - 中继回退经真实 TCP 帧 + 真实 UDP 转发（`nat wake ... relay`）；
+  - 中继回退经**真实 `coldrevive-relay` 服务端**（纯帧路由）+ 持有者侧订阅线程的真实 UDP 往返；
   - tracker 按请求方 IP 做私网/公网 peer 地址协商（`/announce` + `nat tracker`）；
   - M1 既有 `wake` / `find` 命令在 nat 打开时仍按 PROTO v1 工作。
 
-**红线**：本机回环 + mock STUN + mock 中继桥，报告 `evidence_valid=false`、
+**红线**：本机回环 + mock STUN + **真实中继二进制（无真实 NAT）**，报告 `evidence_valid=false`、
 `s6_status=not_run`。四类真实 NAT（含 CGNAT）可达率仍须 M2 多环境实测回填。
+`--self-test` 仍用纯 wire mock 验证帧编解码，不启动任何二进制。
 
 用法：
   python3 tests/e2e/t2/t2_nat_path.py --self-test
   python3 tests/e2e/t2/t2_nat_path.py --mode local
-环境变量 `COLDREVIVE_DAEMON` / `COLDREVIVE_CLI` 可覆盖二进制路径，
+环境变量 `COLDREVIVE_DAEMON` / `COLDREVIVE_CLI` / `COLDREVIVE_RELAY` 可覆盖二进制路径，
 缺省使用 `target/release/`。
 """
 
@@ -173,6 +174,70 @@ class MockRelay:
                                  + struct.pack("!I", len(reply)) + reply)
 
 
+class ProductionRelay:
+    """W3.4：真实 `coldrevive-relay` 二进制子进程（纯帧路由，不解析唤醒协议）。
+
+    `--listen 127.0.0.1:0` 由内核分配端口，`--stats-file` 每 200ms 落一份真实机读计数；
+    端口直接从 stats 的 `listen` 字段读取，既避免端口竞态，也证明服务端确实起来了。
+    本类不参与业务转发：WAKEUP_ACK 由 A 守护进程经订阅线程真实产生。
+    """
+
+    def __init__(self, binary: str, stats_path: Path, log_path: Path):
+        self.binary = binary
+        self.stats_path = stats_path
+        self.log_path = log_path
+        self.proc: subprocess.Popen | None = None
+        self.log: Any = None
+        self.addr = ""
+        self.port = 0
+
+    def read_stats(self) -> dict[str, Any] | None:
+        try:
+            data = json.loads(self.stats_path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def wait_for_stats(self, predicate: Callable[[dict[str, Any]], bool] | None = None,
+                       timeout: float = 8.0) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
+        last: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            last = self.read_stats()
+            if last is not None and (predicate is None or predicate(last)):
+                return last
+            time.sleep(0.05)
+        raise RuntimeError(f"中继服务端未就绪（最后计数={last}）")
+
+    def start(self) -> None:
+        self.log = self.log_path.open("wb")
+        self.proc = subprocess.Popen(
+            [self.binary, "--listen", "127.0.0.1:0",
+             "--stats-file", str(self.stats_path)],
+            stdout=self.log, stderr=subprocess.STDOUT, cwd=str(ROOT))
+        boot = self.wait_for_stats(timeout=10)
+        self.addr = str(boot.get("listen", ""))
+        if ":" not in self.addr:
+            raise RuntimeError("中继服务端未回报监听地址")
+        self.port = int(self.addr.rsplit(":", 1)[1])
+
+    def close(self) -> None:
+        if self.proc:
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=5)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+        if self.log:
+            try:
+                self.log.close()
+            except Exception:
+                pass
+
+
 # ---------------------------------------------------------------------------
 # Harness
 # ---------------------------------------------------------------------------
@@ -187,7 +252,7 @@ class T2:
         self.logs: list[Any] = []
         self.stop = threading.Event()
         self.stun: MockStun | None = None
-        self.relay: MockRelay | None = None
+        self.relay: ProductionRelay | None = None
         self.runtime_cfg = RUN_DIR / "t2-runtime.json"
         self.sample = RUN_DIR / "sample" / cfg["fixture"]["filename"]
         self.file_hash = ""
@@ -204,9 +269,15 @@ class T2:
                              str(ROOT / f"target/release/coldrevive-cli{suffix}"))
         return daemon, cli
 
+    def relay_binary(self) -> str:
+        suffix = ".exe" if os.name == "nt" else ""
+        return os.environ.get(self.cfg["bin"]["relay_env"],
+                              str(ROOT / f"target/release/coldrevive-relay{suffix}"))
+
     def prepare(self) -> None:
         daemon, cli = self.binaries()
-        for p in (daemon, cli):
+        relay = self.relay_binary()
+        for p in (daemon, cli, relay):
             if not Path(p).is_file():
                 raise RuntimeError(f"缺少二进制: {p}（先 cargo build --release --workspace --offline）")
         if RUN_DIR.exists():
@@ -224,7 +295,12 @@ class T2:
                  for n in self.cfg["nodes"].values()}
         self.stun = MockStun(ports, self.stop)
         self.stun.start()
-        self.relay = MockRelay(self.cfg["nodes"]["A"]["wake_udp_port"], self.stop)
+        # W3.4：用真实中继服务端替换 mock 桥；服务端只做帧路由，
+        # 业务 UDP 往返由 coldrevived 的持有者订阅线程完成。
+        self.relay = ProductionRelay(
+            self.relay_binary(),
+            RUN_DIR / "relay-stats.json",
+            RUN_DIR / "relay.log")
         self.relay.start()
 
         nodes = {}
@@ -435,25 +511,42 @@ class T2:
                     {"ack": ack, "probe": probe, "find": find_res})
         self.case("T2-06", "M1 wake/find 在 nat 打开时仍满足 PROTO v1 契约", c06)
 
-        # T2-07：中继回退（真实 TCP 帧 → 真实 UDP 转发 → A 的真实 ACK）
+        # T2-07：生产中继服务端 + 持有者订阅线程
+        # （真实 TCP 帧路由 → A 的真实 UDP 往返 → 真实 WAKEUP_ACK 回投）
+        relay_ready = True
+        try:
+            self.relay.wait_for_stats(
+                lambda s: s.get("registered", 0) >= 2, timeout=6)
+        except Exception as e:  # 订阅未就绪：如实 FAIL，不跳过、不合成
+            relay_ready = False
+            self.observations["relay_ready_error"] = str(e)
         wake_relay = self.cli("B", "nat", "wake", self.file_hash,
                               self.infohash_stub, "relay")
         self.observations["wake_relay"] = wake_relay
+        try:
+            relay_stats = self.relay.wait_for_stats(
+                lambda s: s.get("delivered", 0) >= 2, timeout=4)
+        except Exception:
+            relay_stats = self.relay.read_stats() or {}
+        self.observations["relay_stats"] = relay_stats
 
         def c07() -> tuple[bool, str, Any]:
             attempts = wake_relay.get("attempts", [])
-            ok = (wake_relay.get("ok") is True
+            ok = (relay_ready
+                  and wake_relay.get("ok") is True
                   and wake_relay.get("path") == "relay"
                   and wake_relay.get("ack_status") == "OK"
                   and len(attempts) == 1 and attempts[0].get("kind") == "relay"
                   and attempts[0].get("ok") is True
-                  and self.relay.relayed >= 1)
+                  and relay_stats.get("delivered", 0) >= 2
+                  and relay_stats.get("dropped", 0) == 0)
             return (ok,
                     f"path={wake_relay.get('path')}, "
-                    f"mock 中继真实转发 {self.relay.relayed} 次, "
+                    f"真实中继 delivered={relay_stats.get('delivered')} "
+                    f"dropped={relay_stats.get('dropped')}, "
                     f"ack={wake_relay.get('ack_status')}",
-                    wake_relay)
-        self.case("T2-07", "中继回退：真实 TCP 帧 + A 的真实 UDP 应答", c07)
+                    {"wake": wake_relay, "relay_stats": relay_stats})
+        self.case("T2-07", "生产中继服务端：真实帧路由 + 持有者订阅的真实 WAKEUP_ACK", c07)
 
         # T2-08：tracker 私网/公网 peer 地址协商
         t_private = self.cli("A", "nat", "tracker", "127.0.0.1")
@@ -530,9 +623,13 @@ class T2:
             "s6_status": "not_run",
             "g2_claim": False,
             "protocol_version": self.cfg["protocol"]["version"],
-            "mock": {
+            "environment_detail": {
+                "stun": "mock RFC 5389 服务器（本地回环）",
                 "stun_responses": self.stun.responses if self.stun else 0,
-                "relay_forwarded": self.relay.relayed if self.relay else 0,
+                "relay_server": "coldrevive-relay 真实二进制（纯帧路由，无业务解析）",
+                "relay_stats": self.observations.get("relay_stats", {}),
+                "holder_subscription": "coldrevived/src/relay_sub.rs（真实 UDP 往返）",
+                "real_nat": False,
             },
             "cases": self.cases,
             "observations": self.observations,

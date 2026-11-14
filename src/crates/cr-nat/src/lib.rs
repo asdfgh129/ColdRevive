@@ -13,6 +13,7 @@ pub mod holepunch;
 pub mod natpmp;
 pub mod pcp;
 pub mod relay;
+pub mod relay_server;
 pub mod stun;
 pub mod upnp;
 
@@ -20,6 +21,9 @@ pub use classify::{classify_cone_subtype, classify_from_mappings, cgnat_suspecte
 pub use endpoint::{
     build_plan, is_public_ipv4, local_advertisement, node_id_16, split_mapped,
     tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, PeerAdvertisement,
+};
+pub use relay_server::{
+    read_frame, write_frame, RelayHandle, RelayServer, RelayStats, DEFAULT_MAX_FRAME, HEADER_LEN,
 };
 
 /// S6 判据要求的 NAT 类型矩阵（四类 + CGNAT）。

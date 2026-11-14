@@ -972,6 +972,19 @@
           "note": "S6 判据是四类真实 NAT（含 CGNAT）逐类实测可达率；T2 无任何真实 NAT，S6.status 保持 not_run，不得据此宣称 G2 达标。R-04 ≥70% 阈值仍未判定",
           "evidence_valid_for_pass": false,
           "s6_status_after": "not_run"
+        },
+        "w34_relay_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.4 生产中继服务端与持有者订阅落地。补齐可信中继部署组件，但仍不是 NAT 矩阵实测",
+          "implementation": "cr-nat::relay_server 纯帧路由 + coldrevive-relay 独立二进制 + coldrevived/src/relay_sub.rs 持有者订阅；relay::ephemeral_session_id 一次性会话注册",
+          "harness": "tests/e2e/t2/t2_nat_path.py --mode local 10/10 PASS（mock 中继桥已替换为真实服务端）；--self-test 3/3 仅验帧编解码",
+          "report": "tests/e2e/t2/reports/t2-20261114T121322Z-local.json",
+          "environment": "本机回环 + mock RFC 5389 STUN + 真实 coldrevive-relay 二进制（--listen 127.0.0.1:0 --stats-file）；无真实 NAT",
+          "observations": "真实中继计数 connections=3 / registered=3 / delivered=2 / dropped=0 / rejected=0；T2-07 强制 relay 路径下 B 收到 A 守护进程经真实 UDP 往返产生的 WAKEUP_ACK；T0 --mode real 21/21 回归（nat 段缺省时订阅线程不启动）",
+          "matrix_coverage": "0 / 4 类真实 NAT（真实中继不等于真实 NAT 环境）",
+          "note": "S6 判据仍是四类真实 NAT（含 CGNAT）逐类实测可达率；本轮只把中继从 mock 升级为可部署组件，S6.status 保持 not_run，不得据此宣称 G2 达标。R-04 ≥70% 阈值仍未判定",
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run"
         }
       }
     },
@@ -1138,23 +1151,24 @@
       "tracker_peer_negotiation": "/announce 按请求方 IP 分流：私网/回环返回私网 peer；公网请求方且无真实公网 BT 映射时返回空 peer 列表，绝不泄漏 RFC1918 地址；bt.rs 新增 tracker_response_optional",
       "cr_nat_additions": "endpoint.rs（端点/候选计划/tracker 决策，纯计算）+ holepunch.rs（NAT_PUNCH 帧、单 socket 打洞、relay_wake）+ stun.rs probe_with（可插拔接收）+ choose_strategy 抽出；修正 Traversal::run 的 CGNAT 启发式误判与 rsplit(':') 取端口缺陷",
       "config": "cr-core Config 新增可选 nat 段（enabled / stun_servers / gateway / upnp_location / relay / bt_external）；缺省时 T0/T1 行为逐字节不变",
-      "contract_invariants": "PROTOCOL_VERSION=1、T0 golden 字段集合、CLI v1 既有命令返回值均未改；NAT_PUNCH 是新增控制面帧，不属于 golden"
+      "contract_invariants": "PROTOCOL_VERSION=1、T0 golden 字段集合、CLI v1 既有命令返回值均未改；NAT_PUNCH 是新增控制面帧，不属于 golden",
+      "w34_relay": "W3.4 生产中继服务端：新增 cr-nat::relay_server（纯帧路由 REGISTER/RELAY/DELIVERED/ACK，目标未注册只计 dropped 不伪造应答，单帧 1 MiB 上限）、独立二进制 coldrevive-relay（--listen/--stats-file/--max-frame）、coldrevived/src/relay_sub.rs 持有者订阅线程（DELIVERED 负载经真实 UDP 送进本守护进程唤醒端口，再把真实 WAKEUP_ACK 回投来源会话 id）；relay::ephemeral_session_id 为请求侧生成一次性注册 id，避免与订阅连接抢占服务端注册表；relay.rs 增 set_read_timeout/write_raw。T2 的 mock 中继桥已替换为真实服务端，--self-test 仍用纯 wire mock 验证帧编解码。"
     },
     "validation": {
-      "cargo_test_workspace_offline": "74 passed / 0 failed（基线 55 + 本轮 19）",
-      "t2_local_preflight": "tests/e2e/t2/t2_nat_path.py --mode local：10/10 PASS，evidence_valid=false，s6_status=not_run，g2_claim=false",
-      "t2_self_test": "3/3 PASS（mock STUN / 中继 wire 自检）",
-      "t2_report": "tests/e2e/t2/reports/t2-20261114T092808Z-local.json（gitignored 本地证据）",
-      "t0_regression": "2026-11-14 --mode real 复跑 21/21 PASS、evidence_valid=true（顺带修正 t0_cli.py 对 download 的 10s 观测超时为 190s，断言不变）",
+      "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
+      "t2_local_preflight": "2026-11-14 W3.4 后 --mode local 10/10 PASS（真实 coldrevive-relay 二进制 + 持有者订阅）；T2-07 实测 relay delivered=2 / dropped=0 / rejected=0、ack_status=OK；evidence_valid=false，s6_status=not_run，g2_claim=false",
+      "t2_self_test": "3/3 PASS（--self-test 仅用纯 wire mock 验证 STUN / 中继帧编解码，不启动任何二进制）",
+      "t2_report": "tests/e2e/t2/reports/t2-20261114T121322Z-local.json（gitignored 本地证据）",
+      "t0_regression": "2026-11-14 W3.4 后 --mode real 复跑 21/21 PASS、evidence_valid=true；T0 配置无 nat 段，订阅线程不启动，行为不变（顺带修正 t0_cli.py 对 download 的 10s 观测超时为 190s，断言不变）",
       "t1_self_test_regression": "11/11 PASS（合成观测自检，evidence_valid=false）",
-      "t2_environment": "本机回环 + mock STUN + mock 中继桥；真实 UDP/TCP/HTTP/CLI 观测，但无真实 NAT，不构成 S6 样本"
+      "t2_environment": "本机回环 + mock STUN + 真实 coldrevive-relay 服务端；真实 UDP/TCP/HTTP/CLI 观测，但无真实 NAT，不构成 S6 样本"
     },
     "remaining_for_g2": [
       "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；须用户提供真实多 NAT 环境",
       "S3 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵",
       "S5 真实拥塞链路（tc/netem 或跨主机）+ rqbit uTP 前台劣化 ≤5% 实测",
       "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",
-      "生产中继服务端 + 持有者侧中继订阅线程（当前 cr-nat::relay 只有客户端侧）",
+      "中继生产化收尾：公网部署、TLS / 身份鉴权（当前 REGISTER 仅校验负载回显，无凭证）、多实例注册同步、连接限流与空闲超时、跨公网中继时延量测（W3.4 已交付可部署的帧路由核心 + 持有者订阅，本机回环验证）",
       "BT/TCP 打洞（当前 tracker 只使用 internal_port==bt_port 的真实显式映射）",
       "M4 前 R-02 拒绝率复审与 R-11 书面法务意见"
     ],
@@ -1162,7 +1176,8 @@
       "s3_s5_s6_status": "unchanged — 全部 not_run",
       "g2_claim": false,
       "no_auto_pass": "spike 结论仍由实验执行人据证据手工回填；脚本/工具不得自动置 pass",
-      "no_false_claim": "T2 的 10/10 PASS 只证明接线正确性，不得据此宣称 S6/G2 达标"
+      "no_false_claim": "T2 的 10/10 PASS 只证明接线正确性，不得据此宣称 S6/G2 达标",
+      "w34_relay_note": "真实中继服务端只补齐可信中继的部署组件，仍非四类 NAT 可达率实测；S6.status 保持 not_run，matrix_coverage 仍为 0/4"
     },
     "spike_status_changed": false
   },
@@ -1259,7 +1274,7 @@
       "scope": "单机真实 socket 全链路预检，不构成 T1 / G1 证据"
     },
     "design_gaps": [
-      "【2026-11-14 接线层已闭合】cr-nat 已于 2026-11-13 在库层落地，并于 2026-11-14 接入 M1 CLI 复活路径：coldrevived/src/nat_path.rs + nat CLI + /nat/advertise + /announce 私网/公网分流；STUN 复用唤醒监听 socket，打洞与唤醒复用同一 UDP socket，中继回退经真实帧；T2 本地预检 10/10 PASS（evidence_valid=false）。剩余缺口已收窄为：S6 四类真实 NAT（含 CGNAT）可达率矩阵实测、生产中继服务端与持有者侧订阅、BT/TCP 打洞——均须 M2 真实多 NAT 环境，S6.status 保持 not_run",
+      "【2026-11-14 接线层已闭合】cr-nat 已于 2026-11-13 在库层落地，并于 2026-11-14 接入 M1 CLI 复活路径：coldrevived/src/nat_path.rs + nat CLI + /nat/advertise + /announce 私网/公网分流；STUN 复用唤醒监听 socket，打洞与唤醒复用同一 UDP socket，中继回退经真实帧；T2 本地预检 10/10 PASS（evidence_valid=false）。剩余缺口已收窄为：S6 四类真实 NAT（含 CGNAT）可达率矩阵实测、生产中继服务端与持有者侧订阅、BT/TCP 打洞——均须 M2 真实多 NAT 环境，S6.status 保持 not_run〔2026-11-14 W3.4 补记：生产中继服务端 cr-nat::relay_server + coldrevive-relay 二进制 + coldrevived/src/relay_sub.rs 持有者订阅已落地，T2 已把 mock 桥换成真实服务端并 10/10 PASS（delivered=2 / dropped=0）；剩余为 S6 四类 NAT 矩阵、BT/TCP 打洞与中继公网生产化（TLS/鉴权/多实例），S6.status 仍 not_run〕",
       "T1-08 只做单侧 NAT 特征取证，四类 NAT 矩阵属 M2 / S6",
       "B 主机需预启动守护进程与第三方下载器，harness 不假装能远程拉起"
     ],

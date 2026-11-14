@@ -6,15 +6,15 @@
 
 | 项 | 值 |
 | :--- | :--- |
-| 当前阶段 | **M2 进行中 / W3.3 连通性**：G1 已通过（2026-11-14），M2 门禁解除并已开工；**G2 未宣称达标** |
+| 当前阶段 | **M2 进行中 / W3.4 连通性**：G1 已通过（2026-11-14），M2 门禁解除；W3.3 接线 + W3.4 生产中继服务端已落地；**G2 未宣称达标** |
 | 代码仓库 | **https://github.com/asdfgh129/ColdRevive**（公开） |
 | 在线文档 | **https://asdfgh129.github.io/ColdRevive/**（GitHub Pages 自动部署） |
-| 文档版本 | v2.4.48（门禁口径全量收尾 + T2 编号消歧 + 文档站重建）；上一版 v2.4.47 = M2/W3.3 cr-nat 接入复活路径 + T2 本地接线验收 |
+| 文档版本 | v2.4.49（M2/W3.4 生产中继服务端 + 持有者订阅 + T2 换用真实中继）；v2.4.48 = 门禁口径收尾，v2.4.47 = W3.3 cr-nat 接入复活路径 |
 | M1 / G1 | T0 `--mode real` **21/21 PASS**（2026-11-14 复跑回归仍 21/21）；T1 `--mode real` 双机（A=192.168.1.210 / B=192.168.1.209）**11/11 PASS、`evidence_valid=true`**（2026-11-14）；两者共同构成 **G1 通过**证据 |
-| M2 状态 | **已开工**：`cr-nat` 已接入 `coldrevived` 的跨 NAT UDP 唤醒（候选计划 + 单 socket 打洞 + 中继回退）与 tracker peer 地址协商；新增 `nat` CLI 子命令与 `/nat/advertise`。[T2 本地接线验收](tests/e2e/t2/README.md) `10/10 PASS`、`evidence_valid=false`。**S6.status 仍 `not_run`，不宣称 G2 达标**（四类 NAT 含 CGNAT 实测须真实多 NAT 环境） |
-| 代码基线 | 根 `Cargo.toml` + 17 crate + 4 bin，std-only 零第三方依赖；`cargo test --workspace --offline` **74 passed / 0 failed**；PROTOCOL_VERSION 仍为 1、T0 golden 未动 |
+| M2 状态 | **进行中**：`cr-nat` 已接入 `coldrevived` 的跨 NAT UDP 唤醒（候选计划 + 单 socket 打洞 + 中继回退）与 tracker peer 地址协商；新增 `nat` CLI 子命令与 `/nat/advertise`。**W3.4**：`cr-nat::relay_server` 纯帧路由 + 独立 `coldrevive-relay` 二进制 + `coldrevived` 持有者订阅线程已落地，[T2](tests/e2e/t2/README.md) 的 mock 中继桥已换成真实服务端（10/10 PASS、`delivered=2/dropped=0`，但 `evidence_valid=false`）。**S6.status 仍 `not_run`，不宣称 G2 达标**（四类 NAT 含 CGNAT 实测须真实多 NAT 环境） |
+| 代码基线 | 根 `Cargo.toml` + 17 crate + **5 bin**（新增 `coldrevive-relay`），std-only 零第三方依赖；`cargo test --workspace --offline` **80 passed / 0 failed**；PROTOCOL_VERSION 仍为 1、T0 golden 未动 |
 | S3 / S5 / S6 | 均保持 `not_run`（G0 条件冻结的 M1/M2 必测回填项）：S3 待真实双栈集成 + G3 矩阵；S5 待真实拥塞链路 ≤5% 实测；S6 待 M2 四类 NAT 可达率实测 |
-| 验收骨架 | [T0](tests/e2e/t0/README.md) 21/21 real · [T1](tests/e2e/t1/README.md) 11/11 real · [T2](tests/e2e/t2/README.md) 10/10 本地预检（非 S6 证据）；`--self-test` 恒 `evidence_valid=false` |
+| 验收骨架 | [T0](tests/e2e/t0/README.md) 21/21 real · [T1](tests/e2e/t1/README.md) 11/11 real · [T2](tests/e2e/t2/README.md) 10/10 本地预检（真实中继服务端、无真实 NAT，非 S6 证据）；`--self-test` 恒 `evidence_valid=false` |
 | M0 / 门禁 | [G0 条件冻结](docs/06-plan/G0-REVIEW.md)：S1/S2/S4/S7/S8 `pass`，S3/S5/S6 `not_run`；机读进度 `tests/spikes/spikes.json` 的 `m1_progress` / `m2_progress` |
 | 文档入口 | **[docs/index.html](docs/index.html)**（浏览器打开） / [docs/README.md](docs/README.md)（Markdown 导航） |
 | 原始想法 | [docs/09-archive/chat.md](docs/09-archive/chat.md) |
@@ -55,7 +55,7 @@ ColdRevive/
 │   └── 09-archive/            归档基线     chat.md / v2.0 合并文档
 ├── Cargo.toml / Cargo.lock    Workspace 根清单（M1 建立，std-only 零第三方依赖）
 ├── src/crates/                17 个 crate（M1 七个真实实现 + M2/M3/M4 骨架；cr-nat 已落地穿透栈，余 M2 crate 仍骨架）
-├── src/bins/                  coldrevived / coldrevive-cli / coldrevive-agent / coldrevive-nat（NAT 穿透诊断，M2 合法前置）
+├── src/bins/                  coldrevived / coldrevive-cli / coldrevive-agent / coldrevive-nat / coldrevive-relay（W3.4 生产中继服务端）
 ├── tests/                     测试（unit / integration / e2e / fixtures / spikes）
 │   ├── e2e/t0/                T0 双节点验收（21 条用例、CLI 契约、观测层、断言引擎、JSON 报告）
 │   ├── e2e/t1/                T1 双机 + 真实 NAT 验收（10 用例 / 40 断言、可达性探针、双机启动契约）

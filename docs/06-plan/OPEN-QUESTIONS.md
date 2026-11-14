@@ -105,6 +105,7 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 > **2026-11-14 补充（Q4 仍未结案）**：G1 已通过、M2 已开工；`cr-nat` 已接入复活路径
 > （候选计划 / 单 socket 打洞 / 中继回退 / tracker 私网-公网地址分流），
 > [T2 本地接线验收](../../tests/e2e/t2/README.md) 10/10 PASS。但 T2 用的是本机回环 +
-> mock STUN + mock 中继，`evidence_valid=false`，**不是新的 NAT 样本**。
+> mock STUN + 中继（W3.3 为 mock 桥，**W3.4 起为真实 `coldrevive-relay` 二进制**），
+> `evidence_valid=false`，**不是新的 NAT 样本**：真实中继组件不等于真实 NAT 环境。
 > 2026-11-14 的 T1-08 现场 STUN 探针仍是同一出口单样本（cone 类、UPnP/NAT-PMP 不可用）。
 > S6 四类 NAT（含 CGNAT）实测与 R-04 ≥70% 阈值判定仍待用户提供多 NAT 环境后执行。

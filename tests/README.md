@@ -1,6 +1,6 @@
 # 测试目录（tests/）
 
-> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。Cargo Workspace 现有 74 个内联 Rust 单测；
+> 测试策略、矩阵与门禁见 [TEST 测试计划](../docs/05-quality/TEST.md)。Cargo Workspace 现有 80 个内联 Rust 单测；
 > T0 真实链路 21/21、T1 `--mode real` 双物理主机 11/11（均 `evidence_valid=true`）→ **G1 于 2026-11-14 通过**；
 > M2 门禁解除并已开工，新增 T2 本地接线验收 10/10（`evidence_valid=false`，非 S6/G2 证据）。
 > 〔2026-11-13 历史口径：T1 真实验收 `BLOCKED`、G1 未通过、M2 `blocked_by_G1`，已被下方更正说明取代。〕
@@ -14,7 +14,7 @@
 | `e2e/` | 双节点 / 多节点真实网络场景、旧客户端兼容性矩阵 | 端到端与兼容性 |
 | `e2e/t0/` | **T0 单机回环双节点验收**：用例清单、环境编排、观测适配器、CLI 契约、断言引擎、JSON 报告 | 端到端（G1 门禁证据） |
 | `e2e/t1/` | **T1 双机 + 真实 NAT 验收**：跨主机启动契约、`t1_netprobe.py` 可达性探针；2026-11-14 双物理主机 `--mode real` **11/11 PASS** | 端到端（**G1 门禁证据，已取得**） |
-| `e2e/t2/` | **M2/W3.3 本地接线验收**：10 用例，同机双进程 + mock STUN / mock 中继桥，验证 `cr-nat` 是否真正接入复活路径 | 接线预检（`evidence_valid=false`，**非 S6 / G2 证据**） |
+| `e2e/t2/` | **M2/W3.3–W3.4 本地接线验收**：10 用例，同机双进程 + mock STUN + **真实 `coldrevive-relay` 服务端**（W3.4 起），验证 `cr-nat` 是否真正接入复活路径 | 接线预检（`evidence_valid=false`，**非 S6 / G2 证据**） |
 | `spikes/` | **M0 Spike 实验包**：S1–S8 判据与状态、`m0_preflight.py` 就绪度检查、结论回填规则 | 选型验证（G0 门禁） |
 | `fixtures/` | 固定种子文件、样本文件、golden 协议报文、`T0～T3` 环境配置 | 测试数据 |
 | `fixtures/t0/` | **T0 确定性样本、PROTO v1 唤醒报文 golden** | 测试数据 |
@@ -76,13 +76,16 @@ python3 tests/e2e/t1/t1_accept.py --mode real --refresh-nat                     
 cargo build --release --workspace --offline
 python3 tests/e2e/t2/t2_nat_path.py --self-test      # mock wire 自检，3/3 PASS，不需二进制
 python3 tests/e2e/t2/t2_nat_path.py --mode local     # 完整 10 条用例，10/10 PASS
+# 可选：COLDREVIVE_RELAY 覆盖真实中继服务端二进制路径
 ```
 
 [T2 README](e2e/t2/README.md)：同一主机 A/B 双守护进程（18800-18802 / 18900-18902）+ mock STUN
-+ mock 中继桥，全部业务应答由**真实**守护进程经真实 UDP/TCP/HTTP/CLI 产生；验证端点通告、
-候选计划、单 socket 打洞、中继回退、tracker 私网/公网 peer 协商、M1 命令无回归、无候选时如实失败。
++ **真实 `coldrevive-relay` 二进制**（纯帧路由 `--stats-file` 落真实计数）+ `coldrevived` 持有者订阅线程。
+全部业务应答由**真实**守护进程经真实 UDP/TCP/HTTP/CLI 产生；验证端点通告、候选计划、
+单 socket 打洞、中继回退（T2-07 实测 `delivered=2 / dropped=0`）、tracker 私网/公网 peer 协商、
+M1 命令无回归、无候选时如实失败。`--self-test` 仍用纯 wire mock，只验帧编解码。
 报告固定 **`evidence_valid=false` / `s6_status=not_run` / `g2_claim=false`**，
-**只证明接线，不证明四类真实 NAT 可达率**。
+**只证明接线，不证明四类真实 NAT 可达率**（真实中继服务端 ≠ 真实 NAT 环境）。
 
 ## M0 Spike 实验包
 

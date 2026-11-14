@@ -11,6 +11,7 @@
 mod bt;
 mod commands;
 mod nat_path;
+mod relay_sub;
 
 use cr_core::{Config, Json};
 use cr_indexer::inspect as inspect_file;
@@ -132,6 +133,9 @@ fn main() {
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
     }
+    // M2/W3.4：nat 段启用且配置了中继时，本节点作为持有者订阅中继帧。
+    // nat 缺省时完全不启动，T0/T1 行为逐字节不变。
+    relay_sub::spawn(&cfg);
 
     if node_id == "A" {
         if let Err(e) = bootstrap_holder(&cfg, &mut st) {

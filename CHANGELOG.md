@@ -2,6 +2,56 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.49] - 2026-11-14 — M2/W3.4：生产中继服务端 + 持有者订阅，T2 换用真实中继
+
+> 范围声明：G1 已通过、M2 进行中。本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，
+> `g2_claim=false`、`spike_status_changed=false`；`PROTOCOL_VERSION=1`、T0 golden 与 CLI v1 契约未改。
+> 新增二进制 `coldrevive-relay`，workspace = 17 crate + **5 bin**，仍 std-only 零第三方依赖。
+
+### 背景
+- `m2_progress.remaining_for_g2` 记录：「生产中继服务端 + 持有者侧中继订阅线程（当前 `cr-nat::relay` 只有客户端侧）」。
+- W3.3 的 T2-07 靠本地 `MockRelay` **在服务端里直接发 UDP 到 A 的唤醒端口**才跑通，服务端掺了业务逻辑，不可部署。
+
+### 实现
+- **`cr-nat/src/relay_server.rs`（新）**：与业务无关的 TCP 帧路由器。`REGISTER` 校验负载回显并回 `ACK`；
+  `RELAY` 按负载前 16 字节目标 id 查注册表投递 `DELIVERED`（`node` = **真实发送方**注册 id）；
+  目标未注册 / 写入失败**只计 `dropped`，绝不伪造应答**；1 MiB 单帧上限；读写分离使 reader 阻塞不阻碍投递。
+  `RelayStats` 提供 `connections / registered / delivered / dropped / rejected` 真实计数。
+- **`coldrevive-relay`（新 bin）**：独立部署入口 `--listen / --stats-file / --max-frame`；
+  端口 `0` 时首行回显 `RELAY_LISTEN=`，stats 每 200 ms 落机读 JSON。
+- **`coldrevived/src/relay_sub.rs`（新）**：`nat.enabled && nat.relay` 时启动持有者订阅；把 `DELIVERED`
+  负载经**真实 UDP** 送进本守护进程唤醒端口，取回**真实 `WAKEUP_ACK`** 后 `RELAY` 回投来源 id。
+  UDP 无应答时跳过、不合成。`nat` 段缺省时完全不启动（T0/T1 行为不变）。
+- **`relay.rs` / `holepunch.rs`**：新增 `ephemeral_session_id()`，请求侧用一次性注册 id，避免与自身持有者
+  订阅连接抢占服务端 `HashMap<node_id, conn>` 表项；新增 `RelayConn::set_read_timeout` / `write_raw`。
+- **`tests/e2e/t2/`**：`--mode local` 改用真实 `coldrevive-relay` 子进程替换 mock 桥，端口从 stats 回读；
+  T2-07 断言改为读取真实服务端计数（`delivered >= 2 && dropped == 0`）+ A 的真实 ACK。
+  `--self-test` 仍用纯 wire mock 验帧编解码、不启二进制。报告新增 `environment_detail.relay_stats`。
+
+### 验证（全部真实观测）
+- `cargo test --workspace --offline` **80 passed / 0 failed**（W3.3 基线 74 + 新增 6：`relay_server`
+  4 项真实 TCP 路由 / 未注册丢弃 / 畸形注册拒绝 / 帧长上限，`relay_sub` 2 项）。
+- **T2 `--mode local` 10/10 PASS**；T2-07 实测 `connections=3 / registered=3 / delivered=2 /
+  dropped=0 / rejected=0`、`ack_status=OK`。报告
+  `tests/e2e/t2/reports/t2-20261114T121322Z-local.json`（`evidence_valid=false` /
+  `s6_status=not_run` / `g2_claim=false`）。`--self-test` 3/3。
+- **T0 `--mode real` 回归 21/21 PASS、`evidence_valid=true`**（T0 配置无 `nat` 段，订阅线程不启动）；
+  T1 `--self-test` 11/11；`scripts/build_docs.py --check` PASS。
+
+### 口径同步
+- `spikes.json`：`m2_progress.scope_done.w34_relay`、validation 全量回填、
+  `S6.observations.w34_relay_2026_11_14`（`evidence_valid_for_pass=false`、`matrix_coverage=0/4`、
+  `s6_status_after=not_run`）、`t1_progress.design_gaps[0]` 补 W3.4 补记；`remaining_for_g2` 中
+  「生产中继服务端」改为「中继公网生产化收尾（TLS / 鉴权 / 多实例 / 限流 / 时延）」。
+  **S1–S8 的 `status` 一个未改。**
+- ROADMAP §6 把「下一步计划 W3.4」更新为已落地；T2 README 增 §8 真实帧流图；
+  README / TEST / tests README / spikes README 同步 5 bin、80 单测、真实中继口径。
+
+### 剩余（G2 出口，未结案）
+S6 四类真实 NAT（含 CGNAT）可达率矩阵、S3 双栈 + G3 矩阵、S5 真实拥塞链路 ≤5%、
+M2 其余骨架 crate、BT/TCP 打洞、中继公网生产化（TLS / 身份鉴权 / 多实例注册同步 / 限流 /
+跨公网时延）。**真实中继服务端不是真实 NAT 环境，`S6.status` 仍 `not_run`，G2 未达标、未宣称。**
+
 ## [2.4.48] - 2026-11-14 — 门禁口径全量收尾 + T2 编号消歧 + 文档站重建
 
 > 范围声明：纯文档 / 构建口径收尾，**不含新的实验结论**。

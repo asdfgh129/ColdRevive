@@ -121,9 +121,12 @@ python3 tests/spikes/m0_preflight.py --json
 > **2026-11-14 补记（M2/W3.3）**：`cr-nat` 已接入 `coldrevived` 复活路径（端点候选计划、
 > 单 socket 打洞、中继帧回退、tracker 私网/公网 peer 分流），T1 `--mode real` 现场 STUN 探针与
 > [T2 本地接线验收](../e2e/t2/README.md) 10/10 均已落地。但二者仍是**同一 NAT 出口的单样本 /
-> 本机 mock 环境**：`S6.observations` 新增 `m2_wiring_2026_11_14`，标注
+> 本机无真实 NAT 环境**：`S6.observations` 新增 `m2_wiring_2026_11_14`，标注
 > `evidence_valid_for_pass=false`、`matrix_coverage = 0 / 4 类真实 NAT`。
-> **`S6.status` 保持 `not_run`**，R-04 ≥70% 阈值未判定；四类 NAT + CGNAT 矩阵仍须 M2 在真实
+> **2026-11-14 W3.4 补记**：中继已由 mock 桥换成真实 `coldrevive-relay` 服务端 +
+> 持有者订阅线程，`S6.observations` 再增 `w34_relay_2026_11_14`（真实中继计数
+> `delivered=2 / dropped=0`，但 `evidence_valid_for_pass=false`、`matrix_coverage=0/4`）。
+> **真实组件 ≠ 真实 NAT 环境**，`S6.status` 保持 `not_run`，R-04 ≥70% 阈值未判定；四类 NAT + CGNAT 矩阵仍须 M2 在真实
 > 多 NAT 环境逐类实测后由实验执行人手工回填，**脚本与 harness 不得自动置 `pass`**。
 
 ## 6. 结论回填规则

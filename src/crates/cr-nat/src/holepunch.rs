@@ -7,7 +7,7 @@
 //! `PROTOCOL_VERSION` 与 T0 报文契约保持不变（ADR / 契约纪律）。
 
 use crate::endpoint::Endpoint;
-use crate::relay::{FrameKind, RelayClient, NODE_ID_LEN};
+use crate::relay::{ephemeral_session_id, FrameKind, RelayClient, NODE_ID_LEN};
 use std::net::UdpSocket;
 use std::time::{Duration, Instant};
 
@@ -162,7 +162,11 @@ pub fn relay_wake(
 ) -> Result<Vec<u8>, String> {
     let client = RelayClient::new(relay.to_string());
     let mut conn = client.connect(timeout)?;
-    conn.register(self_id)?;
+    // W3.4：请求侧用一次性会话 id 注册，避免与本节点自身的「持有者订阅连接」
+    // 抢占服务端注册表中同一个 node_id 表项；服务端会把该会话 id 作为
+    // DELIVERED.node 交给持有者，持有者据此把真实 WAKEUP_ACK 回投到本连接。
+    let session = ephemeral_session_id(self_id);
+    conn.register(&session)?;
     conn.send_relay(peer_id, wake)?;
     let deadline = Instant::now() + timeout;
     loop {

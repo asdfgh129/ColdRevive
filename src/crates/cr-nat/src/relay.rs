@@ -1,8 +1,9 @@
 //! 中继传输（LowID 回退），std-only。
 //!
 //! 当所有端口映射（UPnP/NAT-PMP/PCP）与预测打洞都失败时，退化到经可信中继服务器转发
-//! 唤醒/对等消息。本模块实现**客户端侧**的帧协议与连接管理；中继服务端为部署侧组件，
-//! 不在本 crate 内实现（仅提供 mock 用于单测）。
+//! 唤醒/对等消息。本模块实现**客户端侧**的帧协议与连接管理；W3.4 起中继服务端
+//! 由本 crate 的 [`crate::relay_server`] 提供（真实帧路由器，与业务无关），
+//! 独立部署入口为 `coldrevive-relay` 二进制。
 //!
 //! 帧格式（大端）：1 字节 kind + 16 字节 node id + 4 字节长度 + 负载。
 //!   kind=0x01 REGISTER  负载 = 16 字节节点 id
@@ -12,9 +13,48 @@
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const NODE_ID_LEN: usize = 16;
+
+/// 为一次唤醒请求生成**临时会话 id**（std-only，无 rand 依赖）。
+///
+/// 持有者订阅线程用稳定 node id 注册，请求侧若也用同一个稳定 id 注册，会与自己的
+/// 订阅连接抢占服务端注册表里 `HashMap<node_id, conn>` 的唯一表项。改用一次性会话 id 后：
+/// 请求侧注册的 id 唯一；服务端把该 id 作为 `DELIVERED.node`（来源）交给持有者，
+/// 持有者据此把真实 WAKEUP_ACK 准确回投到这次请求的 TCP 连接。
+pub fn ephemeral_session_id(self_id: &[u8; NODE_ID_LEN]) -> [u8; NODE_ID_LEN] {
+    static SEQ: AtomicU64 = AtomicU64::new(1);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id() as u64;
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in self_id
+        .iter()
+        .chain(nanos.to_be_bytes().iter())
+        .chain(seq.to_be_bytes().iter())
+        .chain(pid.to_be_bytes().iter())
+    {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100_0000_01b3);
+    }
+    let mut out = [0u8; NODE_ID_LEN];
+    for (i, chunk) in out.chunks_mut(8).enumerate() {
+        let v = h
+            .rotate_left((i as u32) * 17)
+            .wrapping_add(seq.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        let bytes = v.to_be_bytes();
+        let n = chunk.len().min(bytes.len());
+        chunk[..n].copy_from_slice(&bytes[..n]);
+    }
+    // 最高位标记为「临时会话」，与稳定 node id（可打印标签）区分，避免任何碰撞。
+    out[0] |= 0x80;
+    out
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameKind {
@@ -146,6 +186,17 @@ impl RelayConn {
         self.stream
             .write_all(&frame.encode())
             .map_err(|e| e.to_string())?;
+        self.stream.flush().map_err(|e| e.to_string())
+    }
+
+    /// 长连接订阅（持有者侧）用 `None` 阻塞等待 DELIVERED；探测类客户端用短超时。
+    pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), String> {
+        self.stream.set_read_timeout(timeout).map_err(|e| e.to_string())
+    }
+
+    /// 仅供协议一致性单测发送畸形/自定义帧；生产路径只用 `register` / `send_relay`。
+    pub fn write_raw(&mut self, data: &[u8]) -> Result<(), String> {
+        self.stream.write_all(data).map_err(|e| e.to_string())?;
         self.stream.flush().map_err(|e| e.to_string())
     }
 

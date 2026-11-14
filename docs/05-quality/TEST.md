@@ -16,10 +16,11 @@ updated: 2026-11-13
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
 > **G1 已于 2026-11-14 通过**：T0 `--mode real` 21/21（含 2026-11-14 复跑）+ T1 `--mode real` 双物理主机 11/11，
 > 均 `evidence_valid=true`；机读见 `tests/spikes/spikes.json` 的 `t1_progress` / `m1_progress.m2_gate`。
-> **M2 门禁解除并已开工**（W3.3 `cr-nat` 接入 `coldrevived` 复活路径）；新增
-> [T2 本地接线验收](../../tests/e2e/t2/README.md) 10/10 PASS，但 `evidence_valid=false`、
+> **M2 门禁解除并已开工**（W3.3 `cr-nat` 接入 `coldrevived` 复活路径；W3.4 `cr-nat::relay_server` +
+> `coldrevive-relay` 二进制 + 持有者订阅线程已落地）；[T2 本地接线验收](../../tests/e2e/t2/README.md)
+> 10/10 PASS，中继改用真实服务端但仍**无真实 NAT**，`evidence_valid=false`、
 > `s6_status=not_run`、`g2_claim=false`，**不构成 S6 / G2 证据**。
-> **S3 / S5 / S6 仍 `not_run`，G2 未达标、未宣称**；`cargo test --workspace --offline` 74/74。
+> **S3 / S5 / S6 仍 `not_run`，G2 未达标、未宣称**；`cargo test --workspace --offline` 80/80。
 > 详见 [G0-REVIEW §11](../06-plan/G0-REVIEW.md) 与 [ROADMAP §6](../06-plan/ROADMAP.md)。
 
 ## 1. 测试分层
@@ -46,8 +47,9 @@ updated: 2026-11-13
 > 环境编号在 [tests/fixtures/](../../tests/README.md) 配置中保持一致。`fixtures/` 中禁止存放任何真实受版权保护内容，一律使用自制小文件与合成数据。
 
 > **编号消歧（2026-11-14）**：上表 `T2` 是**测试环境规划编号**（公网 ≥8 台不同网络节点，尚未落地）。
-> 仓库中新增的 [`tests/e2e/t2/`](../../tests/e2e/t2/README.md) 是 **M2/W3.3 的本地接线验收套件**
-> （同一主机双守护进程 + mock STUN / mock 中继桥），二者**不是同一个东西**，也不是上表 T2 环境的实现。
+> 仓库中新增的 [`tests/e2e/t2/`](../../tests/e2e/t2/README.md) 是 **M2/W3.3–W3.4 的本地接线验收套件**
+> （同一主机双守护进程 + mock STUN + **真实 `coldrevive-relay` 服务端**），二者**不是同一个东西**，
+> 也不是上表 T2 环境的实现；真实中继不等于真实 NAT 环境。
 > 本地套件报告固定 `evidence_valid=false` / `s6_status=not_run` / `g2_claim=false`；
 > 将来公网多节点套件落地时应另取目录名（如 `e2e/t2-public/`）并区分用例 ID，
 > 避免把「本地接线 PASS」误读为「公网可达率证据」。
