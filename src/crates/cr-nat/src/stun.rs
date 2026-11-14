@@ -33,6 +33,32 @@ pub fn probe_one(
     tid: &[u8; 12],
     timeout: Duration,
 ) -> StunResult {
+    let mut buf = [0u8; 2048];
+    probe_one_with(sock, host, port, tid, timeout, |remain| {
+        let _ = sock.set_read_timeout(Some(remain));
+        match sock.recv_from(&mut buf) {
+            Ok((n, _)) => Some(buf[..n].to_vec()),
+            Err(_) => None,
+        }
+    })
+}
+
+/// `probe_one` 的可插拔接收版本。
+///
+/// M2 唤醒接入要求 STUN 探测与唤醒复用**同一个监听 socket**（否则 cone NAT 下
+/// 探测得到的外部端口与实际唤醒端口不一致）。守护进程的 UDP 分发线程把 STUN
+/// 响应经 channel 交给本函数的 `recv` 闭包，业务帧仍走原有 JSON 分发路径。
+pub fn probe_one_with<F>(
+    sock: &UdpSocket,
+    host: &str,
+    port: u16,
+    tid: &[u8; 12],
+    timeout: Duration,
+    mut recv: F,
+) -> StunResult
+where
+    F: FnMut(Duration) -> Option<Vec<u8>>,
+{
     let server = format!("{}:{}", host, port);
     let mut row = StunResult {
         server: server.clone(),
@@ -61,7 +87,6 @@ pub fn probe_one(
         row.error = "sendto 失败".into();
         return row;
     }
-    let mut buf = [0u8; 2048];
     let deadline = t0 + timeout;
     loop {
         let remain = deadline.saturating_duration_since(std::time::Instant::now());
@@ -70,10 +95,9 @@ pub fn probe_one(
             row.rtt_ms = timeout.as_secs_f64() * 1000.0;
             return row;
         }
-        let _ = sock.set_read_timeout(Some(remain));
-        match sock.recv_from(&mut buf) {
-            Ok((n, _peer)) => {
-                if let Some(m) = parse_response(&buf[..n], tid) {
+        match recv(remain) {
+            Some(data) => {
+                if let Some(m) = parse_response(&data, tid) {
                     row.mapped = m.mapped;
                     row.other = m.other;
                     row.rtt_ms = t0.elapsed().as_secs_f64() * 1000.0;
@@ -84,9 +108,9 @@ pub fn probe_one(
                     return row;
                 }
             }
-            Err(_) => {
+            None => {
                 row.error = "timeout".into();
-                row.rtt_ms = timeout.as_secs_f64() * 1000.0;
+                row.rtt_ms = t0.elapsed().as_secs_f64() * 1000.0;
                 return row;
             }
         }
@@ -178,10 +202,25 @@ impl StunSession {
 
     /// 返回每个服务器的探测结果。所有请求复用 `sock`，保证映射端口可比。
     pub fn probe(&self, sock: &UdpSocket, timeout: Duration) -> Vec<StunResult> {
+        let mut buf = [0u8; 2048];
+        self.probe_with(sock, timeout, |remain| {
+            let _ = sock.set_read_timeout(Some(remain));
+            match sock.recv_from(&mut buf) {
+                Ok((n, _)) => Some(buf[..n].to_vec()),
+                Err(_) => None,
+            }
+        })
+    }
+
+    /// 使用共享监听 socket 发包、由外部 channel 供包的探测（M2 唤醒接入）。
+    pub fn probe_with<F>(&self, sock: &UdpSocket, timeout: Duration, mut recv: F) -> Vec<StunResult>
+    where
+        F: FnMut(Duration) -> Option<Vec<u8>>,
+    {
         let mut out = Vec::new();
         for (host, port) in &self.servers {
             let tid: [u8; 12] = rand_tid();
-            out.push(probe_one(sock, host, *port, &tid, timeout));
+            out.push(probe_one_with(sock, host, *port, &tid, timeout, &mut recv));
         }
         out
     }

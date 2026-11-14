@@ -8,6 +8,8 @@
 //! 环境实测，**S6.status 保持 `not_run`，不宣称 G2 达标**。S6 首个先导样本见 `tests/spikes/s6/`。
 
 pub mod classify;
+pub mod endpoint;
+pub mod holepunch;
 pub mod natpmp;
 pub mod pcp;
 pub mod relay;
@@ -15,6 +17,10 @@ pub mod stun;
 pub mod upnp;
 
 pub use classify::{classify_cone_subtype, classify_from_mappings, cgnat_suspected, NatType};
+pub use endpoint::{
+    build_plan, is_public_ipv4, local_advertisement, node_id_16, split_mapped,
+    tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, PeerAdvertisement,
+};
 
 /// S6 判据要求的 NAT 类型矩阵（四类 + CGNAT）。
 pub const S6_REQUIRED_MATRIX: [NatType; 5] = [
@@ -167,29 +173,29 @@ impl Traversal {
             }
         }
 
-        // 5) CGNAT 启发式（依赖本机地址与网关；此处仅用 mapped 地址近似，精确检测在上层）
-        let cgnat_suspected = match &mapped_address {
-            Some(m) => {
-                let ip = m.rsplit(':').next().unwrap_or("");
-                cgnat_suspected(ip, self.gateway.as_deref().unwrap_or(""), "")
-            }
-            None => false,
-        };
+        // 5) CGNAT 启发式：判据是路由器 WAN 侧地址（UPnP/NAT-PMP 学到的外部地址）
+        // 落在 100.64/10 或私有段；LAN 侧默认网关本来就是私有地址，不能作为 CGNAT 证据。
+        // 外部地址不可用时退回 STUN 映射地址（公网映射不构成 CGNAT 证据）。
+        let wan_ip = upnp_external_ip.as_deref()
+            .or(natpmp_external_ip.as_deref())
+            .or_else(|| mapped_address.as_deref()
+                .and_then(|m| m.rsplit_once(':').map(|(ip, _)| ip)))
+            .unwrap_or("");
+        let cgnat_suspected = cgnat_suspected(wan_ip, "", "");
 
-        // 6) 推荐策略
-        let recommended_strategy = if upnp_available {
-            Strategy::Upnp
-        } else if natpmp_available {
-            Strategy::NatPmp
-        } else if pcp_available {
-            Strategy::Pcp
-        } else if public_udp_egress_ok && nat_type != NatType::Symmetric {
-            Strategy::Predictive
-        } else if self.relay_addr.is_some() {
-            Strategy::Relay
-        } else {
-            Strategy::None
-        };
+        // 6) 推荐策略（抽成公开函数，供复用监听 socket 的探测结果回填策略）
+        let recommended_strategy = choose_strategy(&TraversalReport {
+            nat_type,
+            public_udp_egress_ok,
+            upnp_available,
+            upnp_external_ip: upnp_external_ip.clone(),
+            natpmp_available,
+            natpmp_external_ip: natpmp_external_ip.clone(),
+            pcp_available,
+            cgnat_suspected,
+            mapped_address: mapped_address.clone(),
+            recommended_strategy: Strategy::None,
+        }, self.relay_addr.is_some());
 
         TraversalReport {
             nat_type,
@@ -203,6 +209,26 @@ impl Traversal {
             mapped_address,
             recommended_strategy,
         }
+    }
+}
+
+/// 依据探测结果选择穿透策略。纯函数，便于在回填 STUN 结果后重新决策。
+pub fn choose_strategy(report: &TraversalReport, relay_available: bool) -> Strategy {
+    if report.upnp_available {
+        Strategy::Upnp
+    } else if report.natpmp_available {
+        Strategy::NatPmp
+    } else if report.pcp_available {
+        Strategy::Pcp
+    } else if report.public_udp_egress_ok
+        && report.nat_type != NatType::Symmetric
+        && report.nat_type != NatType::Cgnat
+    {
+        Strategy::Predictive
+    } else if relay_available {
+        Strategy::Relay
+    } else {
+        Strategy::None
     }
 }
 

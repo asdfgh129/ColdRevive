@@ -4,7 +4,7 @@
 //! 真实第三方下载器进程 / 真实 golden 文件解析。失败时返回 false 或错误码，
 //! **绝不返回「看起来像通过」的默认常量**。
 
-use crate::{http_get, http_post_json, DownloadRecord, NodeState, NODE_SECRET};
+use crate::{http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
 use cr_hash::sha256_hex;
 use cr_kad::{find_frame, kad_id_128, keyword_key, publish_keys, socket_addr, udp_roundtrip, dht_id_160};
@@ -31,7 +31,14 @@ fn peer_wake(cfg: &Config) -> Result<SocketAddr, String> {
 }
 fn holder_http_cli(cfg: &Config) -> String { cfg.url("A", "/cli") }
 
-fn send_wake(cfg: &Config, req: &Json, timeout_ms: u64) -> Result<(Json, u64), String> {
+/// 唤醒发包：M1 默认仍是单播私网地址；M2 打开 nat 且已取得对端端点通告时，
+/// 改走 cr-nat 候选计划（打洞 + 显式映射 + 中继回退），全部失败则如实报错。
+/// T0/T1 未配置 nat 段时此分支完全不进入，行为逐字节不变。
+fn send_wake(state: &Shared, cfg: &Config, req: &Json,
+             timeout_ms: u64) -> Result<(Json, u64), String> {
+    if let Some(plan) = nat_path::active_plan(state) {
+        return nat_path::wake_with_plan(state, cfg, &plan, req, timeout_ms, None).result;
+    }
     udp_roundtrip(&cfg.bind, peer_wake(cfg)?, req, timeout_ms)
 }
 
@@ -49,13 +56,14 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
     let cfg = state.lock().unwrap().cfg.clone();
     let result = match command.as_str() {
         "inspect" => inspect(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
-        "find" => find(&cfg, &arg(&args, 0)),
+        "find" => find(state, &cfg, &arg(&args, 0)),
         "wake" => wake(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "download" => download(state, &cfg, &arg(&args, 0)),
         "golden" => golden(&cfg),
         "env" => env_defaults(state),
+        "nat" => nat_path::dispatch(state, &cfg, &args),
         other => Json::obj(vec![("error", Json::s(format!("未知命令 {}", other)))]),
     };
     result
@@ -121,9 +129,9 @@ fn inspect(state: &Shared, cfg: &Config, sub: &str, hash: &str) -> Json {
     }
 }
 
-fn find(cfg: &Config, keyword: &str) -> Json {
+fn find(state: &Shared, cfg: &Config, keyword: &str) -> Json {
     let key = keyword_key(&cfg.namespace, keyword);
-    let (hit_node, count) = match send_wake(cfg, &find_frame(&key), 800) {
+    let (hit_node, count) = match send_wake(state, cfg, &find_frame(&key), 800) {
         Ok((reply, _)) => (
             reply.get("hit_node").and_then(Json::as_str).unwrap_or("").to_string(),
             reply.get("count").and_then(Json::as_i64).unwrap_or(0),
@@ -140,7 +148,7 @@ fn wake(state: &Shared, cfg: &Config, sub: &str, file_hash: &str, infohash: &str
     let req = build_req(NODE_SECRET, file_hash, infohash);
     let nonce = req.get("nonce").and_then(Json::as_str).unwrap_or("").to_string();
     let fresh = state.lock().unwrap().nonces.insert(nonce.clone());
-    let (ack, _elapsed) = match send_wake(cfg, &req, 1200) {
+    let (ack, _elapsed) = match send_wake(state, cfg, &req, 1200) {
         Ok(v) => v,
         Err(e) => return Json::obj(vec![("error", Json::s(format!("唤醒失败: {}", e)))]),
     };
@@ -194,7 +202,7 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
             let mut samples = Vec::new();
             for _ in 0..n {
                 let req = build_req(NODE_SECRET, &file_hash, "infohash");
-                match send_wake(cfg, &req, 1200) {
+                match send_wake(state, cfg, &req, 1200) {
                     Ok((_, ms)) => samples.push(Json::n(ms as f64)),
                     Err(_) => samples.push(Json::n(99999.0)), // 真实超时，不做美化
                 }
@@ -205,7 +213,7 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
             let mut success = 0;
             for _ in 0..n {
                 let req = build_req(NODE_SECRET, &file_hash, "infohash");
-                if let Ok((ack, _)) = send_wake(cfg, &req, 1200) {
+                if let Ok((ack, _)) = send_wake(state, cfg, &req, 1200) {
                     if ack_is_ok(&ack) { success += 1; }
                 }
             }
@@ -287,13 +295,13 @@ fn process_alive(pid: u32) -> bool {
 fn scenario(state: &Shared, cfg: &Config, name: &str, file_hash: &str) -> Json {
     match name {
         "loopback" => scenario_loopback(state, cfg),
-        "file-gone" => scenario_file_gone(cfg, file_hash),
-        "bad-challenge" => scenario_bad_challenge(cfg, file_hash),
-        "not-whitelisted" => scenario_not_whitelisted(cfg),
+        "file-gone" => scenario_file_gone(state, cfg, file_hash),
+        "bad-challenge" => scenario_bad_challenge(state, cfg, file_hash),
+        "not-whitelisted" => scenario_not_whitelisted(state, cfg),
         "hash-mismatch" => scenario_hash_mismatch(state, cfg, file_hash),
-        "holder-offline" => scenario_holder_offline(cfg, file_hash),
-        "nonce-replay" => scenario_nonce_replay(cfg, file_hash),
-        "bad-version" => scenario_bad_version(cfg, file_hash),
+        "holder-offline" => scenario_holder_offline(state, cfg, file_hash),
+        "nonce-replay" => scenario_nonce_replay(state, cfg, file_hash),
+        "bad-version" => scenario_bad_version(state, cfg, file_hash),
         other => Json::obj(vec![("error", Json::s(format!("未知场景 {}", other)))]),
     }
 }
@@ -316,7 +324,7 @@ fn scenario_loopback(state: &Shared, cfg: &Config) -> Json {
         ("node", Json::s(&cfg.node_id)),
         ("keys", Json::arr(keys.iter().map(|k| Json::s(k)).collect())),
     ]);
-    let published = send_wake(cfg, &frame, 800).is_ok();
+    let published = send_wake(state, cfg, &frame, 800).is_ok();
     let mut st = state.lock().unwrap();
     let mut e = FileEntry::new(&facts.file_hash, &path, &facts.name, facts.size);
     e.torrent_path = cfg.workdir.join("download").join("downloaded.torrent");
@@ -330,12 +338,12 @@ fn scenario_loopback(state: &Shared, cfg: &Config) -> Json {
     ]))])
 }
 
-fn scenario_file_gone(cfg: &Config, file_hash: &str) -> Json {
+fn scenario_file_gone(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     let inject_url = cfg.url("A", "/inject");
     let _ = http_post_json(&inject_url,
         &Json::obj(vec![("kind", Json::s("file-gone"))]));
     let req = build_req(NODE_SECRET, file_hash, "infohash");
-    let (code, revoked) = match send_wake(cfg, &req, 1200) {
+    let (code, revoked) = match send_wake(state, cfg, &req, 1200) {
         Ok((r, _)) => (
             r.get("status").and_then(Json::as_str).unwrap_or("").to_string(),
             r.get("kad_revoked").and_then(Json::as_bool).unwrap_or(false),
@@ -351,25 +359,25 @@ fn scenario_file_gone(cfg: &Config, file_hash: &str) -> Json {
     ]))])
 }
 
-fn scenario_bad_challenge(cfg: &Config, file_hash: &str) -> Json {
+fn scenario_bad_challenge(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     let mut req = build_req(NODE_SECRET, file_hash, "infohash");
     set_field(&mut req, "challenge", Json::s("deadbeef"));
-    let code = send_wake(cfg, &req, 1200).ok()
+    let code = send_wake(state, cfg, &req, 1200).ok()
         .and_then(|(r, _)| r.get("status").and_then(Json::as_str).map(str::to_string))
         .unwrap_or_default();
     // PROTO §3.1：超时/校验失败重试一次后放弃；这里真实再发一个合法请求
     let retry = build_req(NODE_SECRET, file_hash, "infohash");
-    let retry_once = send_wake(cfg, &retry, 1200).is_ok();
+    let retry_once = send_wake(state, cfg, &retry, 1200).is_ok();
     Json::obj(vec![("reject", Json::obj(vec![
         ("code", Json::s(&code)),
         ("retry_once", Json::b(retry_once)),
     ]))])
 }
 
-fn scenario_not_whitelisted(cfg: &Config) -> Json {
+fn scenario_not_whitelisted(state: &Shared, cfg: &Config) -> Json {
     let fake = "0000000000000000000000000000000000000000000000000000000000000000";
     let req = build_req(NODE_SECRET, fake, "infohash");
-    let (code, leak) = match send_wake(cfg, &req, 1200) {
+    let (code, leak) = match send_wake(state, cfg, &req, 1200) {
         Ok((r, _)) => (
             r.get("status").and_then(Json::as_str).unwrap_or("").to_string(),
             r.keys().len() > 4, // 拒绝帧只应有 v/type/trace_id/status，多字段即存在性泄露
@@ -385,7 +393,7 @@ fn scenario_not_whitelisted(cfg: &Config) -> Json {
 fn scenario_hash_mismatch(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     let wrong = "0000000000000000000000000000000000000000";
     let req = build_req(NODE_SECRET, file_hash, wrong);
-    let (code, blacklisted) = match send_wake(cfg, &req, 1200) {
+    let (code, blacklisted) = match send_wake(state, cfg, &req, 1200) {
         Ok((ack, _)) => {
             let got = ack_infohash(&ack).unwrap_or_default();
             if got != wrong {
@@ -404,7 +412,7 @@ fn scenario_hash_mismatch(state: &Shared, cfg: &Config, file_hash: &str) -> Json
     ]))])
 }
 
-fn scenario_holder_offline(cfg: &Config, file_hash: &str) -> Json {
+fn scenario_holder_offline(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     // 主候选为明确关闭的 UDP 端口（模拟持有者离线），超时后切到真实候选 A
     let dead_port = cfg.peer().map(|p| p.wake_udp_port + 1000).unwrap_or(17901);
     let dead = socket_addr(cfg.peer_host(), dead_port)
@@ -413,7 +421,7 @@ fn scenario_holder_offline(cfg: &Config, file_hash: &str) -> Json {
     let started = Instant::now();
     let primary = udp_roundtrip(&cfg.bind, dead, &req, 1200);
     let elapsed = started.elapsed().as_millis() as u64;
-    let switched = primary.is_err() && send_wake(cfg, &build_req(NODE_SECRET, file_hash, "infohash"), 1200).is_ok();
+    let switched = primary.is_err() && send_wake(state, cfg, &build_req(NODE_SECRET, file_hash, "infohash"), 1200).is_ok();
     Json::obj(vec![("timeout", Json::obj(vec![
         ("elapsed_ms", Json::n(elapsed as f64)),
         ("candidate_switched", Json::b(switched)),
@@ -421,7 +429,7 @@ fn scenario_holder_offline(cfg: &Config, file_hash: &str) -> Json {
     ]))])
 }
 
-fn scenario_nonce_replay(cfg: &Config, file_hash: &str) -> Json {
+fn scenario_nonce_replay(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     let holder = holder_http_cli(cfg);
     let query = Json::obj(vec![
         ("node", Json::s("A")), ("command", Json::s("inspect")),
@@ -431,8 +439,8 @@ fn scenario_nonce_replay(cfg: &Config, file_hash: &str) -> Json {
         .and_then(|j| j.get("state").and_then(|s| s.get("transitions")).and_then(Json::as_arr).map(|a| a.len()))
         .unwrap_or(0);
     let req = build_req(NODE_SECRET, file_hash, "infohash");
-    let _ = send_wake(cfg, &req, 1200);
-    let replay = send_wake(cfg, &req, 1200); // 同一个 nonce 原样重放
+    let _ = send_wake(state, cfg, &req, 1200);
+    let replay = send_wake(state, cfg, &req, 1200); // 同一个 nonce 原样重放
     let detected = replay.as_ref().map(|(r, _)| r.get("status").and_then(Json::as_str) != Some("OK"))
         .unwrap_or(false);
     let transitions_after = http_post_json(&holder, &query).ok()
@@ -444,10 +452,10 @@ fn scenario_nonce_replay(cfg: &Config, file_hash: &str) -> Json {
     ]))])
 }
 
-fn scenario_bad_version(cfg: &Config, file_hash: &str) -> Json {
+fn scenario_bad_version(state: &Shared, cfg: &Config, file_hash: &str) -> Json {
     let mut req = build_req(NODE_SECRET, file_hash, "infohash");
     set_field(&mut req, "v", Json::n(2.0));
-    let code = send_wake(cfg, &req, 1200).ok()
+    let code = send_wake(state, cfg, &req, 1200).ok()
         .and_then(|(r, _)| r.get("status").and_then(Json::as_str).map(str::to_string))
         .unwrap_or_default();
     Json::obj(vec![("reject", Json::obj(vec![("code", Json::s(&code))]))])

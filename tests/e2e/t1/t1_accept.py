@@ -583,7 +583,8 @@ def build_report(runner: T1Runner, mode: str, results: list[dict[str, Any]],
                          ["在两台物理主机上分别启动 coldrevived（B 远端预启动后置 T1_REMOTE_PRESTARTED=1）",
                           "设置 T1_HOST_A / T1_HOST_B 与三个二进制环境变量，以 --mode real 重跑",
                           "确保 --mode real 下 /health 的 machine_id 与 host 均不同，并采集真实 NAT 报告",
-                          "T1 + T0 共同通过后，才可按 ROADMAP §3 判定 G1 并解除 M2 门禁"]),
+                          "G1 已于 2026-11-14 通过（本次 real 证据 + T0 21/21），M2 门禁已解除；"
+                          "S6 四类 NAT 矩阵仍须 M2 真实多 NAT 环境实测"]),
     }
 
 

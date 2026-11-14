@@ -304,6 +304,15 @@ pub struct Config {
     pub golden_ack: PathBuf,
     pub downloader: PathBuf,
     pub challenge_window_sec: i64,
+    /// M2 NAT 接入配置。`nat` 段缺省时全部关闭，T0/T1 行为逐字节不变。
+    pub nat_enabled: bool,
+    pub nat_stun_servers: Vec<(String, u16)>,
+    pub nat_gateway: Option<String>,
+    pub nat_upnp_location: Option<String>,
+    pub nat_relay: Option<String>,
+    /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
+    /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
+    pub nat_bt_external: Option<(String, u16)>,
 }
 
 impl Config {
@@ -332,6 +341,30 @@ impl Config {
         }
         let keywords = j.get("keywords").and_then(Json::as_arr)
             .unwrap_or(&[]).iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+        // M2：`nat` 段完全可选。任何缺失/非法字段都按「关闭 / 无证据」处理，
+        // 绝不生成占位 STUN 服务器或公网映射。
+        let nat = j.get("nat").and_then(Json::as_obj);
+        let nat_get = |k: &str| -> Option<String> {
+            nat.and_then(|o| o.iter().find(|(n, _)| n == k))
+                .and_then(|(_, v)| v.as_str()).map(str::to_string)
+        };
+        let nat_enabled = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "enabled"))
+            .and_then(|(_, v)| v.as_bool()).unwrap_or(false);
+        let nat_stun_servers: Vec<(String, u16)> = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "stun_servers"))
+            .and_then(|(_, v)| v.as_arr()).unwrap_or(&[])
+            .iter().filter_map(|v| v.as_str())
+            .filter_map(|s| {
+                let (h, p) = s.rsplit_once(':')?;
+                let port: u16 = p.parse().ok()?;
+                if h.is_empty() { None } else { Some((h.to_string(), port)) }
+            }).collect();
+        let nat_bt_external = nat_get("bt_external").and_then(|s| {
+            let (ip, p) = s.rsplit_once(':')?;
+            let port: u16 = p.parse().ok()?;
+            Some((ip.to_string(), port))
+        });
         Ok(Config {
             node_id: String::new(),
             bind,
@@ -346,6 +379,12 @@ impl Config {
             downloader: PathBuf::from(get_s("downloader").unwrap_or_default()),
             challenge_window_sec: j.get("challenge_window_sec")
                 .and_then(Json::as_i64).unwrap_or(CHALLENGE_WINDOW_SEC),
+            nat_enabled,
+            nat_stun_servers,
+            nat_gateway: nat_get("gateway"),
+            nat_upnp_location: nat_get("upnp_location"),
+            nat_relay: nat_get("relay"),
+            nat_bt_external,
         })
     }
 
@@ -408,6 +447,53 @@ mod tests {
         assert_eq!(n.len(), 32);
         assert_ne!(n, nonce_hex());
         assert_eq!(trace_id().len(), 36);
+    }
+
+    #[test]
+    fn nat_section_is_optional_and_backward_compatible() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802},
+                "B": {"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let p = std::env::temp_dir().join("cr_core_nat_default.json");
+        fs::write(&p, base).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert!(!cfg.nat_enabled);
+        assert!(cfg.nat_stun_servers.is_empty());
+        assert!(cfg.nat_relay.is_none());
+        assert!(cfg.nat_bt_external.is_none());
+
+        let with_nat = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802},
+                "B": {"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {
+                "enabled": true,
+                "stun_servers": ["127.0.0.1:3478", "stun.example:19302", "bad"],
+                "gateway": "192.168.1.254",
+                "relay": "127.0.0.1:7000",
+                "bt_external": "203.0.113.9:17802"
+            }
+        }"#;
+        let p2 = std::env::temp_dir().join("cr_core_nat_enabled.json");
+        fs::write(&p2, with_nat).unwrap();
+        let cfg2 = Config::load(&p2).unwrap();
+        assert!(cfg2.nat_enabled);
+        assert_eq!(cfg2.nat_stun_servers.len(), 2);
+        assert_eq!(cfg2.nat_stun_servers[0], ("127.0.0.1".into(), 3478));
+        assert_eq!(cfg2.nat_bt_external, Some(("203.0.113.9".into(), 17802)));
+        assert_eq!(cfg2.nat_relay.as_deref(), Some("127.0.0.1:7000"));
+        let _ = fs::remove_file(&p);
+        let _ = fs::remove_file(&p2);
     }
 
     #[test]

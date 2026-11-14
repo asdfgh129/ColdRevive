@@ -29,6 +29,7 @@ dependencies = [
  "cr-hash",
  "cr-indexer",
  "cr-kad",
+ "cr-nat",
  "cr-store",
  "cr-torrent",
  "cr-wake",

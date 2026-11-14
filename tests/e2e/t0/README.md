@@ -107,7 +107,7 @@ aria2 1.36.0 标准 BT 完成下载并逐片 SHA-1 校验。该结果仍只是 T
 | 6 | 接入第三方下载器 | ✅ | 本机 Motrix Next 捆绑 `motrixnext-aria2c.exe`（aria2 1.36.0），由 `T0_DOWNLOADER` 指定；G3 矩阵仍未锁定版本 |
 | 7 | 指标来自真实 `trace_id` 埋点，不接受 stub 数组 | ✅ | `metrics wake-latency/revival` 由 B 节点发起真实 UDP 唤醒往返采样（30 次），不读合成数组 |
 | 8 | 编译 M1 二进制并置 `wired = True`，同步改 CI | ✅ | 3 个二进制由 `cargo build --workspace --offline` 产出；CI 新增 workspace 单测并保留「无二进制时 real 必 BLOCKED」防呆 |
-| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ⛔ | T0 已 21/21 PASS；[T1 harness](../t1/README.md) 已落地、单机预检通过，但 `--mode real` 因无第二台物理主机 `BLOCKED`，且 M1 尚缺 NAT 穿透栈。两者共同构成 G1 证据，T1 与 S3/S5/S6 必测回填完成前 M2 保持阻塞 |
+| 9 | 先跑 T0，再跑 T1（局域网双机、真实 NAT） | ✅ | T0 21/21 PASS（2026-11-14 M2 接线后回归仍 21/21）；[T1 harness](../t1/README.md) 于 2026-11-14 在双物理主机上 `--mode real --refresh-nat` **11/11 PASS、`evidence_valid=true`**。两者共同构成 **G1 通过**，`m2_gate` 解除。〔历史：2026-11-13 无第二台物理主机时 `BLOCKED`、M1 缺 NAT 穿透栈；后者接线层已由 M2/W3.3 关闭〕 |
 | 10 | S3 / S5 / S6 必测回填 | ⛔ | 见 [G0-REVIEW §9](../../../docs/06-plan/G0-REVIEW.md)；三者 `status` 仍 `not_run`，不虚判 |
 
 随时可用 `python3 tests/spikes/m0_preflight.py` 复查上面哪些条件已齐备。该脚本**只查条件、不做实验、不产出 Spike 结论**。

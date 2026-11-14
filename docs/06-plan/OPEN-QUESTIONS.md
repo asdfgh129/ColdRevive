@@ -101,3 +101,10 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 > 首个 NAT 样本——单层 cone 类 NAT、公网 WAN IP、公网 UDP 可达、二跳为公网地址（未见 CGNAT），
 > 但 **UPnP IGD 与 NAT-PMP 均不可用**。这只覆盖 1/4 类 NAT，不能回答对称 NAT / CGNAT 的成功率；
 > Q4 仍须 M2 多环境实测，且中继投入决策须考虑「穿透栈第一层不可用」这一实测前提。
+>
+> **2026-11-14 补充（Q4 仍未结案）**：G1 已通过、M2 已开工；`cr-nat` 已接入复活路径
+> （候选计划 / 单 socket 打洞 / 中继回退 / tracker 私网-公网地址分流），
+> [T2 本地接线验收](../../tests/e2e/t2/README.md) 10/10 PASS。但 T2 用的是本机回环 +
+> mock STUN + mock 中继，`evidence_valid=false`，**不是新的 NAT 样本**。
+> 2026-11-14 的 T1-08 现场 STUN 探针仍是同一出口单样本（cone 类、UPnP/NAT-PMP 不可用）。
+> S6 四类 NAT（含 CGNAT）实测与 R-04 ≥70% 阈值判定仍待用户提供多 NAT 环境后执行。

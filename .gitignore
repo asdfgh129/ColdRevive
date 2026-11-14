@@ -29,6 +29,9 @@ docs/**/*.html
 .vscode/
 *.swp
 *~
+# Windows 保留名文件：Git Bash 里 `2>nul` 未走设备名而落盘生成的空壳（非项目产物，
+# 且 Win32 回收站 API 无法处理该名字；只忽略、不自动删除）
+nul
 
 # T0 验收运行产物（由 tests/e2e/t0/ 脚本生成，不纳入版本控制）
 tests/e2e/t0/.run/
@@ -41,6 +44,11 @@ tests/fixtures/t0/sample/*
 tests/e2e/t1/.run/
 tests/e2e/t1/reports/*
 !tests/e2e/t1/reports/.gitkeep
+
+# T2 M2 跨 NAT 接线预检运行产物（本地证据，不入库）
+tests/e2e/t2/.run/
+tests/e2e/t2/reports/*
+!tests/e2e/t2/reports/.gitkeep
 
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*

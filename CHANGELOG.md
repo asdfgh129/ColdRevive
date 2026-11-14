@@ -2,6 +2,125 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.48] - 2026-11-14 — 门禁口径全量收尾 + T2 编号消歧 + 文档站重建
+
+> 范围声明：纯文档 / 构建口径收尾，**不含新的实验结论**。
+> S3 / S5 / S6 仍 `not_run`，G2 未达标、未宣称；`spikes.json` 中任何 Spike 的 `status` 一律未改。
+
+- 补齐 2.4.47 未覆盖的历史口径：`docs/05-quality/TEST.md`、`tests/README.md`、
+  `tests/spikes/README.md`、`tests/e2e/t0/README.md`、`tests/e2e/t1/README.md`、
+  `docs/02-architecture/TECH-STACK.md`、`docs/README.md`、`CHANGELOG.md` 旧版本条目。
+  一律「保留 2026-11-13 原文 + 追加 2026-11-14 更正 / 历史标记」，不静默改写决策演化链。
+- `tests/e2e/t1/README.md` 新增 §2.1 记录 G1 证据（11/11、`evidence_valid=true`、报告与 STUN 探针路径），
+  §5 改为「接线层已关闭 / 跨 NAT 与 S6 层仍开放」；`tests/e2e/t0/README.md` §5 第 9 项 ⛔ → ✅。
+- **T2 编号消歧**：`tests/e2e/t2/` 是 M2/W3.3 本地接线套件，与 [TEST §2](docs/05-quality/TEST.md)
+  规划编号「T2 = 公网 ≥8 台不同网络节点」不是同一环境；已在 TEST / tests README / T1·T2 README 写明，
+  防止把「本地接线 PASS」误读为「公网可达率证据」。
+- `scripts/build_docs.py` 的 `EMBED_EXTRA` 增加 `tests/e2e/t2/README.md`；重生成
+  `docs/index.html` 的 `DOCS_PAYLOAD`（共 47 份文档），保证离线文档站可就地打开新增链接。
+- `.gitignore` 忽略 Git Bash 下 `2>nul` 落盘的 Windows 保留名空壳文件（只忽略不删除：
+  系统回收站 API 不支持该设备名）。
+- 工作记忆 `.workbuddy/memory/MEMORY.md` / `2026-11-14.md`：M2 状态改为「进行中」、
+  单测基线 55 → 74、`cr-nat` 标记为已接入、登记 T2 套件与编号消歧。
+
+### 收尾验证（均为真实命令输出）
+- `cargo test --workspace --offline` **74 passed / 0 failed**；`T2 --self-test` 3/3、
+  `--mode local` **10/10 PASS**（`evidence_valid=false` / `s6_status=not_run`）；
+  `T0 --mode real --no-cleanup` **21/21 PASS、`evidence_valid=true`**；
+  `T1 --self-test` 11/11（2.4.47 已跑）；`scripts/build_docs.py --check` PASS（36 份 Markdown、
+  front matter、相对链接与索引页数据块）。
+- 上下文感知的陈旧门禁口径审计：**0 条未标注的历史语句**；`spikes.json` / `t2_config.json` JSON 校验通过。
+
+### 下一步计划（M2/W3.4）
+从 `m2_progress.remaining_for_g2` 中选可在**本机闭环**的一项：**生产中继服务端 +
+持有者侧中继订阅线程**。当前 `cr-nat::relay` 只有客户端侧帧协议，T2 依赖本地 mock 桥；
+W3.4 补服务端（注册 / 路由 / ACK / 连接管理）与守护进程订阅线程，并把 T2 的 mock 桥换成真实服务端回归。
+**不改动 S3/S5/S6 状态、不宣称 G2 达标**；S6 四类真实 NAT 矩阵、S3、S5 仍须真实多 NAT / 跨主机环境。
+
+## [2.4.47] - 2026-11-14 — M2/W3.3 开工：cr-nat 接入复活路径 + T2 本地接线验收 + 门禁口径同步
+
+> 范围声明：G1 已于上一版本通过、M2 门禁解除；本轮才**真正启动 M2 接线层**。
+> **不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，**不宣称 G2 达标**；
+> `PROTOCOL_VERSION=1`、T0 golden 字段、CLI v1 既有命令返回值均未改。
+
+### 背景
+- `spikes.json → t1_progress.design_gaps[0]` 记录的缺口：「cr-nat 库已落地，但 M1 CLI 复活路径
+  （跨 NAT 的 UDP 唤醒 / 私网 tracker peer 地址协商）尚未接入该库，接入属 M2 范围」。
+- 2026-11-14 的 2.4.46 只更新了 `spikes.json`，`README.md` / `ROADMAP.md` / `G0-REVIEW.md`
+  / `docs/README.md` 曾写着「G1 未通过、M2 blocked_by_G1」，与机读结论矛盾。本轮一并同步。
+
+### 实现（std-only，零第三方依赖）
+- **`cr-core`**：`Config` 新增可选 `nat` 段（`enabled` / `stun_servers` / `gateway` /
+  `upnp_location` / `relay` / `bt_external`）。缺省即全关，T0/T1 行为逐字节不变；新增向后兼容单测。
+- **`cr-nat/src/endpoint.rs`（新）**：`EndpointKind` / `Endpoint` / `PeerAdvertisement` /
+  `EndpointPlan`；`build_plan()` 纯计算生成有序候选（私网 → 显式端口映射 → STUN 预测 → 中继，
+  对称 NAT/CGNAT 下剔除预测映射并中继优先）；`tracker_endpoint_for()` 保证**公网请求方绝不收到
+  RFC1918 私网 peer**（无真实公网 BT 映射时返回空 peer 列表）。另修 `Traversal::run()` 中
+  `CGNAT` 启发式误把 LAN 私有网关当证据、以及 `rsplit(':')` 取到端口而非 IP 的两处缺陷。
+- **`cr-nat/src/holepunch.rs`（新）**：`NAT_PUNCH` / `NAT_PUNCH_ACK` 控制面帧；
+  `wake_via_endpoint()` **打洞与唤醒复用同一个 UDP socket**（cone NAT 正确性的关键）；
+  `relay_wake()` 经 `cr_nat::relay` 帧协议取回真实 `DELIVERED`。失败一律 Err，不合成应答。
+- **`cr-nat/src/stun.rs`**：新增 `probe_one_with` / `StunSession::probe_with`（可插拔接收），
+  使守护进程能用**唤醒监听 socket** 做 STUN，学到的外部端口与实际唤醒端口一致。
+- **`cr-nat/src/lib.rs`**：抽出 `choose_strategy()` 供回填 STUN 结果后重算策略。
+- **`coldrevived`**：新增 `nat_path.rs`（`NatContext` / probe / advertise / peer / plan / wake /
+  tracker / status）、`UdpHub`（STUN 响应 demux 给 probe）、`NAT_PUNCH` 回包；
+  `commands.rs` 的 `send_wake()` 在 nat 打开且取得对端通告时改走候选计划（覆盖 `wake` / `find` /
+  `metrics` / 全部 scenario），否则保持原单播；`/announce` 按请求方 IP 分流；
+  新增 `nat` CLI 子命令与 `GET /nat/advertise`。
+- **`bt.rs`**：新增 `tracker_response_optional()` 支持空 peer bencode 列表；原 `tracker_response()`
+  保留并在 nat 关闭时仍被调用（字节级不变）。
+
+### 验证（全部真实观测）
+- `cargo test --workspace --offline`：**74 passed / 0 failed**（基线 55 + 本轮 19）。
+- **T2 本地接线验收 `10/10 PASS`**：`tests/e2e/t2/t2_nat_path.py --mode local`，
+  mock STUN / mock 中继桥 + 真实 UDP/TCP/HTTP/CLI 观测；报告
+  `tests/e2e/t2/reports/t2-*-local.json`（gitignore），`evidence_valid=false`、`s6_status=not_run`。
+  `--self-test` 3/3（mock wire 自检）。
+- **T0 `--mode real` 回归 21/21 PASS、`evidence_valid=true`**；T1 `--self-test` 11/11。
+- 顺带修复 T0 观测客户端对 `download` 的 10 s 超时：daemon 内部上限 120 s，新版
+  aria2-next 3.1.0 稍慢即被误判 `BLOCKED`；现按条用例放宽到 190 s（`t0_cli.py`），断言不变。
+
+### 文档与机读口径
+- `README.md` / `docs/README.md` / `docs/06-plan/ROADMAP.md` / `G0-REVIEW.md`（新增 §11）/
+  `OPEN-QUESTIONS.md`：把 G1/M2 状态从「未通过 / blocked」同步为「已通过 / 已开工」，
+  历史条目按时间追加口径保留，未篡改。
+- `tests/spikes/spikes.json`：修正 `m1_progress.note` 与 `m2_gate` 的自相矛盾；
+  新增 `m2_progress`；更新 `t1_progress.design_gaps[0]` 为「接线层已闭合、S6 矩阵仍待实测」；
+  `S6.observations` 增补 `m2_wiring_2026_11_14`（`evidence_valid_for_pass=false`，**status 不变**）。
+- `.gitignore` 增加 T2 的 `.run/` 与 `reports/`；新增 `tests/e2e/t2/README.md`。
+- 收尾补齐剩余历史口径：`docs/05-quality/TEST.md`（开头 / §2 / §2.2 / §6 前更正）、
+  `docs/02-architecture/TECH-STACK.md`、`tests/README.md`、`tests/spikes/README.md`、
+  `tests/e2e/t0/README.md`、`tests/e2e/t1/README.md`、`.workbuddy/memory/MEMORY.md`，
+  一律「保留 2026-11-13 原文 + 追加 2026-11-14 更正」，不静默改写历史结论。
+- **T2 编号消歧**：`tests/e2e/t2/` 是 M2/W3.3 本地接线套件，与 `TEST §2` 规划编号
+  「T2 = 公网 ≥8 台多节点」不是同一环境；已在 TEST / tests README / T1·T2 README 写明，
+  避免把本地接线 PASS 误读为公网可达率证据。
+- `scripts/build_docs.py` 的 `EMBED_EXTRA` 增加 `tests/e2e/t2/README.md`，并重生成
+  `docs/index.html` 的 `DOCS_PAYLOAD`，保证离线文档站可就地打开新增链接。
+
+### 剩余（G2 出口，未结案）
+S6 四类真实 NAT（含 CGNAT）可达率矩阵、S3 真实双栈 + G3 矩阵、S5 真实拥塞链路 ≤5% 实测、
+M2 其余骨架 crate 引擎/资源治理、生产中继服务端与持有者侧订阅、BT/TCP 打洞。
+
+## [2.4.46] - 2026-11-14 — T1 --mode real 双机真实 NAT 全链路 11/11 PASS；G1 通过、M2 门禁解除
+
+> 范围声明：仅 T1 真实验收结果与 `spikes.json` 回填。**不改变任何 Spike 的 `status`**，
+> S3 / S5 / S6 仍 `not_run`；S6 四类 NAT 矩阵实测属 M2 范围。
+
+- 用户部署第二台物理主机 B（192.168.1.209 / DESKTOP-CCE53RF），A 为 192.168.1.210 /
+  DESKTOP-DJQSC95；B 侧预启动 `coldrevived.exe`，下载器为 Rayburst `aria2-next.exe` 3.1.0。
+- `python3 tests/e2e/t1/t1_accept.py --mode real --refresh-nat` → **11/11 PASS、
+  `evidence_valid=true`**：双机 machine_id/host 互异、跨主机 KAD 发布发现、UDP WAKEUP v1
+  挑战应答、P95 2.0 ms（30 样本）、复活 30/30、伴随种子 InfoHash 校验、第三方 BT 下载闭环
+  （落盘 SHA-256 + 逐片 SHA-1，数据面无私有协议）、现场 STUN 探针
+  （mapped=112.5.60.4:8749 / 3 台应答 / 公网 UDP 出站可用）、golden 报文契约、最小暴露无残留。
+- 报告：`tests/e2e/t1/reports/t1-20261114T084653Z-real-aliases.json`；
+  STUN 探针：`tests/e2e/t1/reports/t1-nat-20261114T084639Z.json`（均 gitignore）。
+- 门禁：**G1 = T0（21/21）+ T1（11/11）通过**；`m1_progress.m2_gate` 由 `blocked_by_G1`
+  改为 `G1 satisfied — unblocked`。**S6.status 保持 `not_run`**：T1-08 只是单 NAT 样本，
+  不是四类 NAT 矩阵实测。机读同步 `t1_progress` / `g0_review.t1_and_s5` / `S6.observations`。
+
 ## [2.4.45] - 2026-11-14 — 下载器随 Motrix Next→Rayburst 升级更正为 `aria2-next.exe` 3.1.0
 
 > 范围声明：仅文档与配置路径更正（app 升级导致），**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
@@ -149,7 +268,7 @@
 ### 门禁结论
 
 `T0 21/21 PASS` + `T1 单机预检 10 PASS` **都不等于 G1**：T1 `--mode real` 未执行、S3 真实双栈 +
-G3 矩阵、S5 真实拥塞链路、S6 多 NAT 实测均未完成。**M2 保持 `blocked_by_G1`**，本轮未新增任何
+G3 矩阵、S5 真实拥塞链路、S6 多 NAT 实测均未完成。**M2 保持 `blocked_by_G1`（当时口径）**，本轮未新增任何
 M2 实现。机读口径见 `spikes.json` 的 `t1_progress`、`m1_progress.g1_remaining` 与
 `S5.observations.utp_real_2026_11_13`。
 
@@ -207,7 +326,7 @@ M2 实现。机读口径见 `spikes.json` 的 `t1_progress`、`m1_progress.g1_re
 
 `T0 evidence_valid=true` **只证明 T0 单机回环链路通过**，不等于 G1：还缺 ① **T1 局域网双机 +
 真实 NAT 全链路**；② S3 真实双栈集成 + G3 矩阵；③ S5 真实拥塞链路 rqbit uTP ≤5% 实测；
-④ S6（M2）四类 NAT 可达率实测。因此 **M2 保持 `blocked_by_G1`**，不得据本轮结果启动。
+④ S6（M2）四类 NAT 可达率实测。因此 **M2 保持 `blocked_by_G1`（当时口径）**，不得据本轮结果启动。
 `m0_preflight.py` 的 `g0_ready` 算法按 G0-REVIEW §6 保持不变；工程阻塞项清零但豁免项未结案时
 新增控制台提示，避免被误读为「八项 Spike 结论齐备」。
 

@@ -111,7 +111,10 @@ updated: 2026-11-13
 | `g0_pending_spikes` | S3 / S5 / S6 | **不变**，仍 `not_run`（各补 `m1_2026_11_13` 证据条目，`evidence_valid_for_pass=false`） |
 | T0 real | 不可执行 | **21/21 PASS、`evidence_valid=true`**（仅 T0 单机回环，报告见 ROADMAP §6） |
 
-**G1 与 M2 状态**：按 [ROADMAP §2](ROADMAP.md)，G1 要求 T0 **/ T1** 全链路闭环，M2 依赖 M1。
+> **【当前状态更正 · 2026-11-14】以下 §9–§10 是 2026-11-13 评审时点的历史口径，不是现状。**
+> G1 已于 2026-11-14 通过，M2 已解除门禁并开工；现状见本文 **§11**。历史条目按决策演化链保留。
+
+**G1 与 M2 状态（2026-11-13 评审时点）**：按 [ROADMAP §2](ROADMAP.md)，G1 要求 T0 **/ T1** 全链路闭环，M2 依赖 M1。
 T1（局域网双机 + 真实 NAT）未执行，S3 真实双栈集成 + G3 矩阵、S5 真实拥塞链路 uTP 实测
 均未完成，S6 四类 NAT 实测属 M2 必测。因此：
 
@@ -145,5 +148,34 @@ T1（局域网双机 + 真实 NAT）未执行，S3 真实双栈集成 + G3 矩�
    `background_upload_ratio=0.02` 的令牌桶降级**，不得记为「uTP/LEDBAT 达标」；R-07 风险口径已上调。
    若坚持保留 uTP 退让路线，须换实现或自行实现 LEDBAT 并重新提交冻结评审。
 
-**G1 / M2 结论不变**：G1 未通过，M2 保持 `blocked_by_G1`。机读见 `spikes.json` 的
+**G1 / M2 结论（2026-11-13 时点）**：G1 未通过，M2 保持 `blocked_by_G1`。机读见 `spikes.json` 的
 `t1_progress`、`m1_progress.g1_remaining`、`g0_review.t1_and_s5_2026_11_13`。
+**该结论已于 2026-11-14 被 T1 `--mode real` 11/11 的证据取代，见 §11。**
+
+## 11. G1 通过 / M2 开工（2026-11-14，v1.3）
+
+| 门禁 | 结论 | 证据 |
+| :--- | :--- | :--- |
+| G1 | ✅ **通过** | T0（2026-11-13 / 2026-11-14 复跑均 21/21、`evidence_valid=true`）+ T1 `--mode real` 双机 11/11、`evidence_valid=true`（2026-11-14，A=192.168.1.210 / B=192.168.1.209） |
+| M2 | 🔓 **门禁解除、已开工** | `spikes.json` 的 `m1_progress.m2_gate` 由 `blocked_by_G1` 改为 unblocked；W3.3 cr-nat 接入复活路径已落地 |
+| G2 | ❌ **未达标、未宣称** | NFR-01/02/03 与 NAT 矩阵尚未在 M2 收口；S3 / S5 / S6 仍 `not_run` |
+
+**M2/W3.3 接线范围（本轮）**：`cr-core` 增加可选 `nat` 配置段（缺省时 T0/T1 行为不变）；
+`cr-nat` 新增 `endpoint.rs`（候选计划 / tracker peer 决策，纯计算）与 `holepunch.rs`
+（打洞 + 唤醒复用同一 UDP socket、中继帧回退）；`coldrevived` 新增 `nat_path.rs` 与 `nat` CLI、
+`/nat/advertise`、`/announce` 私网/公网分流；`coldrevived/src/bt.rs` 支持空 peer 列表应答。
+**PROTOCOL_VERSION=1、T0 golden 字段、CLI v1 既有命令返回值全部未变。**
+
+**证据**：[T2 本地接线验收](../../tests/e2e/t2/README.md) `10/10 PASS`（mock STUN / mock 中继桥 +
+真实 UDP/TCP/HTTP/CLI 观测，`evidence_valid=false`）；T0 `--mode real` 回归 21/21；
+T1 `--self-test` 11/11；`cargo test --workspace --offline` 74/74。
+
+**§3 条件冻结的边界仍未被突破**：S3 / S5 / S6 的 `status` 全部保持 `not_run`，
+本轮所有新增证据的 `evidence_valid_for_pass` 均为 `false`。
+S6 的四类真实 NAT（含 CGNAT）可达率矩阵须 M2 在多个真实 NAT 环境逐类实测后，
+由实验执行人据证据手工回填；脚本与工具不得自动置 `pass`。
+T2 的 mock STUN 只验证接线正确性，不能作为 S6 矩阵样本。
+
+**剩余（G2 出口）**：① S6 四类 NAT 可达率实测；② S3 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 矩阵；
+③ S5 真实拥塞链路（tc/netem 或跨主机）≤5% 实测；④ M2 其余骨架 crate 引擎 / 资源治理实现；
+⑤ M4 前 R-02 拒绝率复审与 R-11 书面法务意见。任一必测不达标仍按 §3 第 3 条退回条款降级并重新提交冻结评审。

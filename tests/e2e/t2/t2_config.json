@@ -1,0 +1,65 @@
+{
+  "suite": "T2",
+  "schema": "coldrevive.t2.config/v1",
+  "version": 1,
+  "milestone": "M2/W3.3",
+  "gate": "G2 (未宣称达标)",
+  "description": "M2 跨 NAT 复活路径接线验收（本地预检）。用本机回环 + mock STUN + mock 中继桥验证 cr-nat 接入的候选计划、单 socket 打洞、中继回退与 tracker peer 地址协商；evidence_valid 恒为 false，不构成 S6 四类 NAT 实测。",
+  "environment": {
+    "scope": "local-loopback-mock-nat",
+    "two_distinct_hosts": false,
+    "real_nat_required": false,
+    "note": "T0/T1 的真实双机证据由各自 harness 提供；本套件只验证 M2 接线，不能替代 S6 四类 NAT 矩阵实测"
+  },
+  "bind": "0.0.0.0",
+  "nodes": {
+    "A": {
+      "role": "holder",
+      "host": "127.0.0.1",
+      "http_port": 18800,
+      "wake_udp_port": 18801,
+      "bt_port": 18802,
+      "mock_external_ip": "127.0.0.2"
+    },
+    "B": {
+      "role": "requester",
+      "host": "127.0.0.1",
+      "http_port": 18900,
+      "wake_udp_port": 18901,
+      "bt_port": 18902,
+      "mock_external_ip": "127.0.0.3"
+    }
+  },
+  "protocol": {
+    "version": 1,
+    "namespace": "ColdRevive_V1:",
+    "challenge_window_sec": 300
+  },
+  "fixture": {
+    "filename": "coldrevive-t2-sample.bin",
+    "size_bytes": 262144,
+    "seed": 20261114,
+    "keywords": ["coldrevive", "t2", "sample"]
+  },
+  "paths": {
+    "workdir": "tests/e2e/t2/.run",
+    "sample_dir": "tests/e2e/t2/.run/sample",
+    "reports": "tests/e2e/t2/reports",
+    "golden_dir": "tests/fixtures/t0/golden"
+  },
+  "timeouts_sec": {
+    "startup": 12,
+    "health": 1,
+    "cli": 20,
+    "probe": 1.0
+  },
+  "bin": {
+    "daemon_env": "COLDREVIVE_DAEMON",
+    "cli_env": "COLDREVIVE_CLI"
+  },
+  "evidence": {
+    "evidence_valid": false,
+    "s6_status": "not_run",
+    "reason": "本机回环 + mock STUN/mock 中继，不是四类真实 NAT 环境"
+  }
+}

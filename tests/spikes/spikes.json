@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。",
+  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-14 状态更正（以上均为历史演化记录，保留不改写）：G1 已通过（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true），M2 门禁解除并已开工（cr-nat 接入复活路径；T2 本地接线预检 10/10、evidence_valid=false，非 S6 证据）；S3/S5/S6 状态仍为 not_run，G2 未宣称达标。当前机读进度见 m1_progress.m2_gate 与 m2_progress；S6 四类 NAT（含 CGNAT）矩阵实测仍待真实多 NAT 环境，由实验执行人据证据手工回填。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -959,6 +959,19 @@
           "nat_pmp_available": false,
           "note": "单出口单 NAT 样本；与 2026-11-13 pilot 一致（同 WAN IP 112.5.60.4、UPnP/NAT-PMP 不可用）。S6 判据「四类 NAT 实测可达率」仍须 M2 多 NAT 环境，S6.status 保持 not_run，不据此宣称达标",
           "evidence_valid_for_pass": false
+        },
+        "m2_wiring_2026_11_14": {
+          "recorded_at": "2026-11-14",
+          "context": "M2/W3.3 cr-nat 接入复活路径（G1 通过后 M2 开工）。仅验证接线层，不是 NAT 矩阵实测",
+          "implementation": "cr-nat endpoint.rs（候选计划 / tracker 决策）+ holepunch.rs（单 socket 打洞 / 中继回退）；coldrevived nat_path.rs / nat CLI / /nat/advertise / /announce 分流",
+          "harness": "tests/e2e/t2/t2_nat_path.py（--mode local 10/10 PASS；--self-test 3/3）",
+          "report": "tests/e2e/t2/reports/t2-20261114T092808Z-local.json",
+          "environment": "本机回环 + mock RFC 5389 STUN + mock TCP 中继桥；A/B 两进程端口 18800-18802 / 18900-18902；外部地址为回环别名 127.0.0.2 / 127.0.0.3",
+          "observations": "真实 CLI/HTTP/UDP/TCP/文件观测：STUN 复用唤醒监听 socket 得映射端口=唤醒端口；候选顺序私网→STUN 映射→中继；强制 stun-mapped 路径收到真实 PUNCH_ACK 与 WAKEUP_ACK；强制 relay 路径经真实 UDP 转发取回 A 的真实 ACK；tracker 对公网请求方返回空 peer 列表",
+          "matrix_coverage": "0 / 4 类真实 NAT（mock 不计入矩阵）",
+          "note": "S6 判据是四类真实 NAT（含 CGNAT）逐类实测可达率；T2 无任何真实 NAT，S6.status 保持 not_run，不得据此宣称 G2 达标。R-04 ≥70% 阈值仍未判定",
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run"
         }
       }
     },
@@ -1068,6 +1081,16 @@
       "s5": "真实 librqbit-utp 0.7.0 栈量测完成；否证 LEDBAT 退让假设（仅 CUBIC），R-07 风险口径上调",
       "gate_effect": "G1 已通过（2026-11-14 T1 real 11/11 PASS、evidence_valid=true，叠加 2026-11-13 T0 21/21）；M2 门禁解除；S3/S5/S6 状态仍保持 not_run（须 M1/M2 实测回填）",
       "must_validate_still_open": true
+    },
+    "g1_m2_2026_11_14": {
+      "recorded_at": "2026-11-14",
+      "g1": "passed（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true）",
+      "m2_gate": "unblocked — M2 已开工（cr-nat 接入复活路径，T2 本地预检 10/10、evidence_valid=false）",
+      "conditional_freeze_still_binding": true,
+      "s3_s5_s6_status": "unchanged — not_run",
+      "g2_claim": false,
+      "note": "条件冻结的必测回填未结案：S6 四类真实 NAT（含 CGNAT）矩阵、S3 真实双栈 + G3 矩阵、S5 真实拥塞链路 ≤5% 实测仍待执行；T2 的 mock 环境不构成任何一项的通过证据。退回条款（rollback）仍适用",
+      "review_doc": "docs/06-plan/G0-REVIEW.md §11"
     }
   },
   "m1_progress": {
@@ -1080,7 +1103,7 @@
         "crates": 17,
         "bins": 4,
         "dependency_policy": "std-only；cargo test --workspace --offline 可复现",
-        "unit_tests": "55 passed / 0 failed（cr-nat 落地 24 个新单测：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类；2026-11-13 复核基线 31，本轮 +24）",
+        "unit_tests": "55 passed / 0 failed（cr-nat 落地 24 个新单测：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类；2026-11-13 复核基线 31，本轮 +24）。2026-11-14 M2 接线后复核为 74 passed / 0 failed（见 m2_progress.validation）",
         "m2_crates": "cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 仍仅骨架，不宣称 G2；cr-nat 已于 2026-11-13 落地实现（std-only：STUN+NAT-PMP+PCP+UPnP IG+中继回退 + 分类/策略选择），作为 M2 合法前置，S6.status 仍为 not_run，不宣称 G2/S6 达标"
       },
     "t0_real": {
@@ -1097,10 +1120,51 @@
       "S5：真实拥塞链路（tc/netem 或跨主机）+ 真实客户端的 ≤5% 实测未完成；本轮真实 uTP 栈量测仍属本机用户态整形",
       "S6：M2 四类 NAT（含 CGNAT）可达率实测未完成"
     ],
-    "m2_gate": "G1 satisfied (2026-11-14 T1 real passed) — unblocked; awaiting M2 scope/go",
-    "note": "T0 evidence_valid=true 只证明 T0 真实链路通过；T1 预检 evidence_valid 恒为 false；G1 门禁未通过，M2 不得据此启动。",
+    "m2_gate": "G1 satisfied (2026-11-14 T1 real passed) — unblocked; M2 started 2026-11-14 (W3.3 cr-nat 接入复活路径，见 m2_progress)",
+    "note": "历史注记（2026-11-13）：T0 evidence_valid=true 只证明 T0 真实链路通过；T1 预检 evidence_valid 恒为 false；当时 G1 门禁未通过、M2 不得启动。2026-11-14 更正：T1 --mode real 双机 11/11 PASS、evidence_valid=true，叠加 T0 21/21 → G1 已通过，M2 门禁解除并已开工（见 m2_gate 与 m2_progress）。S3/S5/S6 状态仍为 not_run。",
     "spike_status_changed": false,
     "t1_cross_host_support": "2026-11-13 已补齐 NodeSpec.host / --self-host / /health machine_id；T0 单机口径不变，回归 21/21 PASS"
+  },
+  "m2_progress": {
+    "recorded_at": "2026-11-14",
+    "milestone": "M2",
+    "gate": "G2",
+    "status": "in_progress",
+    "g1_prerequisite": "satisfied（2026-11-14 T0 21/21 + T1 real 11/11 均 evidence_valid=true）",
+    "m2_gate": "unblocked（原 blocked_by_G1 已解除）",
+    "scope_done": {
+      "work_item": "W3.3 连通性 — cr-nat 接入 M1 CLI 复活路径（t1_progress.design_gaps[0] 接线层闭合）",
+      "cross_nat_wake": "coldrevived/src/nat_path.rs：nat probe（STUN 复用唤醒监听 socket）/ advertise / peer / plan / wake / tracker / status；send_wake 在 nat 打开且取得对端通告时改走 cr-nat 候选计划，覆盖 wake/find/metrics/全部 scenario；打洞与唤醒复用同一 UDP socket；中继回退经真实 DELIVERED 帧",
+      "tracker_peer_negotiation": "/announce 按请求方 IP 分流：私网/回环返回私网 peer；公网请求方且无真实公网 BT 映射时返回空 peer 列表，绝不泄漏 RFC1918 地址；bt.rs 新增 tracker_response_optional",
+      "cr_nat_additions": "endpoint.rs（端点/候选计划/tracker 决策，纯计算）+ holepunch.rs（NAT_PUNCH 帧、单 socket 打洞、relay_wake）+ stun.rs probe_with（可插拔接收）+ choose_strategy 抽出；修正 Traversal::run 的 CGNAT 启发式误判与 rsplit(':') 取端口缺陷",
+      "config": "cr-core Config 新增可选 nat 段（enabled / stun_servers / gateway / upnp_location / relay / bt_external）；缺省时 T0/T1 行为逐字节不变",
+      "contract_invariants": "PROTOCOL_VERSION=1、T0 golden 字段集合、CLI v1 既有命令返回值均未改；NAT_PUNCH 是新增控制面帧，不属于 golden"
+    },
+    "validation": {
+      "cargo_test_workspace_offline": "74 passed / 0 failed（基线 55 + 本轮 19）",
+      "t2_local_preflight": "tests/e2e/t2/t2_nat_path.py --mode local：10/10 PASS，evidence_valid=false，s6_status=not_run，g2_claim=false",
+      "t2_self_test": "3/3 PASS（mock STUN / 中继 wire 自检）",
+      "t2_report": "tests/e2e/t2/reports/t2-20261114T092808Z-local.json（gitignored 本地证据）",
+      "t0_regression": "2026-11-14 --mode real 复跑 21/21 PASS、evidence_valid=true（顺带修正 t0_cli.py 对 download 的 10s 观测超时为 190s，断言不变）",
+      "t1_self_test_regression": "11/11 PASS（合成观测自检，evidence_valid=false）",
+      "t2_environment": "本机回环 + mock STUN + mock 中继桥；真实 UDP/TCP/HTTP/CLI 观测，但无真实 NAT，不构成 S6 样本"
+    },
+    "remaining_for_g2": [
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；须用户提供真实多 NAT 环境",
+      "S3 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵",
+      "S5 真实拥塞链路（tc/netem 或跨主机）+ rqbit uTP 前台劣化 ≤5% 实测",
+      "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",
+      "生产中继服务端 + 持有者侧中继订阅线程（当前 cr-nat::relay 只有客户端侧）",
+      "BT/TCP 打洞（当前 tracker 只使用 internal_port==bt_port 的真实显式映射）",
+      "M4 前 R-02 拒绝率复审与 R-11 书面法务意见"
+    ],
+    "gate_discipline": {
+      "s3_s5_s6_status": "unchanged — 全部 not_run",
+      "g2_claim": false,
+      "no_auto_pass": "spike 结论仍由实验执行人据证据手工回填；脚本/工具不得自动置 pass",
+      "no_false_claim": "T2 的 10/10 PASS 只证明接线正确性，不得据此宣称 S6/G2 达标"
+    },
+    "spike_status_changed": false
   },
   "t1_progress": {
     "recorded_at": "2026-11-14",
@@ -1195,7 +1259,7 @@
       "scope": "单机真实 socket 全链路预检，不构成 T1 / G1 证据"
     },
     "design_gaps": [
-      "cr-nat 库已于 2026-11-13 落地（STUN/NAT-PMP/PCP/UPnP IGD/中继 + 分类与策略选择，std-only），M2 穿透手段缺口在库层闭合；但 M1 CLI 复活路径（跨 NAT 的 UDP 唤醒 / 私网 tracker peer 地址协商）尚未接入该库，接入属 M2 范围。S6 判据「四类 NAT（含 CGNAT）实测可达率」仍须 M2 真实多 NAT 环境实测，status 保持 not_run",
+      "【2026-11-14 接线层已闭合】cr-nat 已于 2026-11-13 在库层落地，并于 2026-11-14 接入 M1 CLI 复活路径：coldrevived/src/nat_path.rs + nat CLI + /nat/advertise + /announce 私网/公网分流；STUN 复用唤醒监听 socket，打洞与唤醒复用同一 UDP socket，中继回退经真实帧；T2 本地预检 10/10 PASS（evidence_valid=false）。剩余缺口已收窄为：S6 四类真实 NAT（含 CGNAT）可达率矩阵实测、生产中继服务端与持有者侧订阅、BT/TCP 打洞——均须 M2 真实多 NAT 环境，S6.status 保持 not_run",
       "T1-08 只做单侧 NAT 特征取证，四类 NAT 矩阵属 M2 / S6",
       "B 主机需预启动守护进程与第三方下载器，harness 不假装能远程拉起"
     ],

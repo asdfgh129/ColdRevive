@@ -1,9 +1,13 @@
 # T1 双机 + 真实 NAT 全链路验收
 
-> **状态（2026-11-13）：harness 已落地，真实验收 `BLOCKED`；G1 尚未通过，M2 继续 `blocked_by_G1`。**
+> **状态（2026-11-14）：`--mode real` 双物理主机真实验收 11/11 PASS、`evidence_valid=true`；G1 已通过，M2 门禁解除并已开工。**
+> 〔历史口径（2026-11-13）保留：harness 已落地，真实验收 `BLOCKED`；G1 尚未通过，M2 继续 `blocked_by_G1`。
+> 该结论因用户部署第二台物理主机、并于 2026-11-14 跑通 `real` 而失效，见下方 §2.1。〕
 > [TEST §2](../../../docs/05-quality/TEST.md) 定义 T1 为「局域网双机，真实 NAT 内网，验证 UPnP 与 UDP 唤醒」；
 > [ROADMAP §3](../../../docs/06-plan/ROADMAP.md) 规定 **G1 = T0/T1 全链路闭环成功**。T0 的
 > `evidence_valid=true` 只覆盖 `127.0.0.1` 单机回环，**不能替代 T1**。
+> **边界**：本次 real 的 A/B 位于同一 NAT 出口，只证明双机全链路闭环；四类真实 NAT（含 CGNAT）
+> 可达率矩阵仍属 M2 的 S6 必测，`S6.status` 保持 `not_run`。
 
 ## 1. 本轮做了什么
 
@@ -24,14 +28,30 @@
 | `--self-test` | 11/11 PASS | `evidence_valid=false`（合成观测） |
 | `--lan-precheck --address-mode aliases` | 10 PASS / 1 SKIP（T1-01 双机身份） | `evidence_valid=false`；A=`127.0.0.2`、B=`127.0.0.3`，验证按节点 host 寻址路径 |
 | `--lan-precheck --address-mode nic` | 10 PASS / 1 SKIP（T1-01 双机身份） | `evidence_valid=false`；A/B 绑真实物理网卡 `192.168.1.210` 不同端口，非回环 |
-| `--mode real`（无远端前置条件） | 10 BLOCKED / 退出码 2 | 明确报未证明两台不同物理主机，不计入 G1 |
+| `--mode real`（无远端前置条件，2026-11-13） | 10 BLOCKED / 退出码 2 | 明确报未证明两台不同物理主机，不计入 G1 |
+| `--mode real`（2026-11-14，双物理主机 + `--refresh-nat`） | **11/11 PASS** | **`evidence_valid=true`**；报告 `tests/e2e/t1/reports/t1-20261114T084653Z-real-aliases.json`，与 T0 21/21 叠加 → **G1 通过** |
 
 预检中真实量测（两模式一致）：唤醒时延 **P95 = 2.0 ms**（30 样本、0 超时，NFR-04 < 3000 ms）、
 复活成功率 **30/30 = 1.0**、伴随种子真实 InfoHash 由 info 字典原始字节独立计算、
 第三方 aria2 跨地址完成标准 BT 下载并逐片 SHA-1 校验、NAT 报告为 S6 真实 STUN 样本
 （`112.5.60.4:36764`、4/6 台 STUN 应答、公网 UDP 出站可用）。
 
-**这些数字只证明 M1 跨主机代码路径在单机上可跑通，不是 T1、不是 G1、不能解除 M2 门禁。**
+**这些预检数字只证明 M1 跨主机代码路径在单机上可跑通，不是 T1、不是 G1、不能解除 M2 门禁。**
+〔2026-11-14 更正：真正的 T1 证据来自上表最后一行双物理主机 `real` 运行，门禁已由该行解除。〕
+
+### 2.1 G1 证据（2026-11-14 新增）
+
+用户部署第二台物理主机后，按 §4 的 A/B 双机流程执行 `--mode real --refresh-nat`：
+`summary = {total: 11, passed: 11, failed: 0, blocked: 0, skipped: 0}`、`evidence_valid=true`，
+现场 STUN 探针报告 `tests/e2e/t1/reports/t1-nat-20261114T084639Z.json`。
+双机 `machine_id` / `host` 互异、跨主机 KAD 发布发现、UDP `WAKEUP_REQ/ACK` v1 挑战应答、
+P95 2.0 ms、复活 30/30、第三方 `aria2-next 3.1.0` 标准 BT 下载闭环（落盘 SHA-256 + 逐片 SHA-1）、
+golden 契约与最小暴露检查均通过。**叠加 T0 21/21 → G1 通过，`m2_gate` 解除。**
+机读见 `spikes.json` 的 `t1_progress` / `m1_progress.m2_gate`，评审记录见
+[G0-REVIEW §11](../../../docs/06-plan/G0-REVIEW.md)。
+
+> **S6 边界**：`T1-08` 与现场 STUN 探针都是**同一 NAT 出口的单样本**，不构成「四类 NAT + CGNAT
+> 可达率矩阵」。`S6.status` 保持 `not_run`，G2 未达标。
 
 ## 3. 为什么单机无法伪装成双机（真实量测，非推断）
 
@@ -74,6 +94,7 @@ cd /path/on/B/ColdRevive
 export T1_HOST_A=<A_IP> T1_HOST_B=<B_IP> T1_REMOTE_PRESTARTED=1
 python3 tests/e2e/t1/t1_accept.py --mode real --refresh-nat
 # 报告 tests/e2e/t1/reports/t1-*-real.json；evidence_valid=true 且全用例 PASS → G1 解锁
+# （2026-11-14 已按此达成，G1 已通过；此处保留为可复现操作说明）
 ```
 
 `--refresh-nat` 会现场调用 `tests/spikes/s6/stun_probe.py` 重新采集真实 NAT 报告；
@@ -169,21 +190,31 @@ coldrevived.exe --config tests\e2e\t1\.run\t1-config.json ^
 set T1_REMOTE_PRESTARTED=1
 py tests\e2e\t1\t1_accept.py --mode real --refresh-nat
 ```
-- 报告：`tests\e2e\t1\reports\t1-*-real.json`；`evidence_valid=true` 且全用例 PASS → **G1 解锁**。
+- 报告：`tests\e2e\t1\reports\t1-*-real.json`；`evidence_valid=true` 且全用例 PASS → **G1 解锁**
+  （2026-11-14 已达成：`t1-20261114T084653Z-real-aliases.json`，11/11 PASS）。
 
 ### 收尾
 - 以后 A 重新 `cargo build --release` 后，**只需把新 `coldrevived.exe` 再拷到 B 覆盖**；golden 与 config 路径不变则不动。B 永远零工具链。
 - 跑通后本地提交（不 push）：`git add -A && git commit -m "..."`
 
-## 5. 已知 T1 设计缺口（必须在 G1 前解决）
+## 5. 已知设计缺口与当前状态（2026-11-14 更新）
 
-1. **M1 CLI MVP 没有任何 NAT 穿透实现**：无 UPnP IGD / NAT-PMP / PCP、无 STUN 打洞、无中继。
-   S6 先导样本还显示本机 UPnP IGD 与 NAT-PMP **均不可用**。若 T1 的两机被不同 NAT 隔开，
-   当前 `WAKEUP_REQ` 的 UDP 单播与 tracker 返回的私网 peer 地址都不可达，T1 会真实 FAIL。
-   → 需要在 M1 补穿透栈（打洞 + 中继/LowID 回退），或把 T1 限定为「同一 NAT 内两机」并写清边界。
-2. `T1-08` 目前只做**单侧** NAT 特征取证；S6 判据要求的四类 NAT（含 CGNAT）可达率矩阵属 M2。
-3. `--mode real` 的 B 端 `/health` 与 CLI 取数依赖两机路由可达，须先确认防火墙放行
-   `http_port` / `wake_udp_port` / `bt_port`。
+> 本节原标题为「必须在 G1 前解决」。G1 已于 2026-11-14 在**同一 NAT 出口双物理主机**上通过；
+> 下列缺口中的**接线层**已由 M2/W3.3 关闭，**跨 NAT / S6 层**仍是 G2 出口的未结案项。
+
+1. ~~**M1 CLI MVP 没有任何 NAT 穿透实现**~~ → **接线层已关闭（M2/W3.3）**：`cr-nat`
+   （STUN / NAT-PMP / PCP / UPnP IGD / 中继回退 + 分类）已接入 `coldrevived` 复活路径；
+   新增可选 `nat` 配置段、`nat` CLI（`probe` / `advertise` / `peer` / `plan` / `wake` / `tracker` / `status`）、
+   `/nat/advertise`、`/announce` 按请求方 IP 做私网/公网 peer 分流；STUN 探测复用唤醒监听 socket，
+   打洞帧与唤醒帧复用同一 UDP socket。验证见 [T2 本地接线验收](../t2/README.md) 10/10 PASS
+   （`evidence_valid=false`，只证明接线）。
+   **仍缺**：四类真实 NAT（含 CGNAT）可达率矩阵、生产中继服务与持有者侧订阅线程、BT/TCP 打洞、
+   对称 NAT 策略的真实环境验证。`S6.status` 保持 `not_run`；T1 real 的两机同出口，不得外推为跨 NAT 可达率。
+2. `T1-08` 只做**单侧** NAT 特征取证；2026-11-14 现场 STUN 探针仍是同一出口的单样本。
+   S6 判据要求的四类 NAT（含 CGNAT）可达率矩阵属 M2 必测，**未完成**。
+3. `--mode real` 的 B 端 `/health` 与 CLI 取数依赖两机路由可达；2026-11-14 已确认 A 机 Ethernet
+   为 Public profile 且防火墙 OFF，B→A 入站无需额外规则。换环境时仍须复核三个端口
+   （`http_port` / `wake_udp_port` / `bt_port`）。
 
 ## 6. 相关文件
 

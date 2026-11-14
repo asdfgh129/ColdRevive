@@ -126,6 +126,11 @@ updated: 2026-11-13
 > `rusqlite`、Tokio/axum 时须另立 ADR 并复核 G1。`coldrevived` 当前的最小 HTTP / UDP / BT 种子端
 > 是 M1 验证用实现，不是最终架构。T0 `--mode real` 已 21/21 PASS，但 T1 与 S3/S5/S6 必测回填
 > 未完成，**G1 未通过、M2 仍 `blocked_by_G1`**，见 [G0-REVIEW §9](../06-plan/G0-REVIEW.md)。
+> 〔以上为 2026-11-13 时点记录；**当前状态更正（2026-11-14）**：G1 已通过、M2 门禁解除并已开工。
+> 本轮 M2/W3.3 的 cr-nat 接入**仍坚持 std-only 零第三方依赖**（`cargo test --workspace --offline`
+> 74 单测全绿），选型表中的 rqbit / rusqlite / Tokio / axum **依然未引入生产代码**，
+> 引入时仍须另立 ADR 并复核门禁。T2 本地预检 10/10 只证明接线，S3/S5/S6 仍 `not_run`。
+> 详见 [G0-REVIEW §11](../06-plan/G0-REVIEW.md) 与 [ROADMAP §6](../06-plan/ROADMAP.md)。〕
 
 > **T1 / S5 补记（2026-11-13，v2.6）**：M1 增加按节点 `host` 的跨主机寻址（`NodeSpec.host`
 > 缺省回落 `bind`）、`--self-host` / `--workdir` / `--sample` / `--downloader` 启动参数与

@@ -101,17 +101,18 @@ ColdRevive
 | 安全 / 测试工程师 | 威胁建模、故障注入、压测 | M2–M4 |
 | 法务 / 合规顾问 | P2P 工具合规边界 | M0、M4 |
 
-## 6. 当前状态（起始 2026-11-09，更新至 2026-11-11）
+## 6. 当前状态（起始 2026-11-09，更新至 2026-11-14）
 
 > 本节按时间追加观测，**较早条目保留当时口径**，最新状态以本节末尾条目与
-> `spikes.json` 为准。截至 2026-11-13：**G0 已由项目所有者批准「条件冻结」（conditional pass）**，
-> M1 已依此开工并跑通 T0 真实链路（21/21 PASS、`evidence_valid=true`）；
-> 但 **T1 与 S3/S5/S6 必测回填未完成，G1 未通过，M2 仍被门禁阻塞**。
+> `spikes.json` 为准。截至 **2026-11-14**：**G0 条件冻结（conditional pass）**，
+> **G1 已通过**（T0 21/21 + T1 `--mode real` 双机 11/11，均 `evidence_valid=true`），
+> **M2 门禁解除并已开工**（W3.3：cr-nat 接入复活路径，T2 本地预检 10/10）。
+> **S3 / S5 / S6 仍 `not_run`，G2 未宣称达标**；S6 四类 NAT（含 CGNAT）可达率须真实多 NAT 环境实测。
 > [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 已签署 `public` 默认模式并定稿；
-> 评审记录见 [G0-REVIEW](G0-REVIEW.md)，机读进度见 `spikes.json` 的 `m1_progress`。
+> 评审记录见 [G0-REVIEW](G0-REVIEW.md)，机读进度见 `spikes.json` 的 `m1_progress` / `m2_progress`。
 > 其中「立即下一步 / 换网 / 重跑 P4」等条目属 2026-11-09～10 的历史排期，
 > 已被 v2.4.14 / v2.4.26 的字节序与 Kad tag 编码修复推翻，**不再作为当前执行依据**，
-> 保留仅为决策演化链；当前应执行的是本节末尾「G0 剩余缺口清单」。
+> 保留仅为决策演化链；当前应执行的是本节末尾「2026-11-14 状态更新」。
 
 - 阶段：**设计冻结候选，M0 进行中（Spike 首批观测已产出，G0 未通过）**〔2026-11-11 口径；2026-11-13 起 G0 已条件冻结，见本节末尾〕。
 - 已完成：文档体系工程化（v2.4 自包含索引页，21 份 DOC + 10 份 ADR）、项目目录骨架、风险登记册、测试与计划基线。
@@ -173,7 +174,32 @@ ColdRevive
 
 - **G0 剩余缺口清单（2026-11-13 第五次更新 / T1 与 S5 推进后）**：① ~~S1 / S4 / S7 回填~~ ✅；② ~~ADR-001 签署~~ ✅；③ ~~技术路线冻结评审~~ ✅；④ ~~M1 二进制 / CliAdapter 接线~~ ✅；⑤ ~~T0 单机回环真实链路~~ ✅（21/21 PASS）；⑥ **T1 harness + M1 跨主机寻址已落地**，单机预检（`aliases` / `nic` 两模式）各 10 PASS / 1 SKIP、`evidence_valid=false`，但 `--mode real` 因**只有一台物理主机**明确 `BLOCKED`；⑦ **S5 真实 librqbit-utp 0.7.0 栈量测完成**，并源码核实该版本**仅 CUBIC、无 LEDBAT**（`prefer_utp` 不带来退让），`ratio=0.02` 实测前台劣化 2.70%；**剩余（G1 出口 / M2 前置）**：T1 两台真实物理机 + 真实 NAT 全链路（且需先补 NAT 穿透栈，M1 当前无 UPnP/打洞/中继）；S3 真实双栈集成 + G3 矩阵；S5 `tc/netem` 或跨主机真实拥塞链路实测；S6（M2）四类 NAT 可达率实测；M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**T0 / T1 预检的 PASS 均不等于 G1；M2 保持 `blocked_by_G1`，S3/S5/S6 仍 `not_run`。** 机读口径：`spikes.json` 的 `t1_progress`、`m1_progress.g1_remaining`、`S5.observations.utp_real_2026_11_13`。详见 [T1 README](../../tests/e2e/t1/README.md) 与 [S5 README](../../tests/spikes/s5/README.md)。
 
-- **T1 环境约束（2026-11-13 实测）**：`t1_netprobe.py` 的 25 组真实 UDP 探测显示，本机同一 IP `5/5` 可达、跨 IP 仅 `6/20`（全部只在回环别名之间），物理网卡与 Hyper-V 交换机双向 `WSAENETUNREACH (10051)`；WSL / 第二台虚拟机被安全策略禁止，未做绕过。因此单机无法伪装双机，T1 必须换真实第二台物理机。
+- **T1 环境约束（2026-11-13 实测）**：`t1_netprobe.py` 的 25 组真实 UDP 探测显示，本机同一 IP `5/5` 可达、跨 IP 仅 `6/20`（全部只在回环别名之间），物理网卡与 Hyper-V 交换机双向 `WSAENETUNREACH (10051)`；WSL / 第二台虚拟机被安全策略禁止，未做绕过。因此单机无法伪装双机，T1 必须换真实第二台物理机。〔**已于 2026-11-14 由用户部署第二台物理主机解决**，见下条〕
+
+- **G1 通过 / M2 开工（2026-11-14，v2.4.46–47 状态更新）**：
+  ① 用户部署第二台物理主机 B（192.168.1.209 / DESKTOP-CCE53RF），与 A（192.168.1.210 / DESKTOP-DJQSC95）组成真实双机；
+     T1 `--mode real --refresh-nat` **11/11 PASS、`evidence_valid=true`**（双机 machine_id/host 互异、跨主机 KAD 发布发现、UDP WAKEUP v1、P95 2.0 ms、复活 30/30、第三方 aria2-next 3.1.0 标准 BT 下载闭环、现场 STUN 探针、golden 契约、无残留）。
+     叠加 T0 21/21 → **G1 通过，`m2_gate` 由 `blocked_by_G1` 改为 unblocked**。
+  ② **M2/W3.3 第一刀**：`cr-nat` 接入 `coldrevived` 复活路径——`cr-core` 可选 `nat` 配置段、
+     `cr-nat::endpoint` 候选计划与 tracker 地址决策、`cr-nat::holepunch` 单 socket 打洞 / 中继回退、
+     `coldrevived/src/nat_path.rs` 的 `nat` CLI（`probe` / `advertise` / `peer` / `plan` / `wake` / `tracker` / `status`）、
+     `/nat/advertise`、`/announce` 按请求方 IP 做私网/公网 peer 分流。
+     STUN 探测复用唤醒监听 socket；打洞帧与唤醒帧复用同一 UDP socket；`PROTOCOL_VERSION` 与 T0 golden 不变。
+  ③ **[T2 本地接线验收](../../tests/e2e/t2/README.md)** `10/10 PASS`（mock STUN + mock 中继桥，真实 UDP/TCP/HTTP/CLI 观测），
+     `evidence_valid=false`；T0 `--mode real` 回归 **21/21 PASS**，`cargo test --workspace --offline` **74/74**。
+  ④ **剩余（G2 出口）**：S6 四类真实 NAT（含 CGNAT）可达率矩阵；S3 真实双栈集成 + G3 矩阵；
+     S5 真实拥塞链路 ≤5% 实测；M2 其余 10 个骨架 crate 的内置引擎 / 资源治理实现；
+     M4 前 R-02 拒绝率复审与 R-11 书面法务意见。**S3/S5/S6 状态仍 `not_run`，不得据 T2 判 G2 达标。**
+     机读口径：`spikes.json` 的 `m2_progress`、`t1_progress.design_gaps`、`S6.observations.m2_wiring_2026_11_14`。
+
+- **下一步计划（M2/W3.4，2026-11-14 口径收尾后启动）**：从 `m2_progress.remaining_for_g2`
+  中选择**可在本机闭环**的一项 —— **生产中继服务端 + 持有者侧中继订阅线程**。
+  `cr-nat::relay` 目前只有客户端侧帧协议（`REGISTER` / `RELAY` / `DELIVERED` / `ACK`），
+  [T2 本地接线验收](../../tests/e2e/t2/README.md) 用的是本地 mock 桥；W3.4 将补服务端
+  （注册 / 目标路由 / ACK / 连接管理）与 `coldrevived` 的中继订阅线程，并把 T2 的 mock 桥
+  替换为真实服务端做回归。**不改动 S3/S5/S6 状态，不宣称 G2 达标。**
+  其余 G2 出口（S6 四类真实 NAT 含 CGNAT 矩阵、S3 双栈 + G3 矩阵、S5 真实拥塞链路 ≤5%、
+  M2 其余骨架 crate、BT/TCP 打洞）仍须真实多 NAT / 跨主机环境或独立工程量，不因 W3.4 结案。
 
 ## 相关文档
 

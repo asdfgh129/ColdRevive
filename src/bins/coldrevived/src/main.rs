@@ -10,10 +10,11 @@
 
 mod bt;
 mod commands;
+mod nat_path;
 
 use cr_core::{Config, Json};
 use cr_indexer::inspect as inspect_file;
-use cr_kad::{find_result, publish_keys, udp_reply};
+use cr_kad::{find_result, publish_keys};
 use cr_store::{FileEntry, ShadowIndex};
 use cr_torrent::Torrent;
 use cr_wake::{build_ack, reject, validate_req};
@@ -23,7 +24,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -40,6 +41,15 @@ pub struct DownloadRecord {
     pub private_seen: bool,
 }
 
+/// UDP 监听 socket 的共享句柄。M2：`nat probe` 必须复用这个 socket 做 STUN，
+/// 才能保证学习到的外部映射端口与实际唤醒端口一致。
+#[derive(Clone)]
+pub struct UdpHub {
+    pub socket: Arc<UdpSocket>,
+    /// 探测期间由 UDP 分发线程把 STUN 响应转交给 probe 的 channel。
+    pub stun_sink: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
+}
+
 pub struct NodeState {
     pub cfg: Config,
     pub index: ShadowIndex,
@@ -53,6 +63,8 @@ pub struct NodeState {
     pub stale_pids: Vec<String>,
     pub blacklist: HashSet<String>,
     pub last_file_hash: Option<String>,
+    pub nat: nat_path::NatContext,
+    pub hub: UdpHub,
 }
 
 fn main() {
@@ -91,6 +103,16 @@ fn main() {
         .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string())
         .filter(|n| n.ends_with(".pid")).collect();
 
+    // UDP socket 在启动线程前绑定一次：M1 的 KAD/唤醒分发与 M2 的 STUN 探测共用它。
+    let udp_socket = match UdpSocket::bind(format!("{}:{}", cfg.bind, me.wake_udp_port)) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("[{}] UDP 绑定失败: {}", node_id, e); std::process::exit(2); }
+    };
+    let hub = UdpHub {
+        socket: Arc::new(udp_socket),
+        stun_sink: Arc::new(Mutex::new(None)),
+    };
+
     let mut st = NodeState {
         index: ShadowIndex::open(&state_path),
         cfg: cfg.clone(),
@@ -104,6 +126,8 @@ fn main() {
         stale_pids,
         blacklist: HashSet::new(),
         last_file_hash: None,
+        nat: nat_path::NatContext::from_config(&cfg),
+        hub: hub.clone(),
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -119,12 +143,12 @@ fn main() {
         let infohash = torrent.info_hash.clone();
         let shared = Arc::new(Mutex::new(st));
         bt::spawn_seeder(cfg.clone(), infohash, sample, torrent.piece_size, shared.clone());
-        spawn_udp(cfg.clone(), me.wake_udp_port, shared.clone());
+        spawn_udp(hub.clone(), cfg.clone(), shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));
-        spawn_udp(cfg.clone(), me.wake_udp_port, shared.clone());
+        spawn_udp(hub.clone(), cfg.clone(), shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
     }
@@ -178,6 +202,8 @@ fn spawn_http(cfg: Config, port: u16, state: Arc<Mutex<NodeState>>) {
 
 fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(130)));
+    let requester_ip = stream.peer_addr().ok()
+        .map(|a| a.ip().to_string()).unwrap_or_default();
     let req = match read_http(&mut stream) {
         Ok(r) => r,
         Err(_) => return,
@@ -215,10 +241,24 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
             Some(bytes) => ("200 OK".into(), bytes, "application/x-bittorrent"),
             None => ("404 Not Found".into(), b"no torrent".to_vec(), "text/plain"),
         }
+    } else if path == "/nat/advertise" && method == "GET" {
+        ("200 OK".into(),
+         nat_path::advertisement_json(&nat_path::self_advertisement(&state, &cfg))
+             .dump().into_bytes(), "application/json")
     } else if path.starts_with("/announce") {
         let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
-        let port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
-        ("200 OK".into(), bt::tracker_response(query, cfg.host("A"), port), "application/x-bittorrent")
+        // M1 口径（nat 关闭）：仍走原 tracker_response，字节级不变。
+        // M2 口径：按请求方 IP 分流，公网请求方且无真实公网 BT 映射时返回空 peer 列表，
+        // 绝不把 RFC1918 私网地址发给公网对端，也不捏造占位地址。
+        let body = if state.lock().unwrap().nat.enabled {
+            let target = nat_path::tracker_target(&state, &cfg, &requester_ip);
+            bt::tracker_response_optional(query, target.as_ref()
+                .map(|(ip, port)| (ip.as_str(), *port)))
+        } else {
+            let port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
+            bt::tracker_response(query, cfg.host("A"), port)
+        };
+        ("200 OK".into(), body, "application/x-bittorrent")
     } else {
         ("404 Not Found".into(), b"not found".to_vec(), "text/plain")
     };
@@ -346,21 +386,36 @@ pub fn http_post_json(url: &str, body: &Json) -> Result<Json, String> {
 // UDP（KAD 发现 + 私有唤醒）
 // ---------------------------------------------------------------------------
 
-fn spawn_udp(cfg: Config, port: u16, state: Arc<Mutex<NodeState>>) {
+fn spawn_udp(hub: UdpHub, cfg: Config, state: Arc<Mutex<NodeState>>) {
     thread::spawn(move || {
-        let sock = match UdpSocket::bind(format!("{}:{}", cfg.bind, port)) {
-            Ok(s) => s,
-            Err(e) => { eprintln!("[{}] UDP 绑定失败: {}", cfg.node_id, e); return; }
-        };
-        println!("[{}] UDP 监听 {}:{}", cfg.node_id, cfg.bind, port);
+        let sock = &hub.socket;
+        println!("[{}] UDP 监听 {}:{}", cfg.node_id, cfg.bind,
+                 sock.local_addr().map(|a| a.port()).unwrap_or(0));
         let mut buf = [0u8; 65535];
         loop {
             let (n, src) = match sock.recv_from(&mut buf) { Ok(v) => v, Err(_) => continue };
+            // M2: STUN Binding 响应交给正在进行的 nat probe（复用同一监听 socket）
+            if nat_path::is_stun_datagram(&buf[..n]) {
+                if let Some(tx) = hub.stun_sink.lock().unwrap().as_ref() {
+                    let _ = tx.send(buf[..n].to_vec());
+                }
+                continue;
+            }
             let frame = match Json::parse(&String::from_utf8_lossy(&buf[..n])) {
                 Ok(j) => j, Err(_) => continue,
             };
-            let reply = handle_udp_frame(&cfg, &state, &frame);
-            if let Some(r) = reply { udp_reply(&sock, src, &r); }
+            // M2: 打洞帧从监听 socket 回 ACK —— 真实回包打开/维持本侧 NAT 映射。
+            // 该帧不属于 PROTO v1 golden，不改变 WAKEUP_REQ/ACK 字段集合。
+            let frame_type = frame.get("t").and_then(Json::as_str).unwrap_or("");
+            if frame_type == cr_nat::holepunch::PUNCH_TYPE {
+                let token = frame.get("token").and_then(Json::as_str).unwrap_or("");
+                let _ = sock.send_to(
+                    &cr_nat::holepunch::punch_ack(&cfg.node_id, token), src);
+                continue;
+            }
+            if let Some(r) = handle_udp_frame(&cfg, &state, &frame) {
+                let _ = sock.send_to(r.dump().as_bytes(), src);
+            }
         }
     });
 }

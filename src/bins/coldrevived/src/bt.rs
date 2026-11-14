@@ -29,27 +29,35 @@ fn peer_id() -> [u8; 20] {
 }
 
 /// 本地 tracker 的 bencode 响应。按客户端 `compact` 参数返回紧凑或非紧凑 peer 列表。
+///
+/// M2：`peer=None` 表示「没有可向该请求方通告的合法端点」，此时返回**空 peer 列表**，
+/// 不把私网地址发给公网对端，也不捏造占位地址。
 pub fn tracker_response(query: &str, ip: &str, port: u16) -> Vec<u8> {
+    tracker_response_optional(query, Some((ip, port)))
+}
+
+pub fn tracker_response_optional(query: &str, peer: Option<(&str, u16)>) -> Vec<u8> {
     let compact = query.split('&').any(|kv| kv == "compact=1")
         || !query.split('&').any(|kv| kv.starts_with("compact="));
-    let mut peers = Vec::new();
-    if compact {
-        for part in ip.split('.') { peers.push(part.parse::<u8>().unwrap_or(127)); }
-        while peers.len() < 4 { peers.push(127); }
-        peers.extend_from_slice(&port.to_be_bytes());
-    } else {
-        peers.extend_from_slice(format!(
-            "ld2:ip{}:{}4:porti{}eee", ip.len(), ip, port
-        ).as_bytes());
-    }
     let mut out = Vec::new();
     out.extend_from_slice(b"d8:completei1e10:incompletei0e8:intervali1800e");
-    if compact {
-        out.extend_from_slice(format!("5:peers{}:", peers.len()).as_bytes());
-        out.extend_from_slice(&peers);
-    } else {
-        out.extend_from_slice(b"5:peers");
-        out.extend_from_slice(&peers);
+    match (compact, peer) {
+        (true, Some((ip, port))) => {
+            let mut peers = Vec::new();
+            for part in ip.split('.') { peers.push(part.parse::<u8>().unwrap_or(127)); }
+            while peers.len() < 4 { peers.push(127); }
+            peers.extend_from_slice(&port.to_be_bytes());
+            out.extend_from_slice(format!("5:peers{}:", peers.len()).as_bytes());
+            out.extend_from_slice(&peers);
+        }
+        (true, None) => out.extend_from_slice(b"5:peers0:"),
+        (false, Some((ip, port))) => {
+            out.extend_from_slice(b"5:peers");
+            out.extend_from_slice(format!(
+                "ld2:ip{}:{}4:porti{}eee", ip.len(), ip, port
+            ).as_bytes());
+        }
+        (false, None) => out.extend_from_slice(b"5:peersle"),
     }
     out.push(b'e');
     out
@@ -157,6 +165,18 @@ mod tests {
         assert!(s.starts_with("d8:completei1e"));
         assert!(s.contains("5:peers6:"));
         assert_eq!(r.last(), Some(&b'e'));
+    }
+
+    #[test]
+    fn no_peer_yields_empty_bencode_peer_list() {
+        let compact = tracker_response_optional("compact=1", None);
+        assert!(String::from_utf8_lossy(&compact).contains("5:peers0:"));
+        assert_eq!(compact.last(), Some(&b'e'));
+        let plain = tracker_response_optional("compact=0", None);
+        assert!(String::from_utf8_lossy(&plain).contains("5:peersle"));
+        // 旧接口字节级不变
+        assert_eq!(tracker_response("compact=1", "127.0.0.1", 16802),
+                   tracker_response_optional("compact=1", Some(("127.0.0.1", 16802))));
     }
 
     #[test]

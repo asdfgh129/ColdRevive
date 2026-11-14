@@ -87,7 +87,10 @@ OBSERVE_PLAN: dict[str, dict[str, Any]] = {
                               "bt_port_listening": "state.bt_port_listening"}}],
     },
     "T0-08": {
+        # download 内部由第三方 BT 客户端真实下载，daemon 侧 run_with_timeout 上限 120 s；
+        # 观测客户端必须给到 >=120 s，否则 CLI 被提前杀掉而误判 BLOCKED（v2.4.47 修正）。
         "calls": [{"node": "B", "command": "download", "args": ["{magnet}"],
+                   "timeout": 190.0,
                    "fields": {"private_protocol_in_data_plane": "download.private_protocol_seen",
                               "download_complete": "download.complete",
                               "downloaded_sha256": "download.sha256",
@@ -326,7 +329,8 @@ def collect(case_id: str, ctx: dict[str, Any]) -> Observation:
     values: dict[str, Any] = {}
     for call in spec["calls"]:
         args = [a.format(**subs) for a in call.get("args", [])]
-        data = client.call(call["node"], call["command"], args)
+        data = client.call(call["node"], call["command"], args,
+                           timeout=float(call.get("timeout", 10.0)))
         for key, path in call["fields"].items():
             found, value = dig(data, path)
             if not found:

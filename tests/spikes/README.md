@@ -1,5 +1,12 @@
 # M0 Spike 实验包（tests/spikes/）
 
+> **【当前状态更正 · 2026-11-14 / v2.4.47】下方多条 `>` 补记均为 2026-11-13 时点历史口径，不是现状。**
+> **G1 已于 2026-11-14 通过**（T0 21/21 + T1 `--mode real` 双物理主机 11/11，均 `evidence_valid=true`）；
+> **M2 门禁解除并已开工**（W3.3 `cr-nat` 接入 `coldrevived` 复活路径，机读 `spikes.json` 的 `m2_progress`）。
+> **S3 / S5 / S6 状态仍为 `not_run`**，G2 未达标；[T2 本地接线验收](../e2e/t2/README.md) 10/10 的
+> `evidence_valid=false`，**本轮没有改动任何 Spike 结论**（`m2_progress.spike_status_changed=false`），
+> 结论回填规则（本文 §6）原样有效。详见 [G0-REVIEW §11](../../docs/06-plan/G0-REVIEW.md)。
+
 > **状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 为 `pass`；S3 / S5 / S6 `not_run`**（S8 由项目所有者豁免登记，无书面法务意见；S4/S7 经真实量测回填）。
 > **G0 已于 2026-11-13 由项目所有者批准「条件冻结」（conditional pass）**：[ADR-001](../../docs/02-architecture/adr/ADR-001-kad-network.md)
 > 签署 `public` 默认模式；S3/S5/S6 豁免 G0 时点结论（状态仍 `not_run`，不虚判），M1/M2 必测回填。
@@ -7,10 +14,10 @@
 > **2026-11-13 第二次补记（T1 / S5）**：T1 双机 harness 已落地于 `../e2e/t1/`，单机预检各 10 PASS / 1 SKIP
 > 但 `evidence_valid=false`，`--mode real` 因无第二台物理主机 `BLOCKED`；**S5 用真实 librqbit-utp 0.7.0
 > 栈量测并源码核实该版本仅 CUBIC、无 LEDBAT**（见 [s5/README.md §9](s5/README.md)），R-07 口径上调。
-> S3 / S5 / S6 状态**继续 `not_run`**，G1 未通过、M2 仍 `blocked_by_G1`；
+> S3 / S5 / S6 状态**继续 `not_run`**，G1 未通过、M2 仍 `blocked_by_G1`（**2026-11-13 历史口径**）；
 > 机读进度见 `spikes.json` 的 `t1_progress`、`m1_progress` 与 `S5.observations.utp_real_2026_11_13`。
 > **2026-11-13 M1 开工补记**：T0 真实链路 21/21 PASS（`evidence_valid=true`），但 **T1 与 S3/S5/S6 必测回填未完成**，
-> G1 未通过、M2 仍 `blocked_by_G1`；三项状态**继续 `not_run`**，各补 `m1_2026_11_13` 证据条目
+> G1 未通过、M2 仍 `blocked_by_G1`（**2026-11-13 历史口径**）；三项状态**继续 `not_run`**，各补 `m1_2026_11_13` 证据条目
 > （`evidence_valid_for_pass=false`），机读进度见 `spikes.json` 的 `m1_progress`。
 > M1 的 Cargo Workspace 与生产二进制在仓库根 `Cargo.toml` / `src/`，不在本实验包内。
 > 本目录是「实验的准备与就绪度检查 + 证据产出」，**不是结论本身**；结论唯一入口是 `spikes.json`。
@@ -110,6 +117,14 @@ python3 tests/spikes/m0_preflight.py --json
 **S5（R-07，uTP/LEDBAT 后台退让满足 NFR-03）：`not_run`（本地量测就绪，已获 G0 条件冻结豁免）。** `s5/qos_bench.py` 真实 TCP 双流 + 令牌桶 + 瓶颈整形量测：后台上行硬卡 ≤20.25% 链路（NFR-03 第一半成立），**但默认 20% 配置前台劣化 20.12%**、LEDBAT 式退让模型 15.0%，ratio=0.05 → 6.19%，**ratio=0.02 → 4.03%（进入 ≤5% 目标）**。结论：**默认配置不满足 NFR-03 ≤5%，M1 默认值须按实测回调，R-07 未完全去险**。该数字来自本地模型而非真实 uTP，不能支撑 `pass`；M1/G3 真实拥塞链路实测方案见 `s5/README.md`。
 
 **S6（R-04，常见家用 NAT 可达率）：`not_run`（1 个真实先导样本，已获 G0 条件冻结豁免）。** 穿透栈覆盖四类 NAT，分析型含中继可达率 ≥95%（> R-04 70% 阈值）。`s6/stun_probe.py` 于 2026-11-13 取得首个真实样本：`192.168.1.210` → `112.5.60.4:36764`，跨 4 台 STUN 映射不变（cone 类）、公网 UDP 可达；**UPnP IGD 与 NAT-PMP 在本环境均不可用**，二跳公网、未见 CGNAT → R-04 不能按「UPnP 可用」假设估计。单样本不满足矩阵判据，须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。矩阵见 `s6/nat-matrix.md`。
+>
+> **2026-11-14 补记（M2/W3.3）**：`cr-nat` 已接入 `coldrevived` 复活路径（端点候选计划、
+> 单 socket 打洞、中继帧回退、tracker 私网/公网 peer 分流），T1 `--mode real` 现场 STUN 探针与
+> [T2 本地接线验收](../e2e/t2/README.md) 10/10 均已落地。但二者仍是**同一 NAT 出口的单样本 /
+> 本机 mock 环境**：`S6.observations` 新增 `m2_wiring_2026_11_14`，标注
+> `evidence_valid_for_pass=false`、`matrix_coverage = 0 / 4 类真实 NAT`。
+> **`S6.status` 保持 `not_run`**，R-04 ≥70% 阈值未判定；四类 NAT + CGNAT 矩阵仍须 M2 在真实
+> 多 NAT 环境逐类实测后由实验执行人手工回填，**脚本与 harness 不得自动置 `pass`**。
 
 ## 6. 结论回填规则
 
