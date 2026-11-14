@@ -124,23 +124,29 @@ py tests/e2e\t1\t1_accept.py --mode real --prepare-only
 ```
 生成文件：`tests\e2e\t1\.run\t1-config.json`（四路径已相对化，拷到 B 不用改）。
 
-### ② 把文件弄到 B（不装编译器，三选一）
+### ② 把文件弄到 B（B **不需要源码**，只拷运行必需项）
+
+B 的守护进程只跑预编译的 `coldrevived.exe`（std-only、自包含），**不编译、不需要 Rust 源码 / Cargo.toml / `target` 构建目录 / Python harness / 其它二进制**。
+它运行时按 **相对仓库根** 读取以下文件（路径来自 `t1-config.json`），所以 B 启动守护进程的目录（`C:\ColdRevive`）下必须存在这些相对路径：
+
+- `tests\fixtures\t0\golden\wakeup_req.v1.json` 与 `wakeup_ack.v1.json`（唤醒签名夹具）
+- `tests\e2e\t1\.run\t1-config.json`（配置本身）
+- `tests\e2e\t1\.run\B\`（workdir，运行时自动创建）
+
+> **为什么之前说"拷整仓库"**：纯粹是为了让这些相对路径能解析；整仓库里有用的其实只有 `tests/` 子树 + 那个 exe。
+> **样本文件 `sample_path` 仅 A 节点（holder）启动时才读取**（`bootstrap_holder` 只在 `node_id=="A"` 时执行），**B 节点不会读，可不拷**（拷了也无害）。
+
 ```cmd
-REM 方式 A — U 盘（最省事）：跳过 target/.git 省空间，再单独拷 exe（robocopy 自动建目录）
-robocopy C:\Users\bemin\WorkBuddy\ColdRevive E:\ColdRevive /E /XD target .git
-robocopy C:\Users\bemin\WorkBuddy\ColdRevive\target\release E:\ColdRevive\target\release coldrevived.exe
-REM 然后把 E:\ColdRevive 整目录复制到 B 的 C:\ColdRevive
+REM 推荐：只拷 tests 子树 + 编译好的 exe（远小于整仓库）
+robocopy C:\Users\bemin\WorkBuddy\ColdRevive\tests E:\ColdRevive\tests /E
+copy C:\Users\bemin\WorkBuddy\ColdRevive\target\release\coldrevived.exe E:\ColdRevive\
+REM 然后把 E:\ColdRevive（仅 tests + exe）拷到 B 的 C:\ColdRevive，B 从该目录启动守护进程
 
-REM 方式 B — 局域网（需 B 开管理员共享 C$）
-robocopy C:\Users\bemin\WorkBuddy\ColdRevive \\<B_IP>\C$\ColdRevive /E /XD target .git
-robocopy C:\Users\bemin\WorkBuddy\ColdRevive\target\release \\<B_IP>\C$\ColdRevive\target\release coldrevived.exe
-
-REM 方式 C — OpenSSH 客户端（Win10+ 可选功能）
-scp -r C:\Users\bemin\WorkBuddy\ColdRevive\* user@<B_IP>:C:/ColdRevive/
-scp C:\Users\bemin\WorkBuddy\ColdRevive\target\release\coldrevived.exe user@<B_IP>:C:/ColdRevive/target/release/
+REM 备选：若想最省心，也可整仓库拷（跳过 target/.git），但源码其实用不上
+REM robocopy C:\Users\bemin\WorkBuddy\ColdRevive E:\ColdRevive /E /XD target .git
+REM robocopy C:\Users\bemin\WorkBuddy\ColdRevive\target\release E:\ColdRevive\target\release coldrevived.exe
 ```
-B 上最终要有的：`coldrevived.exe` + 仓库源码 + `tests\fixtures\t0\golden\`（唤醒签名夹具）+ `tests\e2e\t1\.run\t1-config.json`。golden 和 config 已随源码一起拷，无需额外处理。
-**B 的下载器同样用其 Motrix Next 捆绑的 aria2**：`C:\Program Files\MotrixNext\motrixnext-aria2c.exe`（路径以 B 实际安装位置为准）。
+**B 的下载器同样用其 Motrix Next 捆绑的 aria2**：`C:\Program Files\MotrixNext\motrixnext-aria2c.exe`（路径以 B 实际安装位置为准；B 可不拷此文件、直接用已安装路径）。
 
 ### ③ B 机：从仓库根目录启动守护进程（CMD 窗口，保持开着别关）
 ```cmd

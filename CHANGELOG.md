@@ -2,6 +2,15 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.44] - 2026-11-14 — T1 README 澄清 B 机无需源码，只需 tests/ + exe
+
+> 范围声明：仅文档澄清，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
+
+### 改动
+- `tests/e2e/t1/README.md` §4.1 步骤②澄清：B 机**不需要整个工程源码**。`coldrevived` 是预编译、std-only、自包含的二进制，运行时不编译，也不需要 Rust 源码 / Cargo.toml / `target` 构建目录 / Python harness / 其它二进制。
+- 依据：`main.rs` 中 `bootstrap_holder()`（读取 `sample_path` 并做种）**仅当 `node_id=="A"` 时执行**；`else` 分支（node B）只起 UDP/HTTP 监听、不读样本、不做种。故样本文件 `sample_path` 仅 A 需要，B 可不拷。
+- B 实际只需：`coldrevived.exe` + `t1-config.json` + `tests/fixtures/t0/golden/*`（相对仓库根路径，由 CWD 解析）+ aria2。给出「只拷 `tests/` 子树 + exe」的最小拷贝命令，整仓库拷贝仅作为备选。
+
 ## [2.4.43] - 2026-11-14 — T1 下载器明确为 Motrix Next 捆绑 aria2（非 GUI）
 
 > 范围声明：仅文档更正，**不改变任何 Spike 的 `status`**、**不宣称 G1 通过**。
