@@ -244,11 +244,27 @@ ColdRevive
   T2 **10/10**。**S3/S5/S6 仍 `not_run`、G2 未达标**；证据 `evidence_valid=false` / `vm-namespace-lab`。
   机读见 `spikes.json` 的 `m2_progress.scope_done.w36_bidirectional_punch` 与
   `S6.observations.w36_bidirectional_punch_2026_11_15`。
+- **M2 判据澄清（2026-11-15，v2.4.53）S6 是两条独立条款，不是一条**：
+  ① 每类环境在**两台不同物理主机**上各启动 `coldrevived`（`nat_matrix_config.json` →
+  `measurement_protocol[0]`）；② `real_nat_evidence`：**真实 NAT 设备**的可核查证据。
+  实验室两条都不满足：端点同机两 netns（①）、NAT 由 iptables 合成（②）。
+  **加主机只能满足①，永远满足不了②**；再加一条硬限制：**一个网络出口只对应一个真实 NAT 类别**，
+  四类 + CGNAT 需要 ≥4 个不同出口，与主机数量正交 —— S6 是**环境数量受限**，不是主机数量受限。
+  工具已从布尔 `lab_mode` 改为显式 `--evidence-scope`
+  （`real-multi-nat` / `cross-host-lab` / `vm-namespace-lab`），报告逐条给出 `evidence_clauses`
+  与 `evidence_invalid_reasons`；「两台主机」判定比 `machine_ids` 的 **host 部分**，
+  同机多 netns 不算（`machine_ids` 字符串不同但 host 相同）。
+  三条闭合路线见 [nat-matrix.md §13](../../tests/spikes/s6/nat-matrix.md)：
+  **A 真实设备级联**（2–4 台真实路由器 + 每类两台主机，条款①②同时成立）、
+  **B 跨主机实验室**（第二台 Linux 主机，只满足①，提升保真度）、
+  **C 公网多节点实测**（≥8 个真实网络节点，唯一能产出 R-04 ≥70% 是否成立这个数字的路线）。
+  **推荐 C 为主线、A 为最小合规闭环**；B 仅在拿到第二台 Linux 主机时顺手做。
 - **下一步计划（W3.7 候选）**：① **中继去单点化**（本轮新增依赖：信令必须经中继，须做多实例 / 注册同步 /
   故障切换，否则中继不可用时直连退化）；② 中继公网生产化（TLS / 身份鉴权 / 限流 / 空闲超时 / 跨公网时延）；
   ③ BT/TCP 打洞；④ M2 其余骨架 crate 的内置引擎与资源治理；
-  ⑤ 在用户提供**真实多 NAT（含 CGNAT）环境**后逐类执行 `nat_matrix.py --mode real`（不带 `--lab-mode`），
-  由实验执行人手工回填 S6；⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
+  ⑤ S6 按 v2.4.53 的三条路线推进（C 为主线；A 需真实路由器；B 需第二台 Linux 主机），
+  逐类执行 `nat_matrix.py --mode real --evidence-scope real-multi-nat` 并由实验执行人手工回填；
+  ⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
 
 ## 相关文档
 

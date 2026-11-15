@@ -267,3 +267,50 @@ W3.5② 的结果是 `direct` 只有全锥 30/30、其余四类 0/30。归因检
 - 仍为同机两个 netns，`--lab-mode` 强制 `evidence_valid=false`、
   `evidence_scope=vm-namespace-lab`；`S6.status` 仍 `not_run`，R-04 **未判定**，`g2_claim=false`。
 - 六份报告存于 `tests/spikes/s6/reports/w36-20261115/`（gitignored 本地证据）。
+
+## 13. 判据是两个独立条款，不是一条（2026-11-15 澄清）
+
+W3.5②/W3.6 的实验室证据被标 `evidence_valid=false`，容易被读成「环境不合格」。
+真正的理由要拆成两条，它们**互相独立**，而且第二条不是「换机器」能解决的：
+
+| # | 条款 | 出处 | 实验室现状 | 再加一台主机能否解决 |
+| :--- | :--- | :--- | :--- | :--- |
+| 1 | 每类环境在**两台不同物理主机**上各启动 `coldrevived` | `nat_matrix_config.json` → `measurement_protocol[0]` | ❌ 同机两个 netns（`machine_ids` 的 host 部分相同） | ✅ 能 |
+| 2 | `real_nat_evidence`：**真实 NAT 设备**的可核查证据 | 同上 → `required_attestation` | ❌ iptables/conntrack 合成的 NAT | ❌ **不能**，合成 NAT 不因换主机而变成真实设备 |
+
+由此还有一条更根本的限制：**一个家庭/办公网络的出口只对应一个真实 NAT 类别**。
+判据要求 4 类（+1 个 CGNAT），那就必须来自 **4 个以上不同出口**——这与「有几台主机」正交。
+换句话说 S6 是**环境数量受限**，不是主机数量受限；加主机只会让条款 1 成立，条款 2 和「类别多样性」都不会动。
+
+### 13.1 证据层级（`nat_matrix.py --evidence-scope`）
+
+`--lab-mode` 原先是一个布尔值，把两条条款混在一起，报告说不出「缺哪一条」。现已改为显式层级：
+
+| `--evidence-scope` | 含义 | `evidence_valid` | 用途 |
+| :--- | :--- | :--- | :--- |
+| `real-multi-nat`（缺省） | 真实 NAT 设备 + 两端不同物理主机 | 条款全满足时可 `true` | S6 唯一合规口径 |
+| `cross-host-lab` | 合成 NAT + 两端分处不同主机 | 恒 `false` | 排除「同内核」保真度质疑 |
+| `vm-namespace-lab` | 合成 NAT + 同机两个 netns（`--lab-mode` 为兼容别名） | 恒 `false` | 机制验证（W3.5②/W3.6 现状） |
+
+报告新增 `evidence_clauses`（逐条 `satisfied` + 观测到的 host 列表）与 `evidence_invalid_reasons`
+（直接写明缺哪条）。「两台主机」的判定比的是 `machine_ids` 的 **host 部分**，
+`<ns>@<host>` 里 ns 不同但 host 相同不算两台主机——这正是同机多 netns 不能冒充的原因。
+
+### 13.2 闭合 S6 的三条路线
+
+| 路线 | 需要什么 | 产出 | 代价 |
+| :--- | :--- | :--- | :--- |
+| **A. 真实设备级联** | 2–4 台真实家用路由器（含 1 个 CGNAT 出口），每类环境两台主机 | 条款 1 + 条款 2 均成立，可逐类判 R-04 | 需硬件；且真实设备**类别不可选**，凑齐 4 类往往要 4 个不同出口 |
+| **B. 跨主机实验室** | 第二台 Linux 主机（能跑 `ip netns`）| 条款 1 成立、条款 2 仍不成立；保真度提升一档 | 一台 Linux 机器；仍不能判 R-04 |
+| **C. 公网多节点实测** | ≥8 个真实网络上的节点 + 公网中继 + G0 授权测试 Key | **直接给出 R-04 所需的可达率**，类别分布来自真实节点总体 | 部署与运营成本；但这是唯一能产出「≥70% 是否成立」这个数字的路线 |
+
+推荐：**C 为主线**（R-04 问的是真实家用 NAT 总体的可达率，矩阵本身只是手段），
+**A 作为条款合规的最小闭环**（哪怕只覆盖 1–2 类，也能把「真实设备」这条从 ❌ 变成部分 ✅）。
+B 只在有第二台 Linux 主机时顺手做，用于消除「同内核」质疑，不指望它给出结论。
+
+### 13.3 本轮复核（2026-11-15，新字段生效后）
+
+`restricted-cone` 持有者 + `port-restricted-cone` 请求者，30 次/路径：
+`direct` **30/30**、`relay` **30/30**、中继 `delivered=120 / dropped=0`；
+报告 `evidence_scope=vm-namespace-lab`、`hosts=['ubuntu']`、条款 1/2 均 `false`。
+数值与 W3.6 一致，说明层级改造没有改变测量口径，只把「为什么不能判 pass」写清楚了。

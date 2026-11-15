@@ -151,13 +151,18 @@ W3.5② 的 0/30 被定位为**单向打洞**造成：请求侧向持有者映�
 
 ## 证据边界（不得突破）
 
-- 实验室是**同机两个 netns**，不满足 S6 判据的「两台不同物理主机」条款。因此
-  `nat_matrix.py` 新增 `--lab-mode`：强制 `evidence_valid=false`、
-  `evidence_scope=vm-namespace-lab`，并要求 attestation 显式声明 `lab_mode=true`，
-  防止 lab 数据被误当真实证据。
+- 判据是**两个互相独立的条款**，本实验室两条都不满足：
+  1. **两端在不同物理主机** —— 这里是同机两个 netns（`machine_ids` 的 host 部分相同）；
+  2. **NAT 是真实设备**（`real_nat_evidence`）—— 这里是 iptables/conntrack 合成的 NAT。
+  加主机只能解决第 1 条，第 2 条与主机无关；而且四类 NAT 需要四个不同出口，
+  与主机数量正交。详见 [nat-matrix.md §13](../nat-matrix.md)。
+- `nat_matrix.py` 因此改为显式证据层级 `--evidence-scope`
+  （`real-multi-nat` / `cross-host-lab` / `vm-namespace-lab`，`--lab-mode` 是后者的兼容别名），
+  报告里 `evidence_clauses` 逐条写 `satisfied`、`evidence_invalid_reasons` 直接写明缺哪条，
+  避免再用一个布尔值把两条混在一起。
 - 分类 5/5 已实测，但**可达率证据仍属实验室**，R-04 ≥70% 判定尚未作出。
 - 脚本**永不**改 `spikes.json.status`，报告恒 `s6_status=not_run` / `g2_claim=false`。
-  `pass` / `fail` 由实验执行人在真实物理主机上复测后手工回填。
+  `pass` / `fail` 由实验执行人在真实物理主机 + 真实 NAT 设备上复测后手工回填。
 
 ## 清理
 

@@ -8,12 +8,16 @@
      `coldrevived`（node A），两者分处不同 NAT 网关之后；
   3. holder 执行 `nat probe`（复用唤醒 socket 做 STUN，建立真实映射）；
   4. 取回 holder 的 `/nat/advertise`，交给 requester `nat peer`；
-  5. 调 nat_matrix.py --mode real --lab-mode，逐条路径跑 >=30 次真实唤醒；
+  5. 调 nat_matrix.py --mode real --evidence-scope <scope>，逐条路径跑 >=30 次真实唤醒；
   6. 收尾杀进程。
 
-诚实边界：
-  * 这是**单机两个 netns**，不满足 S6 判据的「两台不同物理主机」条款，因此
-    一律以 `--lab-mode` 运行，报告里 evidence_valid=false、evidence_scope=vm-namespace-lab。
+诚实边界（两条**互相独立**的条款，见 nat_matrix.py::EVIDENCE_SCOPES）：
+  * 条款一「两台不同物理主机」：缺省两端在同一主机的两个 netns，不满足 →
+    `--scope vm-namespace-lab`（报告 evidence_scope=vm-namespace-lab）。
+    若请求者跑在另一台主机上（`--requester-host <host>`），改用
+    `--scope cross-host-lab`，条款一即成立。
+  * 条款二「真实 NAT 设备」：本脚本的 NAT 由 iptables 合成，**永远**不满足。
+    因此本驱动永不产出 real-multi-nat 层级，也就永不给 evidence_valid=true。
   * 本脚本不写 spikes.json，也不改变任何 spike 状态。
 
 用法:
@@ -171,6 +175,12 @@ def main() -> int:
     ap.add_argument("--work", default="/opt/coldrevive/matrix")
     ap.add_argument("--reports", default="/opt/coldrevive/reports/matrix")
     ap.add_argument("--smoke", action="store_true", help="只跑 1 次直连+1 次中继验证接线")
+    ap.add_argument("--scope", default="vm-namespace-lab",
+                    choices=["vm-namespace-lab", "cross-host-lab"],
+                    help=("证据层级：两端在同一主机（缺省）或分处不同主机时如实声明；"
+                          "本驱动永不用 real-multi-nat（NAT 是合成的）"))
+    ap.add_argument("--holder-host", default="", help="持有者所在主机名（写进 machine_ids）")
+    ap.add_argument("--requester-host", default="", help="请求者所在主机名（写进 machine_ids）")
     args = ap.parse_args()
 
     repo = Path(args.repo)
@@ -270,20 +280,28 @@ def main() -> int:
         kinds = [c.get("kind") for c in (plan.get("candidates") or [])]
         print(f"  plan candidates: {kinds}")
 
-        # 5) attestation（如实标注 lab_mode）
+        # 5) attestation（如实标注证据层级，不冒充实测口径）
+        #    scope 决定 evidence_valid：只有 real-multi-nat（真实 NAT 设备 + 两台物理主机）
+        #    才可能为 true；本驱动建的是合成 NAT，故缺省 vm-namespace-lab。
+        holder_host = args.holder_host or socket.gethostname()
+        requester_host = args.requester_host or socket.gethostname()
         att = {
             "class": args.klass,
-            "lab_mode": True,
+            "evidence_scope": args.scope,
+            "lab_mode": args.scope != "real-multi-nat",
+            "nat_is_real_device": False,
             "gateway_wan_ip": GATEWAY_WAN.get(args.klass, h_ip),
             "local_ip": h_ip,
             "peer_ip": r_ip,
-            "machine_ids": [f"{args.holder_ns}@{socket.gethostname()}", f"{args.requester_ns}@{socket.gethostname()}"],
+            "machine_ids": [f"{args.holder_ns}@{holder_host}",
+                            f"{args.requester_ns}@{requester_host}"],
             "real_nat_evidence": str(repo / "tests/spikes/s6/nat_lab/lab-evidence.json"),
             "classification_report": f"/opt/coldrevive/reports/s6-nb-{args.klass}.json",
             "operator": "agent-on-behalf-of-owner",
             "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "note": ("VM 内 iptables conntrack 真改写 NAT；两端为同机两个 netns，"
-                     "不满足「两台不同物理主机」条款，故以 lab 模式上报"),
+            "note": ("VM 内 iptables conntrack 真改写 NAT；证据层级 "
+                     f"{args.scope}：hosts={holder_host}/{requester_host}，"
+                     "NAT 为合成设备（nat_is_real_device=false）"),
         }
         att_path = work / f"attest-{args.klass}.json"
         att_path.write_text(json.dumps(att, indent=2) + "\n", encoding="utf-8")
@@ -310,7 +328,7 @@ def main() -> int:
         matrix = Path(repo / "tests/spikes/s6/nat_matrix.py")
         cmd = [sys.executable, str(matrix), "--mode", "real", "--class", args.klass,
                "--attest", str(att_path), "--trials", str(args.trials),
-               "--timeout", str(args.timeout), "--lab-mode",
+               "--timeout", str(args.timeout), "--evidence-scope", args.scope,
                "--inter-trial-reset", RESET_CMD,
                "--direct-cmd", f"{cli_prefix} stun-mapped",
                "--relay-cmd", f"{cli_prefix} relay",

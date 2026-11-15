@@ -2,6 +2,54 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.53] - 2026-11-15 — M2：S6 判据拆成两条独立条款 + 显式证据层级
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；无 Rust 代码改动（workspace 仍 17 crate + 5 bin）；
+> `cargo test --workspace --offline` **88/88**。
+
+### 背景
+W3.5②/W3.6 的实验室证据被标 `evidence_valid=false`，容易被读成「环境不合格」，
+进而被误解为「再加一台主机就能判 S6」。事实上判据是**两条互相独立**的条款：
+
+| # | 条款 | 实验室现状 | 加主机能否解决 |
+| :--- | :--- | :--- | :--- |
+| 1 | 每类环境在**两台不同物理主机**上各启动 `coldrevived`（`measurement_protocol[0]`） | ❌ 同机两个 netns | ✅ |
+| 2 | `real_nat_evidence`：**真实 NAT 设备**的可核查证据 | ❌ iptables/conntrack 合成 | ❌ 永远不能 |
+
+再加一条更根本的限制：**一个网络出口只对应一个真实 NAT 类别**，四类 + CGNAT 需要 ≥4 个不同出口，
+与主机数量正交。所以 S6 是**环境数量受限**，不是主机数量受限。
+
+### 实现（`tests/spikes/s6/nat_matrix.py`）
+- 布尔 `lab_mode` 拆成 `--evidence-scope`：`real-multi-nat`（唯一可判 pass 的层级）/
+  `cross-host-lab`（合成 NAT + 两端不同主机）/ `vm-namespace-lab`（同机 netns）。
+  `--lab-mode` 保留为后者的兼容别名，两者同时使用直接报错。
+- 报告新增 `evidence_clauses`（逐条 `satisfied` + 观测到的 host 列表）与
+  `evidence_invalid_reasons`（直接写明缺哪条）；`evidence_valid` 仅当
+  `scope=real-multi-nat` 且条款全满足时为 `true`。
+- 「两台主机」的判定改为比 `machine_ids` 的 **host 部分**（`<ns>@<host>`）：同机两个 netns
+  会给出两个不同字符串但 host 相同，不算两台主机 —— 这正是旧布尔值能掩盖的地方。
+- 层级必须**双向**自报：`real-multi-nat` 遇到 attestation 声明 `lab_mode=true`/弱层级即 `BLOCKED`；
+  弱层级则要求 attestation 显式声明同名 `evidence_scope`，单侧声明即拒收。
+- `run_matrix_lab.py` 相应支持 `--scope` / `--holder-host` / `--requester-host`，
+  attestation 补 `evidence_scope` 与 `nat_is_real_device`（本驱动恒 `false`，永不给 `evidence_valid=true`）。
+- 自检 `nat_matrix.py --self-test` 从 10 增至 **16/16**：新增「同机多 netns 不算两台主机」
+  「两主机可识别」「合成 NAT 永不等于真实设备」「缺条款能逐条报出」「旧 `--lab-mode` 映射」
+  「冲突参数被拒」。
+
+### 复核
+`restricted-cone` 持有者 + `port-restricted-cone` 请求者，30 次/路径：`direct` **30/30**、
+`relay` **30/30**、中继 `delivered=120 / dropped=0`；报告 `evidence_scope=vm-namespace-lab`、
+`hosts=['ubuntu']`、两条条款均 `false`。数值与 W3.6 完全一致 —— 层级改造只改「为什么不能判 pass」
+的表述，未改测量口径。
+
+### 文档
+- [nat-matrix.md §13](tests/spikes/s6/nat-matrix.md)：双条款拆解、三层证据、三条闭合路线
+  （A 真实设备级联 / B 跨主机实验室 / C 公网 ≥8 节点实测），推荐 C 为主线、A 为最小合规闭环。
+- `nat_lab/README.md` 与 `setup_nat_lab.sh` 头注释同步更正（原文「以不同 machine_id 代替两台物理主机」
+  表述不准，已改为双条款口径）。
+- `spikes.json` 新增 `S6.observations.criteria_decomposition_2026_11_15` 并补 `remaining_for_g2`。
+
 ## [2.4.52] - 2026-11-15 — M2/W3.6：双向打洞 / rendezvous
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`、

@@ -28,8 +28,9 @@
 #   * 本脚本只搭建网络环境 + 可选地起本地 STUN，不跑 ColdRevive 唤醒，不写 spikes.json。
 #   * S6 的最终 pass/fail 由实验执行人依据 nat_matrix.py 产出的逐类报告手工回填；
 #     脚本永不自动置 pass。
-#   * VM 实验室以两个不同 netns 端点 + 不同 machine_id 代替「两台物理主机」；
-#     attestation 须如实写明这是 VM 内 iptables 仿真的 NAT，不是独立路由器硬件。
+#   * 判据是**两个独立条款**：① 两端在不同物理主机；② NAT 是真实设备（real_nat_evidence）。
+#     本实验室两条都不满足：端点同机不同 netns（条款①），NAT 由 iptables 合成（条款②）。
+#     换主机只能满足①，永远满足不了② —— 详见 nat-matrix.md §13。
 #
 # ⚠ 为什么必须在实验室内起本地 STUN（而不是查公共 STUN）：
 #   从 LAN netns 访问公网时，报文还会穿过本机自身出口 NAT。外层 NAT 会覆盖内层

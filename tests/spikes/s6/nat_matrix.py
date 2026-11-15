@@ -55,6 +55,79 @@ def class_ids(cfg: dict) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# 证据层级：把「两台物理主机」和「真实 NAT 设备」拆成两个**互相独立**的条款
+#
+# 混成一个 lab_mode 布尔值会掩盖一个关键事实：加主机只能满足第一条，永远满足不了
+# 第二条（合成 NAT 不因换机器而变成真实设备）。分层后，报告能直接说出「缺哪一条」。
+# ---------------------------------------------------------------------------
+
+EVIDENCE_SCOPES = {
+    "real-multi-nat": {
+        "desc": "真实 NAT 设备 + 两端在不同物理主机（S6 判据要求的唯一合法层级）",
+        "requires": ["two_distinct_machines", "nat_is_real_device"],
+    },
+    "cross-host-lab": {
+        "desc": "合成 NAT（内核 conntrack 改写）+ 两端分处不同物理主机",
+        "requires": ["two_distinct_machines"],
+    },
+    "vm-namespace-lab": {
+        "desc": "合成 NAT + 两端在同一台主机的两个 netns",
+        "requires": [],
+    },
+}
+
+
+def resolve_scope(args: argparse.Namespace) -> str:
+    """`--lab-mode` 是 `--evidence-scope vm-namespace-lab` 的旧别名（保留兼容）。"""
+    scope = getattr(args, "evidence_scope", "") or ""
+    legacy = bool(getattr(args, "lab_mode", False))
+    if scope and legacy:
+        raise ValueError("--evidence-scope 与 --lab-mode 不能同时使用（--lab-mode 等价于 vm-namespace-lab）")
+    if legacy:
+        return "vm-namespace-lab"
+    return scope or "real-multi-nat"
+
+
+def clause_state(att: dict, scope: str) -> dict:
+    """逐条判定两个独立条款，而不是给一个笼统的 valid/invalid。"""
+    mids = att.get("machine_ids") if isinstance(att.get("machine_ids"), list) else []
+    # `machine_ids` 形如 `<ns>@<host>`：判「两台主机」必须比 **host 部分**。
+    # 同机两个 netns 会给出两个不同字符串，但 host 相同 —— 那不是两台主机。
+    hosts = sorted({m.rsplit("@", 1)[-1] for m in mids if isinstance(m, str) and m})
+    distinct = len(hosts) >= 2
+    real_nat = att.get("nat_is_real_device") is True
+    return {
+        "two_distinct_machines": {
+            "satisfied": distinct,
+            "hosts": hosts,
+            "machine_ids": sorted({m for m in mids if isinstance(m, str) and m}),
+            "note": ("判据要求每类环境在两台不同物理主机上各启动 coldrevived；"
+                     "判定比 machine_ids 的 host 部分，同机多 netns 不算"),
+        },
+        "nat_is_real_device": {
+            "satisfied": real_nat,
+            "declared": att.get("nat_is_real_device"),
+            "note": ("真实家用/运营商 NAT 设备的可核查证据；由 iptables/netns 合成的 NAT "
+                     "无论换多少台主机都不是真实设备"),
+        },
+    }
+
+
+def scope_invalid_reasons(att: dict, scope: str) -> list[str]:
+    st = clause_state(att, scope)
+    reasons = []
+    for key in EVIDENCE_SCOPES[scope]["requires"]:
+        if not st[key]["satisfied"]:
+            reasons.append({
+                "two_distinct_machines": "缺少两台不同物理主机（machine_ids 不足 2 个不同值）",
+                "nat_is_real_device": "NAT 不是真实设备（attestation 未声明 nat_is_real_device=true）",
+            }[key])
+    if scope != "real-multi-nat":
+        reasons.append(f"证据层级为 {scope}：{EVIDENCE_SCOPES[scope]['desc']}，不满足 S6 判据")
+    return reasons
+
+
+# ---------------------------------------------------------------------------
 # Attestation 校验：只检查「真实环境证据是否齐备」，绝不据自报类型宣称分类成立
 # ---------------------------------------------------------------------------
 
@@ -185,18 +258,33 @@ def real_mode(args: argparse.Namespace, cfg: dict) -> tuple[dict, int]:
                  "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
                 EXIT_BLOCKED)
 
-    lab_mode = bool(getattr(args, "lab_mode", False))
-    # 实验室模式必须由 attestation 自报，禁止把「同机两个 netns」当作「两台物理主机」静默上报
-    if lab_mode and not att.get("lab_mode"):
-        return ({"status": "BLOCKED",
-                 "reason": "--lab-mode 要求 attestation 显式声明 lab_mode=true（如实标注非同机物理主机）",
+    try:
+        scope = resolve_scope(args)
+    except ValueError as exc:
+        return ({"status": "BLOCKED", "reason": str(exc),
                  "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
                 EXIT_BLOCKED)
-    if not lab_mode and att.get("lab_mode"):
-        return ({"status": "BLOCKED",
-                 "reason": "attestation 声明 lab_mode=true，但未传 --lab-mode；不得据此产出真实证据",
-                 "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
-                EXIT_BLOCKED)
+    # 层级必须由 attestation 自报，禁止把弱层级静默上报成强层级：
+    #   * 声明了非 real 层级 → attestation 必须带 lab_mode=true 或 evidence_scope 同名
+    #   * 声明 real 层级但 attestation 自己写了 lab_mode=true → 明显矛盾，拒收
+    declared = att.get("evidence_scope") or ("vm-namespace-lab" if att.get("lab_mode") else "")
+    if scope == "real-multi-nat":
+        if att.get("lab_mode") or (declared and declared != "real-multi-nat"):
+            return ({"status": "BLOCKED",
+                     "reason": (f"attestation 声明证据层级 {declared or 'lab_mode=true'}，"
+                                "但未按其层级运行；不得据此产出真实证据"),
+                     "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
+                    EXIT_BLOCKED)
+    else:
+        if declared != scope:
+            return ({"status": "BLOCKED",
+                     "reason": (f"--evidence-scope {scope} 要求 attestation 显式声明 "
+                                f"evidence_scope={scope}（或 lab_mode=true）；单侧声明即拒收，"
+                                "避免把实验室证据当真实证据"),
+                     "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
+                    EXIT_BLOCKED)
+    clauses = clause_state(att, scope)
+    invalid_reasons = scope_invalid_reasons(att, scope)
 
     paths = {
         "direct": run_trials(args.direct_cmd, args.trials, args.timeout,
@@ -215,20 +303,24 @@ def real_mode(args: argparse.Namespace, cfg: dict) -> tuple[dict, int]:
         "attestation_validated": True,
         "paths": paths,
         "overall_reachability": overall,
-        "evidence_valid": not lab_mode,
-        "evidence_scope": "vm-namespace-lab" if lab_mode else "physical-hosts",
-        "lab_mode": lab_mode,
+        "evidence_valid": scope == "real-multi-nat" and not invalid_reasons,
+        "evidence_scope": scope,
+        "evidence_scope_desc": EVIDENCE_SCOPES[scope]["desc"],
+        "evidence_clauses": clauses,
+        "evidence_invalid_reasons": invalid_reasons,
+        "lab_mode": scope != "real-multi-nat",
         "synthetic_evidence": False,
         "evidence_valid_for_pass": False,
         "status": "OBSERVED",
         "spike_status_changed": False,
         "s6_status": "not_run",
         "g2_claim": False,
-        "note": ("实验室（同机两个 netns）实测记录：NAT 行为由内核 conntrack 真改写、"
-                 "唤醒计数来自真实 WAKEUP_ACK，但**不满足「两台不同物理主机」条款**，"
-                 "故 evidence_valid=false，不得据此宣称 S6 达标"
-                 if lab_mode else
-                 "单类真实实测记录；不得据此宣称 S6 达标。结论由实验执行人手工回填 spikes.json"),
+        "note": ("实测记录：唤醒计数全部来自真实 WAKEUP_ACK。证据层级 "
+                 f"{scope}（{EVIDENCE_SCOPES[scope]['desc']}）"
+                 + ("；满足 S6 证据条款，但仍由实验执行人手工回填结论"
+                    if scope == "real-multi-nat" and not invalid_reasons else
+                    "；不满足条款：" + "；".join(invalid_reasons))
+                 + "。脚本不置 pass、不宣称 G2 达标"),
     }
     return report, 0
 
@@ -392,6 +484,34 @@ def self_test(cfg: dict) -> int:
                    ag["g2_claim"] is False and ag["s6_status"] == "not_run"
                    and ag["spike_status_changed"] is False))
     checks.append(("no_auto_pass_flag", cfg["evidence_policy"]["no_auto_pass"] is True))
+
+    # 证据层级：两个条款必须能被独立判定（这是本轮新增的判据语义）
+    st_same_host = clause_state(
+        {"machine_ids": ["lan-restricted@vm221", "lan-port@vm221"]}, "vm-namespace-lab")
+    checks.append(("same_host_two_netns_is_not_two_hosts",
+                   st_same_host["two_distinct_machines"]["satisfied"] is False
+                   and st_same_host["two_distinct_machines"]["hosts"] == ["vm221"]))
+    st_two = clause_state(
+        {"machine_ids": ["holder@DESKTOP-DJQSC95", "requester@ubuntu-221"]}, "cross-host-lab")
+    checks.append(("two_distinct_hosts_detected",
+                   st_two["two_distinct_machines"]["satisfied"] is True
+                   and st_two["nat_is_real_device"]["satisfied"] is False))
+    checks.append(("synthetic_nat_never_counts_as_real_device",
+                   clause_state({"machine_ids": ["a@h1", "b@h2"],
+                                 "nat_is_real_device": False}, "real-multi-nat")
+                   ["nat_is_real_device"]["satisfied"] is False))
+    checks.append(("scope_invalid_reasons_name_both_clauses",
+                   len(scope_invalid_reasons({"machine_ids": ["a@h1", "b@h1"]},
+                                             "real-multi-nat")) >= 2))
+    ns = argparse.Namespace(evidence_scope="", lab_mode=True)
+    checks.append(("legacy_lab_mode_maps_to_vm_namespace",
+                   resolve_scope(ns) == "vm-namespace-lab"))
+    conflict_rejected = False
+    try:
+        resolve_scope(argparse.Namespace(evidence_scope="cross-host-lab", lab_mode=True))
+    except ValueError:
+        conflict_rejected = True
+    checks.append(("conflicting_scope_flags_rejected", conflict_rejected))
     for name, passed in checks:
         print(f"  [{'PASS' if passed else 'FAIL'}] {name}")
     n = sum(1 for _, p in checks if p)
@@ -413,7 +533,12 @@ def main() -> int:
     ap.add_argument("--aggregate", default="")
     ap.add_argument("--condition-file", default="")
     ap.add_argument("--lab-mode", action="store_true",
-                    help="VM/netns 实验室模式：强制 evidence_valid=false（不满足两台物理主机条款）")
+                    help="[兼容别名] 等价于 --evidence-scope vm-namespace-lab")
+    ap.add_argument("--evidence-scope", default="",
+                    choices=["", *EVIDENCE_SCOPES.keys()],
+                    help=("证据层级：real-multi-nat（真实 NAT 设备 + 两台物理主机，唯一可判 pass 的层级）/"
+                          "cross-host-lab（合成 NAT + 两端不同主机）/"
+                          "vm-namespace-lab（合成 NAT + 同机两个 netns）。缺省 real-multi-nat"))
     ap.add_argument("--inter-trial-reset", default="",
                     help="每次试验前执行的状态复位命令（实验室用：清空受限锥网关的 ipset "
                          "接触记录，避免第 1 次打开过滤项后余下试验靠残留状态'通过'）")
@@ -444,6 +569,11 @@ def main() -> int:
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"  status={report['status']}  s6_status={report['s6_status']}  "
           f"g2_claim={report['g2_claim']}  evidence_valid={report.get('evidence_valid')}")
+    if report.get("evidence_scope"):
+        print(f"  evidence_scope={report['evidence_scope']}"
+              f"  hosts={report.get('evidence_clauses', {}).get('two_distinct_machines', {}).get('hosts')}")
+        for r in report.get("evidence_invalid_reasons") or []:
+            print(f"  - 不满足: {r}")
     if "matrix_coverage" in report:
         print(f"  matrix_coverage={report['matrix_coverage']}")
     print("report:", out)

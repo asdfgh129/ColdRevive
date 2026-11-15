@@ -1319,6 +1319,56 @@
           "evidence_valid_for_pass": false,
           "s6_status_after": "not_run",
           "g2_claim": false
+        },
+        "criteria_decomposition_2026_11_15": {
+          "why": "实验室证据 evidence_valid=false 容易被误读成「环境不合格」。实际是两条**独立**条款叠加，其中第二条与主机数量无关，因此「再加一台主机」不解决 S6。",
+          "clauses": {
+            "two_distinct_physical_hosts": {
+              "source": "nat_matrix_config.json → measurement_protocol[0]",
+              "satisfied_by_lab": false,
+              "fixable_by_adding_host": true
+            },
+            "real_nat_device": {
+              "source": "nat_matrix_config.json → required_attestation.real_nat_evidence",
+              "satisfied_by_lab": false,
+              "fixable_by_adding_host": false
+            }
+          },
+          "hosts_available_2026_11_15": {
+            "A": "192.168.1.210 DESKTOP-DJQSC95（Windows，驱动/被测端，可本机执行）",
+            "B": "192.168.1.209 DESKTOP-CCE53RF（Windows，仅 445 开放；无 SSH/WinRM，须用户手工远端预启动，T1 即如此）",
+            "vm": "192.168.1.221 Ubuntu 23.04（唯一可跑 ip netns 的主机，承载全部四类 NAT + CGNAT 实验室）"
+          },
+          "why_b_does_not_unlock_s6": [
+            "B 是 Windows，没有 ip netns，无法承载四类 NAT 中的任何一类",
+            "本机只能访问 B 的 445；无 SSH(22)/WinRM(5985)，无法驱动它（T1 靠用户手工预启动绕过）",
+            "即便让 B 充当一端，被测 NAT 仍是 VM 上 iptables 合成的 → real_nat_evidence 仍不成立",
+            "一个网络出口只对应一个真实 NAT 类别；四类 + CGNAT 需要 ≥4 个不同出口，与主机数量正交"
+          ],
+          "harness_change": "nat_matrix.py 把布尔 lab_mode 拆成 --evidence-scope（real-multi-nat / cross-host-lab / vm-namespace-lab，--lab-mode 为后者兼容别名），报告新增 evidence_clauses（逐条 satisfied + hosts）与 evidence_invalid_reasons；「两台主机」判定比 machine_ids 的 host 部分，同机多 netns 不算",
+          "recheck_2026_11_15": {
+            "class": "restricted-cone",
+            "holder": "restricted-cone",
+            "requester": "port-restricted-cone",
+            "trials_per_path": 30,
+            "direct": "30/30",
+            "relay": "30/30",
+            "relay_delivered": 120,
+            "relay_dropped": 0,
+            "evidence_scope": "vm-namespace-lab",
+            "hosts": [
+              "ubuntu"
+            ],
+            "note": "数值与 W3.6 一致：层级改造只改变了「为什么不能判 pass」的表述，未改变测量口径"
+          },
+          "routes_to_close_s6": {
+            "A_real_devices": "2–4 台真实家用路由器（含 1 个 CGNAT 出口）+ 每类两台主机 → 条款①②同时成立；真实设备类别不可选，凑齐 4 类往往需 4 个不同出口",
+            "B_cross_host_lab": "第二台 Linux 主机跑 ip netns → 条款①成立、②仍不成立；只提升保真度，不能判 R-04",
+            "C_field_measurement": "≥8 个真实网络节点 + 公网中继 + G0 授权 Key → 唯一能产出 R-04 ≥70% 是否成立这个数字的路线（推荐主线）"
+          },
+          "criteria_doc": "tests/spikes/s6/nat-matrix.md §13",
+          "s6_status_after": "not_run",
+          "g2_claim": false
         }
       }
     },
@@ -1531,7 +1581,7 @@
       "w35_regressions": "2026-11-14 W3.5① 全量回归：cargo test --workspace --offline 80 passed / 0 failed；cargo build --release --workspace --offline OK；T0 --mode real 21/21 PASS、evidence_valid=true（需设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实二进制环境变量）；T1 --self-test 11/11；T2 --self-test 3/3 + --mode local 10/10 PASS（报告 tests/e2e/t2/reports/t2-20261114T135902Z-local.json）；scripts/build_docs.py --check 36 份 Markdown 校验通过"
     },
     "remaining_for_g2": [
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30",
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30；2026-11-15 澄清：判据是**两条独立条款**（两台不同物理主机 + 真实 NAT 设备），加主机只满足前者、永远满足不了后者，且四类需 ≥4 个不同出口（见 nat-matrix.md §13、S6.observations.criteria_decomposition_2026_11_15）",
       "双向打洞 / rendezvous 已在实验室完成（W3.6，2026-11-15）：受限锥 / 端口受限锥 / 双 NAT CGNAT 的 direct 0/30 → 30/30；symmetric 持有者仍 0/30（正确结果）。**新依赖**：信令经中继下发，中继不可用时直连退化回只有全锥可通 —— 中继可用性成为直连的前置条件，须在真实环境中验证。",
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
       "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
