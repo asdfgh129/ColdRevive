@@ -1369,6 +1369,106 @@
           "criteria_doc": "tests/spikes/s6/nat-matrix.md §13",
           "s6_status_after": "not_run",
           "g2_claim": false
+        },
+        "w36b_cross_host_2026_11_15": {
+          "recorded_at": "2026-11-15",
+          "context": "W3.6 的 30/30 仍是在 221 内部两个 netns 之间测的，判据条款①「两端在不同物理主机」不成立。本轮把**请求者**挪到另一台物理主机 A（192.168.1.210，DESKTOP-DJQSC95），持有者仍在 221（ubuntu）的 netns 内，从而让条款①成立。",
+          "why_not_the_obvious_route": {
+            "route_on_A": "A 是非管理员 Windows 账户，无法添加静态路由（实测 IsAdmin=False）",
+            "macvlan": "VMware vSwitch 默认拒绝混杂模式/伪传输，macvlan 100% 丢包、ARP 无应答（实测排除）",
+            "chosen": "给网关 WAN 口再挂一个**物理 LAN 地址**（192.168.1.241~.245），由 221 在 ens160 上 proxy ARP 代答；网关补 /24 路由 + 把实验机/对端钉成静态邻居 + 插入指向物理地址的 SNAT（对称型保留 --random-fully）。数据路径每方向只多一跳、不改写 IP。"
+          },
+          "deliverables": {
+            "link_physical.sh": "tests/spikes/s6/nat_lab/link_physical.sh",
+            "run_cross_host": "tests/spikes/s6/nat_lab/run_cross_host.py"
+          },
+          "protocol": "run_cross_host.py 在 A 上执行：ssh 编排 221（链路→物理口 STUN→中继→持有者→通告），本机起请求者，再调 nat_matrix.py --mode real --evidence-scope cross-host-lab；nat wake 的直连/中继命令均在 A 上执行。每类先在同一链路上用 nat_behavior.py 重测分类，保证分类与可达率出自同一环境；分类报告取不回即失败，不用占位路径。",
+          "classification_on_physical_link": {
+            "full-cone": {
+              "rfc4787": "EIM + Endpoint-Independent Filtering",
+              "confidence": "high"
+            },
+            "restricted-cone": {
+              "rfc4787": "EIM + Address-Dependent Filtering",
+              "confidence": "high"
+            },
+            "port-restricted-cone": {
+              "rfc4787": "EIM + Address-and-Port-Dependent Filtering",
+              "confidence": "medium"
+            },
+            "symmetric": {
+              "rfc4787": "Address/Port-Dependent Mapping",
+              "confidence": "low"
+            },
+            "cgnat": {
+              "rfc4787": "EIM + Address-and-Port-Dependent Filtering",
+              "confidence": "medium"
+            },
+            "agreement_with_built_class": "5/5"
+          },
+          "matrix_2026_11_15": {
+            "trials_per_path": 30,
+            "holder_host": "ubuntu (192.168.1.221)",
+            "requester_host": "DESKTOP-DJQSC95 (192.168.1.210)",
+            "results": {
+              "full-cone": {
+                "direct": "30/30",
+                "relay": "30/30"
+              },
+              "restricted-cone": {
+                "direct": "30/30",
+                "relay": "30/30"
+              },
+              "port-restricted-cone": {
+                "direct": "30/30",
+                "relay": "30/30"
+              },
+              "symmetric": {
+                "direct": "0/30",
+                "relay": "30/30"
+              },
+              "cgnat": {
+                "direct": "30/30",
+                "relay": "30/30"
+              }
+            },
+            "relay_counters": {
+              "delivered": 120,
+              "dropped": 0,
+              "rejected": 0,
+              "connections": 63,
+              "registered": 62
+            },
+            "consistency_with_w36": "与同机 netns 的 W3.6 逐行一致 → 30/30 不是「同内核」造成的假象"
+          },
+          "conclusions": [
+            "条款①（两端在不同物理主机）**成立**：machine_ids 的 host 部分为 DESKTOP-DJQSC95 / ubuntu。",
+            "条款②（真实 NAT 设备）**仍不成立**：NAT 由 iptables/conntrack 合成，换多少台主机都不会变成真实设备。",
+            "因此 evidence_valid=false、S6 仍 not_run、R-04 ≥70% 仍未判定；本轮价值是排除「同内核」质疑，不是过关。",
+            "symmetric 持有者 0/30 与 W3.6 一致，属正确结果（无 DNAT、映射随目的变化，只能走中继）。"
+          ],
+          "defect_found": {
+            "id": "CLASSIFY-CONE-SUBTYPE-FABRICATED",
+            "symptom": "coldrevive-cli nat probe 在五类环境里全部报 restricted-cone，包括 full-cone",
+            "root_cause": "cr-nat/src/classify.rs::classify_cone_subtype 比较的是 **NAT 映射地址** 与 **STUN 服务器 OTHER-ADDRESS**，两者语义无关；只要服务器返回 OTHER-ADDRESS（正常情况都会返回），IP 必然不同，于是恒判 RestrictedCone。该字段此前是恒定值，不是测量结果。",
+            "impact": "nat_type 参与 choose_strategy，错误的分类会误导穿透策略选择；不得据此宣称任何 NAT 类型结论",
+            "authoritative_alternative": "nat_behavior.py（RFC 3489 Test II/III，本轮 5/5 正确）",
+            "fix_plan": "在 Rust 客户端补齐 CHANGE-REQUEST（0x0003）发送与「是否收到应答」判定：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；都无→port-restricted cone；再让 nat_type 参与决策。修复前 nat_type 不得用于决策。"
+          },
+          "evidence_boundary": {
+            "lab_mode": true,
+            "evidence_scope": "cross-host-lab",
+            "evidence_valid": false,
+            "clauses": {
+              "two_distinct_machines": true,
+              "nat_is_real_device": false
+            },
+            "note": "合成 NAT + 两端不同主机；仍不满足条款②，不得据此判定 R-04 或宣称 S6 达标"
+          },
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run",
+          "spike_status_changed": false,
+          "g2_claim": false
         }
       }
     },
@@ -1563,7 +1663,8 @@
         "new_dependency": "双向打洞以中继为信令通道，中继不可用时直连退化回只有全锥可通",
         "cargo_test": "88 passed / 0 failed（新增 8 个 cr-nat 用例）",
         "evidence_valid": false
-      }
+      },
+      "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。"
     },
     "validation": {
       "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
@@ -1581,7 +1682,8 @@
       "w35_regressions": "2026-11-14 W3.5① 全量回归：cargo test --workspace --offline 80 passed / 0 failed；cargo build --release --workspace --offline OK；T0 --mode real 21/21 PASS、evidence_valid=true（需设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实二进制环境变量）；T1 --self-test 11/11；T2 --self-test 3/3 + --mode local 10/10 PASS（报告 tests/e2e/t2/reports/t2-20261114T135902Z-local.json）；scripts/build_docs.py --check 36 份 Markdown 校验通过"
     },
     "remaining_for_g2": [
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30；2026-11-15 澄清：判据是**两条独立条款**（两台不同物理主机 + 真实 NAT 设备），加主机只满足前者、永远满足不了后者，且四类需 ≥4 个不同出口（见 nat-matrix.md §13、S6.observations.criteria_decomposition_2026_11_15）",
+      "[必修] 修复 cr-nat NAT 分类缺陷 CLASSIFY-CONE-SUBTYPE-FABRICATED：classify_cone_subtype 比较 NAT 映射地址与 STUN OTHER-ADDRESS（语义无关），只要有 OTHER-ADDRESS 就恒判 restricted-cone，导致 nat probe 的 nat_type 是恒定值而非测量结果。修法：补齐 RFC 3489 Test II/III（发 CHANGE-REQUEST 并检查是否收到应答：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone），再让 nat_type 参与 choose_strategy；修复前 nat_type 不得用于任何策略决策或对外结论。",
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30；2026-11-15 澄清：判据是**两条独立条款**（两台不同物理主机 + 真实 NAT 设备），加主机只满足前者、永远满足不了后者，且四类需 ≥4 个不同出口（见 nat-matrix.md §13、S6.observations.criteria_decomposition_2026_11_15）；W3.6b（2026-11-15）已把请求者挪到第二台物理主机（A=192.168.1.210），**条款①成立**（evidence_scope=cross-host-lab，direct 四类 30/30、symmetric 0/30、relay 30/30），但条款②（真实 NAT 设备）仍不成立，故 R-04 仍不可判定：仍需真实 NAT 设备级联或在 ≥8 个真实网络实测。",
       "双向打洞 / rendezvous 已在实验室完成（W3.6，2026-11-15）：受限锥 / 端口受限锥 / 双 NAT CGNAT 的 direct 0/30 → 30/30；symmetric 持有者仍 0/30（正确结果）。**新依赖**：信令经中继下发，中继不可用时直连退化回只有全锥可通 —— 中继可用性成为直连的前置条件，须在真实环境中验证。",
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
       "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",

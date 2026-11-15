@@ -314,3 +314,93 @@ B 只在有第二台 Linux 主机时顺手做，用于消除「同内核」质�
 `direct` **30/30**、`relay` **30/30**、中继 `delivered=120 / dropped=0`；
 报告 `evidence_scope=vm-namespace-lab`、`hosts=['ubuntu']`、条款 1/2 均 `false`。
 数值与 W3.6 一致，说明层级改造没有改变测量口径，只把「为什么不能判 pass」写清楚了。
+
+## 14. 跨主机档位：把请求者挪到第二台物理主机（2026-11-15，v2.4.54）
+
+### 14.1 回应的问题
+「实验室是同机两个 netns，不满足两台物理主机」这句话容易被读成「环境不合格」。
+需要把一件事说准：**实验机 221 本身就是一台主机，它让四类 NAT 得以建起来**；
+不满足条款①的不是「机器不够」，而是**一次测量里的两个端点都在 221 内部**。
+把其中一个端点挪到 A（192.168.1.210，另一台物理机）就成立 —— 本轮做到了。
+
+### 14.2 为什么不是"在 A 上加一条路由"
+最直觉的做法是让 A 能路由到实验机的内部 WAN 网段 10.0.0.0/24。实测两条路都不通：
+
+| 方案 | 实测结果 |
+| :--- | :--- |
+| `route add 10.0.0.0/24 via 192.168.1.221` | A 是**非管理员** Windows 账户，改不了路由表 |
+| macvlan 把网关挂到物理 LAN | VMware vSwitch 默认 **拒绝混杂模式/伪传输**，`ping` 100% 丢包、ARP 无应答 |
+
+改用**反方向**：给网关的 WAN 口再挂一个**物理 LAN 上的地址**（.241~.245），
+由 221 在 `ens160` 上做 **proxy ARP** 替它应答。数据路径每个方向只多一跳、**不改写 IP**：
+
+```
+A(192.168.1.210) --ARP 由 221 代答--> 221 ens160 --/32 路由--> br-wan
+    --> 网关 netns 的 WAN 口(192.168.1.24X) --SNAT--> 内网 holder(192.168.X.2)
+反向：网关把包发给"邻居"（静态写死为 br-wan 的 MAC），221 按 /32 转出 ens160
+```
+
+好处：**对 A 零改动、零权限**，且 SNAT 目标地址就是 A 看到的对端地址，
+NAT 语义没有被额外一层改写污染。
+
+### 14.3 新增的两个工具
+
+| 文件 | 作用 |
+| :--- | :--- |
+| `nat_lab/link_physical.sh` | `up <class>` / `down` / `status` / `stun-lan-start` / `stun-lan-stop`：暴露网关到物理 LAN（含 SNAT 改写与静态邻居，对称型保留 `--random-fully`） |
+| `nat_lab/run_cross_host.py` | 在 A 上运行：ssh 编排 221 侧（链路 → STUN → 中继 → 持有者 → 通告），本机起请求者，再调 `nat_matrix.py --evidence-scope cross-host-lab` |
+
+`hold` 一侧的事都在 221 上，`nat wake` 的直连/中继命令都在 A 上执行 ——
+**测量姿态与真实使用一致**（不是"在实验机里模拟一个外部主机"）。
+
+### 14.4 结果（30 次/路径，`delivered=120 / dropped=0`）
+
+先看**分类**：同一条物理链路上用 `nat_behavior.py` 重测，5/5 与建网声明一致 ——
+这也是链路保真度的反证（代理路径若改坏了 NAT 语义，分类会先露馅）：
+
+| 建网类型 | 物理链路实测分类 | 置信度 |
+| :--- | :--- | :--- |
+| full-cone | Endpoint-Independent Mapping + Endpoint-Independent Filtering | high |
+| restricted-cone | EIM + Address-Dependent Filtering | high |
+| port-restricted-cone | EIM + Address-and-Port-Dependent Filtering | medium |
+| symmetric | Address/Port-Dependent Mapping | low |
+| cgnat（双 NAT） | EIM + Address-and-Port-Dependent Filtering | medium |
+
+再看**可达率**：
+
+| 持有者（221 的 netns） | 请求者 | `direct` | `relay` |
+| :--- | :--- | :--- | :--- |
+| full-cone | A @192.168.1.210 | **30/30** | 30/30 |
+| restricted-cone | A @192.168.1.210 | **30/30** | 30/30 |
+| port-restricted-cone | A @192.168.1.210 | **30/30** | 30/30 |
+| symmetric | A @192.168.1.210 | **0/30** | 30/30 |
+| cgnat（双 NAT） | A @192.168.1.210 | **30/30** | 30/30 |
+
+与 W3.6（同机 netns）逐行一致 —— 说明 W3.6 的 30/30 不是"同内核"造成的假象。
+
+### 14.5 判定：条款①成立，条款②仍不成立
+
+报告里现在写得很直白：
+
+```
+evidence_scope = cross-host-lab
+hosts = ['DESKTOP-DJQSC95', 'ubuntu']   ← 两台不同主机
+clause1 two_distinct_machines = true
+clause2 nat_is_real_device    = false   ← 合成 NAT，换多少台主机都不变
+evidence_valid = false
+```
+
+所以：**S6 仍未判定，R-04 ≥70% 仍不能给结论**。
+本轮拿到的是"排除同内核质疑"这一档证据，不是过关。
+要真正闭合条款②，仍然只有两条路：接入真实 NAT 设备（路线 A），
+或在 ≥8 个真实网络上实测（路线 C，也是唯一能给出 R-04 那个数字的路线）。
+
+### 14.6 顺带暴露的产品缺陷（已登记，另单修复）
+
+`coldrevive-cli nat probe` 在五类环境里**全部**报 `restricted-cone`，包括 full-cone。
+定位到 `cr-nat/src/classify.rs::classify_cone_subtype`：它比较的是
+**NAT 映射地址**与 **STUN 服务器的 OTHER-ADDRESS**，两者语义无关；
+只要服务器给了 OTHER-ADDRESS（正常情况都会给），就必然判成 `restricted-cone`。
+也就是说这个字段此前一直是**恒定值**，不是测量结果。
+权威分类只能来自 `nat_behavior.py`（RFC 3489 Test II/III，5/5 正确）。
+修复方案与门禁影响见 `spikes.json` 的 `remaining_for_g2`。

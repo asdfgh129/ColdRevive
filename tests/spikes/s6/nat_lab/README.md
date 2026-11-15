@@ -149,13 +149,40 @@ W3.5② 的 0/30 被定位为**单向打洞**造成：请求侧向持有者映�
 直连会整体退化回「只有全锥可通」。因此中继不是「兜底」，而是双向打洞的**前置依赖**。
 这一点必须写进 S6 的剩余工作项。
 
+## 跨主机档位（cross-host-lab，2026-11-15）
+
+同机两个 netns 满足不了「两端在两台物理主机」这条判据。只要把**其中一个端点**挪出实验机
+就成立，而且**不需要对端主机任何权限**：
+
+```bash
+# 在实验机（221）上：把该类网关的 WAN 侧挂到物理 LAN（proxy ARP 代答）
+sudo bash link_physical.sh up restricted-cone
+sudo bash link_physical.sh stun-lan-start     # 192.168.1.221:3478 + .239:3479
+
+# 在**另一台物理主机**（A，192.168.1.210）上：驱动整套编排并跑矩阵
+python tests/spikes/s6/nat_lab/run_cross_host.py --class restricted-cone --trials 30
+```
+
+为什么不用「在 A 上加一条到 10.0.0.0/24 的路由」：A 是非管理员账户改不了路由表；
+也不用 macvlan：VMware vSwitch 默认拒绝混杂模式，实测 100% 丢包。因此改成让网关
+**多挂一个物理 LAN 地址**（.241~.245，`192.168.1.241` 起），由 221 在 `ens160` 上
+proxy ARP 代答。数据路径每方向只多一跳、不改写 IP，NAT 语义不被额外一层污染。
+
+实测（30 次/路径，`delivered=120 / dropped=0`）：分类 5/5 与建网声明一致，
+`direct` 四类 30/30、symmetric 0/30，`relay` 全部 30/30 —— 与同机 netns 的 W3.6
+逐行一致，说明 W3.6 的 30/30 不是「同内核」的假象。
+报告 `evidence_scope=cross-host-lab`、`hosts=['DESKTOP-DJQSC95','ubuntu']`、
+条款① `true`、条款② `false`、`evidence_valid=false`。
+详见 [nat-matrix.md §14](../nat-matrix.md)。
+
 ## 证据边界（不得突破）
 
-- 判据是**两个互相独立的条款**，本实验室两条都不满足：
-  1. **两端在不同物理主机** —— 这里是同机两个 netns（`machine_ids` 的 host 部分相同）；
-  2. **NAT 是真实设备**（`real_nat_evidence`）—— 这里是 iptables/conntrack 合成的 NAT。
-  加主机只能解决第 1 条，第 2 条与主机无关；而且四类 NAT 需要四个不同出口，
-  与主机数量正交。详见 [nat-matrix.md §13](../nat-matrix.md)。
+- 判据是**两个互相独立的条款**：
+  1. **两端在不同物理主机** —— 同机两个 netns 不满足；但用 `link_physical.sh` +
+     `run_cross_host.py` 把请求者挪到另一台主机后**可以满足**（`cross-host-lab`，已实测）；
+  2. **NAT 是真实设备**（`real_nat_evidence`）—— 这里是 iptables/conntrack 合成的 NAT，
+     **换多少台主机都不会变成真实设备**。
+  而且四类 NAT 需要四个不同出口，与主机数量正交。详见 [nat-matrix.md §13](../nat-matrix.md)。
 - `nat_matrix.py` 因此改为显式证据层级 `--evidence-scope`
   （`real-multi-nat` / `cross-host-lab` / `vm-namespace-lab`，`--lab-mode` 是后者的兼容别名），
   报告里 `evidence_clauses` 逐条写 `satisfied`、`evidence_invalid_reasons` 直接写明缺哪条，

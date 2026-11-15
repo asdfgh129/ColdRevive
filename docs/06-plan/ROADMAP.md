@@ -259,12 +259,33 @@ ColdRevive
   **B 跨主机实验室**（第二台 Linux 主机，只满足①，提升保真度）、
   **C 公网多节点实测**（≥8 个真实网络节点，唯一能产出 R-04 ≥70% 是否成立这个数字的路线）。
   **推荐 C 为主线、A 为最小合规闭环**；B 仅在拿到第二台 Linux 主机时顺手做。
-- **下一步计划（W3.7 候选）**：① **中继去单点化**（本轮新增依赖：信令必须经中继，须做多实例 / 注册同步 /
-  故障切换，否则中继不可用时直连退化）；② 中继公网生产化（TLS / 身份鉴权 / 限流 / 空闲超时 / 跨公网时延）；
-  ③ BT/TCP 打洞；④ M2 其余骨架 crate 的内置引擎与资源治理；
-  ⑤ S6 按 v2.4.53 的三条路线推进（C 为主线；A 需真实路由器；B 需第二台 Linux 主机），
-  逐类执行 `nat_matrix.py --mode real --evidence-scope real-multi-nat` 并由实验执行人手工回填；
-  ⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
+- **M2/W3.6b 已落地（2026-11-15，v2.4.54）跨主机档位：条款①由 ❌ 变 ✅**：
+  上一版把判据拆开之后仍有一句容易被误读的话「实验室是同机两个 netns」。真正的问题不是
+  「机器不够」，而是**一次测量里的两个端点都跑在 221 内部**；把请求者挪到 A（192.168.1.210）即可。
+  ① 新增 [link_physical.sh](../../tests/spikes/s6/nat_lab/link_physical.sh)：给网关 WAN 口再挂一个
+  **物理 LAN 地址**（`192.168.1.241`~`.245`），由 221 在 `ens160` 上 **proxy ARP** 代答，
+  网关侧补 `/24` 路由、把实验机与对端钉成静态邻居、插入指向物理地址的 SNAT（对称型保留
+  `--random-fully`）。② 新增 [run_cross_host.py](../../tests/spikes/s6/nat_lab/run_cross_host.py)：
+  在 A 上运行，ssh 编排 221 侧，`nat wake` 的直连/中继命令都在 A 上执行，
+  **测量姿态与真实使用一致**。③ 分类与可达率强制出自**同一条链路**（每次 `up` 后先重测分类）。
+  **实测（30 次/路径，`delivered=120 / dropped=0`）**：分类 5/5 与建网声明一致；`direct`
+  full-cone / restricted-cone / port-restricted-cone / cgnat **均 30/30**，symmetric **0/30**，
+  `relay` 五类 **30/30** —— 与同机 netns 的 W3.6 逐行一致，**说明 30/30 不是「同内核」的假象**。
+  报告 `evidence_scope=cross-host-lab`、`hosts=['DESKTOP-DJQSC95','ubuntu']`、
+  **条款① `true` / 条款② `false`**、`evidence_valid=false`；**R-04 仍未判定**。
+  ④ 顺带发现产品缺陷：`coldrevive-cli nat probe` 五类环境全报 `restricted-cone`，根因是
+  `classify_cone_subtype` 比较 **NAT 映射地址**与 **STUN OTHER-ADDRESS**（语义无关），
+  该字段此前是恒定值而非测量结果 —— 已单列为待修项。
+  机读见 `spikes.json` 的 `m2_progress.scope_done.w36b_cross_host` 与
+  `S6.observations.w36b_cross_host_2026_11_15`。
+
+- **下一步计划（W3.7 候选）**：① **修 `cr-nat` NAT 分类缺陷**（`classify_cone_subtype` 恒判
+  restricted-cone）—— 必须先补齐 RFC 3489 Test II/III 的真实过滤测试（CHANGE-REQUEST 发出并检查
+  是否收到应答），再让 `nat_type` 参与策略决策；修复前 **`nat_type` 不得用于决策**；
+  ② **中继去单点化**（W3.6 新增依赖：信令必须经中继，须做多实例 / 注册同步 / 故障切换，
+  否则中继不可用时直连退化）；③ 中继公网生产化（TLS / 身份鉴权 / 限流 / 空闲超时 / 跨公网时延）；
+  ④ BT/TCP 打洞；⑤ M2 其余骨架 crate 的内置引擎与资源治理；⑥ 真实 NAT 设备或 ≥8 节点实测，
+  由实验执行人手工回填 S6；⑦ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
 
 ## 相关文档
 

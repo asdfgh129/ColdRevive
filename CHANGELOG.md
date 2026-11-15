@@ -2,6 +2,45 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.54] - 2026-11-15 — M2/W3.6b：跨主机档位落地（条款①由 ❌ 变 ✅）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；无 Rust 代码改动；实验室证据 `evidence_valid=false`。
+
+### 背景
+上一版把判据拆成两条独立条款后，仍有一句话容易被误读：「实验室是同机两个 netns」。
+真正的问题不是「机器不够」，而是**一次测量里的两个端点都跑在 221 内部**。
+把请求者挪到 A（192.168.1.210）就能让条款①成立，本轮做到了。
+
+### 实现（`tests/spikes/s6/nat_lab/`）
+- **`link_physical.sh`**：把某一类网关的 WAN 侧「挂」到物理 LAN 上
+  （地址池 `192.168.1.241`~`.245`），由 221 在 `ens160` 上 **proxy ARP** 代答；
+  网关侧补 `/24` 路由、把实验机/对端钉成静态邻居、插入指向物理地址的 SNAT
+  （对称型保留 `--random-fully`）。`down` 精确删回，不留残留规则。
+  - 为什么不用更直觉的方案：A 是**非管理员**账户（改不了路由表）；
+    macvlan 在 VMware vSwitch 下 100% 丢包（拒绝混杂模式/伪传输），已实测排除。
+- **`run_cross_host.py`**：在 A 上运行，ssh 编排 221 侧（链路 → 物理口 STUN →
+  中继 → 持有者 → 通告），本机起请求者，再调 `nat_matrix.py --evidence-scope cross-host-lab`。
+  `nat wake` 的直连/中继命令都在 A 上执行，**测量姿态与真实使用一致**。
+  远端命令一律经 `ssh ... bash -s` 从 stdin 送入，避免 argv 被远端 shell 二次拆分。
+- 分类与可达率必须出自**同一条链路**：每次 `up` 后先在物理链路上用 `nat_behavior.py`
+  重测一次分类，报告一并落盘；分类报告取不回时直接失败，不用占位路径骗过 attestation。
+
+### 实测（30 次/路径，`delivered=120 / dropped=0`）
+分类 5/5 与建网声明一致（full/restricted high、port-restricted/cgnat medium、symmetric low）；
+`direct`：full-cone / restricted-cone / port-restricted-cone / cgnat **均 30/30**，
+symmetric **0/30**（无 DNAT、映射随目的变，只能中继）；`relay` 五类 **30/30**。
+与 W3.6（同机 netns）逐行一致 —— 说明 30/30 不是「同内核」的假象。
+报告：`evidence_scope=cross-host-lab`、`hosts=['DESKTOP-DJQSC95','ubuntu']`、
+条款① `true`、条款② `false`、`evidence_valid=false`。**R-04 仍未判定**。
+
+### 顺带发现的产品缺陷（已登记，另单修）
+`coldrevive-cli nat probe` 在五类环境里**全报 `restricted-cone`**（含 full-cone）。
+根因在 `cr-nat/src/classify.rs::classify_cone_subtype`：它比较 **NAT 映射地址**与
+**STUN 服务器 OTHER-ADDRESS**，两者语义无关，只要服务器给 OTHER-ADDRESS 就恒判 restricted。
+该字段此前一直是恒定值而非测量结果。已写入 `spikes.json` 的 `remaining_for_g2`，
+明确「修复前不得用 `nat_type` 做策略决策」。
+
 ## [2.4.53] - 2026-11-15 — M2：S6 判据拆成两条独立条款 + 显式证据层级
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
