@@ -1,0 +1,4 @@
+# 本目录为 S6 NAT 实验室生成物：含本地 IP / 端点标识，不入库
+lab-evidence.json
+attest/
+*.log

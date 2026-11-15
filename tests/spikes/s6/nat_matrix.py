@@ -62,6 +62,11 @@ def validate_attestation(att: dict, cfg: dict, want_class: str) -> tuple[bool, l
     errors: list[str] = []
     spec = next((c for c in cfg["required_classes"] if c["id"] == want_class), None)
     if spec is None:
+        # CGNAT 等「附加环境」不在四类里，但同样是必测项；只认配置里显式声明过的 id
+        add = cfg.get("additional_environment") or {}
+        if add.get("id") == want_class:
+            spec = add
+    if spec is None:
         return False, [f"未知 NAT 类别 {want_class}"]
     for key in spec["required_attestation"]:
         if key not in att or att[key] in ("", None, [], {}):
@@ -158,6 +163,19 @@ def real_mode(args: argparse.Namespace, cfg: dict) -> tuple[dict, int]:
                  "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
                 EXIT_BLOCKED)
 
+    lab_mode = bool(getattr(args, "lab_mode", False))
+    # 实验室模式必须由 attestation 自报，禁止把「同机两个 netns」当作「两台物理主机」静默上报
+    if lab_mode and not att.get("lab_mode"):
+        return ({"status": "BLOCKED",
+                 "reason": "--lab-mode 要求 attestation 显式声明 lab_mode=true（如实标注非同机物理主机）",
+                 "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
+                EXIT_BLOCKED)
+    if not lab_mode and att.get("lab_mode"):
+        return ({"status": "BLOCKED",
+                 "reason": "attestation 声明 lab_mode=true，但未传 --lab-mode；不得据此产出真实证据",
+                 "evidence_valid": False, "s6_status": "not_run", "g2_claim": False},
+                EXIT_BLOCKED)
+
     paths = {
         "direct": run_trials(args.direct_cmd, args.trials, args.timeout),
         "relay": run_trials(args.relay_cmd, args.trials, args.timeout),
@@ -173,14 +191,20 @@ def real_mode(args: argparse.Namespace, cfg: dict) -> tuple[dict, int]:
         "attestation_validated": True,
         "paths": paths,
         "overall_reachability": overall,
-        "evidence_valid": True,
+        "evidence_valid": not lab_mode,
+        "evidence_scope": "vm-namespace-lab" if lab_mode else "physical-hosts",
+        "lab_mode": lab_mode,
         "synthetic_evidence": False,
         "evidence_valid_for_pass": False,
         "status": "OBSERVED",
         "spike_status_changed": False,
         "s6_status": "not_run",
         "g2_claim": False,
-        "note": "单类真实实测记录；不得据此宣称 S6 达标。结论由实验执行人手工回填 spikes.json",
+        "note": ("实验室（同机两个 netns）实测记录：NAT 行为由内核 conntrack 真改写、"
+                 "唤醒计数来自真实 WAKEUP_ACK，但**不满足「两台不同物理主机」条款**，"
+                 "故 evidence_valid=false，不得据此宣称 S6 达标"
+                 if lab_mode else
+                 "单类真实实测记录；不得据此宣称 S6 达标。结论由实验执行人手工回填 spikes.json"),
     }
     return report, 0
 
@@ -364,6 +388,8 @@ def main() -> int:
     ap.add_argument("--relay-cmd", default="")
     ap.add_argument("--aggregate", default="")
     ap.add_argument("--condition-file", default="")
+    ap.add_argument("--lab-mode", action="store_true",
+                    help="VM/netns 实验室模式：强制 evidence_valid=false（不满足两台物理主机条款）")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     cfg = load_config()

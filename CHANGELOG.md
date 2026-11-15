@@ -2,6 +2,72 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.51] - 2026-11-15 — M2/W3.5②：单台 Ubuntu VM 内建成四类 NAT + CGNAT 实验室并实测
+
+> 范围声明：本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`、
+> `spike_status_changed=false`；`PROTOCOL_VERSION=1`、T0 golden 与 CLI v1 契约未改；workspace 仍
+> 17 crate + 5 bin、std-only 零第三方依赖。实验室证据一律 `evidence_valid=false`、
+> `evidence_scope=vm-namespace-lab`（同一台物理主机内的两个 netns，不满足「两台物理主机」条款）。
+
+### 背景
+- W3.5① 审计结论：S6 需「四类真实 NAT（含 CGNAT）可达率矩阵」，而现场只有 1 类真实 NAT 出口、
+  无 CGNAT、且本机无管理员权限与 `tc/netem`。用户提供了一台可 SSH 操作的 Ubuntu Server
+  （192.168.1.221）用于搭建实验环境。
+- 目标不是「用模拟数据凑一个 pass」，而是**用内核级真实 NAT 语义**把四类 NAT 与双 NAT CGNAT
+  在一台主机内复现，让分类探针测到的行为是网关真实行为（conntrack / SNAT / DNAT / ipset 匹配），
+  从而把 `nat_matrix.py` 的完整执行路径真正跑通一遍，暴露接线与信令缺陷。
+
+### 新增：`tests/spikes/s6/nat_lab/`
+- `setup_nat_lab.sh`：`ip netns` + veth + bridge 建 5 套拓扑（full-cone / restricted-cone /
+  port-restricted-cone / symmetric / cgnat 双 NAT）；子命令 `up` / `status` / `stun-start` /
+  `stun-stop` / `down`。NAT 由 `iptables-legacy` 在网关 netns 内做**真改写**：
+  SNAT 映射、`--random-fully` 对称型、`ipset hash:ip,port,ip` 做 RFC 4787 受限锥跟踪、
+  全锥/受限锥网关另加**保留端口 1:1 DNAT**。统一 `iptables-legacy` 是因为目标机默认 `nf_tables`
+  而 `ipset` 只在 legacy 下工作。
+- `local_stun.py`：本地 RFC 5389 Binding + RFC 3489 `CHANGE-REQUEST`（flags 2/4/6）/
+  `CHANGED-ADDRESS` / `OTHER-ADDRESS` STUN 服务器。**必需**：若用公网 STUN，VM 自身出口 NAT
+  会叠在待测 NAT 之上，测到的是两级复合行为。`--self-test` 8/8 PASS。
+- `run_matrix_lab.py`：在 netns 内拉起真实 `coldrevive-relay` + 两个真实 `coldrevived`
+  （holder 在 A / requester 在 B），取 `/nat/advertise`、用真实 `sha256(file)` 做 `file_hash`，
+  再驱动 `nat_matrix.py --mode real --lab-mode` 跑 30 次 × 2 路径 × 5 环境。
+- `README.md`：拓扑图、运行流程、2026-11-15 结果、证据边界、8 条排障记录。
+
+### 方法论修正（两处关键，否则测量无效）
+1. **锥形网关必须做保留端口 DNAT**：只做 SNAT 时，外部主动入向包在网关上无 conntrack 条目，
+   全锥与端口受限会得到相同的「不可达」，分类产生假阴性。加 1:1 DNAT 后两类才可区分。
+2. **STUN 必须从「收到请求的那个地址」回包**：原先恒从主地址回应，导致发往备用地址的请求其回包
+   元组与出向 conntrack 不匹配，被端口受限/对称网关当 unsolicited 丢弃 —— 实测会把「可达」
+   误判成「不可达」，5 类里 3 类降级为 `undetermined`。已修复并加回归自检
+   `answers_from_receiving_alt_ip`。
+
+### 实测结果（真实 CLI / UDP / HTTP / STUN 观测，30 次/路径）
+- 分类（`nat_behavior.py`，指向本地 STUN）：full cone `high`、restricted cone `high`、
+  port-restricted cone `medium`、symmetric `low`、cgnat→port-restricted cone `medium`。
+  **5/5 环境分类与建网时声明的类型一致**，这是实验室保真度的反证。
+- 可达率（`nat_matrix.py --mode real --lab-mode`）：`direct` 仅 full-cone holder **30/30**，
+  其余四类（restricted-cone / port-restricted-cone / symmetric / cgnat）**0/30**；
+  `relay` **5/5 环境均 30/30**。
+- 结论（工程性，非「NAT 不可穿透」）：现行 `NAT_PUNCH` 是**单向**的 —— 请求侧向持有者候选地址
+  发探测包，持有者不回打，因此只有全锥 holder（入向不受过滤）能通。受限锥及以上需要
+  **双向打洞 / 会合（rendezvous）**：双方各自先向对方出向发一包，打开自身过滤项后再互发载荷。
+  中继回退覆盖全部 5 类环境，验证 W3.4 的中继路径在 NAT 侧的兜底是有效的。
+
+### 门禁纪律
+- `nat_matrix.py` 新增 `--lab-mode`：强制 `evidence_valid=false`、`evidence_scope=vm-namespace-lab`；
+  且**双向校验** attestation 的 `lab_mode` —— 传了 `--lab-mode` 而 attestation 未自报 → `BLOCKED`；
+  attestation 自报 `lab_mode=true` 却未传 `--lab-mode` → 同样 `BLOCKED`。禁止把「同机两个 netns」
+  静默上报成「两台物理主机」。
+- `nat_matrix.py` 支持 `additional_environment`（cgnat）作为必测附加环境，不再因不在
+  `required_classes` 四类里而报「未知 NAT 类别」。
+- `spikes.json` 只新增 `observations` / `scope_done`，未改任何 `status`；`matrix_coverage` 仍
+  记 `lab 5/5（非真实）`，**不折算成 S6 覆盖率**。
+
+### 修复
+- `stun_probe.py::default_gateway()` 原先只实现 Windows `route print`，在 Linux 返回空串导致
+  CGNAT 启发式失效；补 `ip route show default` 回退。
+- `nat_behavior.py` 增加 `--mapping-servers` / `--filter-servers` / `--label`，报告新增
+  `environment_label` / `stun_endpoints`；`host.os` 改用 `platform.system()`。
+
 ## [2.4.50] - 2026-11-14 — M2/W3.5①：S3/S5/S6 条件审计 + 符合条件的真实实验 + S6 矩阵执行协议
 
 > 范围声明：G1 已通过、M2 进行中。本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，

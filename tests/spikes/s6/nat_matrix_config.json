@@ -35,6 +35,8 @@
     "id": "cgnat",
     "label": "运营商级 NAT（CGNAT）",
     "required": true,
+    "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
+    "paths": ["direct", "relay"],
     "note": "四类 NAT 之外必须至少覆盖 1 个 CGNAT 出口；不单独计入 4 类覆盖率，但缺失时不得宣称矩阵完成"
   },
   "classification_method": "RFC 5389 STUN 映射行为 + RFC 3489/5780 CHANGE-REQUEST 过滤行为 + CGNAT 启发式；分类证据须来自真实 STUN 探针报告，不得由 attestation 自称类型替代",

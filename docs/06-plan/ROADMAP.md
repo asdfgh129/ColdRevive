@@ -219,10 +219,24 @@ ColdRevive
   分类样本不等于可达率矩阵，真实公网 STUN 单出口不计入覆盖率。
   机读见 `spikes.json` 的 `m2_progress.scope_done.w35_*`、`g0_review.w35_experiments_2026_11_14`
   及 S3/S5/S6 的 `observations.w35_*`。
-- **下一步计划（W3.5② 候选，未开工）**：① 中继公网生产化（TLS / 身份鉴权 / 多实例注册同步 /
-  限流 / 空闲超时 / 跨公网时延量测）；② BT/TCP 打洞；③ M2 其余骨架 crate 的内置引擎与资源治理；
-  ④ 在用户提供四类真实 NAT（含 CGNAT）环境后逐类执行 `nat_matrix.py --mode real`，
-  由实验执行人手工回填 S6；⑤ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
+- **M2/W3.5② 已落地（2026-11-15，v2.4.51）**：在用户提供的 Ubuntu Server（192.168.1.221）上建成
+  [NAT 实验室](../../tests/spikes/s6/nat_lab/README.md) —— `setup_nat_lab.sh` 用 `ip netns` + veth + bridge
+  建 5 套拓扑（full-cone / restricted-cone / port-restricted-cone / symmetric / cgnat 双 NAT），
+  NAT 由 `iptables-legacy` 在网关 netns 内**真改写**（SNAT 映射、`--random-fully` 对称型、
+  `ipset hash:ip,port,ip` 做受限锥跟踪、锥形网关另加保留端口 1:1 DNAT），配 `local_stun.py`
+  本地 STUN（RFC 5389 + RFC 3489 `CHANGE-REQUEST`）避免 VM 自身出口 NAT 叠加遮蔽。
+  ① 分类 `5/5` 与建网声明一致（full/restricted `high`、port-restricted/cgnat `medium`、symmetric `low`）——
+  这是实验室保真度反证；② `run_matrix_lab.py` 拉起真实 `coldrevive-relay` + 两个真实 `coldrevived`
+  跑 30 次 × 2 路径 × 5 环境：`direct` 仅全锥 **30/30**，其余四类 **0/30**，`relay` **5/5 均 30/30**。
+  ③ 由此定位到真实工程缺口：`NAT_PUNCH` 目前**单向**，受限锥及以上必须**双向打洞 / 会合**。
+  **所有证据 `evidence_valid=false`、`evidence_scope=vm-namespace-lab`；S3/S5/S6 仍 `not_run`、G2 未达标**；
+  机读见 `spikes.json` 的 `m2_progress.scope_done.w35b_lab` 与 `S6.observations.w35b_lab_2026_11_15`。
+- **下一步计划（W3.6 候选）**：① **双向打洞 / 会合**（本轮已量化：非全锥 `direct` 0/30）——
+  双方先互发探测包打开自身过滤项再互发载荷，含 `WAKEUP_REQ`/`NAT_PUNCH` 双向往返与候选地址交换；
+  ② 中继公网生产化（TLS / 身份鉴权 / 多实例注册同步 / 限流 / 空闲超时 / 跨公网时延量测）；
+  ③ BT/TCP 打洞；④ M2 其余骨架 crate 的内置引擎与资源治理；
+  ⑤ 在用户提供**真实多 NAT（含 CGNAT）环境**后逐类执行 `nat_matrix.py --mode real`（不带 `--lab-mode`），
+  由实验执行人手工回填 S6；⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
 
 ## 相关文档
 

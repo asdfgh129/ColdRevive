@@ -146,6 +146,7 @@ def local_ip() -> str:
 
 
 def default_gateway() -> str:
+    # Windows
     try:
         r = subprocess.run(["route", "print", "0.0.0.0"], capture_output=True,
                            text=True, timeout=6, check=False)
@@ -153,6 +154,15 @@ def default_gateway() -> str:
             m = re.match(r"\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s", line)
             if m:
                 return m.group(1)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    # Linux / 实验室 VM：route 可能不存在，改读 ip route
+    try:
+        r = subprocess.run(["ip", "route", "show", "default"], capture_output=True,
+                           text=True, timeout=6, check=False)
+        m = re.search(r"default\s+via\s+(\d+\.\d+\.\d+\.\d+)", r.stdout or "")
+        if m:
+            return m.group(1)
     except (OSError, subprocess.TimeoutExpired):
         pass
     return ""

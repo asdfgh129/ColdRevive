@@ -1099,6 +1099,60 @@
           "no_false_claim": "真实公网 STUN 单出口样本不计入矩阵覆盖率；即便四类证据齐备，脚本仍标 s6_status=not_run，由实验执行人手工回填",
           "evidence_valid_for_pass": false,
           "s6_status_after": "not_run"
+        },
+        "w35b_lab_2026_11_15": {
+          "recorded_at": "2026-11-15",
+          "context": "用户提供一台 Ubuntu 23.04 VM（192.168.1.221，VMware，root），按 W3.5② 交付的 nat_lab 建立四类 NAT + CGNAT 环境并实测",
+          "environment": {
+            "host": "Ubuntu 23.04 / kernel 6.2 / 2 vCPU / 3.9 GB（VMware 虚拟机）",
+            "nat_emulation": "network namespace + iptables-legacy conntrack 真改写（内核级 NAT，非应用层代理）",
+            "iptables_backend": "iptables-legacy（ipset 仅与 legacy 兼容；本机默认 iptables 是 nf_tables）",
+            "stun": "tests/spikes/s6/nat_lab/local_stun.py 跑在宿主 br-wan（10.0.0.1:3478 / 10.0.0.2:3478 / :3479）",
+            "why_local_stun": "从 LAN netns 访问公网会再穿过 VM 自身出口 NAT，外层 NAT 会覆盖内层特征；本地 STUN 让路径里只剩被测那一层 NAT"
+          },
+          "classification_2026_11_15": {
+            "full-cone": "full cone（Endpoint-Independent Mapping + Endpoint-Independent Filtering，high）",
+            "restricted-cone": "restricted cone（EIM + Address-Dependent Filtering，high）",
+            "port-restricted-cone": "port-restricted cone（EIM + Address-and-Port-Dependent Filtering，medium）",
+            "symmetric": "symmetric（Address/Port-Dependent Mapping，low）",
+            "cgnat": "port-restricted cone（双 NAT：内层 100.64.0.0/24 + 外层 SNAT，medium）",
+            "method": "tests/spikes/s6/nat_behavior.py 在各自 LAN netns 内实跑，flags 2/4/6 + 独立对照 socket + 服务器能力正向对照"
+          },
+          "matrix_2026_11_15": {
+            "protocol": "nat_matrix.py --mode real --lab-mode --trials 30；direct=强制 stun-mapped 候选，relay=强制中继；成功只认真实 ok=true 且 ack_status=OK",
+            "pairing": "holder 置于被测类 NAT 之后，requester 置于另一类 NAT 之后（同 netns 会走私有地址绕过 NAT，已显式禁止）",
+            "results": {
+              "full-cone": {"direct": "30/30", "relay": "30/30"},
+              "restricted-cone": {"direct": "0/30", "relay": "30/30"},
+              "port-restricted-cone": {"direct": "0/30", "relay": "30/30"},
+              "symmetric": {"direct": "0/30", "relay": "30/30"},
+              "cgnat": {"direct": "0/30", "relay": "30/30"}
+            },
+            "finding": "单向打洞（仅请求方发 NAT_PUNCH）只能进入 full-cone 持有者；其余类型 direct 全超时（真实 1216 ms 无应答），中继路径 30/30 全部拿到真实 WAKEUP_ACK。该分化本身就是实验室仿真保真度的证据：若四类行为被仿真成一样，结果不会按类型分化。",
+            "engineering_gap": "缺双向打洞/rendezvous（双方同时向对端映射地址发包）：restricted/port-restricted 的过滤按「内网 ip:port 曾发往的远端」放行，只有持有者也先向请求方发包才能开洞。这是 W3.5② 的下一步工程项，不是 NAT 不可穿透。"
+          },
+          "evidence_boundary": {
+            "lab_mode": true,
+            "evidence_scope": "vm-namespace-lab",
+            "evidence_valid": false,
+            "why_not_pass": "同机两个 netns，不满足 S6 判据的「两台不同物理主机」条款；nat_matrix.py --lab-mode 强制 evidence_valid=false，且要求 attestation 显式声明 lab_mode=true，防止被误当真实证据",
+            "matrix_coverage": "分类 5/5 环境已实测；可达率 5 类已测但属实验室证据，R-04 ≥70% 判定仍未作出"
+          },
+          "deliverables": [
+            "tests/spikes/s6/nat_lab/local_stun.py（本地 STUN：RFC 5389 Binding + RFC 3489 CHANGE-REQUEST，self-test 8/8）",
+            "tests/spikes/s6/nat_lab/setup_nat_lab.sh（四类 NAT + CGNAT 建/查/拆 + 本地 STUN 生命周期）",
+            "tests/spikes/s6/nat_lab/run_matrix_lab.py（两个 netns 内真实 coldrevived + 真实中继 + nat_matrix 驱动）",
+            "tests/spikes/s6/nat_behavior.py 新增 --mapping-servers / --filter-servers / --label（self-test 14/14）"
+          ],
+          "methodology_fixes": [
+            "本地 STUN 原实现总是从主地址回包 → 回包元组与 conntrack 期望不符，被对称/端口受限网关丢弃，导致备用地址「假不可达」；改为从收到请求的那个地址回包",
+            "cone 类网关必须补「端口保持的 1:1 DNAT」，否则 full-cone 与 port-restricted 测出来完全一样（假阴性）",
+            "restricted-cone 用 ipset hash:ip,port,ip 记录 (内网ip,内网port,远端ip)，符合 RFC 4787 按内网传输地址跟踪的语义",
+            "驱动侧：holder 角色在代码里硬编码为 node_id==A；health/通告必须在该 netns 内发起（宿主无对端 LAN 路由）；唤醒必须携带真实 sha256 file_hash，否则持有者按设计 REJECT_NOT_FOUND"
+          ],
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run",
+          "g2_claim": false
         }
       }
     },
@@ -1284,7 +1338,8 @@
       "w35_s3": "W3.5① 新增 tests/spikes/s3/m1_dualstack_integration.py：两台不同物理主机真实 coldrevived 进程上的 M1 双栈集成，17/17 真实检查通过；A 由 harness 临时拉起并清理，B 常驻未改动",
       "w35_s5": "W3.5① 用真实 librqbit-utp 0.7.0 栈 5 轮复跑 NFR-03：默认 0.2 档 14.78% 不达标、0.05 档 4.58%、0.02 档 3.23%；仍为本地用户态整形，不作 pass 证据",
       "w35_s6": "W3.5① 新增 tests/spikes/s6/nat_behavior.py（真实 NAT 精细分类，带独立 socket 对照，实测单出口为 port-restricted cone）+ nat_matrix.py / nat_matrix_config.json（四类真实 NAT + CGNAT 可达率矩阵执行协议）；干跑与聚合均如实 BLOCKED、matrix_coverage=0/4",
-      "w35_harness_fixes": "自检暴露并修复 5 类真实缺陷：Python 关键字语法错误、STUN 帧长度断言错误、parse_attrs 切片误用、对照 socket 污染过滤测试导致 full cone 假阳性、条件快照硬编码 IPv6/虚拟出口观测；另补多 A 记录故障转移与有界重试抗公共 STUN 偶发丢包"
+      "w35_harness_fixes": "自检暴露并修复 5 类真实缺陷：Python 关键字语法错误、STUN 帧长度断言错误、parse_attrs 切片误用、对照 socket 污染过滤测试导致 full cone 假阳性、条件快照硬编码 IPv6/虚拟出口观测；另补多 A 记录故障转移与有界重试抗公共 STUN 偶发丢包",
+      "w35b_lab": "2026-11-15 在用户提供的 Ubuntu 23.04 VM 上建成四类 NAT + CGNAT 实验室（netns + iptables-legacy conntrack 真改写）：五类环境用 nat_behavior.py 逐一分类成功（full cone / restricted cone / port-restricted cone / symmetric / CGNAT 下的 port-restricted cone）；nat_matrix.py --mode real --lab-mode 逐类 30 次真实唤醒，full-cone direct 30/30、其余四类 direct 0/30，五类 relay 全部 30/30。lab 证据按纪律标 evidence_valid=false、evidence_scope=vm-namespace-lab，不构成 S6 达标"
     },
     "validation": {
       "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
@@ -1302,7 +1357,8 @@
       "w35_regressions": "2026-11-14 W3.5① 全量回归：cargo test --workspace --offline 80 passed / 0 failed；cargo build --release --workspace --offline OK；T0 --mode real 21/21 PASS、evidence_valid=true（需设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实二进制环境变量）；T1 --self-test 11/11；T2 --self-test 3/3 + --mode local 10/10 PASS（报告 tests/e2e/t2/reports/t2-20261114T135902Z-local.json）；scripts/build_docs.py --check 36 份 Markdown 校验通过"
     },
     "remaining_for_g2": [
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，仍须用户提供真实多 NAT 环境并签 attestation 逐类 --mode real",
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定",
+      "双向打洞 / rendezvous：当前只由请求方向对端映射地址发 NAT_PUNCH，实测只能进入 full-cone 持有者；restricted / port-restricted / symmetric / CGNAT 需双方同时向对端映射发包打开各自过滤，否则直连恒为 0（W3.5② 实测定量：0/30）",
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
       "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
       "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",

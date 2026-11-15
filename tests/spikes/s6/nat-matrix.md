@@ -137,3 +137,78 @@ M2 出口必须回填；若实测 <70%，按 fallback 提升中继优先级并�
 
 > 红线：所有报告恒 `s6_status=not_run` / `g2_claim=false` / `spike_status_changed=false` / `no_auto_pass=true`；
 > 即便四类证据齐备，`pass` / `fail` 仍由实验执行人依 `spikes.json` 的 `evidence_required` 手工回填。
+
+## 10. W3.5② 低负担环境：单 Linux VM 内真改写四类 NAT + CGNAT（2026-11-14）
+
+用户确认多 NAT 物理环境难准备，且**公共 KAD 不能替代 S6**（见下「为何不能连公共 KAD」）。
+改用**单台 Linux 虚拟机** + `nat_lab/setup_nat_lab.sh`：在 network namespace 内用
+iptables conntrack **真改写**出 Full / Restricted / Port-restricted / Symmetric 四类 NAT，
+外加一层 CGNAT（双 NAT）。网关做的是内核级 NAT，因此从 LAN netns 内跑 `nat_behavior.py`
+得到的 STUN 分类报告就是**真实 NAT 行为**证据，可直接作为 `--mode real` 的 `classification_report`。
+
+- 脚本：`tests/spikes/s6/nat_lab/setup_nat_lab.sh`（`up` / `status` / `down`）。
+  拓扑：主机 `br-wan 10.0.0.1`（relay 跑这里）+ 4 个单 NAT 网关 netns + 1 个双 NAT（CGNAT）网关 netns。
+- 工作流：`setup_nat_lab.sh up` → 每类在 LAN netns 内跑 `nat_behavior.py` 出分类报告 →
+  填 `attest/attest-<class>.template.json` → 两 netns 各起 `coldrevived` →
+  `nat_matrix.py --mode real` 每类 ≥30 次真实唤醒 → `--aggregate`。详见 `nat_lab/README.md`。
+- 诚实署名：虚拟机内仿真的 NAT 用 `iptables` 规则集作为 `real_nat_evidence`，并在 attestation 里
+  如实说明是 VM 实验室而非独立路由器硬件；`machine_ids` 用两个不同 netns 端点标识。
+- 生成物 `lab-evidence.json` / `attest/` 含本地 IP，已被 `nat_lab/.gitignore` 排除，不入库。
+
+### 为何不能连公共 KAD 来测 S6
+
+1. **协议错配**：S6 测的是 **ColdRevive 自己的唤醒链路**跨 NAT 可达率；公共 KAD（eMule/aMule）
+   上**没有 ColdRevive 节点**，`cr-ed2k` 仍是骨架、`cr-kad` 明确只跑 `127.0.0.1` 私有子网。连上去测的是
+   eMule 连通性，根本没跑 ColdRevive 的唤醒路径。
+2. **判据错配**：S6 要求**按 NAT 类型拆分**的四类 + CGNAT 矩阵；公共 KAD 对端**不暴露自身 NAT 类型**，
+   最多拿到一个混在一起的总可达率，`matrix_coverage` 仍是 `0/4`。
+3. **合规红线**：`docs/06-plan/G0-REVIEW.md` 明确「本冻结**不授权**向公共 KAD 批量发布测试 Key」；
+   S2（命名空间接纳，已 `pass`）是特例，与 S6 不是同一件事。
+
+
+## 11. W3.5② 实验室实测结果（2026-11-15，单台 Ubuntu VM）
+
+环境：Ubuntu 23.04 / kernel 6.2 / VMware 虚拟机（192.168.1.221，root）。
+四类 NAT + CGNAT 由 `nat_lab/setup_nat_lab.sh` 在 netns 内用 iptables-legacy
+conntrack 真改写；STUN 由 `nat_lab/local_stun.py` 跑在宿主 `br-wan`（10.0.0.1/10.0.0.2）。
+
+### 11.1 逐类分类（`nat_behavior.py` 实跑）
+
+| 环境 | 分类结论 | 置信度 | 关键对照 |
+|---|---|---|---|
+| full-cone | EIM + Endpoint-Independent Filtering | high | flags 2/4/6 全应答 |
+| restricted-cone | EIM + Address-Dependent Filtering | high | flags=2 应答、flags=4/6 无应答 |
+| port-restricted-cone | EIM + Address-and-Port-Dependent Filtering | medium | flags 2/4/6 全无应答，能力对照成立 |
+| symmetric | Address/Port-Dependent Mapping | low | 同 socket 多目的映射端口互异 |
+| cgnat | 双 NAT 之后的 port-restricted cone | medium | 内层 100.64/24 + 外层 SNAT |
+
+### 11.2 逐类可达率（`nat_matrix.py --mode real --lab-mode --trials 30`）
+
+| 持有者 NAT | direct（打洞） | relay（中继） |
+|---|---|---|
+| full-cone | **30/30** | 30/30 |
+| restricted-cone | 0/30 | 30/30 |
+| port-restricted-cone | 0/30 | 30/30 |
+| symmetric | 0/30 | 30/30 |
+| cgnat | 0/30 | 30/30 |
+
+成功判据严格为真实 `ok=true` 且 `ack_status=OK`；direct 失败样本为真实 1216 ms
+无应答（`Resource temporarily unavailable`），未回填任何默认值。
+
+### 11.3 两条结论
+
+1. **工程缺口（可修）**：当前只由请求方向对端映射地址发 `NAT_PUNCH`，因此只能进入
+   full-cone 持有者。restricted / port-restricted 的过滤按「该内网 ip:port 曾发往的远端 IP」
+   放行，必须**双向打洞 / rendezvous**（双方同时向对端映射发包）才能开各自过滤。
+   这是 `remaining_for_g2` 的新增项，不是 NAT 不可穿透。
+2. **仿真保真度的反证**：结果按 NAT 类型分化（full-cone 全通、其余全断），说明四类
+   行为确实被改写成不同语义；若仿真把四类做成一样，不会出现这种分化。
+
+### 11.4 证据边界
+
+- 同机两个 netns，**不满足「两台不同物理主机」条款** → `--lab-mode` 强制
+  `evidence_valid=false`、`evidence_scope=vm-namespace-lab`，并要求 attestation
+  显式 `lab_mode=true`。
+- `S6.status` 仍 `not_run`，`matrix_coverage` 不计入真实四类覆盖率，
+  R-04 ≥70% 判定**未作出**，`g2_claim=false`。
+- 报告存于 `tests/spikes/s6/reports/lab-20261115/`（gitignored 本地证据）。

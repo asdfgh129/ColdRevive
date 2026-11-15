@@ -59,6 +59,20 @@ FILTER_SERVERS = [
 ]
 
 
+def parse_endpoints(spec: str) -> list[tuple[str, int]]:
+    """解析 `ip:port,ip:port`。用于把探针指向实验室本地 STUN（见 nat_lab/local_stun.py）。"""
+    out: list[tuple[str, int]] = []
+    for item in (spec or "").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        host, _, port = item.rpartition(":")
+        if not host or not port.isdigit():
+            raise SystemExit(f"--*-servers 端点格式应为 ip:port，收到: {item}")
+        out.append((host, int(port)))
+    return out
+
+
 def drain(sock: socket.socket, seconds: float = 0.05) -> None:
     """丢弃上一次试验的迟到响应，避免污染下一次的 TID 匹配。"""
     sock.settimeout(seconds)
@@ -141,13 +155,14 @@ def resolve_all(host: str, port: int) -> list[tuple[str, int]]:
         return []
 
 
-def mapping_behavior(timeout: float) -> dict:
+def mapping_behavior(timeout: float, servers: list[tuple[str, int]] | None = None) -> dict:
     """同一 socket 访问多个不同目的 IP:port —— 否则映射端口不可比。"""
+    servers = servers or MAPPING_SERVERS
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", 0))
     local_port = sock.getsockname()[1]
     rows = []
-    for host, port in MAPPING_SERVERS:
+    for host, port in servers:
         addr = resolve(host, port)
         if addr is None:
             rows.append({"server": f"{host}:{port}", "ok": False, "error": "dns"})
@@ -193,7 +208,8 @@ def flag_validity(alternates: dict) -> dict[int, bool]:
     }
 
 
-def filtering_behavior(timeout: float, tries: int, control_tries: int = 4) -> dict:
+def filtering_behavior(timeout: float, tries: int, control_tries: int = 4,
+                       servers: list[tuple[str, int]] | None = None) -> dict:
     """RFC 3489 Test II/III 过滤行为。
 
     两处方法论修正（缺一不可）：
@@ -223,7 +239,7 @@ def filtering_behavior(timeout: float, tries: int, control_tries: int = 4) -> di
         "confidence": "none", "reason": "", "caveat": "",
         "candidates_tried": [],
     }
-    candidates = [(host, addr) for host, port in FILTER_SERVERS
+    candidates = [(host, addr) for host, port in (servers or FILTER_SERVERS)
                   for addr in resolve_all(host, port)]
     last_reason = ""
     for ci, (host, addr) in enumerate(candidates):
@@ -374,11 +390,13 @@ def filtering_behavior(timeout: float, tries: int, control_tries: int = 4) -> di
     return out
 
 
-def hairpin_test(timeout: float) -> dict:
+def hairpin_test(timeout: float,
+                 server: tuple[str, int] | None = None) -> dict:
     """NAT 回环：从另一个本地 socket 向本机公网映射地址发包，看能否收到。"""
+    server = server or ("stun.l.google.com", 19302)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("", 0))
-    addr = resolve("stun.l.google.com", 19302)
+    addr = resolve(server[0], server[1])
     r = binding(sock, addr, timeout) if addr else {"ok": False}
     mapped = r.get("mapped_address")
     out: dict = {"mapped_address": mapped, "performed": bool(mapped),
@@ -405,12 +423,14 @@ def hairpin_test(timeout: float) -> dict:
 
 
 def mapping_refresh(sock: socket.socket, baseline: str | None,
-                    wait_sec: int, timeout: float) -> dict:
+                    wait_sec: int, timeout: float,
+                    server: tuple[str, int] | None = None) -> dict:
     if wait_sec <= 0 or not baseline:
         return {"performed": False, "reason": "--refresh-after 未启用或无基线映射"}
     import time
     time.sleep(wait_sec)
-    addr = resolve("stun.l.google.com", 19302)
+    server = server or ("stun.l.google.com", 19302)
+    addr = resolve(server[0], server[1])
     r = binding(sock, addr, timeout) if addr else {"ok": False}
     current = r.get("mapped_address")
     return {"performed": True, "waited_sec": wait_sec, "baseline": baseline,
@@ -537,6 +557,11 @@ def self_test() -> int:
     checks.append(("weak_controls_do_not_claim_exact_cone_subtype",
                    "port-restricted" not in coarse["classic"]
                    and "cone" in coarse["classic"] and coarse["confidence"] == "low"))
+    checks.append(("endpoint_spec_parsed",
+                   parse_endpoints("10.0.0.1:3478, 10.0.0.2:3479")
+                   == [("10.0.0.1", 3478), ("10.0.0.2", 3479)]))
+    checks.append(("endpoint_spec_empty_is_none",
+                   parse_endpoints("") == []))
     for name, ok in checks:
         print(f"  [{'PASS' if ok else 'FAIL'}] {name}")
     n = sum(1 for _, ok in checks if ok)
@@ -551,15 +576,24 @@ def main() -> int:
     ap.add_argument("--control-tries", type=int, default=4,
                     help="每个对照/CHANGE-REQUEST 报文的有界重试次数（抗公共 STUN 偶发丢包）")
     ap.add_argument("--refresh-after", type=int, default=0)
+    ap.add_argument("--mapping-servers", default="",
+                    help="覆盖映射行为探测用的 STUN 端点（ip:port,ip:port）；"
+                         "实验室模式指向 nat_lab/local_stun.py")
+    ap.add_argument("--filter-servers", default="",
+                    help="覆盖过滤行为探测用的 STUN 端点（须支持 CHANGE-REQUEST）")
+    ap.add_argument("--label", default="", help="环境标签，写入报告的 environment_label")
     ap.add_argument("--out", default="")
     ap.add_argument("--self-test", action="store_true")
     args = ap.parse_args()
     if args.self_test:
         return self_test()
 
-    mapping = mapping_behavior(args.timeout)
-    filtering = filtering_behavior(args.timeout, args.tries, args.control_tries)
-    hairpin = hairpin_test(args.timeout)
+    map_servers = parse_endpoints(args.mapping_servers) or list(MAPPING_SERVERS)
+    filt_servers = parse_endpoints(args.filter_servers) or list(FILTER_SERVERS)
+
+    mapping = mapping_behavior(args.timeout, map_servers)
+    filtering = filtering_behavior(args.timeout, args.tries, args.control_tries, filt_servers)
+    hairpin = hairpin_test(args.timeout, map_servers[0] if map_servers else None)
     klass = classify(mapping, filtering)
     upnp = sp.upnp_discover(3.0)
     gw = sp.default_gateway()
@@ -570,18 +604,25 @@ def main() -> int:
     # 映射保活复测复用映射行为探针的 socket 端口（新建 socket 会换端口，故这里独立标注）
     refresh_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     refresh_sock.bind(("", mapping["local_udp_port"]))
-    baseline_addr = resolve("stun.l.google.com", 19302)
+    baseline_srv = map_servers[0] if map_servers else None
+    baseline_addr = resolve(baseline_srv[0], baseline_srv[1]) if baseline_srv else None
     baseline = binding(refresh_sock, baseline_addr, args.timeout) if baseline_addr else {"ok": False}
     refresh = mapping_refresh(refresh_sock, baseline.get("mapped_address"),
-                              args.refresh_after, args.timeout)
+                              args.refresh_after, args.timeout, baseline_srv)
     refresh_sock.close()
 
+    import platform as _platform
     report = {
         "schema": "coldrevive.s6.nat-behavior/v1",
         "spike": "S6",
         "harness": "tests/spikes/s6/nat_behavior.py",
         "recorded_at": datetime.now(timezone.utc).isoformat(),
-        "host": {"os": "Windows", "python": sys.version.split()[0],
+        "environment_label": args.label or "public-internet",
+        "stun_endpoints": {
+            "mapping": [f"{h}:{p}" for h, p in map_servers],
+            "filtering": [f"{h}:{p}" for h, p in filt_servers],
+        },
+        "host": {"os": _platform.system(), "python": sys.version.split()[0],
                  "local_ip": sp.local_ip(), "default_gateway": gw},
         "config": {"timeout_sec": args.timeout, "tries_per_change_request": args.tries,
                    "control_tries": args.control_tries,
