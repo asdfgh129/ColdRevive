@@ -10,6 +10,12 @@
 //!   kind=0x02 RELAY     负载 = 16 字节目标 id + 任意消息
 //!   kind=0x03 DELIVERED 负载 = 16 字节来源 id + 任意消息
 //!   kind=0x04 ACK       负载为空
+//!
+//! W3.8 去单点化新增（**只在中继实例之间**使用，客户端不发这三类帧）：
+//!   kind=0x05 PEER_HELLO 负载 = 16 字节呼叫方实例 id；对端回 `ACK(node=应答方实例 id)`
+//!   kind=0x06 PEER_SYNC  负载 = n × 16 字节本地注册节点 id（整份快照，覆盖语义）
+//!   kind=0x07 FORWARD    负载 = 16 字节原始来源 id + 16 字节目标 id + 消息
+//!                        （收到后只做本地投递，**不再转发**，因此最多一跳、无环）
 
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
@@ -62,6 +68,12 @@ pub enum FrameKind {
     Relay,
     Delivered,
     Ack,
+    /// 实例间握手：呼叫方声明自己的实例 id
+    PeerHello,
+    /// 实例间注册表快照同步（整份覆盖）
+    PeerSync,
+    /// 实例间单跳转发（来源 id 原样带回，不二次转发）
+    Forward,
     Unknown(u8),
 }
 
@@ -72,6 +84,9 @@ impl FrameKind {
             FrameKind::Relay => 0x02,
             FrameKind::Delivered => 0x03,
             FrameKind::Ack => 0x04,
+            FrameKind::PeerHello => 0x05,
+            FrameKind::PeerSync => 0x06,
+            FrameKind::Forward => 0x07,
             FrameKind::Unknown(c) => *c,
         }
     }
@@ -81,6 +96,9 @@ impl FrameKind {
             0x02 => FrameKind::Relay,
             0x03 => FrameKind::Delivered,
             0x04 => FrameKind::Ack,
+            0x05 => FrameKind::PeerHello,
+            0x06 => FrameKind::PeerSync,
+            0x07 => FrameKind::Forward,
             other => FrameKind::Unknown(other),
         }
     }

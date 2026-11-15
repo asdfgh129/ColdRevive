@@ -225,6 +225,49 @@ python tests/spikes/s6/nat_lab/run_real_nat.py --trials 30          # 正式矩�
 但 `evidence_valid_for_pass=false`、`S6` 仍 `not_run`、R-04 仍不判定。
 **类别覆盖仍 1/4 + 0 CGNAT**：一个出口只对应一类，两个真实出口只能覆盖一类。
 
+## 中继可用性（relay-availability，2026-11-15 W3.8）
+
+这一档**不是 NAT 档位**，不产生任何 NAT 类别样本；它补的是 W3.6 双向打洞引入的前置依赖：
+信令必须经中继。单个中继实例挂掉时，注册在它上面的节点原本会**全部失联**。
+
+两个真实实例（221 与 209，都是物理机/VM，真实 LAN）：
+
+```bash
+# 221（Linux）
+setsid nohup /opt/coldrevive/repo/target/release/coldrevive-relay \
+  --listen 192.168.1.221:7100 --peer 192.168.1.209:7100 \
+  --instance-id relay-221 --stats-file /opt/coldrevive/relay/stats-a.json \
+  > /opt/coldrevive/relay/relay-a.log 2>&1 < /dev/null &
+
+# 209（Windows，无 setsid —— 必须用计划任务，nohup/start/wmic 都会随 ssh 会话消失）
+schtasks /create /tn crRelayB /tr "C:/coldrevive/bin/coldrevive-relay.exe \
+  --listen 192.168.1.209:7100 --peer 192.168.1.221:7100 \
+  --instance-id relay-209 --stats-file C:/coldrevive/bin/relay-b-stats.json" \
+  /sc once /st 00:00 /f
+schtasks /run /tn crRelayB
+```
+
+探针（在 A 上跑，三种模式 + 一个自愈模式）：
+
+```bash
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.221:7100 --relay 192.168.1.209:7100 --mode cross --repeat 30
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.221:7100 --relay 192.168.1.209:7100 --mode reap \
+  --restart "bash crrestartb.sh" --reap-wait 7
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.221:7100 --mode pair
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.221:7100 --mode list
+```
+
+实测（2026-11-15）：
+
+| 用例 | 结果 |
+| :--- | :--- |
+| 跨实例双向 30 轮（60 帧） | **60/60**，RTT 0.3 / 0.6 / 0.3 ms（min/max/avg），两端 `dropped=0` |
+| 持有者不重注册 + 重启 relay-209 | **PASS**，重启后首帧 1.0 ms（快照自愈） |
+| 反证：不配 `--peer` 的隔离实例 | **FAIL**，`dropped=1 / forwarded=0 / peers=0` |
+
+报告 `tests/spikes/s6/reports/relay/w38-cross-peer-sync-2026-11-15.json`
+（`evidence_scope=relay-availability`、`is_s6_evidence=false`）。
+
 ## 证据边界（不得突破）
 
 - 判据是**两个互相独立的条款**：
@@ -288,3 +331,16 @@ sudo bash setup_nat_lab.sh down
     `FullCone`（"至少是非对称"是假设）。现在要求 ≥2 个不同目的地址，否则 `Unknown` ——
     宁可说不出结论，也不编一个。公共 STUN 可用性因网络而异（本例 222 上 google/voipbuster
     全超时，cloudflare/telnyx/miwifi/bilibili 稳定），所以 `PUBLIC_STUN` 要按两端实测挑选。
+16. **两边都配 `--peer` 会各拨一次**：不去重就形成「拆了建、建了拆」的抖动，表现为跨实例
+    时通时不通。现在按实例 id 去重（保留已有链路、给新连接回 ACK 后关闭），并且拨号侧
+    记住对端实例 id —— 只有对方链路消失后才重拨。
+17. **快照必须整份覆盖，不能用增量**：增量在「实例崩了」时区分不出「没变化」和「没了」，
+    于是留下**幽灵归属**——帧被算成 `forwarded` 然后消失，调用侧只看到超时。
+    这里踩过的具体形态：`forwarded` 一直涨、`delivered` 不动、`dropped` 是 0。
+18. **跨实例计数会晚一拍**：`delivered` 在写完帧之后才自增，客户端可能先收到帧。
+    断言必须用有界等待（`wait_until`），否则约 1/3 概率偶发失败 —— 与 W3.7 修 relay 偶发
+    测试是同一类问题，别改回「先 sleep 再断言」。
+19. **按端口抓 DNAT 之后的包必然为空**：NAT 不仅改写目的地址，**还改写源端口**
+    （54022 → 28698）。曾因此把一条**本来可用**的映射判成「设备把 DNAT 与放行策略分开」。
+    正确做法：按**对端公网 IP** 过滤。同一条坑在第 13 条里已经写过一次，这次是在映射侧复现，
+    说明它是口径问题而不是场景问题。

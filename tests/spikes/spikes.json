@@ -1671,6 +1671,81 @@
             "s6_status_after": "not_run",
             "spike_status_changed": false,
             "g2_claim": false
+          },
+          "corrections_after_run": [
+            {
+              "id": "MAPPING-UNREACHABLE-WAS-WRONG",
+              "claimed_before": "112.5.32.34:54022 从外部连不通（DNAT 命中但 ens160 上 0 packets captured），推断该设备把 DNAT 与放行策略分开",
+              "refuted_by": "用户从 Mac 外网实连 54022 登录成功；复测在 222 上 tcpdump -i ens160 -n 'tcp and (port 22 or port 54022)' 抓到完整握手，源地址已被 SNAT 改写为 112.5.60.4:28698",
+              "real_cause": "抓包过滤只按内网侧原端口（54022）匹配，而 NAT 同时改写了源端口；早期那次大概率映射尚未生效。DNAT 与 hairpin 本身都正常。",
+              "impact": "不影响本节任何判定（数据面走 112.5.32.34:2053，与 :54022 无关）；但证实 57100→7100 可作为 W3.9 的真实公网中继入口",
+              "corrected_in": "tests/spikes/s6/nat-matrix.md §15.1"
+            }
+          ]
+        },
+        "w38_relay_peer_sync_2026_11_15": {
+          "what": "中继去单点化：两个真实中继实例（221:7100 relay-221 / 209:7100 relay-209，两台真实主机）建同侪链路，互推注册表快照，目标不在本地时单跳转发",
+          "why": "W3.6 引入的双向打洞以中继为信令前置依赖；W3.7 的双实例基线证明缺口是**状态**（注册表每实例私有）而不是网络——B 侧那条跨实例 RELAY 只能 dropped",
+          "protocol_additions": {
+            "0x05_PEER_HELLO": "负载=呼叫方 16B 实例 id，对端回 ACK(node=应答方实例 id)；一条 TCP 全双工，两向都能发",
+            "0x06_PEER_SYNC": "负载=n×16B 本地注册节点 id，**整份覆盖**语义，因此掉线节点自然消失，不留幽灵归属",
+            "0x07_FORWARD": "负载=16B 原始来源+16B 目标+消息，收到后只做本地投递、不再转发 → 最多一跳，无环"
+          },
+          "client_side": "nat.relay 支持逗号/分号列表；relay_sub 顺序尝试并在断开后从下一个开始；holepunch::relay_wake_any 顺序尝试并聚合每条真实错误（不并发抢连，不做任播）",
+          "measurements": {
+            "cross_two_instance_30rounds": {
+              "frames": 60,
+              "delivered": 60,
+              "rtt_ms": {"min": 0.3, "max": 0.6, "avg": 0.3},
+              "source_id_preserved": true,
+              "payload_bytes_identical": true,
+              "relay_221": {"delivered": 31, "forwarded": 30, "dropped": 0, "forward_dropped": 0, "peers": 1},
+              "relay_209": {"delivered": 30, "forwarded": 31, "dropped": 0, "forward_dropped": 0, "peers": 1}
+            },
+            "snapshot_self_heal": {
+              "scenario": "持有者常驻 relay-221 不重注册，重启 relay-209 进程后由新客户端从 209 直投",
+              "result": "PASS：重启后首帧即送达，1.0 ms，来源 id 正确",
+              "meaning": "同侪链路重建 + 快照重推即可自愈，无需持有者重连"
+            },
+            "negative_control_isolated_instance": {
+              "scenario": "同机再起一个 relay-iso(7101) 且**不配 --peer**，对同一节点跑同一条 cross 用例",
+              "result": "FAIL（3s 无 DELIVERED），relay-iso 计数 dropped=1 / forwarded=0 / peers=0",
+              "meaning": "证明跨实例通过来自快照同步，而不是环境偶然或探针自欺"
+            },
+            "peer_death_purges_view": "h1 整实例下线后 h2 的 peers 与 peer_nodes 在 5s 内清零，随后投给该节点的帧如实 dropped 而非 forwarded（单测覆盖）"
+          },
+          "defects_found_and_fixed": [
+            {
+              "id": "PEER-DUP-DIAL-STORM",
+              "symptom": "两边都配 --peer 时会各拨一次，重复链路被反复拆建（抖动）",
+              "fix": "实例按 id 去重：已有链路则保留旧的、给新连接回 ACK 后关闭；拨号侧记住对端 id，只有在对方链路消失后才重拨",
+              "fixed_in": "v2.4.57"
+            },
+            {
+              "id": "COUNTER-LAG-FLAKY-TEST",
+              "symptom": "跨实例用例偶发失败（计数在写完之后才自增，客户端可能先拿到帧）",
+              "fix": "统计断言改为有界等待 wait_until，与 W3.7 修 relay 偶发测试同一套做法",
+              "fixed_in": "v2.4.57"
+            }
+          ],
+          "what_it_solves": [
+            "单个中继实例宕机不再等于『注册在它上面的节点全部失联』：另一实例持有快照，可继续转发",
+            "客户端可用列表在实例不可连时自动切换，不必改配置",
+            "同侪重启后快照自愈，持有者无需重注册"
+          ],
+          "what_it_does_not_solve": [
+            "不是共识/任播：快照是最终一致的，转发是**一次性尽力投递**，链路断在半路只计 forward_dropped，不重传",
+            "不做鉴权：PEER_HELLO 无凭证，多实例互信目前依赖网络隔离；公网部署前必须补 TLS/身份（W3.9）",
+            "没有限流与空闲超时；注册表规模仍是全量快照，实例数上千需改成增量/分片",
+            "与 S6 无关：这是中继可用性工程，不提供任何四类 NAT 可达率样本"
+          ],
+          "evidence_boundary": {
+            "evidence_scope": "relay-availability（非 NAT 矩阵档位）",
+            "is_s6_evidence": false,
+            "s6_status_after": "not_run",
+            "spike_status_changed": false,
+            "g2_claim": false,
+            "r04_judged": false
           }
         }
       }
@@ -1869,10 +1944,12 @@
       },
       "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。",
       "w36c_harness_integrity": "W3.6c（2026-11-15）：跨主机档位做到可复现 —— 修掉 RESET-NEVER-RAN / ADDR-POOL-COLLISION / LIFECYCLE-SILENT-DEGRADE 三处 harness 缺陷，并给每条加上独立反证（reset_exit_code、ARP 身份 MAC、STUN 真实往返、分类复测 5/5）；最终 direct 四类 30/30、symmetric 0/30、relay 全 30/30",
-      "w37_real_nat": "W3.7（2026-11-15）：真实 NAT 档位落地 —— 持有者 222（真实 NAT → 112.5.32.34）、请求者 A（真实 NAT → 112.5.60.4）、中继 221 仅信令。现场分类修正为 symmetric（APDM，手工报文实验确证），并修掉两个'编造分类'缺陷（CLASSIFY-SINGLE-SAMPLE / CHANGE-REQ-NO-SOURCE-CHECK）与一个偶发测试。30 次/路径：direct 0/30（symmetric 的正确结果，抓包给出因果链）、relay 30/30、dropped=0。首次出现 evidence_valid=true 的单类报告（条款①②均成立），但 S6 仍 not_run、R-04 不判定。"
+      "w37_real_nat": "W3.7（2026-11-15）：真实 NAT 档位落地 —— 持有者 222（真实 NAT → 112.5.32.34）、请求者 A（真实 NAT → 112.5.60.4）、中继 221 仅信令。现场分类修正为 symmetric（APDM，手工报文实验确证），并修掉两个'编造分类'缺陷（CLASSIFY-SINGLE-SAMPLE / CHANGE-REQ-NO-SOURCE-CHECK）与一个偶发测试。30 次/路径：direct 0/30（symmetric 的正确结果，抓包给出因果链）、relay 30/30、dropped=0。首次出现 evidence_valid=true 的单类报告（条款①②均成立），但 S6 仍 not_run、R-04 不判定。",
+      "w38_relay_de_single_point": "W3.8（2026-11-15）：中继去单点化 —— 双实例（221:7100 relay-221 / 209:7100 relay-209，两台真实主机、真实 LAN）通过新增的实例间帧 PEER_HELLO(0x05)/PEER_SYNC(0x06)/FORWARD(0x07) 互认知并同步注册表快照；实测跨实例双向 30 轮 60 帧全送达（min 0.3 / max 0.6 / avg 0.3 ms），两端 dropped=0、forward_dropped=0；重启 relay-209 后持有者未重注册仍能收到帧（快照自愈）；反证：同机起一个未配 --peer 的隔离实例，同一条 cross 用例立即 FAIL 且 dropped=1，证明通过来自快照同步而非环境偶然。客户端侧 nat.relay 支持列表并顺序切换（relay_wake_any 聚合每条真实错误）。仍**不构成 S6 证据**：这是中继可用性工程，不是四类 NAT 可达率；S6 仍 not_run、G2 未达标。"
     },
     "validation": {
-      "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
+      "cargo_test_workspace_offline": "100 passed / 0 failed（W3.8 基线：17 crate + 5 bin；较 v2.4.56 的 96 新增 4 项）",
+      "w38_regressions": "2026-11-15 W3.8 后：cargo test --workspace --offline 100 passed / 0 failed；T2 --self-test 3/3 + --mode local 10/10 PASS（用新 coldrevive-relay 二进制，T2-07 本次唤醒 delivered=+10 / dropped=0）；cross-host 与 real-nat 未重跑（协议只新增实例间帧，客户端路径不变）；scripts/build_docs.py --check 36 份通过",
       "t2_local_preflight": "2026-11-14 W3.4 后 --mode local 10/10 PASS（真实 coldrevive-relay 二进制 + 持有者订阅）；T2-07 实测 relay delivered=2 / dropped=0 / rejected=0、ack_status=OK；evidence_valid=false，s6_status=not_run，g2_claim=false",
       "t2_self_test": "3/3 PASS（--self-test 仅用纯 wire mock 验证 STUN / 中继帧编解码，不启动任何二进制）",
       "t2_report": "tests/e2e/t2/reports/t2-20261114T121322Z-local.json（gitignored 本地证据）",
@@ -1893,7 +1970,7 @@
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
       "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
       "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",
-      "中继生产化收尾：公网部署、TLS / 身份鉴权（当前 REGISTER 仅校验负载回显，无凭证）、多实例注册同步、连接限流与空闲超时、跨公网中继时延量测（W3.4 已交付可部署的帧路由核心 + 持有者订阅，本机回环验证）",
+      "中继生产化收尾：公网部署、TLS / 身份鉴权（当前 REGISTER 仅校验负载回显、PEER_HELLO 无凭证，多实例互信依赖网络隔离）、连接限流与空闲超时、跨公网中继时延量测。**多实例注册同步已于 W3.8 完成**（peer 快照 + 单跳转发 + 客户端列表切换）；**公网入口可复用 222 的 112.5.32.34:57100→192.168.34.222:7100**（该映射已实测可用）",
       "BT/TCP 打洞（当前 tracker 只使用 internal_port==bt_port 的真实显式映射）",
       "M4 前 R-02 拒绝率复审与 R-11 书面法务意见"
     ],

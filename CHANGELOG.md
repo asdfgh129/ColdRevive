@@ -2,6 +2,63 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.57] - 2026-11-15 — M2/W3.8：中继去单点化（多实例注册同步 + 客户端列表切换）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；`evidence_valid_for_pass=false`，R-04 仍不判定。
+> 本轮是**中继可用性工程**，没有产生任何 NAT 类别样本 —— 不是 S6 证据。
+
+### 缺口是怎么被证明的（先有反证，再动手）
+W3.7 的双实例基线留下一条**会红的用例**：A 注册在 `221:7100`、B 注册在 `209:7100`，
+B 发给 A 的帧到了 209 只能 `dropped=1`。两个实例都活着、网络全通、帧格式正确 ——
+说明缺口是**状态**（注册表每实例私有），不是网络。
+
+### 新增三个实例间帧（仅中继之间使用，客户端不发）
+- `0x05 PEER_HELLO`：负载 = 呼叫方 16B 实例 id，对端回 `ACK(node=应答方实例 id)`；
+  一条 TCP 全双工，两个方向都能发。
+- `0x06 PEER_SYNC`：负载 = n×16B 本地注册节点 id，**整份覆盖**语义 —— 掉线节点自然消失，
+  不留「幽灵归属」（否则后续帧会被算成 forwarded 然后消失，调用侧只看到超时，比报错更难查）。
+- `0x07 FORWARD`：负载 = 原始来源 id + 目标 id + 消息；收到后**只做本地投递、不再转发**，
+  因此最多一跳，不存在环路。
+
+### 服务端（`cr-nat::relay_server` / `coldrevive-relay`）
+- 新增 `--peer <ip:port>`（可重复）与 `--instance-id <label>`；`--stats-file` 增加
+  `peers` / `peer_nodes` / `forwarded` / `forward_dropped` 四个真实计数。
+- 注册时**事件驱动**立刻推快照，另有 500 ms 周期兜底；同侪链路建立时双向立即对齐。
+- 两边都配 `--peer` 时按实例 id 去重：保留已有链路、给新连接回 ACK 后关闭；拨号侧记住对端
+  实例 id，只在对方链路消失后才重拨（否则会形成拆建抖动）。
+
+### 客户端（`nat.relay` 变列表）
+- `cr-core`：`nat.relay` 接受逗号/分号分隔的**列表**，新增 `nat_relays`；单值与原行为等价，
+  非法项（无端口 / 端口非数字）直接丢弃、不造占位端点。
+- `holepunch::relay_wake_any`：顺序尝试，返回**真实成功的那一个**地址；全部失败时聚合每条的
+  真实错误（区分「连不上」「未注册」「对端没同步」），不压成一句「中继失败」。
+- `relay_sub`：订阅断开后从**下一个**中继开始重试，单个实例宕机自动切换。
+
+### 实测（两台真实主机、真实 LAN）
+| 用例 | 结果 |
+| :--- | :--- |
+| 跨实例双向 30 轮（60 帧） | **60/60 送达**，RTT min 0.3 / max 0.6 / avg 0.3 ms，两端 `dropped=0`、`forward_dropped=0` |
+| 快照自愈（持有者不重注册，重启 relay-209） | **PASS**，重启后首帧 1.0 ms 送达 |
+| 反证：同机再起一个**不配 `--peer`** 的隔离实例 | **FAIL**（3 s 无 DELIVERED），该实例 `dropped=1 / forwarded=0 / peers=0` |
+
+反证这条是故意留的：同一条用例在缺快照同步时立刻失败，才说明通过来自协议而不是环境。
+
+### 测试
+- `cargo test --workspace --offline` **100 passed / 0 failed**（+4）：
+  `peer_sync_enables_cross_instance_delivery`、`peer_death_purges_its_nodes_from_registry_view`、
+  `relay_list_is_parsed_and_junk_is_dropped`、`all_relays_down_reports_every_endpoint`。
+- 修掉一处**偶发断言**：跨实例用例在客户端先拿到帧、计数尚未自增时失败 —— 与 W3.7 修 relay
+  偶发测试同一套做法（有界等待），连跑 5 次稳定。
+
+### 顺带纠正一条错误结论（映射其实一直是通的）
+上一轮记录「`112.5.32.34:54022` 从外部连不通、DNAT 命中但 `0 packets captured`」——
+**这是错的**。用户从 Mac 外网实连登录成功；我在 222 上按端口抓包同样看不到，改按**对端公网 IP**
+过滤后抓到完整握手：`112.5.60.4.28698 > 192.168.34.222.22 [S] → [S.] → [.] → [F.]`，
+`5 packets captured`。真实原因是 NAT **同时改写了源端口**，只按内网侧原端口 54022 过滤必然为空；
+早期那次大概率映射尚未生效。DNAT 与 hairpin 本身都正常。
+副作用：`57100→7100` 可直接作为 W3.9 的**真实公网中继入口**，不必另找 VPS。
+
 ## [2.4.56] - 2026-11-15 — M2/W3.7：真实 NAT 档位（条款①②首次同时成立）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

@@ -1,4 +1,4 @@
-//! M2/W3.4 持有者侧中继订阅线程。
+//! M2/W3.4 持有者侧中继订阅线程 + W3.8 多中继切换。
 //!
 //! W3.3 的中继回退由 T2 的 mock 桥「服务端自己发 UDP」完成，服务端掺了业务逻辑，
 //! 无法部署。W3.4 改为：
@@ -12,6 +12,10 @@
 //!
 //! 订阅注册用稳定 node id（便于被 `node_id_16(peer.node_id)` 命中）；请求侧用一次性
 //! 会话 id 注册，避免同一节点两个连接抢占注册表表项。中继服务端不解析唤醒协议。
+//!
+//! W3.8：`nat.relay` 可以是列表。本线程按顺序尝试，**任一个真实注册成功**就沿用；
+//! 断开后从下一个开始重试，从而在单个中继实例宕机时自动切换。切换是顺序的，不做并发
+//! 抢连——多中继在这里是「可切换」而不是任播。
 //!
 //! **红线**：本线程不构造、不改写任何业务应答；UDP 无应答时静默跳过，让请求侧如实超时。
 //! `nat` 配置段缺省时完全不启动，T0/T1 行为不变。
@@ -40,9 +44,15 @@ pub fn spawn(cfg: &Config) {
     if !cfg.nat_enabled {
         return;
     }
-    let Some(relay) = cfg.nat_relay.clone() else {
-        return;
+    // W3.8：列表优先；旧配置（单个 relay）自然等价于长度 1 的列表。
+    let relays: Vec<String> = if cfg.nat_relays.is_empty() {
+        cfg.nat_relay.clone().into_iter().collect()
+    } else {
+        cfg.nat_relays.clone()
     };
+    if relays.is_empty() {
+        return;
+    }
     let wake_port = match cfg.me() {
         Ok(m) => m.wake_udp_port,
         Err(_) => return,
@@ -53,13 +63,40 @@ pub fn spawn(cfg: &Config) {
     let self_id = node_id_16(&cfg.node_id);
     let wake_host = local_wake_host(&cfg.bind);
     let label = cfg.node_id.clone();
-    thread::spawn(move || loop {
-        match serve(&relay, &self_id, &wake_host, wake_port) {
-            Ok(()) => {}
-            Err(e) => eprintln!("[{}][relay-sub] 订阅中断: {}，1s 后重连", label, e),
+    thread::spawn(move || {
+        let mut start = 0usize;
+        loop {
+            let (addr, res) = serve_from(&relays, start, &self_id, &wake_host, wake_port);
+            if let Err(e) = res {
+                eprintln!("[{}][relay-sub] 订阅中断（{}）: {}，{}s 后切换重试",
+                          label, addr, e, RECONNECT_DELAY.as_secs());
+            }
+            // 断开后从下一个中继开始，避免对已宕机的实例反复重连。
+            start = (start + 1) % relays.len();
+            thread::sleep(RECONNECT_DELAY);
         }
-        thread::sleep(RECONNECT_DELAY);
     });
+}
+
+/// 从 `start` 开始依次尝试列表里的中继，返回实际使用的地址与结果。
+fn serve_from(
+    relays: &[String],
+    start: usize,
+    self_id: &[u8; NODE_ID_LEN],
+    wake_host: &str,
+    wake_port: u16,
+) -> (String, Result<(), String>) {
+    let n = relays.len();
+    let mut errs: Vec<String> = Vec::new();
+    for k in 0..n {
+        let addr = &relays[(start + k) % n];
+        match serve(addr, self_id, wake_host, wake_port) {
+            Ok(()) => return (addr.clone(), Ok(())),
+            Err(e) => errs.push(format!("{}: {}", addr, e)),
+        }
+    }
+    (relays[start % n].clone(), Err(format!("全部 {} 个中继均失败（{}）",
+                                            n, errs.join("; "))))
 }
 
 fn serve(
@@ -72,6 +109,7 @@ fn serve(
     let mut conn = client.connect(CONNECT_TIMEOUT)?;
     // register 阶段保留 5s 读超时；注册成功后转入长连接阻塞等待 DELIVERED。
     conn.register(self_id)?;
+    eprintln!("[relay-sub] 已订阅中继 {}", relay);
     conn.set_read_timeout(None)?;
 
     let udp = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("订阅 UDP 绑定失败: {}", e))?;
@@ -112,5 +150,25 @@ mod tests {
     fn concrete_bind_is_used_verbatim() {
         assert_eq!(local_wake_host("192.168.1.210"), "192.168.1.210");
         assert_eq!(local_wake_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    /// 全列表不可达时必须如实返回聚合错误，不能谎报成功；且起始索引要轮转。
+    #[test]
+    fn all_relays_down_reports_every_endpoint() {
+        let relays = vec![
+            // 保留端口 1/2 无人监听，connect 必然失败（不改配置、不发业务帧）
+            "127.0.0.1:1".to_string(),
+            "127.0.0.1:2".to_string(),
+        ];
+        let id = node_id_16("unit-test");
+        let (addr, res) = serve_from(&relays, 0, &id, "127.0.0.1", 19999);
+        assert_eq!(addr, "127.0.0.1:1", "返回的应是本次起始端点");
+        let err = res.expect_err("全不可达必须返回错误");
+        assert!(err.contains("127.0.0.1:1") && err.contains("127.0.0.1:2"),
+                "聚合错误要逐条列出真实端点: {}", err);
+
+        let (addr2, res2) = serve_from(&relays, 1, &id, "127.0.0.1", 19999);
+        assert_eq!(addr2, "127.0.0.1:2", "起始索引轮转后先试第二个");
+        assert!(res2.is_err());
     }
 }

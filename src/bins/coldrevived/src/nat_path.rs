@@ -422,6 +422,16 @@ pub fn wake_with_plan(
         .filter(|e| e.kind != EndpointKind::Relay)
         .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
         .collect();
+    // W3.8：中继列表优先用配置里的多端点（可在单点宕机时切换）；未配置则回落到
+    // 端点计划里那唯一一个中继候选——两者都为空时后面会如实报「无中继候选」。
+    let relays: Vec<String> = if !cfg.nat_relays.is_empty() {
+        cfg.nat_relays.clone()
+    } else {
+        plan.candidates.iter()
+            .filter(|e| e.kind == EndpointKind::Relay)
+            .map(|e| e.addr())
+            .collect()
+    };
     let mut sock: Option<UdpSocket> = None;
     let mut back: Vec<String> = Vec::new();
     // 纯私网候选之间没有 NAT，不需要打洞准备（省一次 STUN 与一次中继往返）。
@@ -447,21 +457,15 @@ pub fn wake_with_plan(
                         }
                         // 经中继通知对端回打。中继路径在 W3.5② 实验室 5/5 环境 30/30，
                         // 用它做信令是唯一在所有 NAT 类型下都成立的选择。
-                        match plan.candidates.iter().find(|e| e.kind == EndpointKind::Relay) {
-                            Some(r) => {
-                                let frame = holepunch::punch_request_with_back(
-                                    &cfg.node_id, &token, &back);
-                                let sig = timeout.min(Duration::from_millis(800));
-                                match holepunch::relay_wake(&r.addr(), &self_id, &peer_id,
-                                                            &frame, sig) {
-                                    Ok(_) => out.notes
-                                        .push("双向打洞：已通过中继让对端回打".into()),
-                                    Err(e) => out.notes.push(
-                                        format!("双向打洞：中继信号失败（{}），退化为单向", e)),
-                                }
-                            }
-                            None => out.notes
-                                .push("双向打洞：计划无中继候选，无法通知对端回打".into()),
+                        let frame = holepunch::punch_request_with_back(
+                            &cfg.node_id, &token, &back);
+                        let sig = timeout.min(Duration::from_millis(800));
+                        match holepunch::relay_wake_any(&relays, &self_id, &peer_id,
+                                                        &frame, sig) {
+                            Ok((used, _)) => out.notes.push(format!(
+                                "双向打洞：已通过中继 {} 让对端回打", used)),
+                            Err(e) => out.notes.push(
+                                format!("双向打洞：中继信号失败（{}），退化为单向", e)),
                         }
                     }
                 }
@@ -475,15 +479,15 @@ pub fn wake_with_plan(
         .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
     {
         if ep.kind == EndpointKind::Relay {
-            match holepunch::relay_wake(&ep.addr(), &self_id, &peer_id, &wake, timeout) {
-                Ok(payload) => match Json::parse(&String::from_utf8_lossy(&payload)) {
+            match holepunch::relay_wake_any(&relays, &self_id, &peer_id, &wake, timeout) {
+                Ok((used, payload)) => match Json::parse(&String::from_utf8_lossy(&payload)) {
                     Ok(reply) => {
-                        out.attempts.push(attempt_json("relay", &ep.addr(), true,
+                        out.attempts.push(attempt_json("relay", &used, true,
                                                        "真实 DELIVERED 帧", 0));
                         out = finish(out, state, req, reply, 0, ep);
                         return out;
                     }
-                    Err(e) => out.attempts.push(attempt_json("relay", &ep.addr(), false,
+                    Err(e) => out.attempts.push(attempt_json("relay", &used, false,
                                                              &format!("中继应答非法 JSON: {}", e), 0)),
                 },
                 Err(e) => out.attempts.push(attempt_json("relay", &ep.addr(), false, &e, 0)),

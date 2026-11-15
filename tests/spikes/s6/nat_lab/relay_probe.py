@@ -8,11 +8,14 @@
 
   pair   两个节点注册到**同一个**中继，双向投递必须成功。
          这是"该中继实例可用"的最小判据。
-  cross  两个节点各注册到**不同**中继，跨中继投递。
-         当前实现**没有注册表同步**，所以这里应当失败（dropped 或超时）。
-         把它保留成一条会红的用例，是为了让"去单点化还没做"这件事有可执行的证据，
-         而不是停留在文档里的一句话。
+  cross  两个节点各注册到**不同**中继，双向跨中继投递。
+         W3.8 之前实例注册表是私有的，这条必然失败（dropped 或超时）；W3.8 让两个实例
+         配 --peer 互相同步注册表快照后，它必须转绿。`--repeat N` 可做连发压力观察。
   list   只探测一组中继端点是否可连（TCP 握手 + REGISTER/ACK 往返）。
+  reap   先在第一台中继上挂一个长期在线的持有者，然后**重启第二台中继实例**
+         （`--restart` 传入实际重启命令），等链路重建后再从第二台直投第一台。
+         这条用例盯的是"注册表快照能自愈"：持有者全程没有重新注册，第二台必须
+         通过重建的同侪链路重新学到它，否则帧就会被静默丢掉（dropped）。
 
 帧格式（见 cr-nat/src/relay.rs）：
     1 字节 kind | 16 字节 node id | 4 字节大端负载长度 | 负载
@@ -32,6 +35,7 @@ from __future__ import annotations
 import argparse
 import socket
 import struct
+import subprocess
 import sys
 import time
 
@@ -183,52 +187,138 @@ def mode_pair(endpoint: tuple[str, int], timeout: float) -> int:
     return 0 if ok else 1
 
 
-def mode_cross(endpoints: list[tuple[str, int]], timeout: float) -> int:
-    """跨中继投递。当前实现没有注册表同步，预期失败。
+def mode_cross(endpoints: list[tuple[str, int]], timeout: float, repeat: int = 1) -> int:
+    """跨中继双向投递。
 
     返回码语义（与 mode_pair 一致：0 = 通过）：
-      投递成功  → 0（说明注册表同步已经生效，这条用例该转绿了）
-      投递失败  → 1（当前预期结果；在测试脚本里按"预期失败"消费）
+      双向都成功  → 0（说明注册表同步生效）
+      任一方向失败 → 1（未配 --peer / 快照未同步 / 转发丢失）
+
+    判据比"收到了"更严：
+      · DELIVERED 的 node 必须等于**真实发送方** id（不能是被转发的实例 id）；
+      · 负载必须逐字节等于发出的消息（不能被改写或截断）；
+      · 双向都要成立——单向能通只说明转发链路存在，说明不了回程。
     """
     if len(endpoints) < 2:
         print("cross 模式需要至少两个 --relay")
         return 2
     (h1, p1), (h2, p2) = endpoints[0], endpoints[1]
-    print(f"跨中继投递：A@{h1}:{p1}  B@{h2}:{p2}")
+    print(f"跨中继双向投递：A@{h1}:{p1}  B@{h2}:{p2}  repeat={repeat}")
     a = Peer(endpoints[0], id_for("cross-A"), timeout)
     b = Peer(endpoints[1], id_for("cross-B"), timeout)
-    delivered = False
+    ok = True
+    rtts: list[float] = []
     try:
         print(f"  注册 ACK: A={a.expect_ack():.1f} ms  B={b.expect_ack():.1f} ms")
-        b.send_relay(a.node_id, b"WAKEUP_REQ")
-        try:
-            node, payload, rtt = a.expect_delivered(min(timeout, 3.0))
-            delivered = True
-            print(f"  跨中继投递成功 {rtt:.1f} ms  来源={node!r} 负载={payload!r}")
-        except (socket.timeout, TimeoutError):
-            print(f"  A 在 {min(timeout, 3.0):.1f}s 内没有收到 DELIVERED（注册表未同步）")
-        except (AssertionError, ConnectionError) as exc:
-            print(f"  未收到 DELIVERED: {exc}")
+        for i in range(repeat):
+            tag = f"#{i + 1}"
+            # B(在 h2) → A(在 h1)：必须由 h2 转发
+            msg = f"WAKEUP_REQ-{i}".encode()
+            b.send_relay(a.node_id, msg)
+            try:
+                node, payload, rtt = a.expect_delivered(min(timeout, 3.0))
+            except (socket.timeout, TimeoutError, AssertionError, ConnectionError) as exc:
+                ok = False
+                print(f"  [FAIL] {tag} B→A 未收到 DELIVERED: {type(exc).__name__}: {exc}")
+                break
+            if node != b.node_id:
+                ok = False
+                print(f"  [FAIL] {tag} B→A 来源被改写成 {node!r}（应为 {b.node_id!r}）")
+                break
+            if payload != msg:
+                ok = False
+                print(f"  [FAIL] {tag} B→A 负载被改写: {payload!r}")
+                break
+            rtts.append(rtt)
+
+            # A(在 h1) → B(在 h2)：回程必须由 h1 转发
+            ack = f"WAKEUP_ACK-{i}".encode()
+            a.send_relay(b.node_id, ack)
+            try:
+                node, payload, rtt = b.expect_delivered(min(timeout, 3.0))
+            except (socket.timeout, TimeoutError, AssertionError, ConnectionError) as exc:
+                ok = False
+                print(f"  [FAIL] {tag} A→B 未收到 DELIVERED: {type(exc).__name__}: {exc}")
+                break
+            if node != a.node_id or payload != ack:
+                ok = False
+                print(f"  [FAIL] {tag} A→B node={node!r} payload={payload!r}")
+                break
+            rtts.append(rtt)
     finally:
         a.close()
         b.close()
-    print("  结论:", "已同步（投递成功）" if delivered else "未同步（当前实现的预期结果）")
-    return 0 if delivered else 1
+    if ok and rtts:
+        print(f"  双向 {len(rtts)} 帧全部送达：min={min(rtts):.1f} max={max(rtts):.1f} "
+              f"avg={sum(rtts) / len(rtts):.1f} ms")
+    print("  结论:", "PASS（跨实例注册表已同步）" if ok else "FAIL（未同步或转发丢失）")
+    return 0 if ok else 1
+
+
+def mode_reap(endpoints: list[tuple[str, int]], timeout: float,
+              restart_cmd: str, wait: float) -> int:
+    """持有者在线不动，重启另一台中继，验证注册表快照的自愈能力。
+
+    失败形态值得单独点名：链路断了但快照没重建时，帧会被算成 forwarded 然后消失，
+    调用侧只能看到超时——比直接报错更难查。所以这里要求**真实 DELIVERED 且来源正确**。
+    """
+    if len(endpoints) < 2:
+        print("reap 模式需要两个 --relay")
+        return 2
+    if not restart_cmd:
+        print("reap 模式必须给 --restart（真正重启第二台实例的命令）")
+        return 2
+    (h1, p1), (h2, p2) = endpoints[0], endpoints[1]
+    print(f"快照自愈：持有者 A 常驻 @{h1}:{p1}；重启 B @{h2}:{p2}")
+    holder = Peer(endpoints[0], id_for("reap-hold"), timeout)
+    ok = True
+    try:
+        print(f"  A 注册 ACK {holder.expect_ack():.1f} ms（此后不再重注册）")
+        print(f"  执行重启: {restart_cmd}")
+        rc = subprocess.run(restart_cmd, shell=True, capture_output=True, text=True)
+        if rc.returncode != 0:
+            ok = False
+            print(f"  [FAIL] 重启命令返回 {rc.returncode}: {(rc.stderr or rc.stdout).strip()[:300]}")
+        if ok:
+            time.sleep(wait)
+            # 新客户端注册到**刚重启的**第二台，向从未在它上面注册过的 A 发送。
+            sender = Peer(endpoints[1], id_for("reap-send"), timeout)
+            try:
+                print(f"  B 注册 ACK {sender.expect_ack():.1f} ms")
+                sender.send_relay(holder.node_id, b"WAKEUP_REQ")
+                node, payload, rtt = holder.expect_delivered(min(timeout, 5.0))
+                if node != sender.node_id or payload != b"WAKEUP_REQ":
+                    ok = False
+                    print(f"  [FAIL] 来源/负载不符: node={node!r} payload={payload!r}")
+                else:
+                    print(f"  重启后跨实例投递成功 {rtt:.1f} ms（快照已自愈）")
+            finally:
+                sender.close()
+    finally:
+        holder.close()
+    print("  结论:", "PASS（同侪链路重建后快照自愈）" if ok else "FAIL（重启后帧丢失）")
+    return 0 if ok else 1
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="中继帧协议探针")
     ap.add_argument("--relay", action="append", required=True, metavar="HOST:PORT",
                     help="中继端点，可重复")
-    ap.add_argument("--mode", choices=("pair", "cross", "list"), default="pair")
+    ap.add_argument("--mode", choices=("pair", "cross", "list", "reap"), default="pair")
     ap.add_argument("--timeout", type=float, default=5.0)
+    ap.add_argument("--repeat", type=int, default=1, help="cross 模式双向各发多少帧")
+    ap.add_argument("--restart", default="", help="reap 模式：重启第二台中继的 shell 命令")
+    ap.add_argument("--reap-wait", type=float, default=6.0,
+                    help="reap 模式：重启后等待链路重建/快照重推的秒数")
     args = ap.parse_args()
 
     endpoints = [parse_endpoint(r) for r in args.relay]
     if args.mode == "list":
         return mode_list(endpoints, args.timeout)
     if args.mode == "cross":
-        return mode_cross(endpoints, args.timeout)
+        return mode_cross(endpoints, args.timeout, max(1, args.repeat))
+    if args.mode == "reap":
+        return mode_reap(endpoints, args.timeout, args.restart, args.reap_wait)
     if len(endpoints) != 1:
         print("pair 模式只接受一个 --relay", file=sys.stderr)
         return 2

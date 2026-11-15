@@ -309,7 +309,10 @@ pub struct Config {
     pub nat_stun_servers: Vec<(String, u16)>,
     pub nat_gateway: Option<String>,
     pub nat_upnp_location: Option<String>,
+    /// 单个中继地址（首个），保留旧字段语义；多中继见 `nat_relays`。
     pub nat_relay: Option<String>,
+    /// W3.8：中继列表（`nat.relay` 支持逗号分隔），客户端按顺序尝试并在失败时切换。
+    pub nat_relays: Vec<String>,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
@@ -365,6 +368,20 @@ impl Config {
             let port: u16 = p.parse().ok()?;
             Some((ip.to_string(), port))
         });
+        // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
+        // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
+        let nat_relays: Vec<String> = nat_get("relay")
+            .unwrap_or_default()
+            .split([',', ';'])
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .filter(|s| match s.rsplit_once(':') {
+                Some((h, p)) => !h.is_empty() && p.parse::<u16>().is_ok(),
+                None => false,
+            })
+            .map(str::to_string)
+            .collect();
+        let nat_relay = nat_relays.first().cloned();
         Ok(Config {
             node_id: String::new(),
             bind,
@@ -383,7 +400,8 @@ impl Config {
             nat_stun_servers,
             nat_gateway: nat_get("gateway"),
             nat_upnp_location: nat_get("upnp_location"),
-            nat_relay: nat_get("relay"),
+            nat_relay,
+            nat_relays,
             nat_bt_external,
         })
     }
@@ -494,6 +512,46 @@ mod tests {
         assert_eq!(cfg2.nat_relay.as_deref(), Some("127.0.0.1:7000"));
         let _ = fs::remove_file(&p);
         let _ = fs::remove_file(&p2);
+    }
+
+    /// W3.8：`nat.relay` 支持列表；单值必须与旧行为逐字节等价，非法项必须被丢弃。
+    #[test]
+    fn relay_list_is_parsed_and_junk_is_dropped() {
+        let mk = |relay: &str| -> String {
+            format!(r#"{{
+                "bind": "127.0.0.1",
+                "nodes": {{
+                    "A": {{"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802}},
+                    "B": {{"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}}
+                }},
+                "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+                "golden_req": "r.json", "golden_ack": "a.json",
+                "nat": {{"enabled": true, "relay": "{}"}}
+            }}"#, relay)
+        };
+        let cases: [(&str, Vec<&str>); 4] = [
+            ("127.0.0.1:7000", vec!["127.0.0.1:7000"]),
+            ("a.example:7000, b.example:7001", vec!["a.example:7000", "b.example:7001"]),
+            ("a:1;b:2; ", vec!["a:1", "b:2"]),
+            // 无端口 / 端口非数字 / 空项一律丢弃，绝不造占位端点
+            ("nohost, c:99", vec!["c:99"]),
+        ];
+        for (raw, want) in cases {
+            let p = std::env::temp_dir().join(format!(
+                "cr_core_relays_{}.json", want.len()));
+            fs::write(&p, mk(raw)).unwrap();
+            let cfg = Config::load(&p).unwrap();
+            assert_eq!(cfg.nat_relays, want, "输入 {:?}", raw);
+            assert_eq!(cfg.nat_relay.as_deref(), want.first().copied(), "首个即旧字段语义");
+            let _ = fs::remove_file(&p);
+        }
+        // 全非法 -> 空列表 / None，不 panic
+        let p = std::env::temp_dir().join("cr_core_relays_zero.json");
+        fs::write(&p, mk("nope, also-nope")).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert!(cfg.nat_relays.is_empty());
+        assert!(cfg.nat_relay.is_none());
+        let _ = fs::remove_file(&p);
     }
 
     #[test]

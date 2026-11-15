@@ -371,6 +371,30 @@ pub fn relay_wake(
     }
 }
 
+/// 按顺序尝试中继列表，返回**真实成功的那一个**地址与应答负载。
+///
+/// 顺序尝试而非并发：多中继是「单点宕机可切换」，不是任播。全部失败时聚合每一条的真实
+/// 错误，便于判断是网络不通、未注册还是中继没同步到对端——不要压成一句「中继失败」。
+pub fn relay_wake_any(
+    relays: &[String],
+    self_id: &[u8; NODE_ID_LEN],
+    peer_id: &[u8; NODE_ID_LEN],
+    wake: &[u8],
+    timeout: Duration,
+) -> Result<(String, Vec<u8>), String> {
+    if relays.is_empty() {
+        return Err("未配置任何中继端点".into());
+    }
+    let mut errs: Vec<String> = Vec::new();
+    for r in relays {
+        match relay_wake(r, self_id, peer_id, wake, timeout) {
+            Ok(v) => return Ok((r.clone(), v)),
+            Err(e) => errs.push(format!("{}: {}", r, e)),
+        }
+    }
+    Err(format!("全部中继失败（{}）", errs.join("; ")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -143,6 +143,15 @@ updated: YYYY-MM-DD
   **S3 / S5 / S6 仍 `not_run`、`matrix_coverage=0/4`、G2 未达标**。
   本轮改动落在 DOC-15（ROADMAP）、G0-REVIEW、OPEN-QUESTIONS 与 spikes 文档，
   未改 `PROTOCOL_VERSION` 与 T0 golden。
+- **v2.4.57 补记（2026-11-15 / W3.8）**：中继去单点化 —— `cr-nat::relay_server` 新增实例间
+  `PEER_HELLO` / `PEER_SYNC` / `FORWARD` 三个帧（快照整份覆盖、转发单跳不成环），
+  `coldrevive-relay` 新增 `--peer` / `--instance-id`，`nat.relay` 接受列表并由
+  `relay_wake_any` / `relay_sub` 顺序切换。两台真实主机实测跨实例双向 60/60 帧、
+  `dropped=0`，重启一台后快照自愈；反证为「不配 `--peer` 的隔离实例同一条用例立即 `dropped=1`」。
+  本轮改动落在 [nat-matrix.md §16](../tests/spikes/s6/nat-matrix.md)、
+  [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
+  未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
+  **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
 - 协议（DOC-09）**私有契约字段**（§3 `WAKEUP_REQ` / `WAKEUP_ACK`）变更必须递增 `PROTOCOL_VERSION`、新增 ADR 并更新 T0 golden，禁止静默修改。
 - **映射修订例外**：只改 §1 / §2 的**外部 KAD / eD2k 集成映射**（如 v2.3 的 Kad tag 帧头、v2.4 的双轨 Key、v2.5 的 `0x44` / `0x34` 载荷与 eD2k TCP 序列）且不动 §3 字段时，按 [PROTO §4](04-protocol/PROTO.md) 只递增该文档的 `version` 并记录源码依据，`PROTOCOL_VERSION` 与 T0 golden 保持不变。本条与 PROTO §4 是同一规则的两处表述。
 
