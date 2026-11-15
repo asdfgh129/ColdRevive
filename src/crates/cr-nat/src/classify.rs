@@ -25,31 +25,44 @@ impl NatType {
     }
 }
 
-/// 由 STUN 在「同一本地端口」对不同目的地址得到的映射地址集合判定 NAT 对称性。
+/// 由 STUN 在「同一本地端口」对不同**目的地址**得到的映射地址集合判定 NAT 对称性。
 ///
-/// - 集合为空 → `Unknown`（STUN 不可达）
-/// - 全部相同 → 非对称 NAT（cone 类；full/restricted 需 OTHER-ADDRESS 二次测试才能细分）
-/// - 端口不同 → `Symmetric`
+/// `observations` 是 `(stun 服务器, 观测到的映射地址)` 列表 —— 必须带上服务器，
+/// 因为「只有一个目的地址」在原理上无法区分 EIM 与按目的分配（APDM）。
+///
+/// - 空 → `Unknown`（STUN 不可达）
+/// - 只有 **1 个不同目的地址** → `Unknown`（样本不足，不下结论）
+/// - ≥2 个目的地址，映射全部相同 → `FullCone` 占位（EIM 已确认；cone 子型必须靠
+///   `classify_from_filter` 实测过滤行为，不能由映射长相推出）
+/// - 映射端口不同 → `Symmetric`
 /// - 端口相同但 IP 不同 → 多出口 cone（少见，归入 cone）
-pub fn classify_from_mappings(mapped: &[String]) -> NatType {
-    if mapped.is_empty() {
+///
+/// ⚠ 这条曾经用「单样本 → FullCone」的假设：只要有多台 STUN 超时、只剩一台有应答，
+/// 一台真实 symmetric 设备就会被判成 cone，再叠加过滤测试的假阳性就成了 `full-cone`。
+/// 现在样本不足一律 `Unknown`，宁可说不出结论，也不编一个。
+pub fn classify_from_mappings(observations: &[(String, String)]) -> NatType {
+    if observations.is_empty() {
         return NatType::Unknown;
     }
-    let unique: Vec<&String> = {
-        let mut v: Vec<&String> = Vec::new();
-        for m in mapped {
-            if !v.contains(&m) {
-                v.push(m);
-            }
+    let mut servers: Vec<&str> = Vec::new();
+    let mut mapped: Vec<&str> = Vec::new();
+    for (srv, m) in observations {
+        if !servers.contains(&srv.as_str()) {
+            servers.push(srv.as_str());
         }
-        v
-    };
-    if unique.len() == 1 {
-        return NatType::FullCone; // 至少是非对称（EIM）；细分必须靠 classify_from_filter 实测
+        if !mapped.contains(&m.as_str()) {
+            mapped.push(m.as_str());
+        }
+    }
+    if servers.len() < 2 {
+        return NatType::Unknown; // 只问过一台服务器 = 只有一个目的地址，判不了对称性
+    }
+    if mapped.len() == 1 {
+        return NatType::FullCone; // EIM 已确认，子型待过滤实测
     }
     // 比较端口
     let ports: std::collections::HashSet<&str> =
-        unique.iter().map(|m| m.rsplit(':').next().unwrap_or("")).collect();
+        mapped.iter().map(|m| m.rsplit(':').next().unwrap_or("")).collect();
     if ports.len() > 1 {
         NatType::Symmetric
     } else {
@@ -121,17 +134,29 @@ mod tests {
     }
 
     #[test]
-    fn classify_single_is_cone() {
-        assert_eq!(
-            classify_from_mappings(&["1.2.3.4:5000".to_string()]),
-            NatType::FullCone
-        );
+    fn single_destination_sample_is_unknown_not_cone() {
+        // 回归用例：只问过一台 STUN 时，原理上分不清 EIM 与 APDM。
+        // 以前的实现返回 FullCone，让真实 symmetric 设备被误判成 cone。
+        let one = vec![("stun.a:3478".to_string(), "1.2.3.4:5000".to_string())];
+        assert_eq!(classify_from_mappings(&one), NatType::Unknown);
+    }
+
+    #[test]
+    fn two_destinations_same_mapping_is_cone() {
+        let obs = vec![
+            ("stun.a:3478".to_string(), "1.2.3.4:5000".to_string()),
+            ("stun.b:3478".to_string(), "1.2.3.4:5000".to_string()),
+        ];
+        assert_eq!(classify_from_mappings(&obs), NatType::FullCone);
     }
 
     #[test]
     fn classify_different_ports_is_symmetric() {
-        let m = vec!["1.2.3.4:5000".to_string(), "1.2.3.4:6000".to_string()];
-        assert_eq!(classify_from_mappings(&m), NatType::Symmetric);
+        let obs = vec![
+            ("stun.a:3478".to_string(), "1.2.3.4:5000".to_string()),
+            ("stun.b:3478".to_string(), "1.2.3.4:6000".to_string()),
+        ];
+        assert_eq!(classify_from_mappings(&obs), NatType::Symmetric);
     }
 
     #[test]

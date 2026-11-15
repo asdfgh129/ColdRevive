@@ -274,6 +274,23 @@ mod tests {
         v
     }
 
+    /// 等计数追上「客户端已经收到帧」这个事实。
+    ///
+    /// 计数由服务端线程在投递**之后**自增，客户端 `recv_frame()` 返回时它可能还没跑到，
+    /// 于是断言偶发失败（实测约 1/3）。偶发失败的测试等于没有测试，这里改成有界等待。
+    fn wait_until<F: Fn() -> bool>(pred: F, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if pred() {
+                return true;
+            }
+            if std::time::Instant::now() >= deadline {
+                return pred();
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn routes_frames_between_two_real_tcp_clients() {
         let server = RelayServer::bind("127.0.0.1:0").unwrap();
@@ -302,8 +319,9 @@ mod tests {
         assert_eq!(back.node, id_a);
         assert_eq!(back.payload, b"WAKEUP_ACK");
 
+        assert!(wait_until(|| handle.stats().delivered == 2, Duration::from_millis(800)),
+                "两帧都投递后 delivered 应为 2（当前 {:?}）", handle.stats().delivered);
         let s = handle.stats();
-        assert_eq!(s.delivered, 2);
         assert_eq!(s.dropped, 0);
         assert_eq!(s.registered, 2);
         handle.stop();

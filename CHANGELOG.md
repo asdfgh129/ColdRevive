@@ -2,6 +2,52 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.56] - 2026-11-15 — M2/W3.7：真实 NAT 档位（条款①②首次同时成立）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；`evidence_valid_for_pass=false`，R-04 仍不判定。
+> 本轮第一次出现 `evidence_valid=true` 的**单类**报告 —— 只表示取证过程合法，不等于该类达标。
+
+### 新增档位：`real-multi-nat`（两端都在真实 NAT 后面）
+- 新增 `tests/spikes/s6/nat_lab/run_real_nat.py`：持有者在 **222**（`192.168.34.222` 经真实 NAT →
+  `112.5.32.34`），请求者在 **A**（`192.168.1.210` 经真实 NAT → `112.5.60.4`），中继在 221 只做信令。
+  NAT 由用户的网络设备完成，我方未写任何 iptables 规则。
+- 驱动把「真实设备」当**可证伪条件**验证，不是当声明：映射端口 ≠ 内部端口、测试端口无静态映射、
+  直连 attempt 的目标必须是公网 egress（否则判为 LAN 捷径并拒收）。
+
+### 修复的两个「编造分类」缺陷
+- **`CLASSIFY-SINGLE-SAMPLE`**：`classify_from_mappings` 只要有 **1 个**映射样本就返回 `FullCone`
+  （注释写着「至少是非对称」）。一个目的地址在原理上分不清 EIM 与 APDM —— 于是真实 symmetric
+  设备被判成 cone。改为要求 **≥2 个不同目的地址**，否则 `Unknown`；且只有确认 `FullCone`（EIM）
+  之后才用过滤测试细分，避免「用一个假设换另一个假设」。
+- **`CHANGE-REQ-NO-SOURCE-CHECK`**：`stun::change_request_answered` 只校验 tid，**不校验回包源地址**。
+  公共 STUN 若忽略 `CHANGE-REQUEST` 而从原地址回包，会被算成「change-IP 有应答」→ 假 `full-cone`。
+  改为：正对照要求 `src == addr`，change 测试要求 `src != addr`（回包必须来自另一个套接字）。
+  新增回归测试 `filter_ignored_change_request_is_not_full_cone`、
+  `single_destination_sample_is_unknown_not_cone`。
+
+### 修复的偶发测试
+- `relay_server::tests::routes_frames_between_two_real_tcp_clients` 实测约 **1/3 偶发失败**：
+  客户端收到帧时服务端计数线程尚未自增，断言读到旧值。改为有界等待（`wait_until`），连跑 5 次稳定。
+  偶发失败的测试等于没有测试。
+
+### 实测（30 次/路径）
+- 持有者侧现场分类：`symmetric`（Address/Port-Dependent Mapping）。
+  手工报文实验确证：同一 socket（本地端口 50114）、目的端口均 3478、三个不同目的 IP →
+  映射端口 `2051 / 2055 / 2050` 各不相同。
+- `direct` **0/30**、`relay` **30/30**；中继增量 `delivered=108 / dropped=0 / rejected=0`。
+- 抓包给出完整因果链：持有者出向回打 2 条（`192.168.34.222.19901 > 112.5.60.4.57238`），
+  而 A 打向 `112.5.32.34:2053` 的包**入向 0 条** —— 被真实 NAT 丢弃。symmetric 下双向打洞
+  原理上不可能成功，`0/30` 是**正确结论**而非缺陷。
+- 报告：`status=OBSERVED`、`evidence_scope=real-multi-nat`、`evidence_valid=true`、
+  条款①（两台物理主机 `['DESKTOP-DJQSC95','ubuntu23']`）与条款②（`nat_is_real_device=true`）均成立。
+
+### 文档
+- `tests/spikes/s6/nat-matrix.md` §15：档位差别、真实设备判据、假阳性分类的推翻过程、
+  两个分类缺陷与修法、抓包因果链、以及「这一档没解决什么」。
+- `spikes.json` 新增 `S6.observations.w37_real_nat_2026_11_15` 与 `m2_progress.scope_done.w37_real_nat`；
+  `remaining_for_g2` 第 2 条更新为「类别覆盖仍 1/4 + 0 CGNAT」。
+
 ## [2.4.55] - 2026-11-15 — M2/W3.6c：修 NAT 分类缺陷 + 把跨主机数字做到可复现
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

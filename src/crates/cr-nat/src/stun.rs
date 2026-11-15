@@ -268,9 +268,13 @@ impl StunSession {
 
 /// 单个「CHANGE-REQUEST 是否真有应答」测试。
 ///
-/// 从 `sock` 向 `addr` 发一个带 `change_flags` 的 Binding 请求，**只要收到任意来源、
-/// tid 匹配的应答**就算通过。不做源地址过滤：这一项要测的正是「NAT 是否放行那个方向的
-/// 入向包」，应答从哪个地址来由服务器决定（RFC 3489：change-IP 时应从另一地址回）。
+/// 判据是**回包源地址确实变了**，不是「收到了任意一个 tid 匹配的包」。
+///
+/// 这条曾经写错过一次：早期只校验 tid，于是**忽略 CHANGE-REQUEST 的服务器**从原地址回包
+/// 也被算成「change-IP 有应答」，一台真实的 symmetric 设备因此被判成 `full-cone`。
+/// 现在：
+///   * 正对照（flags=0）要求 `src == addr`（回答确实来自被问的那台）；
+///   * change 测试要求 `src != addr`（回答来自**另一个**套接字，才说明 NAT 放行了那个方向）。
 fn change_request_answered<F>(
     sock: &UdpSocket,
     addr: std::net::SocketAddr,
@@ -279,7 +283,7 @@ fn change_request_answered<F>(
     recv: &mut F,
 ) -> bool
 where
-    F: FnMut(Duration) -> Option<Vec<u8>>,
+    F: FnMut(Duration) -> Option<(Vec<u8>, std::net::SocketAddr)>,
 {
     let tid = rand_tid();
     let req = binding_request_with(&tid, change_flags);
@@ -293,10 +297,12 @@ where
             return false;
         }
         match recv(remain) {
-            Some(data) => {
-                if parse_response(&data, &tid).is_some() {
-                    return true;
+            Some((data, src)) => {
+                if parse_response(&data, &tid).is_none() {
+                    continue;
                 }
+                let same_source = src == addr;
+                return if change_flags == 0 { same_source } else { !same_source };
             }
             None => return false,
         }
@@ -327,7 +333,7 @@ pub fn filter_behavior_with<F>(
     mut recv: F,
 ) -> crate::classify::FilterBehavior
 where
-    F: FnMut(Duration) -> Option<Vec<u8>>,
+    F: FnMut(Duration) -> Option<(Vec<u8>, std::net::SocketAddr)>,
 {
     use crate::classify::FilterBehavior;
     let server = format!("{}:{}", host, port);
@@ -374,7 +380,7 @@ pub fn filter_behavior(
     filter_behavior_with(sock, host, port, timeout, |remain| {
         let _ = sock.set_read_timeout(Some(remain));
         match sock.recv_from(&mut buf) {
-            Ok((n, _)) => Some(buf[..n].to_vec()),
+            Ok((n, src)) => Some((buf[..n].to_vec(), src)),
             Err(_) => None,
         }
     })
@@ -484,7 +490,8 @@ mod tests {
     }
 
     /// 起一个「按指定能力回包」的假 STUN：`allow_ip` / `allow_port` 决定是否回应
-    /// 带 CHANGE-IP / CHANGE-PORT 的请求（回应从另一个端口发出，客户端不校验源地址）。
+    /// 带 CHANGE-IP / CHANGE-PORT 的请求；回应从**另一个**端口（`alt`）发出，
+    /// 客户端据此判定「回包确实换了源」。
     fn spawn_filter_server(allow_ip: bool, allow_port: bool) -> std::net::SocketAddr {
         let srv = UdpSocket::bind("127.0.0.1:0").unwrap();
         let alt = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -557,9 +564,35 @@ mod tests {
         assert_eq!(f, crate::classify::FilterBehavior::PortRestrictedCone);
     }
 
+    /// 忽略 CHANGE-REQUEST 的服务器：无论请求带什么 flags，都从**原地址**回包。
+    /// 这正是公共 STUN 的常见行为，也是「假 full-cone」的来源。
     #[test]
-    fn filter_unknown_when_server_unreachable() {
-        // 正对照都收不到应答：不得把「STUN 不可达」当成「端口受限」。
+    fn filter_ignored_change_request_is_not_full_cone() {
+        let srv = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let main = srv.local_addr().unwrap();
+        thread::spawn(move || {
+            let mut buf = [0u8; 2048];
+            loop {
+                let (n, peer) = match srv.recv_from(&mut buf) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                if n < 20 {
+                    continue;
+                }
+                let tid: [u8; 12] = buf[8..20].try_into().unwrap();
+                let resp = build_response(&tid, &build_xor_mapped(peer));
+                let _ = srv.send_to(&resp, peer);   // 永远从主地址回
+            }
+        });
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let f = filter_behavior(&client, "127.0.0.1", main.port(), Duration::from_millis(400));
+        // 关键：不能因为「收到了包」就判 full-cone，源没变 ≤ 只放行已有映射
+        assert_eq!(f, crate::classify::FilterBehavior::PortRestrictedCone);
+    }
+
+    #[test]
+    fn filter_unknown_when_server_unreachable() {        // 正对照都收不到应答：不得把「STUN 不可达」当成「端口受限」。
         let dead_port = {
             let s = UdpSocket::bind("127.0.0.1:0").unwrap();
             s.local_addr().unwrap().port()

@@ -124,17 +124,19 @@ impl Traversal {
             if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
                 let session = stun::StunSession::new(self.stun_servers.clone());
                 let results = session.probe(&sock, timeout);
-                let mapped: Vec<String> = results
+                let observed: Vec<(String, String)> = results
                     .iter()
-                    .filter_map(|r| r.mapped.clone())
+                    .filter(|r| r.ok)
+                    .filter_map(|r| r.mapped.clone().map(|m| (r.server.clone(), m)))
                     .collect();
-                if !mapped.is_empty() {
+                if let Some((_, first)) = observed.first() {
                     public_udp_egress_ok = true;
-                    mapped_address = Some(mapped[0].clone());
-                    nat_type = classify_from_mappings(&mapped);
-                    // 非对称（cone）才需要细分过滤行为：用 CHANGE-REQUEST 实测，
-                    // 不再拿 OTHER-ADDRESS 去猜（那是恒定值，不是测量）。
-                    if nat_type != NatType::Symmetric {
+                    mapped_address = Some(first.clone());
+                    nat_type = classify_from_mappings(&observed);
+                    // 只有确认了 EIM（≥2 个目的地址映射一致）才值得细分 cone 子型：
+                    // 用 CHANGE-REQUEST 实测，不再拿 OTHER-ADDRESS 去猜（那是恒定值，不是测量）。
+                    // 样本不足（Unknown）时不得用过滤结果覆盖，否则就是拿一个假设换另一个假设。
+                    if nat_type == NatType::FullCone {
                         if let Some(first) = results.iter().find(|r| r.ok) {
                             if let Some((h, p)) = split_host_port(&first.server) {
                                 nat_type = classify_from_filter(

@@ -189,6 +189,42 @@ python tests/spikes/s6/nat_lab/run_cross_host.py --class restricted-cone --trial
 条款① `true`、条款② `false`、`evidence_valid=false`。
 详见 [nat-matrix.md §14](../nat-matrix.md)。
 
+## 真实 NAT 档位（real-multi-nat，2026-11-15）
+
+前两档的 NAT 都是本实验室用 iptables 合成的。真档把**两个端点都放到真实设备后面**：
+
+```bash
+# 在 A（192.168.1.210）上执行；222 需已装同一把公钥、/root/bin 下有 release 二进制
+python tests/spikes/s6/nat_lab/run_real_nat.py --smoke --capture   # 先验证接线
+python tests/spikes/s6/nat_lab/run_real_nat.py --trials 30          # 正式矩阵
+# 若该类不是 symmetric，用 --class 指定（必须与现场分类一致，否则中止）
+```
+
+拓扑与实测结果（30 次/路径）：
+
+| 端点 | 本机地址 | 出口 | `direct` | `relay` |
+| :--- | :--- | :--- | :--- | :--- |
+| 持有者 `ubuntu23`(222) | 192.168.34.222 | 112.5.32.34（真实 NAT） | — | — |
+| 请求者 `DESKTOP-DJQSC95`(A) | 192.168.1.210 | 112.5.60.4（真实 NAT） | **0/30** | **30/30** |
+
+222 背后的设备实测为 **symmetric（Address/Port-Dependent Mapping）**：
+同一 socket、本地端口固定，三个不同目的 IP 得到不同映射端口（2051/2055/2050）。
+所以 `direct` **必定** 0/30 —— 这不是缺陷，是 symmetric 的定义性后果（广告的 STUN 端口
+不是入向可达端口）。抓包证据：持有者出向回打 2 条到 `112.5.60.4:57238`，
+而 A 打向 `112.5.32.34:2053` 的包**入向 0 条**。
+
+**驱动把「真实设备」当可证伪条件，不是当声明**：
+
+1. 映射端口 ≠ 内部端口且每次不同 → 无静态端口映射（真实 NAT 动态分配）；
+2. 直连 attempt 的目标必须是**公网 egress**，命中私网地址即判 LAN 捷径并拒收；
+3. 分类必须现场重测且与 `--class` 一致，否则中止（历史报告不作数 —— 同一台机器
+   曾因单样本被判成 `port-restricted cone`）；
+4. 两端出口必须不同、且都是公网地址，否则直接退出。
+
+报告 `evidence_scope=real-multi-nat`、条款①② 均 `true`、`evidence_valid=true`（项目首次），
+但 `evidence_valid_for_pass=false`、`S6` 仍 `not_run`、R-04 仍不判定。
+**类别覆盖仍 1/4 + 0 CGNAT**：一个出口只对应一类，两个真实出口只能覆盖一类。
+
 ## 证据边界（不得突破）
 
 - 判据是**两个互相独立的条款**：
@@ -241,3 +277,14 @@ sudo bash setup_nat_lab.sh down
    开洞后余下 29 次吃老本。`nat_matrix.py --inter-trial-reset` 在每次试验前清空，
    复位失败会记进该行 `reset_error`，不静默忽略。
 
+13. **抓包不能按端口过滤**：过 NAT 后源端口已被改写，`tcpdump -i any 'udp and port 19901'`
+    在真实 NAT 侧只能抓到 loopback 噪音（第一次就这么白抓了一轮）。要按**对端公网 IP**抓：
+    `tcpdump -i ens160 -n 'udp and host 112.5.60.4'`。另外 `-i ens160` 的输出**没有 In/Out 标记**
+    （那是 `-i any` 才有的），判方向只能看对端 IP 在 `>` 之前还是之后。
+14. **"收到一个 tid 匹配的包"不等于"服务器换了源回包"**：公共 STUN 常忽略 `CHANGE-REQUEST`，
+    从原地址回包。早期实现只校验 tid，于是真实 symmetric 设备被判成 `full-cone`。
+    现在正对照要求 `src == addr`、change 测试要求 `src != addr`。
+15. **单样本不能判对称性**：只有一台 STUN 有应答时，`classify_from_mappings` 曾直接返回
+    `FullCone`（"至少是非对称"是假设）。现在要求 ≥2 个不同目的地址，否则 `Unknown` ——
+    宁可说不出结论，也不编一个。公共 STUN 可用性因网络而异（本例 222 上 google/voipbuster
+    全超时，cloudflare/telnyx/miwifi/bilibili 稳定），所以 `PUBLIC_STUN` 要按两端实测挑选。

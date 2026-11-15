@@ -1579,6 +1579,99 @@
           "s6_status_after": "not_run",
           "spike_status_changed": false,
           "g2_claim": false
+        },
+        "w37_real_nat_2026_11_15": {
+          "recorded_at": "2026-11-15",
+          "context": "第一次把两个端点都放到**真实 NAT 设备**后面：持有者在 222（ens160 → 112.5.32.34），请求者在 A（192.168.1.210 → 112.5.60.4），中继在 221 只做信令。NAT 由用户的网络设备完成，我们一行 iptables 规则都没有写。",
+          "topology": {
+            "holder": {
+              "host": "ubuntu23",
+              "local_ip": "192.168.34.222",
+              "egress": "112.5.32.34"
+            },
+            "requester": {
+              "host": "DESKTOP-DJQSC95",
+              "local_ip": "192.168.1.210",
+              "egress": "112.5.60.4"
+            },
+            "relay": "192.168.1.221:7100（LAN，仅信令）",
+            "two_distinct_egresses": true,
+            "synthesized_by_us": false
+          },
+          "why_it_is_a_real_nat": [
+            "映射端口（2053~2056）≠ 内部监听端口 19901 且每次不同 → 动态分配，无静态映射",
+            "用户的端口映射只有 54022→22 / 57100→7100，与测试端口无关",
+            "直连 attempt 的目标是 112.5.32.34:2053（公网侧），不是 192.168.34.222（LAN 捷径）",
+            "分类由真实公网 STUN 现场测得，不采信 attestation 自报"
+          ],
+          "class_of_holder_egress": {
+            "value": "symmetric",
+            "rfc4787": "Address/Port-Dependent Mapping",
+            "manual_proof": "同一 socket 本地端口 50114、目的端口均 3478，三个不同目的 IP 得到映射端口 2051 / 2055 / 2050 —— 本地端口不变而映射端口随目的变，即 APDM；EIM 要求映射与目的无关，此处不成立",
+            "supersedes": "22:4x 那次 port-restricted cone 判定为**假阳性**（当时只有一台 STUN 有应答）"
+          },
+          "defects_found_and_fixed": [
+            {
+              "id": "CLASSIFY-SINGLE-SAMPLE",
+              "symptom": "nat probe 在真实 symmetric 设备上报 full-cone；与同分钟 nat_behavior.py 的 symmetric 冲突",
+              "root_cause": "classify_from_mappings 只要 1 个映射样本就返回 FullCone（注释写'至少是非对称'）——一个目的地址原理上分不清 EIM 与 APDM",
+              "fix": "要求 ≥2 个不同目的地址，否则 Unknown；且只有确认 FullCone(EIM) 后才用过滤测试细分",
+              "fixed_in": "v2.4.56",
+              "verification": "修复后 222 上 nat_type=symmetric，与现场分类一致"
+            },
+            {
+              "id": "CHANGE-REQ-NO-SOURCE-CHECK",
+              "symptom": "忽略 CHANGE-REQUEST 的服务器从原地址回包，也被算成'change-IP 有应答' → 假 full-cone",
+              "root_cause": "change_request_answered 只校验 tid，不校验回包源地址",
+              "fix": "正对照要求 src==addr；change 测试要求 src!=addr（回包必须来自另一个套接字）",
+              "fixed_in": "v2.4.56",
+              "verification": "新增回归 test filter_ignored_change_request_is_not_full_cone"
+            },
+            {
+              "id": "RELAY-TEST-FLAKY",
+              "symptom": "routes_frames_between_two_real_tcp_clients 约 1/3 偶发失败",
+              "root_cause": "客户端收到帧时服务端计数线程尚未自增，断言读到旧值",
+              "fix": "改为有界等待（wait_until），连跑 5 次稳定",
+              "fixed_in": "v2.4.56"
+            }
+          ],
+          "matrix_2026_11_15": {
+            "class": "symmetric",
+            "trials_per_path": 30,
+            "direct": "0/30",
+            "relay": "30/30",
+            "relay_counters_delta": {
+              "delivered": 108,
+              "dropped": 0,
+              "rejected": 0
+            },
+            "report": "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
+            "evidence_valid": true,
+            "evidence_valid_for_pass": false,
+            "evidence_clauses": {
+              "two_distinct_machines": true,
+              "nat_is_real_device": true
+            },
+            "first_time_evidence_valid_true": true,
+            "note": "direct 0/30 是**正确结论**而非缺陷：APDM 下广告的 STUN 端口不是入向可达端口，双向打洞在原理上不可能成功（未做端口预测）。抓包给出因果链：持有者出向回打 2 条（192.168.34.222.19901 > 112.5.60.4.57238），但 A 打向 112.5.32.34:2053 的包入向 0 条 —— 被真实 NAT 丢弃。",
+            "reachability_caveat": "报告的 overall_reachability=1.0 是'任意路径可用率' 1-(1-d)(1-r)；中继恒定可用时恒接近 1，不得当直连可达率读。"
+          },
+          "what_it_does_not_solve": [
+            "类别覆盖仍 1/4 + 0 CGNAT：一个出口只对应一类，两个真实出口只能覆盖一类",
+            "本类 direct 0%，不能用来证明'打洞在某类真实 NAT 上有效'",
+            "S6 仍 not_run、R-04 仍不判定；evidence_valid=true 只表示取证合法，不等于该类达标"
+          ],
+          "evidence_boundary": {
+            "evidence_scope": "real-multi-nat",
+            "evidence_valid": true,
+            "clauses": {
+              "two_distinct_machines": true,
+              "nat_is_real_device": true
+            },
+            "s6_status_after": "not_run",
+            "spike_status_changed": false,
+            "g2_claim": false
+          }
         }
       }
     },
@@ -1775,7 +1868,8 @@
         "evidence_valid": false
       },
       "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。",
-      "w36c_harness_integrity": "W3.6c（2026-11-15）：跨主机档位做到可复现 —— 修掉 RESET-NEVER-RAN / ADDR-POOL-COLLISION / LIFECYCLE-SILENT-DEGRADE 三处 harness 缺陷，并给每条加上独立反证（reset_exit_code、ARP 身份 MAC、STUN 真实往返、分类复测 5/5）；最终 direct 四类 30/30、symmetric 0/30、relay 全 30/30"
+      "w36c_harness_integrity": "W3.6c（2026-11-15）：跨主机档位做到可复现 —— 修掉 RESET-NEVER-RAN / ADDR-POOL-COLLISION / LIFECYCLE-SILENT-DEGRADE 三处 harness 缺陷，并给每条加上独立反证（reset_exit_code、ARP 身份 MAC、STUN 真实往返、分类复测 5/5）；最终 direct 四类 30/30、symmetric 0/30、relay 全 30/30",
+      "w37_real_nat": "W3.7（2026-11-15）：真实 NAT 档位落地 —— 持有者 222（真实 NAT → 112.5.32.34）、请求者 A（真实 NAT → 112.5.60.4）、中继 221 仅信令。现场分类修正为 symmetric（APDM，手工报文实验确证），并修掉两个'编造分类'缺陷（CLASSIFY-SINGLE-SAMPLE / CHANGE-REQ-NO-SOURCE-CHECK）与一个偶发测试。30 次/路径：direct 0/30（symmetric 的正确结果，抓包给出因果链）、relay 30/30、dropped=0。首次出现 evidence_valid=true 的单类报告（条款①②均成立），但 S6 仍 not_run、R-04 不判定。"
     },
     "validation": {
       "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
@@ -1794,7 +1888,7 @@
     },
     "remaining_for_g2": [
       "[已修 v2.4.55] 修复 cr-nat NAT 分类缺陷 CLASSIFY-CONE-SUBTYPE-FABRICATED：classify_cone_subtype 比较 NAT 映射地址与 STUN OTHER-ADDRESS（语义无关），只要有 OTHER-ADDRESS 就恒判 restricted-cone，导致 nat probe 的 nat_type 是恒定值而非测量结果。修法：补齐 RFC 3489 Test II/III（发 CHANGE-REQUEST 并检查是否收到应答：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone），再让 nat_type 参与 choose_strategy；修复前 nat_type 不得用于任何策略决策或对外结论。 —— 已修：stun.rs 用 CHANGE-REQUEST 实测过滤行为并新增 filter_behavior_fresh（避免映射探测污染过滤集导致 change-IP 假阳性），classify.rs 删掉 classify_cone_subtype 改走 FilterBehavior；实验室五类实测 5/5 与 nat_behavior.py 一致（此前恒为 restricted-cone）。",
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30；2026-11-15 澄清：判据是**两条独立条款**（两台不同物理主机 + 真实 NAT 设备），加主机只满足前者、永远满足不了后者，且四类需 ≥4 个不同出口（见 nat-matrix.md §13、S6.observations.criteria_decomposition_2026_11_15）；W3.6b（2026-11-15）已把请求者挪到第二台物理主机（A=192.168.1.210），**条款①成立**（evidence_scope=cross-host-lab，direct 四类 30/30、symmetric 0/30、relay 30/30），但条款②（真实 NAT 设备）仍不成立，故 R-04 仍不可判定：仍需真实 NAT 设备级联或在 ≥8 个真实网络实测。",
+      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；**2026-11-15 W3.7 已用两台真实主机 + 两个真实出口完成 symmetric 一类的 real-multi-nat 实测**（direct 0/30、relay 30/30，evidence_valid=true），**但类别覆盖仍 1/4 + 0 CGNAT** —— 一个出口只对应一类，需再准备 ≥3 个不同真实出口（或公网 ≥8 节点）才能闭合矩阵与 R-04",
       "双向打洞 / rendezvous 已在实验室完成（W3.6，2026-11-15）：受限锥 / 端口受限锥 / 双 NAT CGNAT 的 direct 0/30 → 30/30；symmetric 持有者仍 0/30（正确结果）。**新依赖**：信令经中继下发，中继不可用时直连退化回只有全锥可通 —— 中继可用性成为直连的前置条件，须在真实环境中验证。",
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
       "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",

@@ -305,14 +305,19 @@ pub fn probe(state: &Shared, cfg: &Config, mode: &str, timeout_ms: u64) -> Json 
     };
 
     // 3) 用真实 STUN 结果回填报告并重算策略 / CGNAT 启发式
-    let mapped: Vec<String> = results.iter().filter_map(|r| r.mapped.clone()).collect();
-    if !mapped.is_empty() {
+    let observed: Vec<(String, String)> = results
+        .iter()
+        .filter(|r| r.ok)
+        .filter_map(|r| r.mapped.clone().map(|m| (r.server.clone(), m)))
+        .collect();
+    if let Some((_, first)) = observed.first() {
         report.public_udp_egress_ok = true;
-        report.mapped_address = Some(mapped[0].clone());
-        report.nat_type = classify_from_mappings(&mapped);
-        // 非对称不再细分；cone 类必须用 CHANGE-REQUEST 实测过滤行为。
-        // （旧实现比较映射地址与 OTHER-ADDRESS，恒判 restricted-cone，是假测量。）
-        if report.nat_type != NatType::Symmetric {
+        report.mapped_address = Some(first.clone());
+        report.nat_type = classify_from_mappings(&observed);
+        // 只有「≥2 个目的地址映射一致」（= EIM 已实测）时才值得细分 cone 子型。
+        // 映射样本不足（Unknown）或已判 Symmetric 时不得再拿过滤测试覆盖结论：
+        // 过滤只能说明「换源回包进不进得来」，分不清 symmetric 与 port-restricted。
+        if report.nat_type == NatType::FullCone {
             if let Some((h, p)) = results.iter().find(|r| r.ok).and_then(|r| {
                 let (h, p) = r.server.rsplit_once(':')?;
                 Some((h.to_string(), p.parse::<u16>().ok()?))
