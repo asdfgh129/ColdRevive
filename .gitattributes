@@ -1,0 +1,18 @@
+# 行尾与文本规范化
+#
+# 背景：开发在 Windows（core.autocrlf=true）、实验在 Linux（VM / netns）。
+# 若 shell 脚本被检出为 CRLF，Linux 上会以 `bad interpreter: /usr/bin/env bash^M` 失败，
+# 或每条命令尾部多带 \r 而静默走偏。故对脚本类强制 LF。
+
+* text=auto
+
+*.sh        text eol=lf
+*.py        text eol=lf
+*.rs        text eol=lf
+*.toml      text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+
+*.png       binary
+*.jpg       binary
+*.ico       binary
