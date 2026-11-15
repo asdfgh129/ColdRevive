@@ -107,6 +107,48 @@ full-cone 持有者。restricted / port-restricted 的过滤按「该内网 ip:p
 这个「按 NAT 类型分化」的结果本身就是仿真保真度的证据：若四类被仿真成一样，
 结果不会呈现 full-cone 全通、其余全断的形态。
 
+### 2026-11-15（W3.6）双向打洞复测
+
+W3.5② 的 0/30 被定位为**单向打洞**造成：请求侧向持有者映射地址发包，持有者只回
+`NAT_PUNCH_ACK` 不主动回打，受限锥及以上的网关在收到首个入向包时既无 conntrack 条目、
+过滤集里也没有对方，直接丢弃。W3.6 让请求侧把自己的映射候选（`back`）随打洞帧经**中继**
+送达持有者，持有者据此先回打一包，双方各自开洞后再直连。
+
+复测时**修正了一个对照错误**：W3.5② 的 4/5 组把请求方放在 `lan-symmetric` 后面，
+对称 NAT 的映射与目的地址绑定，`back` 永远报不准 —— 那是任何打洞方案都救不了的组合，
+和「持有者侧过滤」混在一起测，等于把两个变量搅在一起。本轮请求方固定为**锥形 NAT**
+（`lan-port-restricted-cone`，其中 port-restricted 持有者一组用 `lan-full-cone`，
+避免同组同网段），隔离出持有者侧过滤这一个变量。
+
+| 组 | 持有者 | 请求方 | `direct` W3.5② → W3.6 | `relay` |
+| :--- | :--- | :--- | :--- | :--- |
+| a | full-cone | port-restricted | 30/30 → **30/30** | 30/30 |
+| b | restricted-cone | port-restricted | **0/30 → 30/30** | 30/30 |
+| c | port-restricted-cone | full-cone | **0/30 → 30/30** | 30/30 |
+| d | symmetric | port-restricted | 0/30 → **0/30** | 30/30 |
+| e | cgnat（双 NAT） | port-restricted | **0/30 → 30/30** | 30/30 |
+| f | restricted-cone | **symmetric** | — → 30/30 | 30/30 |
+
+每组 30 次 × 2 路径，实际 CLI/UDP/HTTP 观测；六轮中继计数均为 `dropped=0`，
+`reset_err=0`（每次试验前清空网关 ipset，避免第 1 次开洞后余下 29 次吃残留状态）。
+
+结论：
+1. 受限锥 / 端口受限锥 / 双 NAT CGNAT 的**直连从 0/30 变成 30/30**，证明缺的是
+   「持有者先回打」这一步，而不是 NAT 不可穿透。
+2. **symmetric 持有者仍 0/30，且这是正确结果**：该网关无 DNAT、映射随目的地址变化，
+   广告出去的 STUN 映射端点根本不是入向可达端口，而它回打时的映射端口请求方又无从得知。
+   这类环境只能走中继 —— 与 WebRTC 的实践一致。
+3. f 组（对称**请求方** + 受限锥**持有者**）30/30 不是异常：`restricted-cone` 的过滤是
+   **address-dependent**（ipset 键为 `(持有者ip, 持有者port, 远端ip)`，不含远端端口），
+   所以持有者回打到错误端口也按 IP 放开了过滤。`port-restricted-cone` 则**完全不使用
+   ipset，只靠 conntrack**（键为 ip+port），两者语义确实不同 —— 这也是分类探针能把它们
+   分开的原因，不是仿真缺陷。
+
+残留问题（未解决，如实记录）：W3.6 的直连**依赖中继做信令**。中继不可用时
+（本轮实测过一次：上一轮 relay 未真正监听，`connect refused`），`back` 送不出去，
+直连会整体退化回「只有全锥可通」。因此中继不是「兜底」，而是双向打洞的**前置依赖**。
+这一点必须写进 S6 的剩余工作项。
+
 ## 证据边界（不得突破）
 
 - 实验室是**同机两个 netns**，不满足 S6 判据的「两台不同物理主机」条款。因此
@@ -138,3 +180,18 @@ sudo bash setup_nat_lab.sh down
    `REJECT_NOT_FOUND`（会被如实计为失败，不是「可达」）。
 8. `pkill -f local_stun.py` 会匹配到远程 shell 自身命令行并把自己杀掉，
    用 `^python3 local_stun` 锚定。
+9. **中继「就绪」不能只看 stats 文件**：上一轮 relay 刚被 terminate 时，同端口重启可能
+   绑定失败而立即退出，但 stats 文件已经写出。此时整轮 `relay` 路径全 `Connection refused`，
+   而 `direct` 又会因回打信令失败整体退化 —— 一份看起来像「打洞失败」的假数据。已加
+   **真实 TCP 连接校验**（`wait_tcp`，失败重启一次，仍失败则明确退出）、以及跑末打印 relay 计数。
+10. **进程清理的 `pkill` 模式必须能匹配绝对路径**：`pkill -f "^coldrevive-relay"` 匹配不到
+   `/opt/coldrevive/repo/target/release/coldrevive-relay`，上一轮的 relay 会泄漏并污染下一轮。
+   改为 `pkill -f "coldrevive-relay --listen"`，并在每组之间 `sleep 2` 让端口释放。
+11. **限流器会伪装成业务失败**：持有者侧回打限流（容量 20、每秒补 2）在连续试验里周期性打空，
+   表现为 direct 成功率固定掉到 23/30，且**失败序号呈严格周期 3**（12/15/18… 或 13/16/19…）。
+   识别方法就是看失败分布是否周期性 —— 周期性失败几乎一定是本地状态机而不是网络。
+   参数已调整为容量 64 / 每秒 16，并补了两条回归用例（旧参数必须复现打空、新参数不得打空）。
+12. **ipset 条目不复位会让成功率虚高**：受限锥网关的 `CONTACTED` 有 600s 超时，不复位则第 1 次
+   开洞后余下 29 次吃老本。`nat_matrix.py --inter-trial-reset` 在每次试验前清空，
+   复位失败会记进该行 `reset_error`，不静默忽略。
+

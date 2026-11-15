@@ -396,6 +396,8 @@ fn spawn_udp(hub: UdpHub, cfg: Config, state: Arc<Mutex<NodeState>>) {
         println!("[{}] UDP 监听 {}:{}", cfg.node_id, cfg.bind,
                  sock.local_addr().map(|a| a.port()).unwrap_or(0));
         let mut buf = [0u8; 65535];
+        // W3.6：回打限流（该帧无需鉴权，不设上限等于把唤醒端口变成放大器）
+        let mut back_rate = cr_nat::holepunch::BackRate::new();
         loop {
             let (n, src) = match sock.recv_from(&mut buf) { Ok(v) => v, Err(_) => continue };
             // M2: STUN Binding 响应交给正在进行的 nat probe（复用同一监听 socket）
@@ -413,6 +415,19 @@ fn spawn_udp(hub: UdpHub, cfg: Config, state: Arc<Mutex<NodeState>>) {
             let frame_type = frame.get("t").and_then(Json::as_str).unwrap_or("");
             if frame_type == cr_nat::holepunch::PUNCH_TYPE {
                 let token = frame.get("token").and_then(Json::as_str).unwrap_or("");
+                // W3.6 双向打洞：请求侧把自身映射候选放在 back 里（可能经中继送达），
+                // 持有者据此**主动回打**，在自身网关上开出过滤项。否则受限锥及以上
+                // 网关会把请求侧的首个入向包当 unsolicited 丢弃（W3.5② 实测 direct 0/30）。
+                let back = cr_nat::holepunch::punch_back(&buf[..n]);
+                if !back.is_empty() && back_rate.allow() {
+                    let sent = cr_nat::holepunch::punch_back_to(
+                        sock, &back, &cfg.node_id, token,
+                        cr_nat::holepunch::PUNCH_BACK_FRAMES);
+                    if sent > 0 {
+                        println!("[{}] punch-back → {} 个候选，真实发出 {} 帧",
+                                 cfg.node_id, back.len(), sent);
+                    }
+                }
                 let _ = sock.send_to(
                     &cr_nat::holepunch::punch_ack(&cfg.node_id, token), src);
                 continue;

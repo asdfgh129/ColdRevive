@@ -94,16 +94,38 @@ def validate_attestation(att: dict, cfg: dict, want_class: str) -> tuple[bool, l
 # 真实测量：只观测真实 CLI 输出，不合成任何应答
 # ---------------------------------------------------------------------------
 
-def run_trials(template: str, trials: int, timeout: float) -> dict:
+def run_trials(template: str, trials: int, timeout: float, reset_cmd: str = "") -> dict:
+    """逐次执行真实唤醒命令并统计成功率。
+
+    `reset_cmd`：每次试验**前**执行的状态复位命令（可选）。实验室里受限锥网关用
+    ipset 记录「已接触过的对端」，条目有 600s 超时；若不复位，第 1 次试验打开过滤项后
+    余下 29 次会因条目残留而"轻易通过"，成功率就不再说明打洞本身有效。复位失败
+    如实记进该行的 `reset_error`，不影响判定口径（失败仍按失败计）。
+    """
     observations: list[dict] = []
     succeeded = 0
     for i in range(1, trials + 1):
         cmd = template.replace("{trial}", str(i))
         row: dict = {"trial": i, "command": cmd}
+        if reset_cmd:
+            try:
+                rp = subprocess.run(reset_cmd, shell=True, capture_output=True,
+                                    text=True, timeout=min(timeout, 10.0), check=False)
+                row["reset_exit_code"] = rp.returncode
+                if rp.returncode != 0:
+                    row["reset_error"] = ((rp.stderr or rp.stdout or "").strip()[:200]
+                                          or f"exit {rp.returncode}")
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                row["reset_error"] = f"{type(exc).__name__}: {exc}"
         try:
             p = subprocess.run(cmd, shell=True, capture_output=True, text=True,
                                timeout=timeout, check=False)
             row["exit_code"] = p.returncode
+            # 记 stderr：CLI 以非 0 退出且 stdout 为空时（`coldrevive-cli` 的错误走 stderr），
+            # 只留「CLI 无输出」会让失败原因彻底不可追溯。
+            err_text = (p.stderr or "").strip()
+            if err_text:
+                row["stderr"] = err_text[:300]
             out = (p.stdout or "").strip()
             if not out:
                 row["error"] = "CLI 无输出"
@@ -177,8 +199,10 @@ def real_mode(args: argparse.Namespace, cfg: dict) -> tuple[dict, int]:
                 EXIT_BLOCKED)
 
     paths = {
-        "direct": run_trials(args.direct_cmd, args.trials, args.timeout),
-        "relay": run_trials(args.relay_cmd, args.trials, args.timeout),
+        "direct": run_trials(args.direct_cmd, args.trials, args.timeout,
+                             getattr(args, "inter_trial_reset", "")),
+        "relay": run_trials(args.relay_cmd, args.trials, args.timeout,
+                            getattr(args, "inter_trial_reset", "")),
     }
     d, r = paths["direct"]["reachability"], paths["relay"]["reachability"]
     overall = None if d is None or r is None else 1.0 - (1.0 - d) * (1.0 - r)
@@ -390,6 +414,9 @@ def main() -> int:
     ap.add_argument("--condition-file", default="")
     ap.add_argument("--lab-mode", action="store_true",
                     help="VM/netns 实验室模式：强制 evidence_valid=false（不满足两台物理主机条款）")
+    ap.add_argument("--inter-trial-reset", default="",
+                    help="每次试验前执行的状态复位命令（实验室用：清空受限锥网关的 ipset "
+                         "接触记录，避免第 1 次打开过滤项后余下试验靠残留状态'通过'）")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
     cfg = load_config()

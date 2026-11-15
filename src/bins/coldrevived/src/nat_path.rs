@@ -361,6 +361,19 @@ fn attempt_json(kind: &str, addr: &str, ok: bool, detail: &str, rtt_ms: u64) -> 
     ])
 }
 
+/// 在**调用方已绑定的同一 socket** 上取一次自身映射地址（W3.6 双向打洞的回打候选）。
+///
+/// 必须与随后打洞/唤醒复用同一 socket：cone NAT 的映射端口随本地端口走，换 socket
+/// 就会报出一个对端打不进来的地址。取不到就返回空 —— 退化为单向打洞，**不伪造候选**。
+fn self_mapped(sock: &UdpSocket, servers: &[(String, u16)], per_try: Duration) -> Vec<String> {
+    for (host, port) in servers.iter().take(2) {
+        let tid = cr_nat::stun::rand_tid();
+        let r = cr_nat::stun::probe_one(sock, host, *port, &tid, per_try);
+        if let Some(m) = r.mapped { return vec![m]; }
+    }
+    Vec::new()
+}
+
 /// 按候选计划真实发包。`only_kind` 供验收 harness 强制走某一条路径（不改变生产默认顺序）。
 pub fn wake_with_plan(
     state: &Shared,
@@ -385,6 +398,65 @@ pub fn wake_with_plan(
         notes: plan.notes.clone(),
     };
 
+    // ------------------------------------------------------------------
+    // W3.6 双向打洞准备：整个唤醒只绑定**一个** socket
+    // ------------------------------------------------------------------
+    // 必须单 socket：`back` 里报给对端的是"本侧映射地址"，而映射端口随本地端口走。
+    // W3.3 的实现每个候选都新绑 `:0`，映射端口不可预知，因此报出去的 back 必然是
+    // 错地址 —— 对端照着打只会打到无人监听的口上。
+    let direct: Vec<&Endpoint> = plan.candidates.iter()
+        .filter(|e| e.kind != EndpointKind::Relay)
+        .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
+        .collect();
+    let mut sock: Option<UdpSocket> = None;
+    let mut back: Vec<String> = Vec::new();
+    // 纯私网候选之间没有 NAT，不需要打洞准备（省一次 STUN 与一次中继往返）。
+    let need_punch_prep = direct.iter().any(|e| e.kind != EndpointKind::PrivateLan);
+    if !direct.is_empty() {
+        match UdpSocket::bind(format!("{}:0", cfg.bind)) {
+            Ok(s) => {
+                if need_punch_prep {
+                    let servers = if cfg.nat_stun_servers.is_empty() {
+                        Traversal::new().stun_servers
+                    } else {
+                        cfg.nat_stun_servers.clone()
+                    };
+                    back = self_mapped(&s, &servers, Duration::from_millis(250));
+                    if back.is_empty() {
+                        out.notes.push("双向打洞：本侧 STUN 未取得映射，退化为单向打洞".into());
+                    } else {
+                        out.notes.push(format!("双向打洞：本侧映射 {}", back[0]));
+                        // 热身：先向直连候选各发一包，给本侧 NAT 建好过滤项，
+                        // 对端随后按 back 回打的包才不会被本侧网关当 unsolicited 丢弃。
+                        for ep in &direct {
+                            holepunch::warmup_punch(&s, ep, &cfg.node_id, &token, 2);
+                        }
+                        // 经中继通知对端回打。中继路径在 W3.5② 实验室 5/5 环境 30/30，
+                        // 用它做信令是唯一在所有 NAT 类型下都成立的选择。
+                        match plan.candidates.iter().find(|e| e.kind == EndpointKind::Relay) {
+                            Some(r) => {
+                                let frame = holepunch::punch_request_with_back(
+                                    &cfg.node_id, &token, &back);
+                                let sig = timeout.min(Duration::from_millis(800));
+                                match holepunch::relay_wake(&r.addr(), &self_id, &peer_id,
+                                                            &frame, sig) {
+                                    Ok(_) => out.notes
+                                        .push("双向打洞：已通过中继让对端回打".into()),
+                                    Err(e) => out.notes.push(
+                                        format!("双向打洞：中继信号失败（{}），退化为单向", e)),
+                                }
+                            }
+                            None => out.notes
+                                .push("双向打洞：计划无中继候选，无法通知对端回打".into()),
+                        }
+                    }
+                }
+                sock = Some(s);
+            }
+            Err(e) => out.notes.push(format!("UDP bind 失败，跳过直连候选: {}", e)),
+        }
+    }
+
     for ep in plan.candidates.iter()
         .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
     {
@@ -405,11 +477,18 @@ pub fn wake_with_plan(
             if out.result.is_ok() { return out; }
             continue;
         }
-        let a = holepunch::wake_via_endpoint(&cfg.bind, ep, &cfg.node_id, &token,
-                                             &wake, 2, timeout);
+        let Some(s) = sock.as_ref() else {
+            out.attempts.push(attempt_json(ep.kind.label(), &ep.addr(), false,
+                                           "UDP bind 失败，未尝试", 0));
+            continue;
+        };
+        let a = holepunch::wake_via_socket(s, ep, &cfg.node_id, &token, &back,
+                                           &wake, 2, timeout);
         let detail = match (&a.error, a.reply.as_ref()) {
-            (Some(e), _) => e.clone(),
-            (None, Some(_)) => format!("punch_sent={} punch_acked={}", a.punch_sent, a.punch_acked),
+            (Some(e), _) => format!("{}（punch_sent={} acked={} peer_punched={}）",
+                                    e, a.punch_sent, a.punch_acked, a.peer_punched),
+            (None, Some(_)) => format!("punch_sent={} punch_acked={} peer_punched={}",
+                                       a.punch_sent, a.punch_acked, a.peer_punched),
             (None, None) => "无应答".into(),
         };
         out.attempts.push(attempt_json(ep.kind.label(), &ep.addr(), a.ok(), &detail, a.rtt_ms));

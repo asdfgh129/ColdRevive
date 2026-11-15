@@ -55,6 +55,31 @@ GATEWAY_WAN = {
     "cgnat": "10.0.0.14",
 }
 
+# 每次试验前的状态复位：清空所有网关 netns 里的 ipset「接触记录」。
+#
+# 受限锥网关用 `ipset hash:ip,port,ip timeout 600` 记「本机接触过谁」。不复位的话，
+# 第 1 次试验一旦打开过滤项，余下 29 次会因为条目残留（600s 内不过期）而轻松通过，
+# 成功率就不再说明打洞本身有效 —— 30/30 会变成「一次成功 + 29 次吃老本」。
+# 复位失败时 nat_matrix 会把它记进该行的 reset_error，不会静默忽略。
+RESET_CMD = (
+    "for ns in $(ip netns list | awk '{print $1}' | grep '^gw-'); do "
+    "ip netns exec $ns sh -c 'for s in $(ipset list -n 2>/dev/null); do ipset flush $s; done' "
+    "2>/dev/null; done; true"
+)
+
+
+def wait_tcp(addr: str, timeout: float = 6.0) -> bool:
+    """真实 TCP 连通性确认（`ip:port`）。只看文件/进程存在不足以证明服务在监听。"""
+    host, _, port = addr.rpartition(":")
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            with socket.create_connection((host, int(port)), timeout=0.6):
+                return True
+        except OSError:
+            time.sleep(0.2)
+    return False
+
 
 def ns_exec(ns: str, argv: list[str], env: dict | None = None,
             timeout: float = 30.0) -> subprocess.CompletedProcess:
@@ -182,9 +207,35 @@ def main() -> int:
     try:
         # 1) 真实中继服务端（宿主）
         relay_stats = work / "relay-stats.json"
-        procs.append(start([relay_bin, "--listen", RELAY,
-                            "--stats-file", str(relay_stats)], work / "relay.log"))
-        time.sleep(0.8)
+        relay_cmd = [relay_bin, "--listen", RELAY, "--stats-file", str(relay_stats)]
+        relay_proc = start(relay_cmd, work / "relay.log")
+        procs.append(relay_proc)
+        # 中继就绪必须用**真实 TCP 连接**确认，不能只看 stats 文件存在。
+        # 上一轮 relay 刚被 terminate 时，同端口重启可能因残留监听 socket 绑定失败而
+        # 立即退出 —— stats 文件已写出，但根本没有监听者，整轮 relay 路径会全 "Connection
+        # refused"，而 direct 路径也会因回打信令失败而集体退化。宁可明确报错，也不产出一份
+        # 看起来像"打洞失败"的假数据。
+        relay_ok = wait_tcp(RELAY, timeout=5.0)
+        for attempt in (1, 2):
+            if relay_ok:
+                break
+            print(f"  中继未就绪，重启第 {attempt} 次", file=sys.stderr)
+            try:
+                relay_proc.terminate()
+                relay_proc.wait(timeout=5)
+            except Exception:  # noqa: BLE001
+                relay_proc.kill()
+            time.sleep(1.0)
+            try:
+                relay_stats.unlink()
+            except OSError:
+                pass
+            relay_proc = start(relay_cmd, work / "relay.log")
+            procs.append(relay_proc)
+            relay_ok = wait_tcp(RELAY, timeout=5.0)
+        if not relay_ok:
+            raise SystemExit(f"中继 {RELAY} 多次重启后仍未接受 TCP 连接，拒绝继续（避免假数据）")
+        time.sleep(0.5)
 
         # 2) 两个净空内的守护进程
         procs.append(start(["ip", "netns", "exec", args.holder_ns, daemon,
@@ -248,6 +299,11 @@ def main() -> int:
                         ["nat", "wake", file_hash, INFOHASH, kind], cli_bin, timeout=args.timeout)
                 print(f"  smoke[{kind}]: ok={r.get('ok')} path={r.get('path')} "
                       f"ack_status={r.get('ack_status')} rtt={r.get('rtt_ms')} err={r.get('error')}")
+                for note in (r.get("notes") or []):
+                    print(f"      note: {note}")
+                for att in (r.get("attempts") or []):
+                    print(f"      attempt: {att.get('kind')} {att.get('addr')} "
+                          f"ok={att.get('ok')} {att.get('detail')}")
             return 0
 
         # 6) 真实矩阵
@@ -255,6 +311,7 @@ def main() -> int:
         cmd = [sys.executable, str(matrix), "--mode", "real", "--class", args.klass,
                "--attest", str(att_path), "--trials", str(args.trials),
                "--timeout", str(args.timeout), "--lab-mode",
+               "--inter-trial-reset", RESET_CMD,
                "--direct-cmd", f"{cli_prefix} stun-mapped",
                "--relay-cmd", f"{cli_prefix} relay",
                "--out", str(out)]
@@ -262,6 +319,11 @@ def main() -> int:
         print(p.stdout.strip()[-1200:])
         if p.stderr.strip():
             print("STDERR:", p.stderr.strip()[-500:], file=sys.stderr)
+        # 中继计数落在报告旁：dropped>0 或 delivered 明显偏少时，本轮结论应被怀疑
+        try:
+            print("  relay stats: " + relay_stats.read_text(encoding="utf-8").strip())
+        except OSError:
+            print("  relay stats: <不可读>")
         return p.returncode
     finally:
         for proc in reversed(procs):
@@ -270,7 +332,7 @@ def main() -> int:
                 proc.wait(timeout=5)
             except Exception:  # noqa: BLE001
                 proc.kill()
-        subprocess.run(["pkill", "-f", "^coldrevive-relay"], capture_output=True)
+        subprocess.run(["pkill", "-f", "coldrevive-relay --listen"], capture_output=True)
 
 
 if __name__ == "__main__":

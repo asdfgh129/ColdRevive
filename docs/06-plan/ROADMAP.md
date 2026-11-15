@@ -231,9 +231,21 @@ ColdRevive
   ③ 由此定位到真实工程缺口：`NAT_PUNCH` 目前**单向**，受限锥及以上必须**双向打洞 / 会合**。
   **所有证据 `evidence_valid=false`、`evidence_scope=vm-namespace-lab`；S3/S5/S6 仍 `not_run`、G2 未达标**；
   机读见 `spikes.json` 的 `m2_progress.scope_done.w35b_lab` 与 `S6.observations.w35b_lab_2026_11_15`。
-- **下一步计划（W3.6 候选）**：① **双向打洞 / 会合**（本轮已量化：非全锥 `direct` 0/30）——
-  双方先互发探测包打开自身过滤项再互发载荷，含 `WAKEUP_REQ`/`NAT_PUNCH` 双向往返与候选地址交换；
-  ② 中继公网生产化（TLS / 身份鉴权 / 多实例注册同步 / 限流 / 空闲超时 / 跨公网时延量测）；
+- **M2/W3.6 已落地（2026-11-15，v2.4.52）双向打洞 / rendezvous**：把 W3.5② 的 `direct` 0/30 归因到
+  具体一步 —— `NAT_PUNCH` 单向，持有者只回 `NAT_PUNCH_ACK` 不主动回打，受限锥及以上网关对首个入向包
+  直接丢弃。实现：① `NAT_PUNCH` 携带 `back`=请求侧自身映射候选（只接受可路由 IPv4、去重、
+  `MAX_BACK_TARGETS=4`、每目标 2 帧防放大）；② 持有者从唤醒监听 socket **主动回打**（回打帧不再带
+  `back`），并加令牌桶限流；③ 请求侧**一次唤醒只绑一个 socket**：同 socket STUN 取自身映射 → 向直连
+  候选热身 → **经中继**送 `back` → 同 socket 逐候选打洞+唤醒；④ `WakeAttempt` 新增 `peer_punched`
+  与 `punch_acked` 分开记。实验室复测（30 次/路径，请求方固定锥形 NAT，修正了 W3.5② 的对照错误）：
+  **受限锥 / 端口受限锥 / 双 NAT CGNAT 的 `direct` 由 0/30 → 30/30**，symmetric 仍 **0/30**（该网关无
+  DNAT、映射随目的变化，正确结果，只能走中继），`relay` 六组均 30/30。**新依赖**：双向打洞以中继为
+  信令通道，中继不可用时直连退化回只有全锥可通 —— 已写入 `remaining_for_g2`。`cargo test` **88/88**、
+  T2 **10/10**。**S3/S5/S6 仍 `not_run`、G2 未达标**；证据 `evidence_valid=false` / `vm-namespace-lab`。
+  机读见 `spikes.json` 的 `m2_progress.scope_done.w36_bidirectional_punch` 与
+  `S6.observations.w36_bidirectional_punch_2026_11_15`。
+- **下一步计划（W3.7 候选）**：① **中继去单点化**（本轮新增依赖：信令必须经中继，须做多实例 / 注册同步 /
+  故障切换，否则中继不可用时直连退化）；② 中继公网生产化（TLS / 身份鉴权 / 限流 / 空闲超时 / 跨公网时延）；
   ③ BT/TCP 打洞；④ M2 其余骨架 crate 的内置引擎与资源治理；
   ⑤ 在用户提供**真实多 NAT（含 CGNAT）环境**后逐类执行 `nat_matrix.py --mode real`（不带 `--lab-mode`），
   由实验执行人手工回填 S6；⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。

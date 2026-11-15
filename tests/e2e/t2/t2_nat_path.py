@@ -520,32 +520,40 @@ class T2:
         except Exception as e:  # 订阅未就绪：如实 FAIL，不跳过、不合成
             relay_ready = False
             self.observations["relay_ready_error"] = str(e)
+        # W3.6 起，`nat wake` 在尝试直连候选时会经中继先发一次「回打信令」（额外 2 帧送达），
+        # 因此中继计数必须按**增量**归因 —— 否则无法区分「中继唤醒本身成功」与「信令流量」。
+        relay_base = self.relay.read_stats() or {}
+        base_delivered = int(relay_base.get("delivered", 0) or 0)
         wake_relay = self.cli("B", "nat", "wake", self.file_hash,
                               self.infohash_stub, "relay")
         self.observations["wake_relay"] = wake_relay
         try:
             relay_stats = self.relay.wait_for_stats(
-                lambda s: s.get("delivered", 0) >= 2, timeout=4)
+                lambda s: int(s.get("delivered", 0) or 0) - base_delivered >= 2, timeout=4)
         except Exception:
             relay_stats = self.relay.read_stats() or {}
         self.observations["relay_stats"] = relay_stats
+        self.observations["relay_stats_baseline"] = relay_base
 
         def c07() -> tuple[bool, str, Any]:
             attempts = wake_relay.get("attempts", [])
+            delivered_delta = int(relay_stats.get("delivered", 0) or 0) - base_delivered
             ok = (relay_ready
                   and wake_relay.get("ok") is True
                   and wake_relay.get("path") == "relay"
                   and wake_relay.get("ack_status") == "OK"
                   and len(attempts) == 1 and attempts[0].get("kind") == "relay"
                   and attempts[0].get("ok") is True
-                  and relay_stats.get("delivered", 0) >= 2
+                  and delivered_delta >= 2
                   and relay_stats.get("dropped", 0) == 0)
             return (ok,
                     f"path={wake_relay.get('path')}, "
-                    f"真实中继 delivered={relay_stats.get('delivered')} "
+                    f"本次唤醒中继增量 delivered=+{delivered_delta} "
+                    f"（累计 {relay_stats.get('delivered')}，基线 {base_delivered}）, "
                     f"dropped={relay_stats.get('dropped')}, "
                     f"ack={wake_relay.get('ack_status')}",
-                    {"wake": wake_relay, "relay_stats": relay_stats})
+                    {"wake": wake_relay, "relay_stats": relay_stats,
+                     "relay_stats_baseline": relay_base})
         self.case("T2-07", "生产中继服务端：真实帧路由 + 持有者订阅的真实 WAKEUP_ACK", c07)
 
         # T2-08：tracker 私网/公网 peer 地址协商

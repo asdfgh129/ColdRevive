@@ -212,3 +212,58 @@ conntrack 真改写；STUN 由 `nat_lab/local_stun.py` 跑在宿主 `br-wan`（1
 - `S6.status` 仍 `not_run`，`matrix_coverage` 不计入真实四类覆盖率，
   R-04 ≥70% 判定**未作出**，`g2_claim=false`。
 - 报告存于 `tests/spikes/s6/reports/lab-20261115/`（gitignored 本地证据）。
+
+## 12. W3.6 双向打洞复测（2026-11-15，同一实验室）
+
+### 动机：把 0/30 归因到具体一步
+W3.5② 的结果是 `direct` 只有全锥 30/30、其余四类 0/30。归因检查指向
+`cr-nat::holepunch` 的**单向**语义：请求侧发 `NAT_PUNCH`，持有者只回 `NAT_PUNCH_ACK`，
+从不主动回打。受限锥及以上的网关在收到**首个入向包**时既无 conntrack 条目、过滤集里也没有
+对方地址，直接丢弃 —— 所以无论请求侧发多少次，持有者都看不到，也就永远回不了 ACK。
+
+### 改动（W3.6）
+1. `NAT_PUNCH` 帧可选携带 `"back":"ip:port,..."`（请求侧自身映射候选），
+   解析侧只接受可路由 IPv4，去重并硬性限制 `MAX_BACK_TARGETS=4`（防放大）。
+2. 持有者收到带 `back` 的帧后，**从唤醒监听 socket 主动回打**（`punch_back_to`），
+   打开自身 NAT 过滤项；回打帧不再携带 `back`，避免链式放大；并由令牌桶限流。
+3. 请求侧一次唤醒**只绑定一个 socket**：先在该 socket 上 STUN 取自身映射（`self_mapped`），
+   再向直连候选热身一包，再经**中继**把带 `back` 的帧送给持有者，最后在同一 socket 上
+   逐候选打洞 + 唤醒。单 socket 是硬要求 —— 映射端口随本地端口走，换 socket 报出去的
+   `back` 必然是错地址。
+4. `WakeAttempt` 新增 `peer_punched`：与 `punch_acked` 分开记，用于区分
+   「对端已回打但我方收不到 ACK」（过滤方向不对称）与「完全没有回打」。
+
+### 复测对照
+修正了 W3.5② 的一处对照错误：当时 4/5 组的请求方在 `lan-symmetric` 后面，对称 NAT 的
+映射随目的地址变化，`back` 永远报不准，是任何打洞方案都救不了的组合。本轮请求方固定为锥形 NAT。
+
+| 组 | 持有者 | 请求方 | `direct` W3.5② → W3.6 | `relay` |
+| :--- | :--- | :--- | :--- | :--- |
+| a | full-cone | port-restricted | 30/30 → **30/30** | 30/30 |
+| b | restricted-cone | port-restricted | **0/30 → 30/30** | 30/30 |
+| c | port-restricted-cone | full-cone | **0/30 → 30/30** | 30/30 |
+| d | symmetric | port-restricted | 0/30 → **0/30** | 30/30 |
+| e | cgnat（双 NAT） | port-restricted | **0/30 → 30/30** | 30/30 |
+| f | restricted-cone | symmetric | — → 30/30 | 30/30 |
+
+30 次/路径，真实 CLI/UDP/HTTP 观测；六轮 `dropped=0`、`reset_err=0`。
+
+### 判定
+- 受限锥 / 端口受限锥 / 双 NAT CGNAT 直接由 0/30 变为 30/30：**缺的是「持有者先回打」这一步**，
+  不是「NAT 不可穿透」。这同时说明 W3.5② 的 0/30 是工程缺口而非环境必然。
+- **symmetric 持有者 0/30 是正确结果**：该网关无 DNAT、映射随目的变化，广告的 STUN 映射端点
+  不是入向可达端口，其回打映射端口请求方又无从得知。只能走中继（与 WebRTC 实践一致）。
+- f 组 30/30 不是异常：`restricted-cone` 的过滤是 address-dependent（ipset 键不含远端端口），
+  回打到错误端口也按 IP 放开；`port-restricted-cone` 不用 ipset、只靠 conntrack（ip+port）。
+  两者语义确实不同，这也是分类探针能把二者分开的依据。
+
+### 新增的依赖（必须记录）
+双向打洞目前**以中继作为信令通道**。中继不可用时 `back` 送不出去，直连会整体退化回
+「只有全锥可通」。本轮实测到过一次这种情况（上一轮 relay 未真正监听，`connect refused`），
+整轮 `relay` 0/30 且 `direct` 从 30/30 掉到 5/30 —— 因此中继不是「兜底」，而是双向打洞的
+**前置依赖**，已加入 `remaining_for_g2`。
+
+### 证据边界
+- 仍为同机两个 netns，`--lab-mode` 强制 `evidence_valid=false`、
+  `evidence_scope=vm-namespace-lab`；`S6.status` 仍 `not_run`，R-04 **未判定**，`g2_claim=false`。
+- 六份报告存于 `tests/spikes/s6/reports/w36-20261115/`（gitignored 本地证据）。

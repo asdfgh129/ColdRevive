@@ -2,6 +2,79 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.52] - 2026-11-15 — M2/W3.6：双向打洞 / rendezvous
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`、
+> `spike_status_changed=false`；`PROTOCOL_VERSION=1`、T0 golden 与 CLI v1 契约未改；
+> workspace 仍 17 crate + 5 bin、std-only 零第三方依赖；`cargo test --workspace --offline` **88/88**。
+
+### 背景
+W3.5② 实验室实测把 S6 的 `direct` 0/30 定位到了**具体一步**：`cr-nat::holepunch` 是单向的 ——
+请求侧发 `NAT_PUNCH`，持有者只回 `NAT_PUNCH_ACK`、从不主动回打。受限锥及以上的网关在收到
+**首个入向包**时既无 conntrack 条目、过滤集里也没有对方地址，直接丢弃，所以无论请求侧发多少次，
+持有者都看不到，也就永远回不了 ACK。也就是说：不是 NAT 不可穿透，而是缺「持有者先回打」。
+
+### 实现
+- `NAT_PUNCH` 帧可选携带 `"back":"ip:port,..."`（请求侧自身映射候选）。解析只接受**可路由 IPv4**
+  （环回/未指定/组播/广播/文档地址一律丢弃），去重并硬性限制 `MAX_BACK_TARGETS=4`、每目标 2 帧
+  —— 该帧无需鉴权，不设上限等于把持有者的唤醒端口变成放大器。
+- 持有者收到带 `back` 的帧后，**从唤醒监听 socket 主动回打**（`punch_back_to`），打开自身 NAT
+  过滤项；回打帧**不再携带 `back`**，避免链式放大。加 `BackRate` 令牌桶限流。
+- 请求侧一次唤醒**只绑定一个 socket**：同一 socket 上 STUN 取自身映射（`self_mapped`）→ 向直连
+  候选「热身」一包 → 经**中继**把带 `back` 的帧送给持有者 → 同一 socket 上逐候选打洞 + 唤醒。
+  单 socket 是硬要求：映射端口随本地端口走，换 socket 报出去的 `back` 必然是错地址
+  （W3.3 每候选新绑 `:0`，这就是它无法双向的原因）。
+- `WakeAttempt` 新增 `peer_punched`，与 `punch_acked` **分开记**：区分「对端已回打但我方收不到
+  ACK」（过滤方向不对称）与「完全没有回打」。这是排查 direct 失败的关键证据，不能并成一个布尔。
+
+### 实验室复测（30 次/路径，真实 CLI/UDP/HTTP）
+先修正了一处**对照错误**：W3.5② 有 4/5 组的请求方在 `lan-symmetric` 后面，对称 NAT 的映射随
+目的地址变化，`back` 永远报不准 —— 那是任何打洞方案都救不了的组合，与「持有者侧过滤」混在同一
+组里测等于两个变量搅在一起。本轮请求方固定为锥形 NAT。
+
+| 组 | 持有者 | 请求方 | `direct` W3.5② → W3.6 | `relay` |
+| :--- | :--- | :--- | :--- | :--- |
+| a | full-cone | port-restricted | 30/30 → **30/30** | 30/30 |
+| b | restricted-cone | port-restricted | **0/30 → 30/30** | 30/30 |
+| c | port-restricted-cone | full-cone | **0/30 → 30/30** | 30/30 |
+| d | symmetric | port-restricted | 0/30 → **0/30** | 30/30 |
+| e | cgnat（双 NAT） | port-restricted | **0/30 → 30/30** | 30/30 |
+| f | restricted-cone | symmetric | — → 30/30 | 30/30 |
+
+六轮 `dropped=0` / `rejected=0` / `reset_err=0`。**symmetric 持有者 0/30 是正确结果**：该网关无
+DNAT、映射随目的地址变化，广告的 STUN 映射端点不是入向可达端口，其回打映射端口请求方又无从得知，
+只能走中继（与 WebRTC 实践一致）。f 组 30/30 也不是异常：`restricted-cone` 的过滤是
+address-dependent（ipset 键不含远端端口），回打到错误端口也按 IP 放开；`port-restricted-cone`
+不使用 ipset、只靠 conntrack（ip+port），二者语义确实不同。
+
+### 新增的依赖（写进 `remaining_for_g2`）
+双向打洞目前**以中继作为信令通道**。中继不可用时 `back` 送不出去，直连会整体退化回「只有全锥可通」。
+本轮实测到过一次（上一轮 relay 未真正监听，`connect refused`）：整轮 `relay` 0/30，`direct` 从
+30/30 掉到 5/30。因此**中继不是兜底，而是双向打洞的前置依赖**。
+
+### 测试方法与工具修正（都由实测暴露）
+- **限流器会伪装成业务失败**：旧参数（容量 20 / 每秒 2）在连续试验里周期性打空，表现为 direct
+  固定 `23/30` 且**失败序号呈严格周期 3**（12/15/18… 与 13/16/19…）。参数改为 64 / 16，并加两条
+  回归用例：旧参数必须复现打空、新参数在 200 次连续唤醒下不得打空。
+- `nat_matrix.py` 新增 `--inter-trial-reset`：每次试验前清空网关 ipset（`CONTACTED` 有 600s 超时，
+  不复位则第 1 次开洞后余下 29 次吃老本，成功率虚高）；复位失败记入 `reset_error` 不静默忽略。
+- `nat_matrix.py` 记录 CLI `stderr`：CLI 非 0 退出且 stdout 为空时，只留「CLI 无输出」会让原因不可追溯。
+- `run_matrix_lab.py`：中继「就绪」改用**真实 TCP 连接**校验（`wait_tcp`，失败重启一次，仍失败则
+  明确退出）；修正 `pkill` 模式（`^coldrevive-relay` 匹配不到绝对路径，会泄漏上一轮进程并污染下一轮）；
+  跑末打印 relay 计数；冒烟输出补充 notes/attempts。
+- T2-07 的中继计数改为**按增量归因**（`delivered-基线 >= 2`）：W3.6 起 `nat wake` 会经中继发一次
+  回打信令（额外 2 帧送达），累计值无法再区分「中继唤醒本身成功」与「信令流量」。
+
+### 校验
+- `cargo test --workspace --offline` **88 passed / 0 failed**（cr-nat 新增 8 个用例：back 帧编解码、
+  非法/不可路由地址拒绝、候选数上限与去重、限流放行与洪泛拒绝、旧参数打空回归、持有者回打真实
+  回环、`back` 端到端送达）。
+- [T2](tests/e2e/t2/README.md) `--mode local` **10/10 PASS**（真实中继服务端，`evidence_valid=false`）。
+- 实验室六份报告：`tests/spikes/s6/reports/w36-20261115/`（gitignored 本地证据）。
+- 机读：`spikes.json` 的 `S6.observations.w36_bidirectional_punch_2026_11_15` 与
+  `m2_progress.scope_done.w36_bidirectional_punch`；证据边界仍 `lab_mode=true` /
+  `evidence_scope=vm-namespace-lab` / `evidence_valid=false`。
+
 ## [2.4.51] - 2026-11-15 — M2/W3.5②：单台 Ubuntu VM 内建成四类 NAT + CGNAT 实验室并实测
 
 > 范围声明：本轮**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`、
