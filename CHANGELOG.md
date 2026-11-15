@@ -2,6 +2,57 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.55] - 2026-11-15 — M2/W3.6c：修 NAT 分类缺陷 + 把跨主机数字做到可复现
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；实验室证据 `evidence_valid=false`，R-04 仍不判定。
+
+### 修复的产品缺陷（Rust）
+- **`CLASSIFY-CONE-SUBTYPE-FABRICATED`**：`coldrevive-cli nat probe` 在五类环境里**恒报 `restricted-cone`**。
+  根因是 `classify.rs::classify_cone_subtype` 比较 **NAT 映射地址**与 **STUN 服务器 OTHER-ADDRESS**
+  —— 两者语义无关，只要服务器返回 OTHER-ADDRESS 就必然判 restricted。这个字段此前是恒定值，不是测量。
+  - `cr-nat/src/stun.rs`：补齐 RFC 3489 Test II/III —— 发 `CHANGE-REQUEST(0x0003)`，
+    按**是否收到应答**判定（change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；
+    均无→port-restricted cone；正向对照都收不到应答→`Unknown`，**不可达不等于受限**）。
+  - `classify.rs`：删除 `classify_cone_subtype`，改为显式 `FilterBehavior` + `classify_from_filter`，
+    逼调用方先拿到测量值再下结论。
+  - **修复中抓到的第二个坑**：过滤测试若复用映射探测的 socket，网关过滤集里已有备用地址，
+    change-IP 回包被放行 → 受限锥被误判成 full cone。故新增 `filter_behavior_fresh()`（每次新建 socket）。
+  - 修复后五类实测：`full-cone / restricted-cone / port-restricted-cone / symmetric / port-restricted-cone(cgnat)`，
+    与 `nat_behavior.py` **5/5** 一致（此前五类同一个值）。
+
+### 修复的 harness 缺陷（`tests/spikes/s6/nat_lab/`）
+- **`RESET-NEVER-RAN`**：`reset.sh` 在 Windows 上用 `write_text()` 落盘变成 CRLF，远端 bash 直接报语法错误
+  （`syntax error near unexpected token`，指向 `do\r`），**ipset 复位从未执行** → 第一次开洞后余下试验全吃老本。
+  改为 `write_bytes()`；每轮记录 `reset_exit_code`，跑完统计非 0 并告警（现五类全为 0）。
+- **`ADDR-POOL-COLLISION`**：物理地址按类写死 `.241`~`.245`，但其中三个**已被家庭 LAN 上的真实设备占用**
+  （A 的 ARP：`.242 → f4-74-88:f2:c6:ee`、`.244 → f4-74-88:f0:12:36`、`.245 → f4-74-88:f0:0d:26`，
+  而 `.241/.243 → 00:0c:29:b6:ab:11` 才是 221）。punch 打到了别人的机器；原预检只 `ping`，
+  "有应答"就算通。改为动态挑空闲地址，并在 `up` 之后**校验应答者身份**：A 对该地址的 ARP MAC
+  必须等于 221 `ens160` 的 MAC，否则直接 `SystemExit`。
+- **`LIFECYCLE-SILENT-DEGRADE`**：物理口 STUN 只用 `nohup` 起、没有 `setsid`，启动它的 ssh 一退出
+  进程就被带走 → 分类 `undetermined`、`nat_type=unknown`，而矩阵照跑、候选只剩中继、
+  成功率依然"漂亮"。改为 `setsid nohup`；驱动在 A 上**真发 STUN binding request** 验证双端点；
+  分类前做 **netns→STUN 收敛等待**（实测单层约 10s，双层 CGNAT **28.8s**）；
+  `undetermined` 或缺 `mapped_address` 一律中止，不产出矩阵。
+
+### 最终实测（30 次/路径，`reset_exit_code` 全 0，地址身份已校验）
+| 持有者（221 netns） | 分类复测 | `direct` | `relay` |
+| :--- | :--- | :--- | :--- |
+| full-cone | full cone | **30/30** | 30/30 |
+| restricted-cone | restricted cone | **30/30** | 30/30 |
+| port-restricted-cone | port-restricted cone | **30/30** | 30/30 |
+| symmetric | symmetric | **0/30** | 30/30 |
+| cgnat（双 NAT） | port-restricted cone | **30/30** | 30/30 |
+
+数字与 2.4.54 一致，但 2.4.54 那批是在三个缺陷同时存在时拿到的（曾一次读成 30/30、
+一次读成 0/30），**不可复现**。本轮价值在于：这些数字现在有独立反证（分类复测 5/5、
+ARP 身份 MAC、`reset_exit_code=0`、STUN 真实往返）。
+
+### 判定未变
+`evidence_scope=cross-host-lab`、条款① `true`、条款② `false`、`evidence_valid=false`；
+**S6 仍 `not_run`，R-04 ≥70% 仍不判定**。修的是产品缺陷与取证可信度，不是门禁结论。
+
 ## [2.4.54] - 2026-11-15 — M2/W3.6b：跨主机档位落地（条款①由 ❌ 变 ✅）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

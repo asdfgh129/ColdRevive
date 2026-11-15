@@ -275,13 +275,34 @@ ColdRevive
   **条款① `true` / 条款② `false`**、`evidence_valid=false`；**R-04 仍未判定**。
   ④ 顺带发现产品缺陷：`coldrevive-cli nat probe` 五类环境全报 `restricted-cone`，根因是
   `classify_cone_subtype` 比较 **NAT 映射地址**与 **STUN OTHER-ADDRESS**（语义无关），
-  该字段此前是恒定值而非测量结果 —— 已单列为待修项。
+  该字段此前是恒定值而非测量结果 —— 已在 v2.4.55 修复。
   机读见 `spikes.json` 的 `m2_progress.scope_done.w36b_cross_host` 与
   `S6.observations.w36b_cross_host_2026_11_15`。
 
-- **下一步计划（W3.7 候选）**：① **修 `cr-nat` NAT 分类缺陷**（`classify_cone_subtype` 恒判
-  restricted-cone）—— 必须先补齐 RFC 3489 Test II/III 的真实过滤测试（CHANGE-REQUEST 发出并检查
-  是否收到应答），再让 `nat_type` 参与策略决策；修复前 **`nat_type` 不得用于决策**；
+- **M2/W3.6c 已落地（2026-11-15，v2.4.55）修分类缺陷 + 把跨主机数字做到可复现**：
+  这一轮没有任何"新功能"，全部是把**不可信的读数**变成可信的，因此价值在于"证据边界"而非能力。
+  ① **修产品缺陷 `CLASSIFY-CONE-SUBTYPE-FABRICATED`**：`cr-nat/src/stun.rs` 补齐 RFC 3489 Test II/III，
+  发 `CHANGE-REQUEST(0x0003)` 并按**是否收到应答**判定（change-IP 应答→full cone；仅 change-port→restricted；
+  均无→port-restricted；正向对照都不通→`Unknown`，**不可达不等于受限**）；`classify.rs` 删掉
+  `classify_cone_subtype`，改用显式 `FilterBehavior` + `classify_from_filter`。
+  修复中又踩到第二个坑：**过滤测试必须用只跟主服务器说过话的 socket**，否则映射探测已把备用地址
+  写进网关过滤集，change-IP 会假阳性地把受限锥读成全锥 —— 故新增 `filter_behavior_fresh()`。
+  ② **修三处 harness 缺陷**（都不报错，只让成功率不可信）：
+  `RESET-NEVER-RAN`（Windows 写出的 `reset.sh` 是 CRLF → 远端 bash 语法错误 → **ipset 复位从未执行**，
+  后面每轮都在吃老本）、`ADDR-POOL-COLLISION`（写死的 `.242/.244/.245` **被家庭 LAN 上真实设备占用**，
+  punch 打给了别人的机器，而原预检只 `ping`，"有应答"就算通）、
+  `LIFECYCLE-SILENT-DEGRADE`（物理口 STUN 没 `setsid`，启动它的 ssh 一退出就被带走 → 分类
+  `undetermined`、`nat_type=unknown`，矩阵却照跑、候选只剩中继、成功率依然漂亮）。
+  ③ **每条数字都配独立反证**：分类复测 5/5、A 对该地址的 **ARP 应答者 MAC == 221 ens160**、
+  每轮 `reset_exit_code=0`、STUN **真实往返** + netns→STUN **收敛等待**（单层约 10s，双层 CGNAT **28.8s**）。
+  ④ **最终实测**（30 次/路径）：`direct` full/restricted/port-restricted/cgnat **30/30**、
+  symmetric **0/30**、`relay` 五类 **30/30**；数字与 v2.4.54 相同，但那一批是在三个缺陷同时存在时
+  拿到的（曾一次 30/30、一次 0/30），**不可复现**。
+  报告仍 `evidence_scope=cross-host-lab`、条款① `true` / 条款② `false`、`evidence_valid=false`，
+  **S6 仍 `not_run`、R-04 仍不判定**。机读见 `S6.observations.w36c_harness_integrity_2026_11_15`。
+
+- **下一步计划（W3.7 候选）**：① ~~修 `cr-nat` NAT 分类缺陷~~（v2.4.55 已完成：CHANGE-REQUEST 实测
+  过滤行为 + `filter_behavior_fresh`，五类实测 5/5 与 `nat_behavior.py` 一致）；
   ② **中继去单点化**（W3.6 新增依赖：信令必须经中继，须做多实例 / 注册同步 / 故障切换，
   否则中继不可用时直连退化）；③ 中继公网生产化（TLS / 身份鉴权 / 限流 / 空闲超时 / 跨公网时延）；
   ④ BT/TCP 打洞；⑤ M2 其余骨架 crate 的内置引擎与资源治理；⑥ 真实 NAT 设备或 ≥8 节点实测，

@@ -14,7 +14,7 @@
 use crate::{http_get, NodeState, NODE_SECRET};
 use cr_core::{nonce_hex, unix_ts, Config, Json};
 use cr_nat::{
-    build_plan, choose_strategy, classify_cone_subtype, classify_from_mappings, cgnat_suspected,
+    build_plan, choose_strategy, classify_from_filter, classify_from_mappings, cgnat_suspected,
     holepunch, is_public_ipv4, local_advertisement, needs_relay, node_id_16, stun::StunResult,
     tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, NatType, PeerAdvertisement,
     Strategy, Traversal, TraversalReport,
@@ -310,9 +310,18 @@ pub fn probe(state: &Shared, cfg: &Config, mode: &str, timeout_ms: u64) -> Json 
         report.public_udp_egress_ok = true;
         report.mapped_address = Some(mapped[0].clone());
         report.nat_type = classify_from_mappings(&mapped);
-        if let Some(first) = results.iter().find(|r| r.ok) {
-            report.nat_type = classify_cone_subtype(
-                first.mapped.as_deref().unwrap_or(""), &first.other);
+        // 非对称不再细分；cone 类必须用 CHANGE-REQUEST 实测过滤行为。
+        // （旧实现比较映射地址与 OTHER-ADDRESS，恒判 restricted-cone，是假测量。）
+        if report.nat_type != NatType::Symmetric {
+            if let Some((h, p)) = results.iter().find(|r| r.ok).and_then(|r| {
+                let (h, p) = r.server.rsplit_once(':')?;
+                Some((h.to_string(), p.parse::<u16>().ok()?))
+            }) {
+                // 过滤测试必须用**只联系过主服务器**的 socket，否则 change-IP 会假阳性
+                // （映射探测已经把备用地址写进网关过滤集）。故这里新建一个。
+                let f = cr_nat::stun::filter_behavior_fresh(&h, p, timeout);
+                report.nat_type = classify_from_filter(f);
+            }
         }
     }
     let wan_ip = report.upnp_external_ip.as_deref()

@@ -156,6 +156,7 @@ W3.5② 的 0/30 被定位为**单向打洞**造成：请求侧向持有者映�
 
 ```bash
 # 在实验机（221）上：把该类网关的 WAN 侧挂到物理 LAN（proxy ARP 代答）
+# 地址由驱动挑选后经 LINK_PHYS_ADDR 传入；手工跑时可省略（退回按类默认地址）
 sudo bash link_physical.sh up restricted-cone
 sudo bash link_physical.sh stun-lan-start     # 192.168.1.221:3478 + .239:3479
 
@@ -165,10 +166,23 @@ python tests/spikes/s6/nat_lab/run_cross_host.py --class restricted-cone --trial
 
 为什么不用「在 A 上加一条到 10.0.0.0/24 的路由」：A 是非管理员账户改不了路由表；
 也不用 macvlan：VMware vSwitch 默认拒绝混杂模式，实测 100% 丢包。因此改成让网关
-**多挂一个物理 LAN 地址**（.241~.245，`192.168.1.241` 起），由 221 在 `ens160` 上
-proxy ARP 代答。数据路径每方向只多一跳、不改写 IP，NAT 语义不被额外一层污染。
+**多挂一个物理 LAN 地址**，由 221 在 `ens160` 上 proxy ARP 代答。
+数据路径每方向只多一跳、不改写 IP，NAT 语义不被额外一层污染。
 
-实测（30 次/路径，`delivered=120 / dropped=0`）：分类 5/5 与建网声明一致，
+### 三道必须过的检查（2026-11-15 踩坑后加的）
+
+它们对应三个**只让成功率变得不可信、却不会报错**的缺陷，详见
+[nat-matrix.md §14.7](../nat-matrix.md)：
+
+| 检查 | 为什么 | 不过会怎样 |
+| :--- | :--- | :--- |
+| **地址身份**：A 对该地址的 ARP 应答者 MAC == 221 `ens160` 的 MAC | 写死的 `.242/.244/.245` 被家庭 LAN 上**真实设备**占用；只 `ping` "有应答"就算通，应答的是邻居的机器 | punch 打到别人机器上，报告只写"唤醒无应答"，看起来像 NAT 不行 |
+| **每轮 `reset_exit_code=0`** | Windows 上 `write_text()` 写出的 `reset.sh` 是 CRLF → 远端 bash 语法错误 → **ipset 复位从未执行** | 第一次开洞后余下试验全吃老本，成功率虚高 |
+| **STUN 真实往返 + 收敛等待** | 物理口 STUN 若没 `setsid`，启动它的 ssh 一退出就被带走；链路刚 up 时 netns→STUN 也有一段不通 | 分类 `undetermined`、`nat_type=unknown`，矩阵静默退化成"只有中继"，成功率仍然漂亮 |
+
+收敛等待实测：单层 NAT 约 10s，双层 CGNAT **28.8s**。
+
+实测（30 次/路径，`delivered=120 / dropped=0`，上述三项全部通过）：分类 5/5 与建网声明一致，
 `direct` 四类 30/30、symmetric 0/30，`relay` 全部 30/30 —— 与同机 netns 的 W3.6
 逐行一致，说明 W3.6 的 30/30 不是「同内核」的假象。
 报告 `evidence_scope=cross-host-lab`、`hosts=['DESKTOP-DJQSC95','ubuntu']`、

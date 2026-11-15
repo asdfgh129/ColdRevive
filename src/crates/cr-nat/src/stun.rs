@@ -13,6 +13,11 @@ pub const BINDING_RESPONSE: u16 = 0x0101;
 pub const ATTR_XOR_MAPPED: u16 = 0x0020;
 pub const ATTR_MAPPED: u16 = 0x0001;
 pub const ATTR_OTHER: u16 = 0x802C;
+/// RFC 3489 CHANGE-REQUEST（RFC 5780 同义）：让服务器**换一个地址/端口**回包。
+/// 这是细分 cone NAT 的唯一手段 —— 见 `filter_behavior_with`。
+pub const ATTR_CHANGE_REQUEST: u16 = 0x0003;
+pub const CHANGE_IP: u32 = 0x04;
+pub const CHANGE_PORT: u32 = 0x02;
 
 #[derive(Debug, Clone)]
 pub struct StunResult {
@@ -126,6 +131,41 @@ pub fn binding_request(tid: &[u8; 12]) -> Vec<u8> {
     v
 }
 
+/// 带 CHANGE-REQUEST 的 Binding 请求（`change_flags` 为 0 时等价于 `binding_request`）。
+///
+/// 注意必须回头修正头部 LENGTH 字段：`binding_request` 写的是 0，追加属性后要改成
+/// 「20 字节头之后的总长度」，否则按 RFC 5389 解析的服务器会把属性当成填充丢弃。
+pub fn binding_request_with(tid: &[u8; 12], change_flags: u32) -> Vec<u8> {
+    let mut v = binding_request(tid);
+    if change_flags != 0 {
+        v.extend_from_slice(&attr(ATTR_CHANGE_REQUEST, &change_flags.to_be_bytes()));
+        let len = (v.len() - 20) as u16;
+        v[2..4].copy_from_slice(&len.to_be_bytes());
+    }
+    v
+}
+
+/// 从请求字节里读出 CHANGE-REQUEST 的 flags（没有该属性则为 0）。
+pub fn change_flags_of(data: &[u8]) -> u32 {
+    if data.len() < 20 {
+        return 0;
+    }
+    let mut off = 20usize;
+    while off + 4 <= data.len() {
+        let atype = u16::from_be_bytes([data[off], data[off + 1]]);
+        let alen = u16::from_be_bytes([data[off + 2], data[off + 3]]) as usize;
+        if off + 4 + alen > data.len() {
+            break;
+        }
+        if atype == ATTR_CHANGE_REQUEST && alen >= 4 {
+            let v = &data[off + 4..off + 8];
+            return u32::from_be_bytes([v[0], v[1], v[2], v[3]]);
+        }
+        off += 4 + ((alen + 3) / 4) * 4;
+    }
+    0
+}
+
 /// 封装一个 STUN 属性：TYPE(2) + LENGTH(2) + VALUE。
 pub fn attr(atype: u16, value: &[u8]) -> Vec<u8> {
     let mut v = Vec::with_capacity(4 + value.len());
@@ -226,8 +266,121 @@ impl StunSession {
     }
 }
 
-pub fn rand_tid() -> [u8; 12] {
-    let mut tid = [0u8; 12];
+/// 单个「CHANGE-REQUEST 是否真有应答」测试。
+///
+/// 从 `sock` 向 `addr` 发一个带 `change_flags` 的 Binding 请求，**只要收到任意来源、
+/// tid 匹配的应答**就算通过。不做源地址过滤：这一项要测的正是「NAT 是否放行那个方向的
+/// 入向包」，应答从哪个地址来由服务器决定（RFC 3489：change-IP 时应从另一地址回）。
+fn change_request_answered<F>(
+    sock: &UdpSocket,
+    addr: std::net::SocketAddr,
+    timeout: Duration,
+    change_flags: u32,
+    recv: &mut F,
+) -> bool
+where
+    F: FnMut(Duration) -> Option<Vec<u8>>,
+{
+    let tid = rand_tid();
+    let req = binding_request_with(&tid, change_flags);
+    if sock.send_to(&req, addr).is_err() {
+        return false;
+    }
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let remain = deadline.saturating_duration_since(std::time::Instant::now());
+        if remain.is_zero() {
+            return false;
+        }
+        match recv(remain) {
+            Some(data) => {
+                if parse_response(&data, &tid).is_some() {
+                    return true;
+                }
+            }
+            None => return false,
+        }
+    }
+}
+
+/// RFC 3489 Test II / III：用 CHANGE-REQUEST 实测 NAT 的**过滤**行为。
+///
+/// 旧实现拿「NAT 映射地址」和「服务器 OTHER-ADDRESS」做比较来猜子类型，两者语义无关，
+/// 只要服务器给了 OTHER-ADDRESS 就恒判 `RestrictedCone` —— 那是恒定值，不是测量。
+/// 真正能分开三类的只有一件事：**换个地址/端口回包，这个包能不能进来**。
+///
+/// 顺序与判据：
+/// 1. 先做**正对照**（不带 CHANGE-REQUEST）：必须能通，否则 STUN 不可达，结论只能是 `Unknown`；
+/// 2. change-IP 有应答 → 入向不限源地址 → `FullCone`；
+/// 3. 仅 change-port 有应答 → 限地址不限端口 → `RestrictedCone`；
+/// 4. 都无应答 → 只放行已建立的映射 → `PortRestrictedCone`。
+///
+/// ⚠ **必须用一个"只跟主服务器说过话"的 socket**。如果这个 socket 之前已经向备用地址发过
+/// 任何包（例如映射探测同时用了主备两台服务器），网关的过滤集里就有那个地址，change-IP 的
+/// 回包会被放行 —— 受限锥/端口受限锥会被误判成 full cone。实验室里正是这么误判过一次，
+/// 所以对外提供的入口是 `filter_behavior_fresh`（自己新建 socket）。
+pub fn filter_behavior_with<F>(
+    sock: &UdpSocket,
+    host: &str,
+    port: u16,
+    timeout: Duration,
+    mut recv: F,
+) -> crate::classify::FilterBehavior
+where
+    F: FnMut(Duration) -> Option<Vec<u8>>,
+{
+    use crate::classify::FilterBehavior;
+    let server = format!("{}:{}", host, port);
+    let addr = match std::net::ToSocketAddrs::to_socket_addrs(&server) {
+        Ok(mut a) => match a.next() {
+            Some(a) => a,
+            None => return FilterBehavior::Unknown,
+        },
+        Err(_) => return FilterBehavior::Unknown,
+    };
+    if !change_request_answered(sock, addr, timeout, 0, &mut recv) {
+        return FilterBehavior::Unknown;
+    }
+    if change_request_answered(sock, addr, timeout, CHANGE_IP, &mut recv) {
+        return FilterBehavior::FullCone;
+    }
+    if change_request_answered(sock, addr, timeout, CHANGE_PORT, &mut recv) {
+        return FilterBehavior::RestrictedCone;
+    }
+    FilterBehavior::PortRestrictedCone
+}
+
+/// 过滤行为分类的对外入口：**自建 socket**，保证测试期间只与主服务器通信过。
+///
+/// 为什么不复用监听/映射探测的 socket：那个 socket 往往已经联系过备用地址
+/// （映射探测通常配置多台 STUN），过滤集里存在该地址会让 change-IP 测试假阳性，
+/// 把 restricted / port-restricted 误判成 full cone。过滤行为是 NAT 映射的属性，
+/// 不需要与唤醒端口一致，新建 socket 就能测得准。
+pub fn filter_behavior_fresh(host: &str, port: u16, timeout: Duration) -> crate::classify::FilterBehavior {
+    match std::net::UdpSocket::bind("0.0.0.0:0") {
+        Ok(sock) => filter_behavior(&sock, host, port, timeout),
+        Err(_) => crate::classify::FilterBehavior::Unknown,
+    }
+}
+
+/// `filter_behavior_with` 的自带接收版本（独占 socket 时使用）。
+pub fn filter_behavior(
+    sock: &UdpSocket,
+    host: &str,
+    port: u16,
+    timeout: Duration,
+) -> crate::classify::FilterBehavior {
+    let mut buf = [0u8; 2048];
+    filter_behavior_with(sock, host, port, timeout, |remain| {
+        let _ = sock.set_read_timeout(Some(remain));
+        match sock.recv_from(&mut buf) {
+            Ok((n, _)) => Some(buf[..n].to_vec()),
+            Err(_) => None,
+        }
+    })
+}
+
+pub fn rand_tid() -> [u8; 12] {    let mut tid = [0u8; 12];
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
@@ -328,6 +481,92 @@ mod tests {
         let data = build_response(&tid, &attr_bytes);
         let p = parse_response(&data, &tid).unwrap();
         assert_eq!(p.mapped.as_deref(), Some("9.9.9.9:1234"));
+    }
+
+    /// 起一个「按指定能力回包」的假 STUN：`allow_ip` / `allow_port` 决定是否回应
+    /// 带 CHANGE-IP / CHANGE-PORT 的请求（回应从另一个端口发出，客户端不校验源地址）。
+    fn spawn_filter_server(allow_ip: bool, allow_port: bool) -> std::net::SocketAddr {
+        let srv = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let alt = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let main = srv.local_addr().unwrap();
+        thread::spawn(move || {
+            let mut buf = [0u8; 2048];
+            loop {
+                let (n, peer) = match srv.recv_from(&mut buf) {
+                    Ok(v) => v,
+                    Err(_) => return,
+                };
+                if n < 20 {
+                    continue;
+                }
+                let flags = change_flags_of(&buf[..n]);
+                let tid: [u8; 12] = buf[8..20].try_into().unwrap();
+                let resp = build_response(&tid, &build_xor_mapped(peer));
+                if flags & CHANGE_IP != 0 {
+                    if allow_ip {
+                        let _ = alt.send_to(&resp, peer);
+                    }
+                } else if flags & CHANGE_PORT != 0 {
+                    if allow_port {
+                        let _ = alt.send_to(&resp, peer);
+                    }
+                } else {
+                    let _ = srv.send_to(&resp, peer);
+                }
+            }
+        });
+        main
+    }
+
+    #[test]
+    fn change_request_flags_are_encoded() {
+        let tid = [7u8; 12];
+        let req = binding_request_with(&tid, CHANGE_IP);
+        assert_eq!(req.len(), 28, "20 字节头 + 8 字节 CHANGE-REQUEST 属性");
+        assert_eq!(
+            u16::from_be_bytes([req[2], req[3]]),
+            8,
+            "LENGTH 字段必须等于头之后的总长度"
+        );
+        assert_eq!(change_flags_of(&req), CHANGE_IP);
+        // 不带 flags 时必须与原始请求逐字节一致（不引入额外属性）
+        assert_eq!(binding_request_with(&tid, 0), binding_request(&tid));
+    }
+
+    #[test]
+    fn filter_full_cone_answers_change_ip() {
+        let srv = spawn_filter_server(true, false);
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let f = filter_behavior(&client, "127.0.0.1", srv.port(), Duration::from_millis(400));
+        assert_eq!(f, crate::classify::FilterBehavior::FullCone);
+    }
+
+    #[test]
+    fn filter_restricted_cone_answers_only_change_port() {
+        let srv = spawn_filter_server(false, true);
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let f = filter_behavior(&client, "127.0.0.1", srv.port(), Duration::from_millis(400));
+        assert_eq!(f, crate::classify::FilterBehavior::RestrictedCone);
+    }
+
+    #[test]
+    fn filter_port_restricted_when_no_change_answer() {
+        let srv = spawn_filter_server(false, false);
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let f = filter_behavior(&client, "127.0.0.1", srv.port(), Duration::from_millis(400));
+        assert_eq!(f, crate::classify::FilterBehavior::PortRestrictedCone);
+    }
+
+    #[test]
+    fn filter_unknown_when_server_unreachable() {
+        // 正对照都收不到应答：不得把「STUN 不可达」当成「端口受限」。
+        let dead_port = {
+            let s = UdpSocket::bind("127.0.0.1:0").unwrap();
+            s.local_addr().unwrap().port()
+        };
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let f = filter_behavior(&client, "127.0.0.1", dead_port, Duration::from_millis(200));
+        assert_eq!(f, crate::classify::FilterBehavior::Unknown);
     }
 
     #[test]

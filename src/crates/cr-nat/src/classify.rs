@@ -45,7 +45,7 @@ pub fn classify_from_mappings(mapped: &[String]) -> NatType {
         v
     };
     if unique.len() == 1 {
-        return NatType::FullCone; // 保守：至少是非对称；细分见 classify_cone_subtype
+        return NatType::FullCone; // 至少是非对称（EIM）；细分必须靠 classify_from_filter 实测
     }
     // 比较端口
     let ports: std::collections::HashSet<&str> =
@@ -57,24 +57,30 @@ pub fn classify_from_mappings(mapped: &[String]) -> NatType {
     }
 }
 
-/// 利用 OTHER-ADDRESS 把 cone 细分为 full / restricted / port-restricted。
-/// `other` 是 STUN OTHER-ADDRESS；`mapped` 是 XOR-MAPPED-ADDRESS。
-pub fn classify_cone_subtype(mapped: &str, other: &Option<String>) -> NatType {
-    match other {
-        None => NatType::FullCone, // 无 OTHER-ADDRESS 信息，保守归 full
-        Some(o) => {
-            let m_ip = mapped.split(':').next().unwrap_or("");
-            let o_ip = o.split(':').next().unwrap_or("");
-            let m_port = mapped.rsplit(':').next().unwrap_or("");
-            let o_port = o.rsplit(':').next().unwrap_or("");
-            if o_ip != m_ip {
-                NatType::RestrictedCone // 不同 IP 的 OTHER-ADDRESS → 只限制 IP
-            } else if o_port != m_port {
-                NatType::PortRestrictedCone // 同 IP 不同端口 → 限制端口
-            } else {
-                NatType::FullCone
-            }
-        }
+/// RFC 3489 Test II / III 的真实观测结果（由 `stun::filter_behavior` 产出）。
+///
+/// 这个枚举存在的原因本身就是一条教训：细分 cone 子型**不可能**由「映射地址长什么样」
+/// 推出来，只能由「换个地址/端口回包能不能进来」测出来。没有这一步，任何子类型结论
+/// 都是猜的。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterBehavior {
+    /// change-IP 有应答：入向不限源地址。
+    FullCone,
+    /// 仅 change-port 有应答：限源地址、不限源端口。
+    RestrictedCone,
+    /// 两种 change 都无应答：只放行已有映射（端口受限）。
+    PortRestrictedCone,
+    /// 连正对照都没通 —— STUN 不可达，不能据此推断任何过滤行为。
+    Unknown,
+}
+
+/// 把实测的过滤行为映射为 NAT 类型。
+pub fn classify_from_filter(f: FilterBehavior) -> NatType {
+    match f {
+        FilterBehavior::FullCone => NatType::FullCone,
+        FilterBehavior::RestrictedCone => NatType::RestrictedCone,
+        FilterBehavior::PortRestrictedCone => NatType::PortRestrictedCone,
+        FilterBehavior::Unknown => NatType::Unknown,
     }
 }
 
@@ -144,18 +150,21 @@ mod tests {
     }
 
     #[test]
-    fn cone_subtype_uses_other_address() {
+    fn filter_behavior_maps_to_nat_type() {
+        assert_eq!(classify_from_filter(FilterBehavior::FullCone), NatType::FullCone);
         assert_eq!(
-            classify_cone_subtype("1.2.3.4:5000", &Some("1.2.3.4:5000".into())),
-            NatType::FullCone
-        );
-        assert_eq!(
-            classify_cone_subtype("1.2.3.4:5000", &Some("9.9.9.9:5000".into())),
+            classify_from_filter(FilterBehavior::RestrictedCone),
             NatType::RestrictedCone
         );
         assert_eq!(
-            classify_cone_subtype("1.2.3.4:5000", &Some("1.2.3.4:6000".into())),
+            classify_from_filter(FilterBehavior::PortRestrictedCone),
             NatType::PortRestrictedCone
         );
+    }
+
+    #[test]
+    fn unreachable_stun_is_not_a_port_restricted_conclusion() {
+        // 回归用例：没有正对照（普通请求都收不到应答）时不得推断任何过滤行为。
+        assert_eq!(classify_from_filter(FilterBehavior::Unknown), NatType::Unknown);
     }
 }

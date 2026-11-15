@@ -1439,7 +1439,14 @@
               "connections": 63,
               "registered": 62
             },
-            "consistency_with_w36": "与同机 netns 的 W3.6 逐行一致 → 30/30 不是「同内核」造成的假象"
+            "consistency_with_w36": "与同机 netns 的 W3.6 逐行一致 → 30/30 不是「同内核」造成的假象",
+            "evidence_conditions": {
+              "inter_trial_reset": "每轮试验前 flush 全部网关 netns 的 ipset；五类 reset_exit_code 全为 0",
+              "gateway_address_identity": "物理地址动态挑选，且 A 对该地址的 ARP 应答者 MAC == 221 ens160 的 MAC（00:0c:29:b6:ab:11）",
+              "stun_readiness": "A 侧真发 STUN binding request + netns→STUN 收敛等待（单层约 10s，双层 CGNAT 28.8s）",
+              "classification_precondition": "分类复测为 undetermined 或 nat_probe 无 mapped_address 则中止，不产出矩阵"
+            },
+            "numbers_are_reproduced_after": "见 w36c_harness_integrity_2026_11_15"
           },
           "conclusions": [
             "条款①（两端在不同物理主机）**成立**：machine_ids 的 host 部分为 DESKTOP-DJQSC95 / ubuntu。",
@@ -1453,7 +1460,21 @@
             "root_cause": "cr-nat/src/classify.rs::classify_cone_subtype 比较的是 **NAT 映射地址** 与 **STUN 服务器 OTHER-ADDRESS**，两者语义无关；只要服务器返回 OTHER-ADDRESS（正常情况都会返回），IP 必然不同，于是恒判 RestrictedCone。该字段此前是恒定值，不是测量结果。",
             "impact": "nat_type 参与 choose_strategy，错误的分类会误导穿透策略选择；不得据此宣称任何 NAT 类型结论",
             "authoritative_alternative": "nat_behavior.py（RFC 3489 Test II/III，本轮 5/5 正确）",
-            "fix_plan": "在 Rust 客户端补齐 CHANGE-REQUEST（0x0003）发送与「是否收到应答」判定：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；都无→port-restricted cone；再让 nat_type 参与决策。修复前 nat_type 不得用于决策。"
+            "fix_plan": "在 Rust 客户端补齐 CHANGE-REQUEST（0x0003）发送与「是否收到应答」判定：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；都无→port-restricted cone；再让 nat_type 参与决策。修复前 nat_type 不得用于决策。",
+            "status": "fixed",
+            "fixed_in": "v2.4.55",
+            "fix": "cr-nat/src/stun.rs 补齐 RFC 3489 Test II/III：发 CHANGE-REQUEST(0x0003)，按“是否收到应答”判定 —— change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone；无 CHANGE-REQUEST 的正向对照都收不到应答→Unknown（不可达≠受限）。classify.rs 删除 classify_cone_subtype，改为显式 FilterBehavior + classify_from_filter，逼调用方先拿测量值再下结论。",
+            "second_trap": "过滤测试必须用只跟主服务器说过话的 socket：映射探测同时问了主备两台 STUN，网关过滤集里已有备用地址，change-IP 回包被放行 → 受限锥被误判成 full cone。故新增 filter_behavior_fresh()。",
+            "post_fix_measurement": {
+              "full-cone": "full-cone",
+              "restricted-cone": "restricted-cone",
+              "port-restricted-cone": "port-restricted-cone",
+              "symmetric": "symmetric",
+              "cgnat": "port-restricted-cone",
+              "agreement_with_nat_behavior_py": "5/5",
+              "before_fix": "五类恒为 restricted-cone（恒定值，非测量）"
+            },
+            "gate_impact": "无。修的是产品缺陷；S6 仍 not_run、evidence_valid 仍 false、R-04 仍不判定。"
           },
           "evidence_boundary": {
             "lab_mode": true,
@@ -1464,6 +1485,95 @@
               "nat_is_real_device": false
             },
             "note": "合成 NAT + 两端不同主机；仍不满足条款②，不得据此判定 R-04 或宣称 S6 达标"
+          },
+          "evidence_valid_for_pass": false,
+          "s6_status_after": "not_run",
+          "spike_status_changed": false,
+          "g2_claim": false
+        },
+        "w36c_harness_integrity_2026_11_15": {
+          "recorded_at": "2026-11-15",
+          "context": "把 §14.4 的数字做到可复现的过程中，发现三处“看起来有数字、其实没测”的 harness 缺陷。三者都不输出错误、不改变报告结构，只让成功率变得不可信 —— 所以必须逐一修掉并留下反证。",
+          "defects": [
+            {
+              "id": "RESET-NEVER-RAN",
+              "symptom": "每轮试验前应 flush 网关 ipset，实际从未执行；第一次开洞后余下试验全吃老本",
+              "evidence": "reset.sh: line 1: syntax error near unexpected token `$'do\\r''",
+              "root_cause": "Python 在 Windows 上 write_text() 把 \\n 翻成 \\r\\n，远端 bash 语法错误",
+              "fix": "按字节落盘 write_bytes(); 每轮记录 reset_exit_code 并在末尾统计非 0 告警",
+              "verification": "五类 30 轮的 reset_exit_code 全为 0"
+            },
+            {
+              "id": "ADDR-POOL-COLLISION",
+              "symptom": "restricted/symmetric/cgnat 三类 direct 0/30，detail 只写「唤醒无应答」",
+              "evidence": "A 的 ARP：.241/.243 → 00:0c:29:b6:ab:11(=221)，.242 → f4-74-88:f2:c6:ee，.244 → f4-74-88:f0:12:36，.245 → f4-74-88:f0:0d:26；gw-restricted-cone 的 WAN 抓包只有出向包、无入向包",
+              "root_cause": "物理地址按类写死 .241~.245，其中三个已被家庭 LAN 上的真实设备占用；原预检只 ping，'有应答'就算通 —— 应答的是别的机器",
+              "fix": "地址改为动态挑选（.236~.253 中挑 ARP 表里没有外来 MAC 的），up 之后校验「该地址的 ARP 应答者 MAC == 221 ens160 的 MAC」，不等即 SystemExit",
+              "verification": "五类均打印 A → <addr> 的应答者 MAC = 00:0c:29:b6:ab:11"
+            },
+            {
+              "id": "LIFECYCLE-SILENT-DEGRADE",
+              "symptom": "symmetric/cgnat 一开始分类 undetermined、nat_type=unknown，但矩阵照跑，候选只剩 private-lan+relay，成功率仍然好看",
+              "evidence": "ss 只剩 10.0.0.1/10.0.0.2:3478；物理口 STUN 的 pid 文件为空",
+              "root_cause": "物理口 STUN 只用 nohup 起、没有 setsid，启动它的 ssh 一退出进程就被带走；同时驱动没有对 undetermined / 缺 mapped_address 做硬失败",
+              "fix": "setsid nohup；A 侧真发 STUN binding request 验证双端点；分类前做 netns→STUN 收敛等待；undetermined 或缺 mapped_address 直接中止",
+              "verification": "收敛实测：restricted 0.0s（已热）、cgnat 28.8s；之后五类分类 5/5 与建网声明一致"
+            }
+          ],
+          "final_matrix_2026_11_15": {
+            "trials_per_path": 30,
+            "holder_host": "ubuntu (192.168.1.221)",
+            "requester_host": "DESKTOP-DJQSC95 (192.168.1.210)",
+            "results": {
+              "full-cone": {
+                "direct": "30/30",
+                "relay": "30/30",
+                "classification": "full cone"
+              },
+              "restricted-cone": {
+                "direct": "30/30",
+                "relay": "30/30",
+                "classification": "restricted cone"
+              },
+              "port-restricted-cone": {
+                "direct": "30/30",
+                "relay": "30/30",
+                "classification": "port-restricted cone"
+              },
+              "symmetric": {
+                "direct": "0/30",
+                "relay": "30/30",
+                "classification": "symmetric"
+              },
+              "cgnat": {
+                "direct": "30/30",
+                "relay": "30/30",
+                "classification": "port-restricted cone"
+              }
+            },
+            "relay_counters": {
+              "delivered": 120,
+              "dropped": 0,
+              "rejected": 0
+            },
+            "reset_exit_codes": "五类全为 0"
+          },
+          "note": "cgnat 的 nat_type 报 port-restricted-cone 而非 cgnat：nat_type 现在只表达**实测过滤/映射行为**（EIM + APDF）；CGNAT 标记来自独立启发式 cgnat_suspected（出口落在 100.64/10 等），本实验室外层出口是 192.168.1.236，故不触发。二者不冲突，不得互相替代。",
+          "lessons": [
+            "「ping 得通」不等于「通到了谁」：跨主机实验必须校验应答者身份（MAC），不能只看可达性。",
+            "成功率这个数字不会提示自己是否真的测过：每一条都要有独立反证（分类复测 / 身份 MAC / reset_exit_code / STUN 往返）。",
+            "Windows 写远端 shell 脚本必须按字节（LF），否则复位类脚本会静默失效。",
+            "通过 ssh 起的长期进程必须 setsid，否则会话结束即被带走，且失败会以“静默降级”的形式出现。"
+          ],
+          "evidence_boundary": {
+            "lab_mode": true,
+            "evidence_scope": "cross-host-lab",
+            "evidence_valid": false,
+            "clauses": {
+              "two_distinct_machines": true,
+              "nat_is_real_device": false
+            },
+            "note": "与前一轮相同：条款①成立、条款②不成立；本轮只是把数字做到可复现，不改变门禁结论"
           },
           "evidence_valid_for_pass": false,
           "s6_status_after": "not_run",
@@ -1664,7 +1774,8 @@
         "cargo_test": "88 passed / 0 failed（新增 8 个 cr-nat 用例）",
         "evidence_valid": false
       },
-      "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。"
+      "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。",
+      "w36c_harness_integrity": "W3.6c（2026-11-15）：跨主机档位做到可复现 —— 修掉 RESET-NEVER-RAN / ADDR-POOL-COLLISION / LIFECYCLE-SILENT-DEGRADE 三处 harness 缺陷，并给每条加上独立反证（reset_exit_code、ARP 身份 MAC、STUN 真实往返、分类复测 5/5）；最终 direct 四类 30/30、symmetric 0/30、relay 全 30/30"
     },
     "validation": {
       "cargo_test_workspace_offline": "80 passed / 0 failed（W3.3 基线 74 + W3.4 新增 6：relay_server 4 项真实 TCP 路由/丢弃/拒绝/帧长单测，relay_sub 2 项）",
@@ -1682,7 +1793,7 @@
       "w35_regressions": "2026-11-14 W3.5① 全量回归：cargo test --workspace --offline 80 passed / 0 failed；cargo build --release --workspace --offline OK；T0 --mode real 21/21 PASS、evidence_valid=true（需设置 COLDREVIVE_DAEMON / COLDREVIVE_CLI / T0_DOWNLOADER 三个真实二进制环境变量）；T1 --self-test 11/11；T2 --self-test 3/3 + --mode local 10/10 PASS（报告 tests/e2e/t2/reports/t2-20261114T135902Z-local.json）；scripts/build_docs.py --check 36 份 Markdown 校验通过"
     },
     "remaining_for_g2": [
-      "[必修] 修复 cr-nat NAT 分类缺陷 CLASSIFY-CONE-SUBTYPE-FABRICATED：classify_cone_subtype 比较 NAT 映射地址与 STUN OTHER-ADDRESS（语义无关），只要有 OTHER-ADDRESS 就恒判 restricted-cone，导致 nat probe 的 nat_type 是恒定值而非测量结果。修法：补齐 RFC 3489 Test II/III（发 CHANGE-REQUEST 并检查是否收到应答：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone），再让 nat_type 参与 choose_strategy；修复前 nat_type 不得用于任何策略决策或对外结论。",
+      "[已修 v2.4.55] 修复 cr-nat NAT 分类缺陷 CLASSIFY-CONE-SUBTYPE-FABRICATED：classify_cone_subtype 比较 NAT 映射地址与 STUN OTHER-ADDRESS（语义无关），只要有 OTHER-ADDRESS 就恒判 restricted-cone，导致 nat probe 的 nat_type 是恒定值而非测量结果。修法：补齐 RFC 3489 Test II/III（发 CHANGE-REQUEST 并检查是否收到应答：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone），再让 nat_type 参与 choose_strategy；修复前 nat_type 不得用于任何策略决策或对外结论。 —— 已修：stun.rs 用 CHANGE-REQUEST 实测过滤行为并新增 filter_behavior_fresh（避免映射探测污染过滤集导致 change-IP 假阳性），classify.rs 删掉 classify_cone_subtype 改走 FilterBehavior；实验室五类实测 5/5 与 nat_behavior.py 一致（此前恒为 restricted-cone）。",
       "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；W3.5① 已交付 nat_matrix.py 执行协议与干跑，W3.5②（2026-11-15）已在 VM 实验室完成五类环境的真实矩阵（full-cone direct 30/30、其余 direct 0/30、relay 全部 30/30，lab 模式 evidence_valid=false），仍须在**两台不同物理主机**上复测并签 attestation 才能作出 R-04 判定；W3.6（2026-11-15）在同一实验室补充双向打洞复测：direct 仅 symmetric 仍 0/30，其余 30/30；2026-11-15 澄清：判据是**两条独立条款**（两台不同物理主机 + 真实 NAT 设备），加主机只满足前者、永远满足不了后者，且四类需 ≥4 个不同出口（见 nat-matrix.md §13、S6.observations.criteria_decomposition_2026_11_15）；W3.6b（2026-11-15）已把请求者挪到第二台物理主机（A=192.168.1.210），**条款①成立**（evidence_scope=cross-host-lab，direct 四类 30/30、symmetric 0/30、relay 30/30），但条款②（真实 NAT 设备）仍不成立，故 R-04 仍不可判定：仍需真实 NAT 设备级联或在 ≥8 个真实网络实测。",
       "双向打洞 / rendezvous 已在实验室完成（W3.6，2026-11-15）：受限锥 / 端口受限锥 / 双 NAT CGNAT 的 direct 0/30 → 30/30；symmetric 持有者仍 0/30（正确结果）。**新依赖**：信令经中继下发，中继不可用时直连退化回只有全锥可通 —— 中继可用性成为直连的前置条件，须在真实环境中验证。",
       "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",

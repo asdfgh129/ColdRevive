@@ -9,9 +9,15 @@
 #   实验机的 WAN 侧原本是内部网桥 br-wan（10.0.0.0/24），另一台主机（A，Windows）
 #   根本不知道 10.0.0.0/24 怎么走；要让它可达，通常得在 A 上加一条静态路由 ——
 #   那需要管理员权限，且会改动对方主机的网络配置。
-#   这里换成**相反的方向**：给网关的 WAN 口再挂一个**物理 LAN 上的地址**
-#   （192.168.1.241~.245 之一），由实验机在物理网卡上做 proxy ARP 替它应答。
+#   这里换成**相反的方向**：给网关的 WAN 口再挂一个**物理 LAN 上的地址**，
+#   由实验机在物理网卡上做 proxy ARP 替它应答。
 #   于是 A 看到的对端就在同一个二层网络里，A 端**零改动、零权限**。
+#
+# ⚠ 地址不能写死（2026-11-15 实测教训）：
+#   原先按类固定用 .241~.245，但用户家庭 LAN 上 .242/.244/.245 已被**真实设备**占用，
+#   于是 punch 全发给了别人的机器，报告里却只写「唤醒无应答」。现在地址由
+#   `run_cross_host.py` 挑选空闲地址后经 `LINK_PHYS_ADDR` 传入，并在 up 之后
+#   校验「该地址的 ARP 应答者 MAC == 本机 ens160 的 MAC」才算就绪。
 #
 # 数据路径（每个方向都只多一跳，不改写 IP）：
 #   A(192.168.1.210) --ARP--> 实验机 ens160 --路由 192.168.1.24X/32--> br-wan
@@ -55,6 +61,10 @@ gw_ns() {
   esac
 }
 gw_phys() {
+  # 显式覆盖优先：2026-11-15 实测发现固定地址池会**撞上真实设备**
+  # （用户家里的 .242/.244/.245 已被其它主机占用），于是由驱动挑选空闲地址并经
+  # LINK_PHYS_ADDR 传入；缺省仍用下面这张表，但**必须**配合身份校验（见 run_cross_host.py）。
+  if [[ -n "${LINK_PHYS_ADDR:-}" ]]; then echo "$LINK_PHYS_ADDR"; return 0; fi
   case "$1" in
     full-cone)            echo "192.168.1.241" ;;
     restricted-cone)      echo "192.168.1.242" ;;
@@ -121,6 +131,9 @@ cmd_up() {
 
   printf '%s %s %s %s %s\n' "$cls" "$ns" "$wan" "$phys" "$src" > /tmp/coldrevive-link-physical.state
   echo "已暴露 $cls → $phys（netns=$ns wan=$wan src=$src ${extra:-}）"
+  # 机器可读的身份行：对端主机据此校验「这个地址确实是实验机在应答」，
+  # 而不是碰巧有别的设备占着同一地址（2026-11-15 真实踩过这个坑）。
+  echo "PHYS=$phys MAC=$(cat "/sys/class/net/$PHYS_IF/address")"
 }
 
 cmd_down() {
@@ -176,11 +189,14 @@ cmd_stun_lan_start() {
   if ! ip -4 -br addr show "$PHYS_IF" | grep -q "192.168.1.239"; then
     ip addr add 192.168.1.239/32 dev "$PHYS_IF" 2>/dev/null || true
   fi
-  nohup python3 "$HERE/local_stun.py" --primary 192.168.1.221:3478 \
-    --alt-ip 192.168.1.239 --alt-port 3479 > "$STUN_LOG" 2>&1 &
+  # 必须 setsid：只加 nohup 时，ssh 会话结束会把整个进程组带走，
+  # 于是 STUN 在「启动的那条 ssh 返回之后」就死了 —— 下一次分类会拿不到映射，
+  # 结果被静默降级成 "只有中继候选"。中继/持有者一直用 setsid，这里对齐。
+  setsid nohup python3 "$HERE/local_stun.py" --primary 192.168.1.221:3478 \
+    --alt-ip 192.168.1.239 --alt-port 3479 > "$STUN_LOG" 2>&1 < /dev/null &
   echo $! > "$STUN_PID_FILE"
-  sleep 0.6
-  ss -lun 2>/dev/null | grep -c "192.168.1.221:3478" >/dev/null || { echo "STUN 启动失败，见 $STUN_LOG" >&2; exit 2; }
+  sleep 0.8
+  ss -lun 2>/dev/null | grep -q "192.168.1.221:3478" || { echo "STUN 启动失败，见 $STUN_LOG" >&2; exit 2; }
   echo "STUN(物理口) 已启动 192.168.1.221:3478 / 192.168.1.239:3479 pid=$(cat "$STUN_PID_FILE")"
 }
 

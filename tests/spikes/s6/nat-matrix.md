@@ -378,6 +378,11 @@ NAT 语义没有被额外一层改写污染。
 
 与 W3.6（同机 netns）逐行一致 —— 说明 W3.6 的 30/30 不是"同内核"造成的假象。
 
+> ⚠ **这张表是修完三个 harness 缺陷之后才成立的**（见 §14.7）。数字和第一版一模一样，
+> 但第一版的数字是在「ipset 从没真正 flush 过、三个地址指向别人的机器、STUN 收敛没等」
+> 的条件下拿到的 —— 一次读成 30/30、下一次读成 0/30，都属于不可复现的读数。
+> §14.7 记录了三处修复，本表以修复后的那次全量重跑为准（每类 `reset_exit_code` 全为 0）。
+
 ### 14.5 判定：条款①成立，条款②仍不成立
 
 报告里现在写得很直白：
@@ -395,12 +400,130 @@ evidence_valid = false
 要真正闭合条款②，仍然只有两条路：接入真实 NAT 设备（路线 A），
 或在 ≥8 个真实网络上实测（路线 C，也是唯一能给出 R-04 那个数字的路线）。
 
-### 14.6 顺带暴露的产品缺陷（已登记，另单修复）
+### 14.6 顺带暴露的产品缺陷（`CLASSIFY-CONE-SUBTYPE-FABRICATED`，v2.4.55 已修复）
 
-`coldrevive-cli nat probe` 在五类环境里**全部**报 `restricted-cone`，包括 full-cone。
-定位到 `cr-nat/src/classify.rs::classify_cone_subtype`：它比较的是
+**症状**：`coldrevive-cli nat probe` 在五类环境里**全部**报 `restricted-cone`，包括 full-cone。
+
+**根因**：`cr-nat/src/classify.rs::classify_cone_subtype` 比较的是
 **NAT 映射地址**与 **STUN 服务器的 OTHER-ADDRESS**，两者语义无关；
-只要服务器给了 OTHER-ADDRESS（正常情况都会给），就必然判成 `restricted-cone`。
-也就是说这个字段此前一直是**恒定值**，不是测量结果。
-权威分类只能来自 `nat_behavior.py`（RFC 3489 Test II/III，5/5 正确）。
-修复方案与门禁影响见 `spikes.json` 的 `remaining_for_g2`。
+只要服务器给了 OTHER-ADDRESS（正常情况都会给），IP 必然不同，就必然判成 `restricted-cone`。
+也就是说这个字段此前一直是**恒定值**，不是测量结果 —— 它一直在骗人，而且骗得"合理"。
+
+**修法**：在 `cr-nat/src/stun.rs` 补齐 RFC 3489 Test II/III ——
+发 `CHANGE-REQUEST(0x0003)` 并看**是否收到应答**（关键是"有没有回包"，不是"回了什么"）：
+
+| 观测 | 结论 |
+| :--- | :--- |
+| 无 `CHANGE-REQUEST` 的正向对照都收不到应答 | `Unknown`（服务器不可达 ≠ 端口受限锥，不能默认结论） |
+| change-IP（`0x04`）有应答 | Full cone |
+| 仅 change-port（`0x02`）有应答 | Restricted cone |
+| 两者都无应答 | Port-restricted cone |
+
+`classify.rs` 里那个"聪明"的 `classify_cone_subtype` 被**删掉**了，
+换成显式的 `FilterBehavior` 观测类型 + `classify_from_filter`——
+逼着调用方先拿到测量值再下结论，而不是从地址差异里"推断"。
+
+**修复过程中实验室抓到的第二个坑（假阳性）**：
+第一版把过滤测试跑在**映射探测用过的那个 socket** 上，结果 restricted / port-restricted / cgnat
+全被误判成 `full cone`。原因不是代码写错，而是**环境被自己污染**：
+映射探测同时问了主备两台 STUN，网关的过滤集里已经有了备用地址，
+于是 change-IP 的回包被正常放行 —— 受限锥看起来像全锥。
+**过滤测试必须用一个"只跟主服务器说过话"的 socket**，`filter_behavior_fresh()` 为此存在。
+
+**修复后实测**（同一条物理链路，五类逐一对齐 `nat_behavior.py`）：
+
+```
+full-cone            → full-cone
+restricted-cone      → restricted-cone
+port-restricted-cone → port-restricted-cone
+symmetric            → symmetric
+cgnat                → port-restricted-cone
+```
+
+与改动前的恒定 `restricted-cone` 相比，现在是**五类五个值**，且与权威探针 5/5 一致。
+
+**门禁影响**：无。分类修对了不等于 NAT 变真实了，
+`evidence_valid` 仍为 `false`、S6 仍 `not_run`、R-04 仍不判定。
+修的是**产品缺陷**，不是门禁结论。
+
+### 14.7 三个 harness 缺陷：为什么第一版数字不可复现（2026-11-15）
+
+§14.4 那张表看起来"一次就跑出来了"，实际上中间有三处**看起来有数字、其实没测**的坑。
+三个坑的共同形态都是：脚本照常输出、报告照常生成、成功率照常漂亮，但底层没测。
+
+#### 14.7.1 `RESET-NEVER-RAN` —— ipset 复位从未执行
+
+`reset.sh` 由 Python 在 Windows 上 `write_text()` 落盘，`\n` 被翻成 `\r\n`；
+远端 bash 读到 `do\r` 直接语法错误：
+
+```
+/opt/coldrevive/cross/cgnat/reset.sh: line 1: syntax error near unexpected token `$'do\r''
+```
+
+于是每轮试验前**网关的 `CONTACTED` 集合根本没被清空**。第一次开洞之后，
+余下的试验全都在"吃老本"：过滤集里早有对端，压根不需要打洞也能通。
+**修法**：`reset_local.write_bytes(RESET_SH.encode("utf-8"))`；
+每一轮都记录 `reset_exit_code`，跑完统计非 0 的条数并告警（现在五类全为 `0`）。
+
+#### 14.7.2 `ADDR-POOL-COLLISION` —— punch 发给了别人的机器
+
+物理地址按类写死 `.241`~`.245`，但用户的家庭 LAN 上**这些地址已经被真实设备占着**。
+A 的 ARP 表是铁证：
+
+| 地址 | A 看到的 MAC | 是谁 |
+| :--- | :--- | :--- |
+| `192.168.1.241` | `00-0c-29-b6-ab-11` | 221（VMware OUI，proxy ARP 生效） |
+| `192.168.1.242` | `f4-74-88-f2-c6-ee` | **别人** |
+| `192.168.1.243` | `00-0c-29-b6-ab-11` | 221 |
+| `192.168.1.244` | `f4-74-88-f0-12-36` | **别人** |
+| `192.168.1.245` | `f4-74-88-f0-0d-26` | **别人** |
+
+失败的正好是被占的那三类。更糟的是**预检是假的**：原来只 `ping` 一下，
+"有应答"就算通 —— 应答的是邻居家的设备，不是实验机。
+在 `gw-restricted-cone` 的 WAN 口抓包，只看到出向包、**一个入向包都没有**：
+
+```
+09:24:13.003270 IP 192.168.1.242.19901 > 192.168.1.210.62566: UDP, length 71
+09:24:13.003371 IP 192.168.1.242.19901 > 192.168.1.210.62566: UDP, length 71
+```
+
+**修法**：地址不再写死。驱动先取 `ens160` 的 MAC，从 `.236`~`.253` 里挑一个
+ARP 表里没有"别人的 MAC"的地址，`up` 之后再**校验应答者身份**：
+
+```
+A → 192.168.1.236 的应答者 MAC = 00:0c:29:b6:ab:11（= ubuntu ens160）
+```
+
+不相等就 `SystemExit`，一个字的证据都不产出。可达性→身份的这一步替换，
+是本次最重要的修正：**"ping 得通"从来不是"通到了谁"**。
+
+#### 14.7.3 `LIFECYCLE-SILENT-DEGRADE` —— 环境塌了，报告还"成功"
+
+物理口 STUN 用 `nohup` 起、没 `setsid`，于是**启动它的那条 ssh 一退出，进程就被带走**。
+后果不是报错，而是静默降级：
+
+- 分类变成 `undetermined`（`STUN 不可达，如实不判`）—— 这是对的；
+- `nat probe` 变成 `nat_type=unknown / mapped=None` —— 也是对的；
+- 但矩阵照跑，候选只剩 `private-lan` + `relay`，**成功率依然漂亮**。
+
+也就是说，测的已经不是"NAT 穿透"了，报告却看不出来。**修法**三层：
+
+1. `link_physical.sh` 改用 `setsid nohup`（与中继/持有者一致）。
+2. 驱动在 A 上**真发一个 STUN binding request** 确认双端点都活着（不看 `ss`）。
+3. 再加一步**收敛等待**：链路刚 up 时 netns→STUN 有一段时间不通（单层 NAT 约 10s，
+   双层 CGNAT 实测 **28.8s** 才收敛）。分类前必须等到真通，否则如实报"没测"并中止。
+4. 分类为 `undetermined`、或 `nat_probe` 拿不到 `mapped_address` → 直接失败。
+
+#### 14.7.4 小结
+
+| 缺陷 | 误读成 | 真因 | 现在的处置 |
+| :--- | :--- | :--- | :--- |
+| `RESET-NEVER-RAN` | 30/30（吃老本） | CRLF 让复位脚本语法错误 | 按字节写 + `reset_exit_code` 全量校验 |
+| `ADDR-POOL-COLLISION` | "唤醒无应答"（像 NAT 不行） | 地址被别人占，punch 打错机器 | 动态选空闲地址 + ARP 身份校验 |
+| `LIFECYCLE-SILENT-DEGRADE` | "只有中继也可用" | STUN 进程被 ssh 带走 | `setsid` + 真探针 + 收敛等待 + 硬失败 |
+
+三者都不改变门禁结论（条款②仍不成立），但它们说明一件事：
+**"成功率"这个数字本身不会提示自己是不是真的测过**。
+所以每一条都要有独立的反证 —— 分类复测、身份 MAC、`reset_exit_code`、STUN 往返 ——
+缺一条，那个数字就不该写进报告。
+

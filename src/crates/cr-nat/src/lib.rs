@@ -17,7 +17,9 @@ pub mod relay_server;
 pub mod stun;
 pub mod upnp;
 
-pub use classify::{classify_cone_subtype, classify_from_mappings, cgnat_suspected, NatType};
+pub use classify::{
+    classify_from_filter, classify_from_mappings, cgnat_suspected, FilterBehavior, NatType,
+};
 pub use endpoint::{
     build_plan, is_public_ipv4, local_advertisement, node_id_16, split_mapped,
     tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, PeerAdvertisement,
@@ -100,6 +102,12 @@ impl Default for Traversal {
     }
 }
 
+/// 把 "ip:port" 拆开（`StunResult.server` 的格式）。
+fn split_host_port(s: &str) -> Option<(String, u16)> {
+    let (h, p) = s.rsplit_once(':')?;
+    Some((h.to_string(), p.parse().ok()?))
+}
+
 impl Traversal {
     pub fn new() -> Self {
         Self::default()
@@ -124,12 +132,16 @@ impl Traversal {
                     public_udp_egress_ok = true;
                     mapped_address = Some(mapped[0].clone());
                     nat_type = classify_from_mappings(&mapped);
-                    // 若首个响应带 OTHER-ADDRESS，尝试细分 cone 子型
-                    if let Some(first) = results.iter().find(|r| r.ok) {
-                        nat_type = classify_cone_subtype(
-                            first.mapped.as_deref().unwrap_or(""),
-                            &first.other,
-                        );
+                    // 非对称（cone）才需要细分过滤行为：用 CHANGE-REQUEST 实测，
+                    // 不再拿 OTHER-ADDRESS 去猜（那是恒定值，不是测量）。
+                    if nat_type != NatType::Symmetric {
+                        if let Some(first) = results.iter().find(|r| r.ok) {
+                            if let Some((h, p)) = split_host_port(&first.server) {
+                                nat_type = classify_from_filter(
+                                    stun::filter_behavior_fresh(&h, p, timeout),
+                                );
+                            }
+                        }
                     }
                 }
             }
