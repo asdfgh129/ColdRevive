@@ -19,26 +19,27 @@ PROXY="${HTTPS_PROXY:-${https_proxy:-}}"
 attempt() {
   label="$1"; shift
   echo "== $label =="
-  if git push "$@" 2>&1 | tail -3; then
+  # -c 是 git 全局选项，必须放在子命令 push 之前；之前写成 git push -c ... 会打印 usage 并假失败
+  if git "$@" push "$REMOTE" "$BRANCH" 2>&1 | tail -3; then
     return 0
   fi
   return 1
 }
 
 # 路径 1: 现有配置
-if attempt "现有配置 (proxy=${PROXY:-none})" "$REMOTE" "$BRANCH"; then
+if attempt "现有配置 (proxy=${PROXY:-none})"; then
   exit 0
 fi
 
 # 路径 2: 显式直连
-if attempt "直连(无代理)" -c http.proxy= -c https.proxy= "$REMOTE" "$BRANCH"; then
+if attempt "直连(无代理)" -c http.proxy= -c https.proxy=; then
   echo ">> 结论: 代理异常，直连可用"
   exit 0
 fi
 
 # 路径 3: 显式走环境代理
 if [ -n "$PROXY" ]; then
-  if attempt "显式代理 $PROXY" -c http.proxy="$PROXY" -c https.proxy="$PROXY" "$REMOTE" "$BRANCH"; then
+  if attempt "显式代理 $PROXY" -c http.proxy="$PROXY" -c https.proxy="$PROXY"; then
     echo ">> 结论: 直连受限，代理可用"
     exit 0
   fi
