@@ -2,6 +2,17 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.63] - 2026-11-16 — M2/W3.14b：生产 crate 具备真实 eD2k hash
+
+> 范围声明：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`；不改线格式与 T0 golden。
+
+- `cr-hash` 从 S2 的 kad-mini 探针迁入零依赖 MD4、`kad_keyword_hash`、
+  `ed2k_hash`（aMule **Red** 整块边界规则）与标准 `ed2k_link` 生成。
+  此前生产 crate 没有 eD2k hash，只有 S2 探针里有一份——旧客户端找得到却下载不了
+  虚假 `fileID`，所以这是「标准协议互通」必须的生产侧能力。
+- 新增 3 条单测：RFC 1320 已知向量、aMule 1×PARTSIZE 的 Red 向量、
+  ed2k 链接字段转义。全量 `cargo test --workspace --offline` **148 passed / 0 failed**。
+
 ## [2.4.62] - 2026-11-16 — M2/W3.13：中继数据面字节预算（ADR-014）+ 路线重排
 
 > 范围声明：不改变任何 Spike 的 `status`；S3 / S5 / S6 仍 `not_run`，`g2_claim=false`。

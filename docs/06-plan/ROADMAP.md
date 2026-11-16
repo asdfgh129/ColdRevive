@@ -426,6 +426,9 @@ ColdRevive
   `g3_status` / 每行 `g3_verdict` 恒为 `not_run`，`--self-test` 3/3 守这条纪律。
   本机实测：7 行 `blocked_no_client`，只有 Motrix Next（aria2 1.36.0）有 S1
   `cross_client_round` 的 128/128 片校验素材。**不是 G3 通过**，矩阵未全绿。
+  同轮 **W3.14b（v2.4.63）** 把 S2 探针里的 MD4 / eD2k hash 迁入生产 `cr-hash`
+  （aMule Red 分块规则 + 标准 `ed2k://` 链接），补 3 条单测，148 passed / 0 failed。
+  这是「旧客户端能真正下载」的生产侧前提，不是宣称已完成 eMule 互通。
 
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈

@@ -1,7 +1,10 @@
-//! cr-hash — 零依赖 SHA-1 / SHA-256 / HMAC-SHA256。
+//! cr-hash — 零依赖 SHA-1 / SHA-256 / HMAC-SHA256 / MD4（eD2k）。
 //!
 //! - SHA-1：伴随 `.torrent` 的逐片校验与 InfoHash（BT 规范要求）。
 //! - SHA-256：文件指纹（Target_Key 输入）与唤醒 Challenge 的 HMAC 基底。
+//! - MD4 / eD2k hash：标准 ed2k 链接与 KAD 关键词字典的真实 `fileID`
+//!   （W3.14，从 S2 的 kad-mini 探针迁入生产 crate；旧客户端找得到但下载不了
+//!   虚假 hash，所以这里必须按 aMule 的 Red 分块规则算）。
 //! - 不使用第三方 crate：M1 必须能 `cargo test --offline` 复现。
 
 pub fn hex(bytes: &[u8]) -> String {
@@ -121,6 +124,90 @@ pub fn hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
 
 pub fn hmac_sha256_hex(key: &[u8], msg: &[u8]) -> String { hex(&hmac_sha256(key, msg)) }
 
+// --- eD2k / MD4 (RFC 1320) ------------------------------------------------
+// 从 tests/spikes/s2/kad-mini/src/wire.rs 迁入（同一仓库、零依赖，保持单一实现）。
+// aMule 用 MD4 做 KadGetKeywordHash 与 9.28 MB 分块的文件 hash。
+
+/// MD4（RFC 1320），已知答案向量见本文件测试。
+pub fn md4(message: &[u8]) -> [u8; 16] {
+    const S1: [u32; 4] = [3, 7, 11, 19];
+    const S2: [u32; 4] = [3, 5, 9, 13];
+    const S3: [u32; 4] = [3, 9, 11, 15];
+    const K2: u32 = 0x5A82_7999;
+    const K3: u32 = 0x6ED9_EBA1;
+    const R2: [usize; 16] = [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15];
+    const R3: [usize; 16] = [0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15];
+
+    let mut msg = message.to_vec();
+    let bit_len = (message.len() as u64).wrapping_mul(8);
+    msg.push(0x80);
+    while msg.len() % 64 != 56 { msg.push(0); }
+    msg.extend_from_slice(&bit_len.to_le_bytes());
+
+    let mut h = [0x6745_2301u32, 0xEFCD_AB89, 0x98BA_DCFE, 0x1032_5476];
+    for chunk in msg.chunks(64) {
+        let mut x = [0u32; 16];
+        for (i, w) in x.iter_mut().enumerate() {
+            *w = u32::from_le_bytes([
+                chunk[4 * i], chunk[4 * i + 1], chunk[4 * i + 2], chunk[4 * i + 3],
+            ]);
+        }
+        let (mut a, mut b, mut c, mut d) = (h[0], h[1], h[2], h[3]);
+        for i in 0..16 {
+            let f = (b & c) | ((!b) & d);
+            a = a.wrapping_add(f).wrapping_add(x[i]).rotate_left(S1[i % 4]);
+            let t = a; a = d; d = c; c = b; b = t;
+        }
+        for i in 0..16 {
+            let g = (b & c) | (b & d) | (c & d);
+            a = a.wrapping_add(g).wrapping_add(x[R2[i]]).wrapping_add(K2).rotate_left(S2[i % 4]);
+            let t = a; a = d; d = c; c = b; b = t;
+        }
+        for i in 0..16 {
+            let f = b ^ c ^ d;
+            a = a.wrapping_add(f).wrapping_add(x[R3[i]]).wrapping_add(K3).rotate_left(S3[i % 4]);
+            let t = a; a = d; d = c; c = b; b = t;
+        }
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+    }
+    let mut out = [0u8; 16];
+    for (i, word) in h.iter().enumerate() {
+        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
+    }
+    out
+}
+
+/// aMule 分块大小 = 9500 KiB = 9_728_000 B。
+pub const ED2K_PART_SIZE: usize = 9_500 * 1024;
+
+/// eD2k `fileID`：小于一块时直接 MD4；否则 MD4(各块 MD4 拼接)。
+/// 文件刚好是 N 块时按 **Red** 规则再补一个空块 MD4（aMule 的做法），
+/// 用 Blue 规则会算出旧客户端永远下载不了的 `fileID`。
+pub fn ed2k_hash(data: &[u8]) -> [u8; 16] {
+    if data.len() < ED2K_PART_SIZE { return md4(data); }
+    let mut parts = Vec::with_capacity((data.len() / ED2K_PART_SIZE + 1) * 16);
+    for chunk in data.chunks(ED2K_PART_SIZE) { parts.extend_from_slice(&md4(chunk)); }
+    if data.len() % ED2K_PART_SIZE == 0 { parts.extend_from_slice(&md4(&[])); }
+    md4(&parts)
+}
+
+/// KAD 关键词字典用的 hash：`MD4(UTF-8(term))`，大小写敏感、不做归一化。
+pub fn kad_keyword_hash(term: &str) -> [u8; 16] { md4(term.as_bytes()) }
+
+/// 标准 `ed2k://|file|...|/` 链接。文件名按 eD2k 习惯做最小百分号编码，
+/// 否则文件名里的 `|` / `/` 会破坏链接字段分隔。
+pub fn ed2k_link(file_name: &str, size: usize, hash: &[u8; 16]) -> String {
+    let mut name = String::with_capacity(file_name.len());
+    for b in file_name.as_bytes() {
+        let ok = b.is_ascii_alphanumeric() || matches!(*b, b'.' | b'_' | b'-' | b' ');
+        if ok { name.push(*b as char); } else { name.push_str(&format!("%{:02X}", b)); }
+    }
+    format!("ed2k://|file|{}|{}|{}|/", name, size, hex(hash))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +240,44 @@ mod tests {
             assert_eq!(sha1(&d).len(), 20);
             assert_eq!(sha256(&d).len(), 32);
         }
+    }
+
+    #[test]
+    fn md4_rfc1320_known_answers() {
+        assert_eq!(hex(&md4(b"")), "31d6cfe0d16ae931b73c59d7e0c089c0");
+        assert_eq!(hex(&md4(b"a")), "bde52cb31de33e46245e05fbdbd6fb24");
+        assert_eq!(hex(&md4(b"abc")), "a448017aaf21d8525fc10ae87aa6729d");
+        assert_eq!(hex(&md4(b"message digest")), "d9130a8164549fe818874806e1c7014b");
+    }
+
+    #[test]
+    fn ed2k_red_part_rule_matches_amule() {
+        // 小于一块：fileID 就是 MD4 本身。
+        assert_eq!(ed2k_hash(b"abc"), md4(b"abc"));
+        // aMule KnownFile.cpp 文档给出的 1*PARTSIZE 文件向量。
+        let part = [
+            0x48, 0x91, 0xED, 0x2E, 0x5C, 0x9C, 0x49, 0xF4,
+            0x42, 0x14, 0x5A, 0x3A, 0x5F, 0x60, 0x82, 0x99,
+        ];
+        let mut concat = Vec::from(part);
+        concat.extend_from_slice(&md4(&[]));
+        assert_eq!(hex(&md4(&concat)), "a72ca8df7f07154e217c236c89c17619");
+        // 生产实现必须在整块边界追加空块 hash（Red），不能是 Blue。
+        let exact = vec![0x33u8; ED2K_PART_SIZE];
+        let mut red_input = Vec::new();
+        red_input.extend_from_slice(&md4(&exact));
+        red_input.extend_from_slice(&md4(&[]));
+        assert_eq!(ed2k_hash(&exact), md4(&red_input));
+        assert_ne!(ed2k_hash(&exact), md4(&red_input[..16]));
+    }
+
+    #[test]
+    fn ed2k_link_is_standard_and_escaped() {
+        let h = md4(b"abc");
+        assert_eq!(
+            ed2k_link("a|b/c.bin", 3, &h),
+            format!("ed2k://|file|a%7Cb%2Fc.bin|3|{}|/", hex(&h))
+        );
+        assert_ne!(kad_keyword_hash("ABC"), kad_keyword_hash("abc"));
     }
 }

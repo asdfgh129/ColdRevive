@@ -152,6 +152,12 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.63 补记（2026-11-16 / W3.14b）**：生产 `cr-hash` 补齐真实 eD2k hash —— 从 S2 kad-mini
+  探针迁入零依赖 MD4、`kad_keyword_hash`、`ed2k_hash`（aMule 的 **Red** 整块边界规则：
+  文件刚好 N 块时追加空块 MD4）与标准 `ed2k://|file|...|/` 链接生成（文件名做最小百分号编码）。
+  这一步是标准协议互通的生产侧前提：只有探针里有 hash 不够，旧客户端拿到错的 `fileID`
+  会「搜得到却永远下载不了」。新增 3 条单测（RFC 1320 向量 / aMule 1×PARTSIZE 向量 /
+  链接转义），`cargo test --workspace --offline` **148 passed / 0 failed**。
 - **v2.4.62 补记（2026-11-16 / W3.13）**：**中继数据面字节预算**（[ADR-014](../docs/02-architecture/adr/ADR-014-relay-data-budget.md)）。
   所有者要求「数据中转要设阈值，别把中继带宽爆了」。新增全局令牌桶 `--data-rate`（默认
   512 KiB/s）与 `--data-burst`（默认 2 MiB）：**≤4 KiB 的唤醒信令绕过预算**，其余帧整帧
