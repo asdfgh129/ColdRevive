@@ -2,6 +2,50 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.68] - 2026-11-16 — M2/W5.1：取消零依赖，生产守护进程有了自己的数据面
+
+> 所有者决策：**「取消零依赖，按既定方案走」**。零依赖从来不是架构目标，是 M1 的临时脚手架
+> （2026-11-13 / v2.4.38 建根 `Cargo.toml` 时，G1 未过、crates.io 可达性不明，为让工程接线不被
+> 网络问题拖住而刻意 std-only，`Cargo.toml` 里留了「M2 引入 rqbit/tokio 须另立 ADR」的退出条件）。
+
+- **新增 [ADR-015](docs/02-architecture/adr/ADR-015-dependency-layering.md)：按层划分依赖**。
+  协议 / 信令面 15 个 crate（`cr-core` `cr-hash` `cr-torrent` `cr-kad` `cr-wake` `cr-store`
+  `cr-indexer` `cr-nat` `cr-qos` `cr-sched` `cr-guard` `cr-reputation` `cr-dht` `cr-ed2k` `cr-api`）
+  **继续 std-only**——它们的字节级行为已被 T0/T1/S1/S2/S6 证据固定，换实现等于让已有证据失效；
+  `cr-engine` 与 `coldrevived` 允许 **librqbit 9.1.0 + tokio**。四条配套纪律：版本只写
+  `[workspace.dependencies]`、`Cargo.lock` 入库、验收一律 `--offline`、业务 crate 不得直接
+  `use librqbit`（只经 `Engine` Trait）。
+- **`cr-engine` 从骨架变成实现**：`Engine` Trait 由 `&mut self` 的全局 pause/resume 改为**按任务**
+  （`add_torrent` / `activate` / `pause` / `resume` / `state` / `progress` / `remove`），因为一个守护
+  进程要同时持有下载中、做种中、冷态的多个种子，全局开关无法表达 LRU 活跃池。`RqbitEngine` 把
+  **Tokio 运行时封在 crate 内部**，对外全是同步方法，`coldrevived` 的 std 线程模型一行没改。
+  默认 `enable_dht=false`、`listen=None`（不监听入站），做种必须显式给地址。
+- **`coldrevived` 的 `/jsonrpc` 从「只解析」升级为「真下载」**：`addUri` 惰性创建引擎并把
+  `.torrent` 交给它；`tellStatus` / `tellActive` / `tellWaiting` / `tellStopped` 每次**重新采样**引擎
+  计数器（不缓存），状态映射为 aria2 的 `active/paused/complete/error`；新增
+  `coldrevive.engineAttached` / `coldrevive.engineTask` / `errorMessage` 字段。速率用**两次真实采样
+  之差 / 真实时间差**算字节/秒，不猜 librqbit 的 `mbps` 语义。
+- **顺手修掉两个「只认一种调用方」的坑**：`aria2.addUri` 原先只认 `params[1]`，而 AriaNg 与验收脚本
+  发的是 `params:[[uri]]`（无 secret），任务会被判「需要至少一个 URI」；现两种位置都接受，并加单测
+  `adduri_accepts_both_param_layouts`。同类问题此前在 `tellStatus` 上已踩过一次。
+- **新增第二个计数器**：内置标准 BT 种子端记录 `seeder_served_bytes` / `seeder_piece_requests`
+  （只在 `send_msg` 真正写出分片后自增），配 `/cli seed` 命令。下载方报的 `completedLength` 是
+  单方面说法，两边对上才算证据。
+- **验收 `tests/e2e/w51/engine_download.py`（4 次复跑全绿，8/8 断言）**：B 被 `/cli wake` 唤醒 A 后，
+  经 `addUri` 从 A 的内置种子端拉完 **1 MiB（4 片 / 64 次 request）**；落盘 SHA-256 =
+  `37be9cb3…79e17` 与样本逐字节一致；A 侧 `served_bytes=1048576`。报告落
+  `tests/e2e/w51/reports/`（本地证据，gitignore）。**边界**：单机回环、无第三方客户端、不构成
+  G3/S1 新证据，不含任何可达率数字。
+- **T0/T1 不变量**：`engine` 段缺省时引擎根本不创建（首次 `addUri` 才惰性建立），G1 的 21+11 条
+  口径不变；`S3`/`S5`/`S6` 仍 `not_run`，`g2_claim=false`。
+
+**验证**：`cargo test --workspace --offline` **155 passed / 0 failed**（新增 cr-engine 4 条 +
+`adduri_accepts_both_param_layouts`）；`cargo build -p cr-engine --offline` 从空依赖缓存 36 s 完成，
+证明本地/CI 缓存齐备时 `--offline` 成立。
+
+**没有做的（别读成做了）**：没有验证公网做种（`engine.listen` 缺省关闭）；没有把做种开关接到
+LRU 调度（仍走 M1 的 `bt_seeding` 门闩）；没有向公网发过任何报文；没有宣称 G2 或任何可达率。
+
 ## [2.4.67] - 2026-11-16 — M2/W3.18：G3 按「带例外」结案（人工判定，非机器推断）
 
 > 口径声明：**这是结案，不是全绿**。`g3_claim=false` 不变，`g3_status`（机器）仍 `not_run`；

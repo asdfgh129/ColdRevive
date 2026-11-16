@@ -1,11 +1,14 @@
 //! cr-core — M1 公共类型与零依赖基础设施。
 //!
-//! 设计约束：M1 全部 crate 只用 `std`，不引入第三方依赖，保证 `cargo test --offline`
+//! 设计约束：本 crate 只用 `std`，不引入第三方依赖，保证 `cargo test --offline`
 //! 在任意环境可复现。JSON 编解码为本 crate 自带的最小实现（覆盖 T0 契约所需子集）。
+//! 全局「零依赖」已于 2026-11-16 收窄为**分层策略**（见 ADR-015）：协议/信令 crate 继续
+//! std-only，BT 引擎与守护进程可用 librqbit + tokio。
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -318,6 +321,10 @@ pub struct Config {
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
+    /// M2/W5.1 BT 引擎下载目录。`engine` 段缺省时落到 `<workdir>/downloads`。
+    pub engine_dir: PathBuf,
+    /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
+    pub engine_listen: Option<SocketAddr>,
 }
 
 impl Config {
@@ -384,6 +391,25 @@ impl Config {
             .map(str::to_string)
             .collect();
         let nat_relay = nat_relays.first().cloned();
+        // M2/W5.1：`engine` 段完全可选。缺省 = 下载目录 `workdir/downloads` + **不监听入站**；
+        // 引擎只在实际收到 `.torrent` 任务时惰性创建，T0/T1 的复活路径完全不经过它。
+        let engine = j.get("engine").and_then(Json::as_obj);
+        let engine_get = |k: &str| -> Option<String> {
+            engine.and_then(|o| o.iter().find(|(n, _)| n == k))
+                .and_then(|(_, v)| v.as_str()).map(str::to_string)
+        };
+        let workdir = PathBuf::from(get_s("workdir")?);
+        let engine_dir = engine_get("dir").map(PathBuf::from)
+            .unwrap_or_else(|| workdir.join("downloads"));
+        // 非法 `engine.listen` 直接报错：静默忽略会让「我要做种」变成「其实没监听」。
+        let engine_listen = match engine_get("listen") {
+            None => None,
+            Some(s) => {
+                let a = s.parse::<SocketAddr>()
+                    .map_err(|e| format!("engine.listen 非法（需要 ip:port）: {s}: {e}"))?;
+                Some(a)
+            }
+        };
         Ok(Config {
             node_id: String::new(),
             bind,
@@ -392,7 +418,7 @@ impl Config {
             keywords,
             namespace: j.get("namespace").and_then(Json::as_str)
                 .unwrap_or(NAMESPACE).to_string(),
-            workdir: PathBuf::from(get_s("workdir")?),
+            workdir,
             golden_req: PathBuf::from(get_s("golden_req")?),
             golden_ack: PathBuf::from(get_s("golden_ack")?),
             downloader: PathBuf::from(get_s("downloader").unwrap_or_default()),
@@ -406,6 +432,8 @@ impl Config {
             nat_relay_key: nat_get("relay_key"),
             nat_relays,
             nat_bt_external,
+            engine_dir,
+            engine_listen,
         })
     }
 

@@ -144,6 +144,16 @@ updated: 2026-11-13
 > 因此 G1 与 M2 结论不变，详见 [G0-REVIEW §10](../06-plan/G0-REVIEW.md) 与
 > [T1 README](../../tests/e2e/t1/README.md)。
 
+> **依赖策略变更（2026-11-16，v2.7 / ADR-015）**：**「全局零依赖」已取消**，改为按层划分。
+> 协议 / 信令面（`cr-core` `cr-hash` `cr-torrent` `cr-kad` `cr-wake` `cr-store` `cr-indexer`
+> `cr-nat` `cr-qos` `cr-sched` `cr-guard` `cr-reputation` `cr-dht` `cr-ed2k` `cr-api`）**继续 std-only**——
+> 它们的字节级行为已被 T0/T1/S1/S2/S6 证据固定，换实现等于让证据失效；引擎与守护进程
+> （`cr-engine` / `coldrevived`）可采用 **librqbit 9.1.0 + tokio**。四条配套纪律：版本只写
+> `[workspace.dependencies]`、`Cargo.lock` 入库、验收一律 `--offline`、业务 crate 不得直接
+> `use librqbit`（只经 `Engine` Trait）。§1 选型表中 rqbit / Tokio **至此正式进入生产代码**；
+> rusqlite / axum 仍在各自里程碑落地，届时按同一条款登记。理由与后果见
+> [ADR-015](adr/ADR-015-dependency-layering.md)。
+
 ## 3. 参考项目与可复用资产
 
 | 项目 | 借鉴点 | 警惕点 |
@@ -176,6 +186,18 @@ updated: 2026-11-13
 - `cr-engine` 定义 `Engine` Trait：Pause/Resume、按需实例化、握手回调、分片校验。
 - M-09 调度器与 M-10 拦截器只面向 Trait 编程。
 - 这是 S1 失败时可切换 `libtorrent` FFI 而不推翻上层设计的前提。
+
+**2026-11-16 落地形态（ADR-015）**：`cr-engine` 由「骨架」变为真实实现
+（`RqbitEngine`，librqbit 9.1.0）。Trait 从 `&mut self` 的全局 pause/resume 改为**按任务**
+（`add_torrent` / `activate` / `pause` / `resume` / `state` / `progress` / `remove`），
+因为守护进程要同时持有下载中、做种中、冷态的多个种子，全局开关无法表达 LRU 活跃池。
+tokio 运行时**封在本 crate 内部**，对外全部同步方法，`coldrevived` 的 std 线程模型不变。
+
+| 层 | 允许依赖 | 当前实际依赖 |
+| :--- | :--- | :--- |
+| 协议 / 信令面（15 个 crate） | std only | std only |
+| `cr-engine` | librqbit / tokio / bytes | librqbit 9.1.0、tokio 1、bytes 1 |
+| `coldrevived` | 上述 + 自身 crate 依赖 | 同上（经 `cr-engine` 转依赖） |
 
 ## 相关文档
 

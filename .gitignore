@@ -53,6 +53,9 @@ tests/e2e/t2/reports/*
 # G3 兼容性矩阵基线报告（本机客户端可用性清点，不入库）
 tests/e2e/g3/reports/*
 
+# W5.1 引擎下载验收运行产物（本地证据，不入库）
+tests/e2e/w51/reports/*
+
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*
 !tests/spikes/reports/.gitkeep

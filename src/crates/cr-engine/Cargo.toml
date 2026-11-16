@@ -2,6 +2,9 @@
 name = "cr-engine"
 version.workspace = true
 edition.workspace = true
-description = "M2 (W5.1): Engine Trait 抽象，屏蔽 rqbit / libtorrent 差异（骨架）"
+description = "M2 (W5.1): Engine Trait 抽象 + librqbit 9.1.0 实现（依赖分层见 ADR-015）"
 
 [dependencies]
+librqbit.workspace = true
+tokio.workspace = true
+bytes.workspace = true

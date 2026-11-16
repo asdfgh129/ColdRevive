@@ -103,6 +103,31 @@ WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**�
 > S6 不再以「可达率 ≥70%」判定，改为四条定性要求（5 类各有真实设备证据 / 每类两条路径各 ≥30 次
 > 真实观测 / 直连失败时中继必须送达 / 结论由执行人手工回填）。可达率降为描述性统计。
 
+### 2.3 W5.1 引擎下载验收（2026-11-16 新增）
+
+生产守护进程第一次有了自己的数据面。脚本 `tests/e2e/w51/engine_download.py`，全本机回环、
+DHT 关闭、tracker 用 A 的内置 `/announce`，**不产生任何公网报文**：
+
+```
+B --/cli wake--> A            A: COLD → HOT，内置标准 BT 种子端开始供片
+B --/jsonrpc aria2.addUri--> cr-engine ← 按 tracker 返回的 peer 直连 A 拉分片
+B 落盘文件 → SHA-256 与样本逐字节比对
+```
+
+通过条件（三条同时成立，缺一条即 fail）：
+
+| # | 断言 | 来源 |
+| :--- | :--- | :--- |
+| ① | `status=complete` 且 `completedLength=1048576` | 引擎计数器（`/jsonrpc tellStatus`） |
+| ② | 落盘文件 SHA-256 == 样本 SHA-256 | 真实文件 |
+| ③ | A 的内置种子端 `served_bytes >= 1048576` | 第二个计数器（`/cli seed`） |
+
+**2026-11-16 实测（4 次复跑一致）**：8/8 断言 PASS，1 MiB / 4 片 / 64 次 request，
+`served_bytes=1048576`，样本与落盘 SHA-256 均为 `37be9cb3…79e17`；报告落
+`tests/e2e/w51/reports/engine-download-*.json`（本地证据，gitignore）。
+**边界**：单机回环、无第三方客户端参与、不构成 G3 或 S1 的新证据，也不产生任何可达率数字；
+它只回答一个问题——「生产守护进程能不能自己把种子下完并校验通过」，答案是能。
+
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 〔**以上结句为 2026-11-13 时点口径；2026-11-14 已更正为 G1 通过**（T0 21/21 + T1 real 11/11，均
 `evidence_valid=true`），见本文开头更正与 §2.2 补记。**S3 / S5 / S6 状态仍 `not_run`**，G2 未达标。〕

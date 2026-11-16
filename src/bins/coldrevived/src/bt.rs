@@ -150,6 +150,13 @@ fn handle_peer(mut stream: TcpStream, ih: [u8; 20], data: Vec<u8>,
             payload.extend_from_slice(&(begin as u32).to_be_bytes());
             payload.extend_from_slice(&data[offset..end]);
             if !send_msg(&mut stream, 7, &payload) { return; }
+            // 只有真的写出去了才计数（send_msg 失败已提前 return）。
+            // 这是下载方之外的第二个计数器：两边对上才算「传完了」。
+            {
+                let mut g = state.lock().unwrap();
+                g.seeder_served_bytes += (end - offset) as u64;
+                g.seeder_piece_requests += 1;
+            }
         }
     }
 }

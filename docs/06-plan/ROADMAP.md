@@ -473,11 +473,23 @@ ColdRevive
   **需要所有者开环境的 3 条**：公共 DHT 宣告放行、221 的 aMule 公网入向 UDP 4672 + TCP 4662。
   结案口径与判定表见 [TEST §3](../05-quality/TEST.md)；**不含任何可达率数字**（ADR-012）。
 
+- **W5.1（2026-11-16）BT 引擎落地：从「只解析种子」到「真的下载」**：按所有者「取消零依赖，
+  按既定方案走」，[ADR-015](../02-architecture/adr/ADR-015-dependency-layering.md) 把依赖策略改为分层
+  （协议面 15 个 crate 继续 std-only，`cr-engine` / `coldrevived` 用 librqbit 9.1.0 + tokio）。
+  `cr-engine` 从骨架变为实现：`Engine` Trait 改为**按任务**形态（`add_torrent` / `activate` /
+  `pause` / `resume` / `state` / `progress` / `remove`），`RqbitEngine` 把 Tokio 运行时封在内部、
+  对外同步；`coldrevived` 的 `/jsonrpc addUri` 惰性创建引擎并真正下载，`tellStatus` 每次重新采样。
+  验收 `tests/e2e/w51/engine_download.py`（4 次复跑全绿）：B 被唤醒后经 addUri 从 A 的内置种子端
+  拉完 1 MiB（4 片 / 64 次 request），**落盘 SHA-256 与样本一致**，A 侧 `served_bytes = 1048576`
+  （第二个计数器对上）。`cargo test --workspace --offline` 155 passed / 0 failed。
+  **未做**：做种仍受 M1 的 `bt_seeding` 门闩控制；`engine.listen` 缺省关闭，公网做种未验证；
+  把下载升级为「给旧客户端做种」是下一步。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
-  实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**当前卡点不再是客户端，而是我们自己没有
-  数据面**：所有互通证据都由 spike 二进制（`s1-probe` / `ed2k-mini`）产生，生产守护进程只能解析
-  种子、不能下载——这正是 W5.1 要解决的；② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
+  实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**：生产守护进程
+  现在能自己下载，不再依赖 spike 二进制；下一段是把「能下载」推进到「能给旧客户端做种」。
+  ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
   unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
   ④ 公网入口 **7100→7100**（实测可用；`57100` 规则不存在）复跑时延/丢包/抖动；
   ⑤ BT/TCP 打洞；⑥ S3 / S5 继续 `not_run`，待 G3 矩阵与真实拥塞链路证据齐备后由人手工回填。

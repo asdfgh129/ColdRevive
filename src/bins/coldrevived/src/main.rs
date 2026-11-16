@@ -14,6 +14,7 @@ mod nat_path;
 mod relay_sub;
 
 use cr_core::{Config, Json};
+use cr_engine::{Engine, EngineOptions, RqbitEngine, TorrentSpec};
 use cr_indexer::inspect as inspect_file;
 use cr_kad::{find_result, publish_keys};
 use cr_store::{FileEntry, ShadowIndex};
@@ -51,12 +52,16 @@ pub struct UdpHub {
     pub stun_sink: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
 }
 
-/// W6.1 M3 接入层最小任务记录：只保存浏览器插件经 /jsonrpc 推送的 URI，
-/// 不触碰 S1/T0/T1 的任何下载路径。字段刻意保持 aria2 兼容命名。
+/// W6.1 M3 接入层 + W5.1 引擎真下载：一条 `/jsonrpc` 任务的完整记录。
+///
+/// `engine_task = None` 表示这条任务**没有**接入引擎（只登记了 URI，或 `.torrent` 取回/解析失败）。
+/// 这种任务永远停在 `waiting`、进度全为 0 —— 不编字节数。接入引擎后，进度与状态全部来自
+/// `cr_engine::EngineProgress`（librqbit 的真实计数器）。
 #[derive(Clone)]
 pub struct RpcTask {
     pub gid: String,
     pub uri: String,
+    /// aria2 兼容状态：waiting / active / paused / error / complete / removed。
     pub status: String,
     pub created_unix: u64,
     /// 任务若来自可解析的 `.torrent`，这里记真实值；拿不到就是空/0，绝不编造。
@@ -67,7 +72,23 @@ pub struct RpcTask {
     /// 是否真的把 `.torrent` 取回来并解析过（GUI/前端据此区分「已解析」与「只登记了 URI」）。
     pub torrent_parsed: bool,
     pub note: String,
+    /// 引擎内部任务号；`None` = 本任务没有数据面。
+    pub engine_task: Option<u64>,
+    pub output_path: String,
+    pub error: String,
+    /// 最近一次采样的已完成字节 / 上传字节 / 连接数，全部来自引擎。
+    pub completed_bytes: u64,
+    pub uploaded_bytes: u64,
+    pub peers: usize,
+    /// 实测速率采样点：用「两次真实采样之差 / 真实时间差」算，不猜引擎的速率单位。
+    pub sample_bytes: u64,
+    pub sample_unix_ms: u64,
+    pub speed_bps: u64,
 }
+
+/// 惰性引擎槽：只有在真的收到可解析的 `.torrent` 任务时才创建。
+/// T0/T1 的复活路径完全不经过它，因此 nat/engine 段缺省时行为逐字节不变。
+pub type SharedEngine = Arc<Mutex<Option<RqbitEngine>>>;
 
 pub struct NodeState {
     pub cfg: Config,
@@ -85,6 +106,12 @@ pub struct NodeState {
     pub nat: nat_path::NatContext,
     pub hub: UdpHub,
     pub rpc_tasks: Vec<RpcTask>,
+    /// W5.1：惰性 BT 引擎（`/jsonrpc` 收到可解析种子时才创建）。
+    pub engine: SharedEngine,
+    /// W5.1 对账用：内置标准 BT 种子端**真实发出**的分片字节与请求数。
+    /// 下载方（引擎）报的 completedLength 是单方面说法，两边计数器对上才算证据。
+    pub seeder_served_bytes: u64,
+    pub seeder_piece_requests: u64,
 }
 
 fn main() {
@@ -158,6 +185,9 @@ fn main() {
         nat: nat_path::NatContext::from_config(&cfg),
         hub: hub.clone(),
         rpc_tasks: Vec::new(),
+        engine: Arc::new(Mutex::new(None)),
+        seeder_served_bytes: 0,
+        seeder_piece_requests: 0,
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -373,9 +403,30 @@ fn read_http(stream: &mut TcpStream) -> Result<(String, String, Vec<u8>), String
     Ok((method, path, buf[header_end..header_end + len.min(buf.len() - header_end)].to_vec()))
 }
 
-/// aria2 兼容 JSON-RPC 的最小子集（M3/W6.1）：只登记插件推送的 URI 任务，
-/// 不启动下载器、不伪造进度/速度。浏览器插件据此可验证「任务创建成功」，
-/// 真实下载仍由 M1 的 /cli download + 第三方 aria2 完成。
+/// 取 `aria2.addUri` 的第一个 URI。
+///
+/// aria2 的签名是 `addUri(secret, uris, options)`；本进程没有 RPC secret，调用方
+/// （AriaNg / 浏览器插件 / 验收脚本）常直接发 `params: [[uri]]`。两种位置都接受——
+/// `tellStatus` 当初只认一个下标，结果任务明明在队列里却回「任务不存在」。
+fn first_uri_param(params: &[Json]) -> String {
+    (0..params.len().min(2))
+        .find_map(|i| {
+            params
+                .get(i)
+                .and_then(Json::as_arr)
+                .and_then(|a| a.first())
+                .and_then(Json::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+/// aria2 兼容 JSON-RPC 子集（M3/W6.1 + M2/W5.1）。
+///
+/// `addUri` 收到可解析的 `.torrent` 时会把任务**真的**交给 `cr-engine`（librqbit）下载；
+/// 引擎创建失败、任务接入失败都如实写进 `coldrevive.note` / `coldrevive.error`，任务状态回到
+/// `waiting`（不假装在传）。`tellStatus` / `tellActive` / `tellWaiting` / `tellStopped` 每次都会
+/// 从引擎**重新采样**，不缓存、不猜。
 fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
     let rpc_err = |id: Json, code: i64, msg: &str| Json::obj(vec![
         ("jsonrpc", Json::s("2.0")), ("id", id),
@@ -394,32 +445,62 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
     ]);
     match method {
         "aria2.addUri" => {
-            let uri_param = arg(1);
-            let uri = uri_param.as_arr().and_then(|a| a.first())
-                .and_then(Json::as_str).unwrap_or("");
+            let uri = first_uri_param(params);
             if uri.is_empty() { return rpc_err(id, -32602, "addUri 需要至少一个 URI"); }
-            // `.torrent` 链接就真的取回来解析：任务带着真实 info_hash / 长度 / 片数，
-            // 而不是一个占位 URI。解析失败如实记在 note 里，不假装成功。
-            // 注意：这里只解析元数据，ColdRevive 目前没有 BT 下载引擎（W5.1 才用 rqbit 替换），
-            // 所以任务状态停在 `waiting`，不会伪造任何进度。
-            let (parsed, note): (Option<Torrent>, String) = if uri.starts_with("http://") {
-                match http_fetch(uri, Duration::from_secs(10)) {
-                    Ok(body) => match cr_torrent::parse(&body) {
-                        Ok(t) => (Some(t), "已取回并解析 .torrent；下载引擎尚未接入（W5.1），任务不传输".to_string()),
-                        Err(e) => (None, format!("取回成功但解析失败: {e}")),
-                    },
-                    Err(e) => (None, format!("取回 .torrent 失败: {e}")),
-                }
-            } else {
-                (None, "非 http(s) 的 .torrent 链接：只登记 URI，未解析".to_string())
+            // `.torrent` 链接就真的取回来解析：任务带着真实 info_hash / 长度 / 片数。
+            // 解析成功才谈得上接引擎；解析失败如实记录，任务停在 waiting。
+            let (parsed, fetched, mut note): (Option<Torrent>, Option<Vec<u8>>, String) =
+                if uri.starts_with("http://") {
+                    match http_fetch(&uri, Duration::from_secs(10)) {
+                        Ok(body) => match cr_torrent::parse(&body) {
+                            Ok(t) => (Some(t), Some(body), String::new()),
+                            Err(e) => (None, None, format!("取回成功但解析失败: {e}")),
+                        },
+                        Err(e) => (None, None, format!("取回 .torrent 失败: {e}")),
+                    }
+                } else if uri.starts_with("https://") {
+                    (None, None, "https:// 需要 TLS，本进程的最小 HTTP 客户端不支持；任务未解析".to_string())
+                } else {
+                    (None, None, "非 http(s) 的 .torrent 链接：只登记 URI，未解析".to_string())
+                };
+
+            // 引擎在 NodeState 锁之外操作：创建会话 / 读盘校验可能耗时数百毫秒，
+            // 不能把 /health、KAD 分发一起堵住。
+            let (slot, engine_dir, engine_listen) = {
+                let st = state.lock().unwrap();
+                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen)
             };
+            let mut engine_task = None;
+            let mut error = String::new();
+            if let Some(bytes) = fetched.as_ref() {
+                let name = parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default();
+                match attach_to_engine(&slot, &engine_dir, engine_listen, &name, bytes) {
+                    Ok(tid) => {
+                        engine_task = Some(tid);
+                        note = format!(
+                            "已接入 BT 引擎（librqbit），下载目录 {}",
+                            engine_dir.display()
+                        );
+                    }
+                    Err(e) => {
+                        error = format!("引擎接入失败: {e}");
+                        note = error.clone();
+                    }
+                }
+            }
+
             let mut st = state.lock().unwrap();
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
             let gid = format!("{:x}{:04x}", now.as_millis() as u64, st.rpc_tasks.len());
+            let output_path = match (&parsed, engine_task.is_some()) {
+                (Some(t), true) => engine_dir.join(&t.name).to_string_lossy().into_owned(),
+                (Some(t), false) => t.name.clone(),
+                (None, _) => String::new(),
+            };
             st.rpc_tasks.push(RpcTask {
                 gid: gid.clone(), uri: uri.to_string(),
-                // 只有解析成功才可能有后续动作；两种情形都停在 waiting，不伪造 active。
-                status: "waiting".into(),
+                // 只有接入引擎才会立即变成 active；否则如实停在 waiting。
+                status: if engine_task.is_some() { "active".into() } else { "waiting".into() },
                 created_unix: now.as_secs(),
                 info_hash: parsed.as_ref().map(|t| t.info_hash.clone()).unwrap_or_default(),
                 name: parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default(),
@@ -427,6 +508,11 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
                 piece_count: parsed.as_ref().map(|t| t.pieces.len()).unwrap_or(0),
                 torrent_parsed: parsed.is_some(),
                 note,
+                engine_task,
+                output_path,
+                error,
+                completed_bytes: 0, uploaded_bytes: 0, peers: 0,
+                sample_bytes: 0, sample_unix_ms: now.as_millis() as u64, speed_bps: 0,
             });
             ok(&id, Json::s(gid))
         }
@@ -440,51 +526,171 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
                 .as_str()
                 .or_else(|| first_param.as_str())
                 .unwrap_or("");
-            let st = state.lock().unwrap();
-            match st.rpc_tasks.iter().find(|t| t.gid == gid) {
-                Some(t) => ok(&id, rpc_task_json(t)),
+            let (found, slot) = {
+                let st = state.lock().unwrap();
+                (st.rpc_tasks.iter().find(|t| t.gid == gid).cloned(), st.engine.clone())
+            };
+            match found {
+                Some(mut t) => {
+                    refresh_task_progress(&slot, &mut t);
+                    // 采样后的状态写回，tellActive/Waiting/Stopped 才不会各说各话。
+                    {
+                        let mut st = state.lock().unwrap();
+                        if let Some(slot_task) = st.rpc_tasks.iter_mut().find(|x| x.gid == gid) {
+                            *slot_task = t.clone();
+                        }
+                    }
+                    ok(&id, rpc_task_json(&t))
+                }
                 None => rpc_err(id, -32001, "任务不存在"),
             }
         }
         "aria2.tellActive" | "aria2.tellWaiting" | "aria2.tellStopped" => {
-            let st = state.lock().unwrap();
-            let list: Vec<Json> = st.rpc_tasks.iter()
-                .filter(|t| if method.ends_with("tellActive") { t.status == "active" }
-                            else if method.ends_with("tellWaiting") { t.status == "waiting" }
-                            else { t.status == "complete" })
+            // 先全部刷新一遍：否则 tellActive 永远看不到引擎刚推进的任务。
+            let slot = { state.lock().unwrap().engine.clone() };
+            let mut lists: Vec<RpcTask> = {
+                let st = state.lock().unwrap();
+                st.rpc_tasks.clone()
+            };
+            for t in lists.iter_mut() { refresh_task_progress(&slot, t); }
+            {
+                let mut st = state.lock().unwrap();
+                for t in lists.iter() {
+                    if let Some(dst) = st.rpc_tasks.iter_mut().find(|x| x.gid == t.gid) {
+                        *dst = t.clone();
+                    }
+                }
+            }
+            let want = if method.ends_with("tellActive") { "active" }
+                       else if method.ends_with("tellWaiting") { "waiting" }
+                       else { "stopped" };
+            let list: Vec<Json> = lists.iter()
+                .filter(|t| match want {
+                    // aria2 的 paused 属于 tellWaiting，不属于 tellActive。
+                    "active" => t.status == "active",
+                    "waiting" => t.status == "waiting" || t.status == "paused",
+                    _ => matches!(t.status.as_str(), "complete" | "error" | "removed"),
+                })
                 .map(rpc_task_json).collect();
             ok(&id, Json::arr(list))
         }
         "aria2.getGlobalStat" => {
-            let st = state.lock().unwrap();
-            let active = st.rpc_tasks.iter().filter(|t| t.status == "active").count();
+            let slot = { state.lock().unwrap().engine.clone() };
+            let mut tasks: Vec<RpcTask> = { state.lock().unwrap().rpc_tasks.clone() };
+            for t in tasks.iter_mut() { refresh_task_progress(&slot, t); }
+            let active = tasks.iter().filter(|t| t.status == "active").count();
+            let waiting = tasks.iter().filter(|t| t.status == "waiting").count();
+            let stopped = tasks.iter()
+                .filter(|t| matches!(t.status.as_str(), "complete" | "error" | "removed"))
+                .count();
+            let speed: u64 = tasks.iter().filter(|t| t.status == "active").map(|t| t.speed_bps).sum();
+            let upload: u64 = 0; // 引擎未对下行任务报上传速率，不编造。
             ok(&id, Json::obj(vec![
-                ("downloadSpeed", Json::s("0")), ("uploadSpeed", Json::s("0")),
+                ("downloadSpeed", Json::s(speed.to_string())),
+                ("uploadSpeed", Json::s(upload.to_string())),
                 ("numActive", Json::s(active.to_string())),
-                ("numWaiting", Json::s("0")), ("numStopped", Json::s("0")),
-                ("numStoppedTotal", Json::s("0")),
+                ("numWaiting", Json::s(waiting.to_string())),
+                ("numStopped", Json::s(stopped.to_string())),
+                ("numStoppedTotal", Json::s(stopped.to_string())),
             ]))
         }
         "aria2.getVersion" => ok(&id, Json::obj(vec![
-            ("version", Json::s("ColdRevive/2.4.65 (aria2-compatible subset)")),
+            ("version", Json::s("ColdRevive/2.4.68 (aria2-compatible subset)")),
             ("enabledFeatures", Json::arr(vec![Json::s("BitTorrent"), Json::s("JSON-RPC")])),
         ])),
         _ => rpc_err(id, -32601, &format!("不支持的方法 {method}")),
     }
 }
 
+/// 惰性创建引擎并把一个 `.torrent` 交给它。
+///
+/// 失败原因（目录不可写、运行时起不来、种子字节非法）**原样上抛**，由调用方记进任务里。
+fn attach_to_engine(
+    slot: &SharedEngine,
+    dir: &Path,
+    listen: Option<std::net::SocketAddr>,
+    name: &str,
+    bytes: &[u8],
+) -> Result<u64, String> {
+    let mut guard = slot.lock().unwrap();
+    if guard.is_none() {
+        let mut opts = EngineOptions::new(dir);
+        opts.listen = listen;
+        let e = RqbitEngine::new(opts)?;
+        match e.listen_addr() {
+            Some(a) => println!("[engine] BT 引擎已创建，监听 {}（下载目录 {}）", a, dir.display()),
+            None => println!("[engine] BT 引擎已创建，不监听入站（下载目录 {}）", dir.display()),
+        }
+        *guard = Some(e);
+    }
+    let engine = guard.as_mut().expect("刚创建的引擎不会消失");
+    let spec = TorrentSpec::new(name, bytes);
+    engine.add_torrent(&spec)
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
+/// 从引擎取一次真实采样，刷新任务的状态与计数器，并据「两次采样之差」算实测速率。
+fn refresh_task_progress(slot: &SharedEngine, t: &mut RpcTask) {
+    let Some(tid) = t.engine_task else { return };
+    let sample = {
+        let guard = slot.lock().unwrap();
+        match guard.as_ref() {
+            Some(e) => e.progress(tid),
+            None => None,
+        }
+    };
+    let Some(p) = sample else {
+        // 引擎对象不在了却还有 engine_task：这是真的异常，明说，不装成没任务。
+        t.status = "error".into();
+        t.error = format!("引擎中已找不到任务 {tid}");
+        return;
+    };
+    if p.total_bytes > 0 { t.total_length = p.total_bytes; }
+    t.completed_bytes = p.downloaded_bytes;
+    t.uploaded_bytes = p.uploaded_bytes;
+    t.peers = p.peers;
+    let now = now_unix_ms();
+    if now > t.sample_unix_ms && p.downloaded_bytes >= t.sample_bytes {
+        let db = p.downloaded_bytes - t.sample_bytes;
+        let dt = now - t.sample_unix_ms;
+        // 字节/秒，取整数；短间隔抖动如实反映，不做平滑。
+        t.speed_bps = ((db as u128) * 1000 / (dt as u128)) as u64;
+        t.sample_bytes = p.downloaded_bytes;
+        t.sample_unix_ms = now;
+    }
+    t.status = if p.finished {
+        "complete".to_string()
+    } else {
+        match p.state.as_str() {
+            "hot" | "waking" => "active",
+            "cold" => "paused",
+            "failed" => "error",
+            _ => "removed",
+        }.to_string()
+    };
+    if let Some(err) = p.error { t.error = err; }
+}
+
 fn rpc_task_json(t: &RpcTask) -> Json {
     let total = t.total_length.to_string();
-    let path = if t.name.is_empty() { t.uri.clone() } else { t.name.clone() };
+    let done = t.completed_bytes.to_string();
+    let path = if !t.output_path.is_empty() { t.output_path.clone() }
+               else if !t.name.is_empty() { t.name.clone() }
+               else { t.uri.clone() };
     let mut fields = vec![
         ("gid", Json::s(&t.gid)), ("status", Json::s(&t.status)),
-        // 解析过就报真实长度与片数；没解析就是 0，不猜。
-        ("totalLength", Json::s(&total)), ("completedLength", Json::s("0")),
-        ("uploadLength", Json::s("0")), ("downloadSpeed", Json::s("0")),
-        ("uploadSpeed", Json::s("0")), ("connections", Json::s("0")),
+        // 长度/进度/速率全部来自引擎真实采样；没接引擎就是 0，不猜。
+        ("totalLength", Json::s(&total)), ("completedLength", Json::s(&done)),
+        ("uploadLength", Json::s(&t.uploaded_bytes.to_string())),
+        ("downloadSpeed", Json::s(&t.speed_bps.to_string())),
+        ("uploadSpeed", Json::s("0")),
+        ("connections", Json::s(&t.peers.to_string())),
         ("files", Json::arr(vec![Json::obj(vec![
             ("index", Json::s("1")), ("path", Json::s(&path)),
-            ("length", Json::s(&total)), ("completedLength", Json::s("0")),
+            ("length", Json::s(&total)), ("completedLength", Json::s(&done)),
             ("selected", Json::b(true)),
             ("uris", Json::arr(vec![Json::obj(vec![
                 ("uri", Json::s(&t.uri)), ("status", Json::s("used")),
@@ -492,8 +698,16 @@ fn rpc_task_json(t: &RpcTask) -> Json {
         ])])),
         ("coldrevive.torrentParsed", Json::b(t.torrent_parsed)),
         ("coldrevive.pieceCount", Json::s(t.piece_count.to_string())),
+        ("coldrevive.engineAttached", Json::b(t.engine_task.is_some())),
+        ("coldrevive.engineTask", Json::s(match t.engine_task {
+            Some(v) => v.to_string(), None => String::new(),
+        })),
         ("coldrevive.note", Json::s(&t.note)),
     ];
+    if !t.error.is_empty() {
+        fields.push(("errorMessage", Json::s(&t.error)));
+        fields.push(("coldrevive.error", Json::s(&t.error)));
+    }
     if !t.info_hash.is_empty() {
         fields.push(("bittorrent", Json::obj(vec![("infoHash", Json::s(&t.info_hash))])));
     }
@@ -745,6 +959,19 @@ mod rpc_tests {
             }
         });
         format!("http://127.0.0.1:{}/sample.torrent", addr.port())
+    }
+
+    #[test]
+    fn adduri_accepts_both_param_layouts() {
+        // 带 secret：params = [token, [uri]]；不带 secret：params = [[uri]]。
+        // 只认一种就会让另一种调用方收到「需要至少一个 URI」。
+        let with_secret = vec![Json::s("token"), Json::arr(vec![Json::s("http://h/a.torrent")])];
+        let without_secret = vec![Json::arr(vec![Json::s("http://h/a.torrent")])];
+        assert_eq!(first_uri_param(&with_secret), "http://h/a.torrent");
+        assert_eq!(first_uri_param(&without_secret), "http://h/a.torrent");
+        assert_eq!(first_uri_param(&[]), "");
+        // 只有 options、没有 uris 时必须返回空，而不是把对象当成 URI。
+        assert_eq!(first_uri_param(&[Json::obj(vec![("dir", Json::s("/tmp"))])]), "");
     }
 
     #[test]

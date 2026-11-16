@@ -11,6 +11,13 @@
 > `per_node_host_defaults_to_bind_and_can_override`。
 > 全部 crate 采用 **std-only 零第三方依赖**，保证离线可复现；引入 rqbit / tokio / axum / rusqlite
 > 属 M2+，须另立 ADR 并复核 G1 门禁。
+> **2026-11-16 更正（ADR-015）**：「全局零依赖」已取消，改为**按层划分**——
+> 协议 / 信令面 15 个 crate 继续 std-only（它们的字节级行为已被 T0/T1/S1/S2/S6 证据固定）；
+> `cr-engine` 与 `coldrevived` 允许 **librqbit 9.1.0 + tokio**。版本集中在
+> `[workspace.dependencies]`，`Cargo.lock` 入库，验收一律 `--offline`，业务 crate 不得直接
+> `use librqbit`（只经 `Engine` Trait）。详见 [ADR-015](../docs/02-architecture/adr/ADR-015-dependency-layering.md)。
+> `cr-engine` 已从骨架变为真实实现（`RqbitEngine`，对外同步 API、Tokio 运行时封在 crate 内部）；
+> `coldrevived` 的 `/jsonrpc addUri` 自此**真的下载**（惰性创建引擎，默认不监听入站，T0/T1 路径不变）。
 > **M2 相关 crate 目前只是骨架**（trait / 常量 / 门禁标记），不实现、不宣称 G2 达标；
 > **例外**：`cr-nat` 已于 2026-11-13 落地实现（std-only：STUN + NAT-PMP + PCP + UPnP IGD + 中继回退 + 分类/策略选择），
 > 作为 M2 的合法前置，不触碰 T0 契约与 M1 复活流程；`S6.status` 仍 `not_run`，不宣称 G2/S6 达标。

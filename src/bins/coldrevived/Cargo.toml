@@ -14,3 +14,4 @@ cr-kad = { path = "../../crates/cr-kad" }
 cr-wake = { path = "../../crates/cr-wake" }
 cr-api = { path = "../../crates/cr-api" }
 cr-nat = { path = "../../crates/cr-nat" }
+cr-engine = { path = "../../crates/cr-engine" }

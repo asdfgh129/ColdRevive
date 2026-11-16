@@ -60,6 +60,7 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "wake" => wake(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
+        "seed" => seed_stats(state),
         "download" => download(state, &cfg, &arg(&args, 0)),
         "golden" => golden(&cfg),
         "env" => env_defaults(state),
@@ -224,6 +225,18 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
         }
         other => Json::obj(vec![("error", Json::s(format!("未知 metrics {}", other)))]),
     }
+}
+
+/// 内置标准 BT 种子端的真实上传计数（W5.1 对账用）。
+///
+/// 数字只在 `send_msg` 真正写出分片后自增；COLD 状态下不供片，所以这里是 0 也是真实观测。
+fn seed_stats(state: &Shared) -> Json {
+    let st = state.lock().unwrap();
+    Json::obj(vec![("seed", Json::obj(vec![
+        ("seeding_hot", Json::b(st.bt_seeding)),
+        ("served_bytes", Json::n(st.seeder_served_bytes as f64)),
+        ("piece_requests", Json::n(st.seeder_piece_requests as f64)),
+    ]))])
 }
 
 fn golden(cfg: &Config) -> Json {
