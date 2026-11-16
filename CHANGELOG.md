@@ -2,6 +2,44 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.65] - 2026-11-16 — M2/W3.16：G3 剩余五行补充取证（8/8 有素材，仍未判通过）
+
+> 范围声明：`g3_status` 仍 `not_run`，`g3_claim=false`，`evidence_valid_for_pass=false`；
+> S3 / S5 / S6 状态不变；不改线格式，不宣称 G3 达标。
+
+- **BitComet 2.23.1**：Xvfb + WebUI 上传标准 `.torrent`，1 MiB 完成、SHA-1
+  `f0f990bb…` 匹配、tracker `completed downloaded=1048576 left=0`、seeder
+  `uploaded_bytes=1048576`。Long-Term Seeds 仅观察到 `0 added / 0 received`，
+  `lt_seed_exercised=false`，不宣称长效种子传输。
+- **eMule/aMule 2.3.3**：`ed2k-mini download-from` 经标准 eD2k TCP 从真实 aMule 取回
+  256 KiB，25 个 `OP_SENDINGPART`，独立重算 eD2k hash 与逐字节比较通过（`diff_bytes=0`）；
+  同一 aMule 进程 `Kad: Connected (firewalled)`。未同轮同时发布/搜索，
+  `namespace_crosstalk_tested=false`。
+- **AriaNg 1.3.15 + aria2-next 3.1.0**：UI 显示 Connected，1 MiB 完成，tracker
+  `completed`、seeder `uploaded_bytes=1048576`、SHA-1 匹配；首轮 19699 残留 peer
+  `uploaded=0` 已废弃，改用隔离 tracker 19700 重跑。
+- **浏览器插件**：新增 MV3 取证资产 `tests/e2e/g3/assets/browser-extension/`，Edge headless
+  经 ColdRevive `/jsonrpc` 的 `aria2.addUri` 创建任务；未让示例链接真实下载。
+- **ColdRevive `/jsonrpc` 最小面**：`coldrevived` 增加 aria2 兼容的 `addUri` /
+  `tellStatus` / `tellActive` / `tellWaiting` / `tellStopped` / `getGlobalStat` /
+  `getVersion`，只登记 URI 任务，不启动下载、不伪造进度；CORS 仅用于本地取证。
+- **关闭 UI**：aria2-next 后台进程完成 1 MiB，采样 `524288 B @137458 B/s`，最终
+  SHA-1 匹配，seeder 与 tracker 双侧计数一致；不是 GUI 客户端关窗行为。
+- **核验器**：`compat_matrix.py` 增加 `evidence_collected` 状态（有报告但无独立可执行
+  客户端），fixture 登记 BitComet / aMule 远端客户端；基线 **8 行有素材
+  （5 `runnable_with_evidence` + 3 `evidence_collected`）、0 blocked**，`--self-test 3/3`。
+- **spikes.json**：新增 `g3_progress`，逐行记录报告路径、`g3_verdict=not_run` 与明确边界；
+  `spike_status_changed=false`。
+- **eD2k spike 修复**：真实 aMule 的分片边界可与请求不同，`stack.rs` 改为按**实际收到的
+  字节**校验完整性（不再只看 pending 记账）；`download-from` 独立重算 hash 并逐字节比较。
+- **测试**：`cargo test --workspace --offline` 148 passed / 0 failed；G3 核验器 3/3、
+  local tracker 3/3、eD2k selftest 26/26。
+
+### 边界
+8/8 行有报告不等于 G3 通过。BitComet LT seed 未做传输、aMule 未做同轮 KAD 双写、
+浏览器插件只验证任务创建、关闭 UI 行不是 GUI 客户端；这些边界写在报告和 TEST §3 中，
+由实验执行人在补齐后手工判定。
+
 ## [2.4.64] - 2026-11-16 — M2/W3.15：三台 LAN 主机真实第三方客户端互操作（G3 附件证据）
 
 - **卡点解除**：所有者提供 221/222/209 三台可 SSH 主机，分别装有 Transmission 3.00、

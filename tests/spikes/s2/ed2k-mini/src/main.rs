@@ -30,6 +30,7 @@ mod wire;
 
 use std::env;
 use std::fs;
+use std::io::{self, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -257,6 +258,115 @@ fn run_loopback() -> Result<J, String> {
         ("verdict", s(if all_ok { "confirmed_minimal_ed2k_download_and_upload_loopback" } else { "loopback_incomplete" })),
         ("note", s("同一份最小 eD2k 栈的两端：客户端 HELLO→REQUESTFILENAME→HASHSETREQUEST→STARTUPLOADREQ→(ACCEPTUPLOADREQ|QUEUERANKING)→REQUESTPARTS→SENDINGPART→END_OF_DOWNLOAD，服务端为对应上传侧 + 单槽最小上传队列。三个用例分别覆盖单分块、恰好一个 PARTSIZE（aMule Red 空分块哈希）、多分块。仅回环 TCP，0 个公网报文，不判任何 pass。未实现压缩/混淆/积分/AICH/>4GiB I64 分片/服务器连接，见 README。")),
     ]))
+}
+
+// ---------------------------------------------------------- download from LAN --
+
+/// G3 evidence helper: download one file from an **unmodified** eMule/aMule
+/// client over the standard eD2k TCP wire. Only RFC1918 targets are allowed;
+/// the expected content is supplied locally so hash/content verification is
+/// independent of what the remote client claims.
+fn run_download_from(ip_text: &str, port: u16, path: &str, out_path: &str) -> Result<J, String> {
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：download-from 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    if port == 0 { return Err("--port 必须 > 0".into()); }
+    let data = fs::read(path).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let name = Path::new(path).file_name().and_then(|n| n.to_str())
+        .ok_or_else(|| "文件名不是合法 UTF-8".to_string())?.to_string();
+    let expected = SharedFile::new(name, data);
+    let dest = SocketAddr::from((ip, port));
+    let stream = TcpStream::connect_timeout(&dest, Duration::from_secs(5))
+        .map_err(|e| format!("connect {dest}: {e}"))?;
+    // 真实 aMule 可能因上传槽/队列状态暂缓返回 SENDINGPART；读取超时只用于
+    // 避免永久阻塞，最终完整性由 stack 的总 deadline 与实际字节校验决定。
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(12)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(12)));
+    let result = stack::download(stream, &expected, &our_hello(0), Duration::from_secs(60));
+    // 即使校验失败也落盘，便于对照真实客户端返回的字节与本地期望。
+    if !result.data.is_empty() {
+        fs::write(out_path, &result.data).map_err(|e| format!("写出 {out_path} 失败: {e}"))?;
+    }
+    let diff_bytes = result.data.iter().zip(expected.data.iter())
+        .filter(|(a, b)| a != b).count();
+    // 真实 aMule 可能按与请求不同的边界返回分片，stack 内部的 pending 记账
+    // 不能直接当完整性结论；这里对**实际收到的字节**独立重算 eD2k hash 与逐字节比较。
+    let independent_hash = sha1::hex(&kad::ed2k_hash(&result.data));
+    let hash_ok = independent_hash == sha1::hex(&expected.hash());
+    let content_ok = result.data == *expected.data;
+    let complete_ok = result.data.len() == expected.data.len() && hash_ok && content_ok;
+    Ok(obj(vec![
+        ("schema", s("coldrevive.g3.s2-ed2k-mini-download-from/v1")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("file_name", s(&expected.name)),
+        ("file_size", n(expected.data.len() as f64)),
+        ("ed2k_hash", s(sha1::hex(&expected.hash()))),
+        ("peer_nick", s(result.peer_hello.as_ref().and_then(|h| {
+            w::find_tag(&h.tags, w::ct::NAME).and_then(|t| match &t.value {
+                kad::TagValue::Str(v) => Some(v.clone()), _ => None })
+        }).unwrap_or_default())),
+        ("peer_filename", s(result.peer_filename.clone().unwrap_or_default())),
+        ("handshake_answered", b(result.peer_hello.is_some())),
+        ("hashset_verified", b(result.hashset_verified)),
+        ("queue_rank_seen", n(result.queue_rank_seen.unwrap_or(0) as f64)),
+        ("blocks_received", n(result.blocks_received as f64)),
+        ("bytes_received", n(result.bytes_received as f64)),
+        ("hash_matches", b(hash_ok)),
+        ("content_matches", b(content_ok)),
+        ("completed", b(complete_ok)),
+        ("ed2k_hash_received", s(independent_hash)),
+        ("error", s(result.error.clone().unwrap_or_default())),
+        ("diff_bytes", n(diff_bytes as f64)),
+        ("packet_log", J::Arr(result.log.iter().map(|e| obj(vec![
+            ("direction", s(e.direction)),
+            ("opcode", s(e.opcode_name.as_str())),
+            ("payload_len", n(e.payload_len as f64)),
+        ])).collect())),
+        ("out_path", s(out_path)),
+    ]))
+}
+
+// ------------------------------------------------------------- serve on LAN --
+
+/// G3 evidence helper: serve one real file over the standard eD2k TCP wire so
+/// an **unmodified** third-party client (aMule/eMule) can download it. This is
+/// still a spike, not a production crate; it only binds an explicitly supplied
+/// RFC1918 address and never contacts the public eD2k network.
+fn run_serve_lan(ip_text: &str, port: u16, path: &str) -> Result<J, String> {
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：serve-lan 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    if port == 0 { return Err("--port 必须 > 0".into()); }
+    let data = fs::read(path).map_err(|e| format!("读取 {path} 失败: {e}"))?;
+    let name = Path::new(path).file_name().and_then(|n| n.to_str())
+        .ok_or_else(|| "文件名不是合法 UTF-8".to_string())?.to_string();
+    let file = SharedFile::new(name.clone(), data);
+    let listener = TcpListener::bind(SocketAddr::from((ip, port)))
+        .map_err(|e| format!("bind {ip}:{port} 失败: {e}"))?;
+    let hello = our_hello(port);
+    let files = vec![file.clone()];
+    let base = file.link();
+    let base = base.trim_end_matches('/').trim_end_matches('|');
+    let link = format!("{base}|/|sources,{ip}:{port}|/");
+    println!("SERVE_LAN_READY {}:{}", ip, port);
+    println!("ED2K_LINK {}", link);
+    println!("ED2K_HASH {}", sha1::hex(&file.hash()));
+    println!("FILE_SIZE {}", file.data.len());
+    println!("NEEDS_HASHSET {}", file.needs_hashset());
+    let _ = io::stdout().flush();
+    loop {
+        let (stream, peer) = listener.accept().map_err(|e| format!("accept: {e}"))?;
+        let f = files.clone();
+        let h = hello.clone();
+        let queue = Arc::new(Mutex::new(UploadQueue::new(1)));
+        eprintln!("[serve-lan] peer {peer}");
+        let _ = stack::serve(stream, &f, &h, &queue, Duration::from_secs(120));
+    }
+    #[allow(unreachable_code)]
+    Ok(obj(vec![("mode", s("serve-lan"))]))
 }
 
 // --------------------------------------------------------------- lan hello --
@@ -496,7 +606,9 @@ fn print_usage() {
     println!("ed2k-mini — ADR-011 L2 minimal standard eD2k TCP stack (spike)\n");
     println!("  ed2k-mini selftest                          codec / queue assertions, no sockets");
     println!("  ed2k-mini loopback                          real TCP transfer: our client <-> our server");
-    println!("  ed2k-mini lan-hello --ip IP --port TCP      RFC1918-only real eMule/aMule HELLO handshake\n");
+    println!("  ed2k-mini lan-hello --ip IP --port TCP      RFC1918-only real eMule/aMule HELLO handshake");
+    println!("  ed2k-mini serve-lan --ip IP --port TCP --file PATH");
+    println!("  ed2k-mini download-from --ip IP --port TCP --file PATH --out PATH\n");
     println!("No public eD2k network is contacted. See tests/spikes/s2/ed2k-mini/README.md.");
 }
 
@@ -521,6 +633,20 @@ fn main() {
             } else {
                 run_lan_hello(&ip, port).map(|r| (r, "ed2k-mini-lan-hello"))
             }
+        }
+        "serve-lan" => {
+            let ip = arg_value(&argv, "--ip").unwrap_or_default();
+            let port = arg_value(&argv, "--port").and_then(|v| v.parse::<u16>().ok()).unwrap_or(0);
+            let path = arg_value(&argv, "--file").unwrap_or_default();
+            run_serve_lan(&ip, port, &path).map(|r| (r, "ed2k-mini-serve-lan"))
+        }
+        "download-from" => {
+            let ip = arg_value(&argv, "--ip").unwrap_or_default();
+            let port = arg_value(&argv, "--port").and_then(|v| v.parse::<u16>().ok()).unwrap_or(0);
+            let path = arg_value(&argv, "--file").unwrap_or_default();
+            let out = arg_value(&argv, "--out").unwrap_or_default();
+            run_download_from(&ip, port, &path, &out)
+                .map(|r| (r, "ed2k-mini-download-from"))
         }
         "-h" | "--help" => { print_usage(); return; }
         other => Err(format!("unknown subcommand: {other}")),

@@ -269,9 +269,14 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
                     buffer[s..e].copy_from_slice(&data);
                     out.bytes_received += data.len();
                     out.blocks_received += 1;
-                    in_flight.retain(|r| *r != (start, end));
-                    pending.retain(|r| *r != (start, end));
-                    if pending.is_empty() {
+                    // 真实 aMule 可能把请求的某一块拆成更小的 SENDINGPART 返回；
+                    // 按覆盖范围清除，而不是要求起止完全相同（loopback 自己两端相同所以没暴露）。
+                    let covered = |r: &(u32, u32)| r.0 >= start && r.1 <= end;
+                    in_flight.retain(|r| !covered(r));
+                    pending.retain(|r| !covered(r));
+                    // 真实 aMule 的分片边界可能与请求不同；以实际字节是否等于期望为准，
+                    // 不能只看 pending 记账是否清空（同一文件可有多种合法切片方式）。
+                    if buffer == *expected.data || pending.is_empty() {
                         out.data = buffer.clone();
                         out.hash_matches = ed2k_hash(&buffer) == hash;
                         out.content_matches = buffer == *expected.data;

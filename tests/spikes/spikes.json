@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-14 状态更正（以上均为历史演化记录，保留不改写）：G1 已通过（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true），M2 门禁解除并已开工（cr-nat 接入复活路径；T2 本地接线预检 10/10、evidence_valid=false，非 S6 证据）；S3/S5/S6 状态仍为 not_run，G2 未宣称达标。当前机读进度见 m1_progress.m2_gate 与 m2_progress；S6 四类 NAT（含 CGNAT）矩阵实测仍待真实多 NAT 环境，由实验执行人据证据手工回填。",
+  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-14 状态更正（以上均为历史演化记录，保留不改写）：G1 已通过（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true），M2 门禁解除并已开工（cr-nat 接入复活路径；T2 本地接线预检 10/10、evidence_valid=false，非 S6 证据）；S3/S5/S6 状态仍为 not_run，G2 未宣称达标。当前机读进度见 m1_progress.m2_gate 与 m2_progress；S6 四类 NAT（含 CGNAT）矩阵实测仍待真实多 NAT 环境，由实验执行人据证据手工回填。 2026-11-16：G3 兼容性矩阵 8/8 行已有真实互操作报告（5 runnable_with_evidence + 3 evidence_collected，0 blocked），但 g3_status 仍 not_run、evidence_valid_for_pass=false；BitComet LT seed 未做传输、aMule 未同轮双写 KAD、浏览器插件只验证任务创建、关闭 UI 行使用 aria2 后台进程。S3/S5/S6 仍 not_run，G2/G3 均未宣称达标。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -2151,6 +2151,115 @@
       "w34_relay_note": "真实中继服务端只补齐可信中继的部署组件，仍非四类 NAT 可达率实测；S6.status 保持 not_run，matrix_coverage 仍为 0/4",
       "w35_note": "W3.5① 的 S3 17/17 双机集成、S5 真实 uTP 复跑、S6 单出口精细分类均为真实观测附件，但按 README §6 第 3 条不能单独支撑 pass；S3/S5/S6 状态全部保持 not_run，G2 未宣称达标，matrix_coverage 仍 0/4",
       "w35_s6_discipline": "nat_behavior.py 只给出 1 类真实 NAT 的行为分类样本（port-restricted cone），不是可达率；nat_matrix.py 干跑/聚合均 BLOCKED；R-04 ≥70% 阈值仍未判定"
+    },
+    "spike_status_changed": false
+  },
+  "g3_progress": {
+    "recorded_at": "2026-11-16",
+    "milestone": "M2",
+    "target_gate": "G3",
+    "status": "evidence_collected_all_rows",
+    "g3_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "g3_claim": false,
+    "matrix_fixture": "tests/fixtures/compat-matrix.toml",
+    "checker": "tests/e2e/g3/compat_matrix.py",
+    "baseline": {
+      "report": "tests/e2e/g3/reports/baseline.json",
+      "total": 8,
+      "runnable_with_evidence": 5,
+      "evidence_collected": 3,
+      "runnable_remote": 0,
+      "runnable_no_evidence": 0,
+      "blocked_no_client": 0,
+      "note": "8/8 行有报告不等于 G3 通过；每行 g3_verdict 仍为 not_run"
+    },
+    "rows": [
+      {
+        "id": "qbittorrent",
+        "client": "qBittorrent v4.5.1 (nox)",
+        "host": "192.168.1.222",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/interop-bt-2026-11-16.json",
+        "g3_verdict": "not_run",
+        "boundary": "1 MiB 全量 + SHA-1 + tracker completed + seeder uploaded_bytes=1048576"
+      },
+      {
+        "id": "transmission",
+        "client": "Transmission 3.00",
+        "host": "192.168.1.221",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/interop-bt-2026-11-16.json",
+        "g3_verdict": "not_run",
+        "boundary": "1 MiB 全量 + SHA-1 + tracker completed + seeder uploaded_bytes=1048576"
+      },
+      {
+        "id": "bitcomet",
+        "client": "BitComet 2.23.1 (Linux AppImage)",
+        "host": "192.168.1.221",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/bitcomet-20261116.json",
+        "g3_verdict": "not_run",
+        "boundary": "标准 .torrent + BEP23 tracker + Peer Wire 完成 1 MiB；Long-Term Seeds 0 added / 0 received，lt_seed_exercised=false"
+      },
+      {
+        "id": "emule_amule",
+        "client": "aMuleD 2.3.3",
+        "host": "192.168.1.221",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/emule-amule-20261116.json",
+        "g3_verdict": "not_run",
+        "boundary": "标准 eD2k TCP 下载 256 KiB，独立 hash/逐字节比较通过；KAD Connected (firewalled)，但未同轮同时发布/搜索，namespace_crosstalk_tested=false"
+      },
+      {
+        "id": "ariang",
+        "client": "AriaNg 1.3.15 + aria2-next 3.1.0",
+        "host": "127.0.0.1",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/ariang-20261116.json",
+        "g3_verdict": "not_run",
+        "boundary": "UI Connected + 1 MiB 完成 + 双侧计数一致"
+      },
+      {
+        "id": "browser_extension",
+        "client": "MV3 取证插件 + ColdRevive /jsonrpc",
+        "host": "127.0.0.1",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/browser-extension-20261116.json",
+        "g3_verdict": "not_run",
+        "boundary": "插件进程创建任务成功；未让示例链接真实下载"
+      },
+      {
+        "id": "ui_closed",
+        "client": "aria2-next 后台进程（无 UI）",
+        "host": "127.0.0.1",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/ui-closed-20261116.json",
+        "g3_verdict": "not_run",
+        "boundary": "后台完成 1 MiB + 双侧计数一致；不是 GUI 客户端关窗行为"
+      },
+      {
+        "id": "motrix_aria2",
+        "client": "Motrix Next / aria2",
+        "host": "192.168.1.209 + 127.0.0.1",
+        "status": "evidence_collected",
+        "report": "tests/e2e/g3/reports/interop-bt-2026-11-16.json",
+        "g3_verdict": "not_run",
+        "boundary": "S1 cross_client_round 128/128 片 + 第三方客户端 1 MiB"
+      }
+    ],
+    "explicit_gaps": [
+      "G3 全绿未判定；每行 g3_verdict 仍 not_run，evidence_valid_for_pass=false",
+      "BitComet LT seed 只有模块启用、无对端，未做 LT seed 传输",
+      "aMule KAD 只观察到同进程 Connected (firewalled)，未同轮同时进行 KAD 发布/搜索",
+      "浏览器插件只验证任务创建，不验证内容下载",
+      "关闭 UI 行是 aria2 后台进程，不是 GUI 客户端关窗",
+      "报告均为本地 gitignored 证据，提交后需保留原始文件供复核"
+    ],
+    "gate_discipline": {
+      "no_auto_pass": "compat_matrix.py 的 g3_status / 每行 g3_verdict / evidence_valid_for_pass 均为硬常量，不自动判 pass",
+      "s3_s5_s6_status": "unchanged — 全部 not_run",
+      "g2_claim": false
     },
     "spike_status_changed": false
   },

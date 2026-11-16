@@ -33,6 +33,20 @@ executable = "C:/Program Files/Rayburst/aria2-next.exe"
 version_observed = "aria2-next (Motrix Next 捆绑)"
 mode = "--bt-tracker 指向标准 tracker，DHT/LPD 关闭"
 
+[[remote_clients]]
+row_id = "bitcomet"
+host = "192.168.1.221"
+executable = "/opt/g3-clients/squashfs-root/usr/bin/BitComet"
+version_observed = "BitComet 2.23.1 (Linux AppImage)"
+mode = "Xvfb + WebUI /panel/task_add_bt_result；标准 .torrent 上传"
+
+[[remote_clients]]
+row_id = "emule_amule"
+host = "192.168.1.221"
+executable = "/usr/bin/amuled"
+version_observed = "aMuleD 2.3.3"
+mode = "amuled + EC 4712；标准 eD2k TCP 4662 直连"
+
 [[rows]]
 id = "qbittorrent"
 client = "qBittorrent"

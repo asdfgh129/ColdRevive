@@ -2,15 +2,15 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.10
+version: 2.11
 status: 持续维护
 owner: 项目组
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.10 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-13
+> 编号 DOC-14 · 版本 2.11 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-16
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -438,6 +438,17 @@ ColdRevive
   3 行 `runnable`(2 remote+1 local) / 5 行 blocked，但 `g3_status` 仍 `not_run`。
   证据见 `tests/e2e/g3/reports/interop-bt-2026-11-16.json`（本地 gitignored）。
   **G3 未全绿**（eMule GUI / BitComet / AriaNg / 浏览器插件 / 关闭 UI 未取证），S3 不变。
+
+- **W3.16（2026-11-16）G3 剩余五行补充取证**：BitComet 2.23.1（Xvfb + WebUI 上传标准 `.torrent`）
+  完成 1 MiB，SHA-1 匹配，tracker `completed` + seeder `uploaded_bytes=1048576`；
+  aMuleD 2.3.3 经标准 eD2k TCP 交付 256 KiB，独立重算 hash 与逐字节比较通过，KAD 同期
+  `Connected (firewalled)`；AriaNg 1.3.15 完成 1 MiB 并在 UI 显示 100%；MV3 插件向
+  ColdRevive `/jsonrpc` 推送链接并创建任务；无 UI 的 aria2 后台进程完成 1 MiB。
+  基线因此变为 8 行有素材（5 `runnable_with_evidence` + 3 `evidence_collected`）、0 blocked，
+  但 **G3 仍 `not_run`、`evidence_valid_for_pass=false`**。明确边界：BitComet LT seed
+  `0 added / 0 received`（未做 LT seed 传输）；aMule 未在同一轮同时做 KAD 发布/搜索；
+  浏览器插件只验证任务创建；关闭 UI 行是 aria2 后台进程，不是 GUI 客户端关窗。
+  详见 [TEST §3](../05-quality/TEST.md) 与 `tests/e2e/g3/reports/`（gitignored）。
 
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈

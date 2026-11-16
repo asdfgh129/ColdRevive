@@ -13,3 +13,6 @@ path = "src/main.rs"
 # are pulled in by `#[path]` from the sibling kad-mini probe so there is exactly
 # ONE implementation of the hash in this repository (see src/main.rs).
 [dependencies]
+
+# 独立 spike：不加入仓库根 workspace（根 workspace 只收 src/crates 与 src/bins）。
+[workspace]

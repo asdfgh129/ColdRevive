@@ -2,15 +2,15 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.4
+version: 2.5
 status: 待评审
 owner: 测试组
-updated: 2026-11-13
+updated: 2026-11-16
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.4 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-13
+> 编号 DOC-12 · 版本 2.5 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-16
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
@@ -157,6 +157,29 @@ Seeder 上传计数来自 `s1-cross-seed-17948240{73}/4418/4506.json`。
 首轮 qBittorrent `peer_count_returned=4` 时 seeder `uploaded=0`，判为不干净并废弃重跑，
 未混入结论。**仍有 5 行未覆盖**（BitComet / eMule-aMule GUI / AriaNg / 浏览器插件 / 关闭 UI），
 G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第三方客户端经标准 tracker 下载」。
+
+**2026-11-16 W3.16 五行补充取证（附件证据，G3 仍未通过）**：在上轮三台 LAN 主机上继续驱动
+未改造客户端，补齐 BitComet、aMule、AriaNg、浏览器插件、关闭 UI 五行。所有报告仍固定
+`g3_verdict=not_run` / `evidence_valid_for_pass=false`；本轮只把「有没有真实素材」推进到
+**8/8 行均有报告**，不把有报告等同于矩阵通过：
+
+| 行 | 客户端 / 方式 | 本轮真实观测 | 证据 |
+| :-- | :-- | :-- | :-- |
+| BitComet | BitComet 2.23.1 Linux AppImage；Xvfb + WebUI `/panel/task_add_bt_result` 上传标准 `.torrent` | 1 MiB 全量，SHA-1 `f0f990bb…` 匹配，tracker `completed downloaded=1048576 left=0`，seeder `uploaded_bytes=1048576`；`Long-Term Seeds: 0 added, 0 received` | `bitcomet-20261116.json` |
+| eMule / aMule | aMuleD 2.3.3，标准 eD2k TCP `4662`；ColdRevive `ed2k-mini download-from` | 256 KiB 全量，25 个 `OP_SENDINGPART`，独立重算 eD2k hash `19f7adef…` 与逐字节比较均通过（`diff_bytes=0`）；同一进程 `Kad: Connected (firewalled)` | `emule-amule-20261116.json` |
+| AriaNg | AriaNg 1.3.15 + aria2-next 3.1.0 `/jsonrpc` | UI 显示 Connected；1 MiB 任务完成，tracker `completed`，seeder `uploaded_bytes=1048576`，SHA-1 匹配 | `ariang-20261116.json` |
+| 浏览器插件 | MV3 取证插件（Edge headless）向 ColdRevive `/jsonrpc` 发 `aria2.addUri` | 任务由插件进程创建，`aria2.tellActive` 返回同一 GID 与完整 URI；未让示例链接真实下载 | `browser-extension-20261116.json` |
+| 关闭 UI 窗口 | aria2-next 后台进程，无 AriaNg/WebUI 前端 | 任务由 `/jsonrpc` 创建后后台完成 1 MiB；中途采样 `524288 B @137458 B/s`，最终 SHA-1 匹配，seeder 与 tracker 双侧计数一致 | `ui-closed-20261116.json` |
+
+**边界（必须跟结论一起读）**：① BitComet 的 Long-Term Seed 模块虽启用，但本轮没有 LT seed 对端，
+`lt_seed_exercised=false`，只证明标准 handshake/tracker 路径可用，不宣称「长效种子共存传输」；
+② aMule 的 KAD 在本轮保持 `Connected (firewalled)`，但未在同一轮同时发起 KAD 发布/搜索，
+`namespace_crosstalk_tested=false`；命名空间隔离由 16B `Hash16` 类型与既有 S2 KAD 证据支持，
+不把「结构上分离」写成「已完成同时双写压力测试」；③ 浏览器插件只验证任务创建，不验证内容下载；
+④ 关闭 UI 行使用 aria2 后台进程，不是 BitComet/qBittorrent 的 UI 关闭行为。
+核验器基线随之变为 **8 行有素材（5 `runnable_with_evidence` + 3 `evidence_collected`）、0 `blocked_no_client`**，
+`g3_status` 仍为 `not_run`，`evidence_valid_for_pass=false`。完整报告在
+`tests/e2e/g3/reports/`（gitignored 本地证据），由实验执行人在剩余边界补齐后手工判定。
 
 ## 4. 性能压测场景与基线
 

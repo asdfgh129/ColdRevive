@@ -27,7 +27,7 @@ use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// T0 golden 的 piece_size（262144 B = 样本大小，1 片）。
 pub const PIECE_SIZE: usize = 262144;
@@ -51,6 +51,16 @@ pub struct UdpHub {
     pub stun_sink: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
 }
 
+/// W6.1 M3 接入层最小任务记录：只保存浏览器插件经 /jsonrpc 推送的 URI，
+/// 不触碰 S1/T0/T1 的任何下载路径。字段刻意保持 aria2 兼容命名。
+#[derive(Clone)]
+pub struct RpcTask {
+    pub gid: String,
+    pub uri: String,
+    pub status: String,
+    pub created_unix: u64,
+}
+
 pub struct NodeState {
     pub cfg: Config,
     pub index: ShadowIndex,
@@ -66,6 +76,7 @@ pub struct NodeState {
     pub last_file_hash: Option<String>,
     pub nat: nat_path::NatContext,
     pub hub: UdpHub,
+    pub rpc_tasks: Vec<RpcTask>,
 }
 
 fn main() {
@@ -138,6 +149,7 @@ fn main() {
         last_file_hash: None,
         nat: nat_path::NatContext::from_config(&cfg),
         hub: hub.clone(),
+        rpc_tasks: Vec::new(),
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -222,6 +234,7 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         Err(_) => return,
     };
     let (method, path, body) = req;
+    let mut cors = false;
     let response: (String, Vec<u8>, &'static str) = if path.starts_with("/health") {
         // T1 双机取证：host / machine_id / pid 均取自运行环境，不接受配置伪造。
         let machine = env::var("COMPUTERNAME").or_else(|_| env::var("HOSTNAME"))
@@ -272,10 +285,18 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
             bt::tracker_response(query, cfg.host("A"), port)
         };
         ("200 OK".into(), body, "application/x-bittorrent")
+    } else if path == "/jsonrpc" && method == "POST" {
+        cors = true;
+        let out = handle_jsonrpc(&state, &body);
+        ("200 OK".into(), out.dump().into_bytes(), "application/json")
+    } else if path == "/jsonrpc" && method == "OPTIONS" {
+        cors = true;
+        ("204 No Content".into(), Vec::new(), "text/plain")
     } else {
         ("404 Not Found".into(), b"not found".to_vec(), "text/plain")
     };
-    write_http(&mut stream, &response.0, response.2, &response.1);
+    if cors { write_http_cors(&mut stream, &response.0, response.2, &response.1) }
+    else { write_http(&mut stream, &response.0, response.2, &response.1) }
 }
 
 /// 故障注入控制面（仅 127.0.0.1、仅 T0 测试用）。A 节点真实移动/恢复样本文件。
@@ -342,6 +363,108 @@ fn read_http(stream: &mut TcpStream) -> Result<(String, String, Vec<u8>), String
         buf.extend_from_slice(&tmp[..n]);
     }
     Ok((method, path, buf[header_end..header_end + len.min(buf.len() - header_end)].to_vec()))
+}
+
+/// aria2 兼容 JSON-RPC 的最小子集（M3/W6.1）：只登记插件推送的 URI 任务，
+/// 不启动下载器、不伪造进度/速度。浏览器插件据此可验证「任务创建成功」，
+/// 真实下载仍由 M1 的 /cli download + 第三方 aria2 完成。
+fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
+    let rpc_err = |id: Json, code: i64, msg: &str| Json::obj(vec![
+        ("jsonrpc", Json::s("2.0")), ("id", id),
+        ("error", Json::obj(vec![("code", Json::n(code as f64)), ("message", Json::s(msg))])),
+    ]);
+    let req = match Json::parse(&String::from_utf8_lossy(body)) {
+        Ok(j) => j,
+        Err(e) => return rpc_err(Json::Null, -32700, &format!("parse: {e}")),
+    };
+    let id = req.get("id").cloned().unwrap_or(Json::Null);
+    let method = req.get("method").and_then(Json::as_str).unwrap_or("");
+    let params = req.get("params").and_then(Json::as_arr).unwrap_or(&[]);
+    let arg = |i: usize| params.get(i).cloned().unwrap_or(Json::Null);
+    let ok = |id: &Json, result: Json| Json::obj(vec![
+        ("jsonrpc", Json::s("2.0")), ("id", id.clone()), ("result", result),
+    ]);
+    match method {
+        "aria2.addUri" => {
+            let uri_param = arg(1);
+            let uri = uri_param.as_arr().and_then(|a| a.first())
+                .and_then(Json::as_str).unwrap_or("");
+            if uri.is_empty() { return rpc_err(id, -32602, "addUri 需要至少一个 URI"); }
+            let mut st = state.lock().unwrap();
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let gid = format!("{:x}{:04x}", now.as_millis() as u64, st.rpc_tasks.len());
+            st.rpc_tasks.push(RpcTask {
+                gid: gid.clone(), uri: uri.to_string(), status: "active".into(),
+                created_unix: now.as_secs(),
+            });
+            ok(&id, Json::s(gid))
+        }
+        "aria2.tellStatus" => {
+            let gid_param = arg(1);
+            let gid = gid_param.as_str().unwrap_or("");
+            let st = state.lock().unwrap();
+            match st.rpc_tasks.iter().find(|t| t.gid == gid) {
+                Some(t) => ok(&id, rpc_task_json(t)),
+                None => rpc_err(id, -32001, "任务不存在"),
+            }
+        }
+        "aria2.tellActive" | "aria2.tellWaiting" | "aria2.tellStopped" => {
+            let st = state.lock().unwrap();
+            let list: Vec<Json> = st.rpc_tasks.iter()
+                .filter(|t| if method.ends_with("tellActive") { t.status == "active" }
+                            else if method.ends_with("tellWaiting") { t.status == "waiting" }
+                            else { t.status == "complete" })
+                .map(rpc_task_json).collect();
+            ok(&id, Json::arr(list))
+        }
+        "aria2.getGlobalStat" => {
+            let st = state.lock().unwrap();
+            let active = st.rpc_tasks.iter().filter(|t| t.status == "active").count();
+            ok(&id, Json::obj(vec![
+                ("downloadSpeed", Json::s("0")), ("uploadSpeed", Json::s("0")),
+                ("numActive", Json::s(active.to_string())),
+                ("numWaiting", Json::s("0")), ("numStopped", Json::s("0")),
+                ("numStoppedTotal", Json::s("0")),
+            ]))
+        }
+        "aria2.getVersion" => ok(&id, Json::obj(vec![
+            ("version", Json::s("ColdRevive/2.4.65 (aria2-compatible subset)")),
+            ("enabledFeatures", Json::arr(vec![Json::s("BitTorrent"), Json::s("JSON-RPC")])),
+        ])),
+        _ => rpc_err(id, -32601, &format!("不支持的方法 {method}")),
+    }
+}
+
+fn rpc_task_json(t: &RpcTask) -> Json {
+    Json::obj(vec![
+        ("gid", Json::s(&t.gid)), ("status", Json::s(&t.status)),
+        ("totalLength", Json::s("0")), ("completedLength", Json::s("0")),
+        ("uploadLength", Json::s("0")), ("downloadSpeed", Json::s("0")),
+        ("uploadSpeed", Json::s("0")), ("connections", Json::s("0")),
+        ("files", Json::arr(vec![Json::obj(vec![
+            ("index", Json::s("1")), ("path", Json::s(&t.uri)),
+            ("length", Json::s("0")), ("completedLength", Json::s("0")),
+            ("selected", Json::b(true)),
+            ("uris", Json::arr(vec![Json::obj(vec![
+                ("uri", Json::s(&t.uri)), ("status", Json::s("used")),
+            ])])),
+        ])])),
+    ])
+}
+
+fn write_http_cors(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {
+    // 只给本地插件/前端跨源读取；生产部署须按 ADR-008 收紧为显式白名单。
+    let head = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Connection: close\r\n\r\n",
+        status, ctype, body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
 }
 
 fn write_http(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {

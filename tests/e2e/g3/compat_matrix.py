@@ -8,6 +8,8 @@
 - `g3_status` 恒为 `not_run`；`evidence_valid_for_pass` 恒为 `false`。
 - 「客户端已安装」「有历史报告」都只是**可跑性/素材**，不是通过。
 - 缺客户端、缺证据一律写 blocked，不猜版本、不伪造命中。
+- 有报告但没有独立可执行客户端的行（AriaNg / 浏览器插件 / 关闭 UI）记
+  `evidence_collected`，同样不表示通过。
 """
 
 from __future__ import annotations
@@ -90,15 +92,22 @@ def audit(fixture: Path) -> dict:
         version = read_version(exe)
         evidence = evidence_for(str(spec.get("evidence_glob", "")))
         rc = remote.get(rid)
-        if exe is None and rc is None:
+        if evidence and exe is not None:
+            status = "runnable_with_evidence"
+        elif evidence and rc is not None:
+            status = "runnable_with_evidence"
+            version = rc["version_observed"]
+        elif evidence:
+            # AriaNg / browser-extension / UI-closed 这类行没有独立可执行客户端，
+            # 但已有真实互操作报告。只记「有证据」，不表示 G3 通过。
+            status = "evidence_collected"
+        elif exe is None and rc is None:
             status = "blocked_no_client"
         elif exe is None and rc is not None:
             status = "runnable_remote"
             version = rc["version_observed"]
-        elif not evidence:
-            status = "runnable_no_evidence"
         else:
-            status = "runnable_with_evidence"
+            status = "runnable_no_evidence"
         rows.append(
             {
                 "id": spec.get("id"),
@@ -127,6 +136,7 @@ def audit(fixture: Path) -> dict:
             "runnable_with_evidence": sum(r["status"] == "runnable_with_evidence" for r in rows),
             "runnable_no_evidence": sum(r["status"] == "runnable_no_evidence" for r in rows),
             "runnable_remote": sum(r["status"] == "runnable_remote" for r in rows),
+            "evidence_collected": sum(r["status"] == "evidence_collected" for r in rows),
             "blocked_no_client": sum(r["status"] == "blocked_no_client" for r in rows),
         },
     }
