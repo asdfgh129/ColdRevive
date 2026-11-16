@@ -185,7 +185,9 @@ fn main() {
                  \"connections\":{},\"registered\":{},\"delivered\":{},\"dropped\":{},\
                  \"rejected\":{},\"peers\":{},\"peer_nodes\":{},\"forwarded\":{},\
                  \"forward_dropped\":{},\"secure_handshakes\":{},\"secure_rejected\":{},\
-                 \"bad_tag\":{},\"rate_limited\":{},\"idle_closed\":{},\"conn_cap_rejected\":{}}}",
+                 \"bad_tag\":{},\"rate_limited\":{},\"idle_closed\":{},\"conn_cap_rejected\":{},\
+                 \"declared_updates\":{},\"declared_direct\":{},\"declared_relay_only\":{},\
+                 \"declared_unknown\":{},\"reach_lookups\":{}}}",
                 listen_label,
                 inst,
                 auth,
@@ -204,7 +206,12 @@ fn main() {
                 s.bad_tag,
                 s.rate_limited,
                 s.idle_closed,
-                s.conn_cap_rejected
+                s.conn_cap_rejected,
+                s.declared_updates,
+                s.declared_direct,
+                s.declared_relay_only,
+                s.declared_unknown,
+                s.reach_lookups
             );
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);

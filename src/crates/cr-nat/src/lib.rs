@@ -13,6 +13,7 @@ pub mod endpoint;
 pub mod holepunch;
 pub mod natpmp;
 pub mod pcp;
+pub mod reach;
 pub mod relay;
 pub mod secure;
 pub mod relay_server;

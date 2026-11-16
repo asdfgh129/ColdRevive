@@ -2,6 +2,40 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.61] - 2026-11-16 — M2/W3.12：借 eMule 的 LowID 自我声明（ADR-013）
+
+> 范围声明：不改变任何 Spike 的 `status`；S3 / S5 / S6 仍 `not_run`，`g2_claim=false`。
+> 协议帧**纯追加**（0x08–0x0B），原 0x01–0x07 逐字节不变，T0 golden 不受影响。
+
+### 背景
+所有者指出：eMule 网络同样存在这几类 NAT 且多为 LowID，为什么不直接借鉴？
+回答：**借它「失败应当被预先知道，而不是试出来」的核心思想**（自我声明 + 服务器记录 +
+查询先行）；不借它三个语义——LowID 即终点（我们能换一条路：中继）、没有中继
+（它中继不了整个文件，我们中继的唤醒信令只有几百字节）、HighID = 谁都能连
+（我们的 `direct` 是「配合打洞前提下可直连」，端口受限锥型不在此列）。
+决策记录 [ADR-013]。
+
+### 落地
+| 位置 | 内容 |
+| :--- | :--- |
+| `cr-nat/src/reach.rs`（新） | `ReachClass`（direct / relay-only / unknown）+ `ReachDeclaration`（类别 + 依据 + 时刻 + TTL）。symmetric→relay-only、锥形→direct、**cgnat→unknown**（运营商侧那一层不可推断）；TTL 过期一律降级 unknown，时钟回拨也算过期；`allows_skipping_direct()` 只对 relay-only 为 true。10 条单测 |
+| `cr-nat/src/relay.rs` | 新帧 `REGISTER_DECLARED(0x08)` / `PEER_REACH(0x09)` / `LOOKUP_REACH(0x0A)` / `REACH_RESULT(0x0B)`，客户端 `register_declared` / `lookup_reach` |
+| `cr-nat/src/relay_server.rs` | `declared` 表（只存储转发不判断）+ 同侪声明快照（整份覆盖）+ gauge `declared_direct/relay_only/unknown`、`declared_updates`、`reach_lookups`；负向对照：伪造快照拒、id 不一致拒、断开即清理声明。6 条新单测 |
+| `coldrevived/relay_sub.rs` | 注册即声明（没探测过如实报 unknown）；探测结论更新后经同一条订阅连接重声明（500ms 轮询）。坑：unknown 兜底的时刻戳必须盖章一次，否则每 500ms 重声明一次直到永远 |
+| `coldrevived/nat_path.rs` | 探测结论交付声明槽位 |
+| `coldrevive-relay` | stats JSON 新增五个声明字段 |
+| `coldrevive-nat` | `--lookup <中继> <节点id>` 诊断查询；`--json` / 人类输出新增 `reach_class` |
+| PRD / SRS | 撤掉「公开网络 ≥90%」数值承诺（ADR-012 口径覆盖产品层）；明确「工程指标可设验收线、外部环境成功率不设数值目标」的分界 |
+
+### 边界（不宣称）
+- 唤醒路径**尚未**接入「先查再打洞」——本轮只交付原语 + 诊断消费，
+  不宣称节省了任何一次超时。
+- **部署顺序：先升中继、再升客户端**（旧中继收到 0x08 会拒帧断连）。
+- 声明快照与 PEER_SYNC 一样依赖 ACK 先行：`PeerReach` 抢在 ACK 前面发出会让拨号方
+  「期待 ACK，收到 PeerReach」而永远连不上——已修并在代码注释里记录。
+
+测试 **143 passed / 0 failed**（+17）。
+
 ## [2.4.60] - 2026-11-16 — M2/W3.11：R-04 改为「尽力」，取消可达率的数值承诺（ADR-012）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

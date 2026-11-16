@@ -22,14 +22,44 @@
 
 use cr_core::Config;
 use cr_nat::node_id_16;
+use cr_nat::reach::{now_ms, ReachDeclaration};
 use cr_nat::relay::{FrameKind, RelayClient, NODE_ID_LEN};
 use std::net::UdpSocket;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const WAKE_REPLY_TIMEOUT: Duration = Duration::from_millis(1500);
 const RECONNECT_DELAY: Duration = Duration::from_secs(1);
+/// 订阅连接的读超时兼「声明有没有更新」的轮询周期。
+///
+/// 500ms 的代价是每次超时一次系统调用；换来的是探测结果一出现（最多延迟半秒）
+/// 就能把「我只能走中继」告诉中继。这个值只影响本线程，不碰业务路径。
+const SUB_POLL: Duration = Duration::from_millis(500);
+
+/// 最近一次探测得出的可达性声明。探测线程写入，订阅线程读取。
+///
+/// 用进程级槽位而不是把 NodeState 传进来：订阅线程只需要这一个字段，
+/// 传整个状态会把两边的锁顺序纠缠在一起。
+static LAST_DECL: Mutex<Option<ReachDeclaration>> = Mutex::new(None);
+
+/// 探测完成后由 nat_path 调用。**只在真的探测过之后调用**——
+/// 没测过就不要造一个「看起来像测过」的声明。
+pub fn update_declaration(d: ReachDeclaration) {
+    *LAST_DECL.lock().unwrap() = Some(d);
+}
+
+fn current_declaration() -> ReachDeclaration {
+    let mut g = LAST_DECL.lock().unwrap();
+    // 「没探测过」的兜底声明在这里**只盖章一次**并缓存：
+    // 若每次调用都取当前时间，订阅循环会把「没有更新」误判成「有更新」，
+    // 每 500ms 重声明一次直到永远——服务端计数会无声地涨满。
+    if g.is_none() {
+        *g = Some(ReachDeclaration::unknown(now_ms()));
+    }
+    g.clone().unwrap()
+}
 
 /// 守护进程 UDP 监听绑在 `cfg.bind`；`0.0.0.0` 时本机用回环地址投递。
 pub fn local_wake_host(bind: &str) -> String {
@@ -107,10 +137,13 @@ fn serve(
 ) -> Result<(), String> {
     let client = RelayClient::new(relay.to_string());
     let mut conn = client.connect(CONNECT_TIMEOUT)?;
-    // register 阶段保留 5s 读超时；注册成功后转入长连接阻塞等待 DELIVERED。
-    conn.register(self_id)?;
-    eprintln!("[relay-sub] 已订阅中继 {}", relay);
-    conn.set_read_timeout(None)?;
+    // W3.12：注册即声明。探测还没跑过时就是 unknown——中继会如实记「未声明」，
+    // 而不是替我们猜一个类别。探测跑完后的更新由下面的轮询补发。
+    let mut last_sent = current_declaration();
+    conn.register_declared(self_id, &last_sent)?;
+    eprintln!("[relay-sub] 已订阅中继 {}（可达性声明: {}）",
+              relay, current_declaration().class.label());
+    conn.set_read_timeout(Some(SUB_POLL))?;
 
     let udp = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("订阅 UDP 绑定失败: {}", e))?;
     udp.set_read_timeout(Some(WAKE_REPLY_TIMEOUT))
@@ -119,7 +152,22 @@ fn serve(
     let mut buf = [0u8; 65535];
 
     loop {
-        let frame = conn.recv_frame()?;
+        let frame = match conn.recv_frame() {
+            Ok(f) => f,
+            Err(e) => {
+                // 读超时（SUB_POLL 到点）与真断链在这里是同一种错误。区分办法：
+                // 看声明槽位有没有更新——有就重声明并继续等，没有才按断链处理。
+                // 因此网络真断时（槽位不动）仍会如实走重连路径。
+                let cur = current_declaration();
+                if cur != last_sent {
+                    eprintln!("[relay-sub] 可达性声明更新: {}", cur.class.label());
+                    conn.register_declared(self_id, &cur)?;
+                    last_sent = cur;
+                    continue;
+                }
+                return Err(format!("订阅读帧失败: {}", e));
+            }
+        };
         if frame.kind != FrameKind::Delivered || frame.payload.is_empty() {
             continue;
         }

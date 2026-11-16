@@ -349,6 +349,12 @@ pub fn probe(state: &Shared, cfg: &Config, mode: &str, timeout_ms: u64) -> Json 
         st.nat.self_adv = None;
         st.nat.last_probe = Some(out.clone());
     }
+    // W3.12：探测一旦得出结论，立刻把可达性声明交给订阅线程（它会在 500ms 内
+    // 通过现有订阅连接重声明给中继）。这里只传递，不做任何"再判一次"。
+    crate::relay_sub::update_declaration(cr_nat::reach::ReachDeclaration::from_report(
+        &report,
+        cr_nat::reach::now_ms(),
+    ));
     // 同步刷新本节点通告（供 /nat/advertise 与 nat advertise 使用）
     let adv = self_advertisement(state, cfg);
     state.lock().unwrap().nat.self_adv = Some(adv);

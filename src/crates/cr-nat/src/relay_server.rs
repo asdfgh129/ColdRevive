@@ -42,7 +42,11 @@
 //! 不做多副本；多实例只解决「单实例宕机后注册表丢失」，不等于任播/共识，也不是 S6 的四类
 //! NAT 实测。`S6.status` 仍为 `not_run`，不得据此宣称 G2 达标。
 
-use crate::relay::{FrameKind, RelayFrame, NODE_ID_LEN};
+use crate::reach::ReachClass;
+use crate::relay::{
+    decode_reach_record, encode_reach_record, FrameKind, RelayFrame, NODE_ID_LEN,
+    REACH_RECORD_LEN,
+};
 use crate::secure::{self, RecvError, SecureReader, SecureStats, SecureWriter, PSK_LEN};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -238,6 +242,16 @@ pub struct RelayStats {
     pub idle_closed: u64,
     /// 因并发连接数上限被拒的连接数
     pub conn_cap_rejected: u64,
+    /// 接受的可达性声明帧数（W3.12）。含同一节点重复声明。
+    pub declared_updates: u64,
+    /// 当前声明为「可直连」的节点数（gauge）。**是声明，不是实测**。
+    pub declared_direct: u64,
+    /// 当前声明为「只能中继」的节点数（gauge）。
+    pub declared_relay_only: u64,
+    /// 当前声明为「未知」或从未声明的节点数（gauge）。
+    pub declared_unknown: u64,
+    /// 查询可达性类别的次数（gauge 用途：判断这个能力到底有没有人用）
+    pub reach_lookups: u64,
 }
 
 /// 所有连接线程共享的状态。
@@ -249,6 +263,11 @@ struct Shared {
     peer_registry: Mutex<HashMap<[u8; NODE_ID_LEN], [u8; NODE_ID_LEN]>>,
     /// 同侪实例 id → 链路写连接
     peers: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>>,
+    /// 节点自报的可达性类别（W3.12）：node id → (类别, 声明时刻, 归属实例)。
+    ///
+    /// 中继在这里**只做存储与转发**，不做任何判断——它没有能力、也不该替客户端
+    /// 认定对方自己的 NAT 行为。归属实例用于同侪快照的「整份覆盖」语义。
+    declared: Mutex<HashMap<[u8; NODE_ID_LEN], (ReachClass, u64, [u8; NODE_ID_LEN])>>,
     stats: Mutex<RelayStats>,
     stop: Arc<AtomicBool>,
     max_frame: usize,
@@ -381,6 +400,140 @@ impl Shared {
             s.peer_nodes = nodes as u64;
             s.peers = links as u64;
         });
+    }
+
+    /// 重新计算可达性声明的三个 gauge。
+    ///
+    /// 名字里带 `declared_` 前缀是刻意的：这三个数字是**客户端自报的声明**，
+    /// 不是本实例观测到的事实。把它们读成「有 N 台机器可直连」就是误读。
+    fn refresh_reach_gauges(&self) {
+        let (mut d, mut r, mut u) = (0u64, 0u64, 0u64);
+        {
+            let decl = self.declared.lock().unwrap();
+            for (_, (class, _, _)) in decl.iter() {
+                match class {
+                    ReachClass::Direct => d += 1,
+                    ReachClass::RelayOnly => r += 1,
+                    ReachClass::Unknown => u += 1,
+                }
+            }
+            // 已注册但从未声明的节点（老客户端、或只用 REGISTER 的探测连接）计入 unknown。
+            let reg = self.registry.lock().unwrap();
+            for id in reg.keys() {
+                if !decl.contains_key(id) {
+                    u += 1;
+                }
+            }
+        }
+        self.stat(|s| {
+            s.declared_direct = d;
+            s.declared_relay_only = r;
+            s.declared_unknown = u;
+        });
+    }
+
+    /// 记录一条本实例客户的声明。
+    fn declare_local(&self, id: [u8; NODE_ID_LEN], class: ReachClass, at_ms: u64) {
+        let instance = self.instance;
+        {
+            let mut decl = self.declared.lock().unwrap();
+            decl.insert(id, (class, at_ms, instance));
+        }
+        self.stat(|s| s.declared_updates += 1);
+        self.refresh_reach_gauges();
+        if !self.peers.lock().unwrap().is_empty() {
+            self.broadcast_reach();
+        }
+    }
+
+    /// 节点断开时清掉**本实例**的声明；同侪的声明由同侪的快照负责。
+    fn forget_local(&self, id: &[u8; NODE_ID_LEN]) {
+        let instance = self.instance;
+        let removed = {
+            let mut decl = self.declared.lock().unwrap();
+            match decl.get(id) {
+                Some((_, _, owner)) if *owner == instance => decl.remove(id).is_some(),
+                _ => false,
+            }
+        };
+        if removed {
+            self.refresh_reach_gauges();
+            if !self.peers.lock().unwrap().is_empty() {
+                self.broadcast_reach();
+            }
+        }
+    }
+
+    /// 把本实例的声明整份推给同侪（覆盖语义，掉线节点自然消失）。
+    fn broadcast_reach(&self) {
+        let instance = self.instance;
+        let mut payload = Vec::new();
+        {
+            let decl = self.declared.lock().unwrap();
+            let mut items: Vec<_> = decl
+                .iter()
+                .filter(|(_, (_, _, owner))| *owner == instance)
+                .collect();
+            items.sort_by(|a, b| a.0.cmp(b.0));
+            for (id, (class, at, _)) in items {
+                payload.extend_from_slice(&encode_reach_record(id, *class, *at));
+            }
+        }
+        let frame = RelayFrame {
+            kind: FrameKind::PeerReach,
+            node: instance,
+            payload,
+        };
+        let links: Vec<([u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>)> = self
+            .peers
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
+        let mut dead = Vec::new();
+        for (id, w) in links {
+            if !send_frame(&w, &frame) {
+                dead.push(id);
+            }
+        }
+        for id in dead {
+            self.drop_peer(&id);
+        }
+    }
+
+    /// 收到同侪的声明快照：先清掉该同侪的旧声明，再整份写入。
+    fn apply_peer_reach(&self, owner: [u8; NODE_ID_LEN], payload: &[u8]) {
+        {
+            let mut decl = self.declared.lock().unwrap();
+            decl.retain(|_, (_, _, o)| *o != owner);
+            let mut off = 0;
+            while off + REACH_RECORD_LEN <= payload.len() {
+                if let Some((id, class, at)) = decode_reach_record(&payload[off..]) {
+                    decl.insert(id, (class, at, owner));
+                }
+                off += REACH_RECORD_LEN;
+            }
+        }
+        self.refresh_reach_gauges();
+    }
+
+    /// 回答「这台机器属于哪一类」。查不到就明确回「不知道」（时刻为 0），不猜。
+    fn answer_lookup(&self, target: &[u8; NODE_ID_LEN]) -> RelayFrame {
+        let found = {
+            let decl = self.declared.lock().unwrap();
+            decl.get(target).map(|(c, at, _)| (*c, *at))
+        };
+        let payload = match found {
+            Some((class, at)) => encode_reach_record(target, class, at).to_vec(),
+            None => encode_reach_record(target, ReachClass::Unknown, 0).to_vec(),
+        };
+        self.stat(|s| s.reach_lookups += 1);
+        RelayFrame {
+            kind: FrameKind::ReachResult,
+            node: self.instance,
+            payload,
+        }
     }
 
     fn install_peer(&self, id: [u8; NODE_ID_LEN], writer: Arc<Mutex<ChanWriter>>) -> bool {
@@ -583,6 +736,7 @@ impl RelayServer {
             registry: Mutex::new(HashMap::new()),
             peer_registry: Mutex::new(HashMap::new()),
             peers: Mutex::new(HashMap::new()),
+            declared: Mutex::new(HashMap::new()),
             stats: Mutex::new(RelayStats::default()),
             stop: Arc::new(AtomicBool::new(false)),
             max_frame,
@@ -615,6 +769,9 @@ impl RelayServer {
                 }
                 if !ticker.peers.lock().unwrap().is_empty() {
                     ticker.broadcast_snapshot();
+                    // 声明快照同样周期兜底：拨号方在 ACK 之后没人再推它，
+                    // 只靠事件驱动会让「先声明、后建链」的那一侧永远同步不到。
+                    ticker.broadcast_reach();
                 }
             }
         });
@@ -822,9 +979,83 @@ fn serve_chan(
                     break;
                 }
                 shared.stat(|s| s.registered += 1);
+                shared.refresh_reach_gauges();
                 // 事件驱动同步：注册立刻推给同侪，跨实例投递不必等周期兜底。
                 if !shared.peers.lock().unwrap().is_empty() {
                     shared.broadcast_snapshot();
+                }
+            }
+            FrameKind::RegisterDeclared => {
+                if peer.is_some() {
+                    // 同侪链路不是客户端，不能借它声明普通节点。
+                    shared.stat(|s| s.rejected += 1);
+                    break;
+                }
+                if frame.payload.len() != REACH_RECORD_LEN {
+                    shared.stat(|s| s.rejected += 1);
+                    break;
+                }
+                let Some((id, class, at)) = decode_reach_record(&frame.payload) else {
+                    shared.stat(|s| s.rejected += 1);
+                    break;
+                };
+                // 与 REGISTER 同一条规矩：负载里的 id 必须回显帧头，防止替别人声明。
+                if id != frame.node {
+                    shared.stat(|s| s.rejected += 1);
+                    break;
+                }
+                if let Some(cur) = registered {
+                    if cur != id {
+                        shared.stat(|s| s.rejected += 1);
+                        break;
+                    }
+                }
+                {
+                    let mut reg = shared.registry.lock().unwrap();
+                    if !reg.contains_key(&id) && reg.len() >= shared.limits.max_nodes {
+                        drop(reg);
+                        shared.stat(|s| s.rejected += 1);
+                        break;
+                    }
+                    reg.insert(id, writer.clone());
+                }
+                registered = Some(id);
+                shared.declare_local(id, class, at);
+                let ack = RelayFrame {
+                    kind: FrameKind::Ack,
+                    node: [0u8; NODE_ID_LEN],
+                    payload: Vec::new(),
+                };
+                if !send_frame(&writer, &ack) {
+                    break;
+                }
+                shared.stat(|s| s.registered += 1);
+                if !shared.peers.lock().unwrap().is_empty() {
+                    shared.broadcast_snapshot();
+                }
+            }
+            FrameKind::PeerReach => {
+                let Some(owner) = peer else {
+                    // 声明快照只在实例之间流动，客户端发它属于违规（否则能替任意节点声明）。
+                    shared.stat(|s| s.rejected += 1);
+                    continue;
+                };
+                shared.apply_peer_reach(owner, &frame.payload);
+            }
+            FrameKind::LookupReach => {
+                if registered.is_none() || peer.is_some() {
+                    shared.stat(|s| s.rejected += 1);
+                    continue;
+                }
+                if frame.payload.len() < NODE_ID_LEN {
+                    shared.stat(|s| s.rejected += 1);
+                    continue;
+                }
+                let mut target = [0u8; NODE_ID_LEN];
+                target.copy_from_slice(&frame.payload[..NODE_ID_LEN]);
+                let resp = shared.answer_lookup(&target);
+                if !send_frame(&writer, &resp) {
+                    break;
                 }
             }
             FrameKind::Relay => {
@@ -902,7 +1133,12 @@ fn serve_chan(
                     break;
                 }
                 // 双向立刻对齐：先把我们的快照推过去，对方的 HELLO 之后也会推一次。
+                //
+                // 顺序是有讲究的：ACK **必须**先发。拨号方在 `dial_once` 里读到第一帧
+                // 就断定为 ACK，任何抢在前面的帧都会让整条同侪链路被判失败并进入 1s 重拨
+                // （W3.12 实际踩到：`期待 ACK，收到 PeerReach`，两个实例永远连不上）。
                 shared.broadcast_snapshot();
+                shared.broadcast_reach();
             }
             FrameKind::PeerSync => {
                 if peer.is_none() {
@@ -925,8 +1161,8 @@ fn serve_chan(
                 let owner = peer.expect("peer 已判定为 Some");
                 shared.apply_peer_sync(owner, &nodes);
             }
-            // DELIVERED / ACK 是服务端→客户端的帧；客户端回送它们属于协议违规。
-            FrameKind::Delivered | FrameKind::Ack => {}
+            // DELIVERED / ACK / REACH_RESULT 是服务端→客户端的帧；客户端回送属于协议违规。
+            FrameKind::Delivered | FrameKind::Ack | FrameKind::ReachResult => {}
             FrameKind::Unknown(_) => shared.stat(|s| s.rejected += 1),
         }
     }
@@ -939,6 +1175,7 @@ fn serve_chan(
             }
         }
         drop(reg);
+        shared.forget_local(&id);
         if !shared.peers.lock().unwrap().is_empty() {
             shared.broadcast_snapshot();
         }
@@ -965,6 +1202,7 @@ fn dial_loop(shared: Arc<Shared>, addr: String) {
         match dial_once(&shared, &addr) {
             Ok((peer_id, reader, writer)) => {
                 learned = Some(peer_id);
+                // 拨号方在 dial_once 里已收到 ACK，这里推声明不会抢在 ACK 前面。
                 if !shared.install_peer(peer_id, writer.clone()) {
                     sleep_unless_stopped(&shared, PEER_RETRY);
                     continue;
@@ -1118,7 +1356,9 @@ mod tests {
     ///
     /// 计数由服务端线程在投递**之后**自增，客户端 `recv_frame()` 返回时它可能还没跑到，
     /// 于是断言偶发失败（实测约 1/3）。偶发失败的测试等于没有测试，这里改成有界等待。
-    fn wait_until<F: Fn() -> bool>(pred: F, timeout: Duration) -> bool {
+    /// 注意是 `FnMut`：跨实例那条用例要在闭包里反复发查询帧（`lookup_reach` 需要 `&mut`）。
+    /// 其余调用点都是纯读，`FnMut` 完全兼容。
+    fn wait_until<F: FnMut() -> bool>(mut pred: F, timeout: Duration) -> bool {
         let deadline = std::time::Instant::now() + timeout;
         loop {
             if pred() {
@@ -1457,4 +1697,209 @@ mod tests {
                 "应计一次 conn_cap_rejected（{:?}）", handle.stats());
         handle.stop();
     }
+
+    // ------------------------------------------------------------------
+    // W3.12 可达性声明（借 eMule「登录时报 LowID」）
+    // ------------------------------------------------------------------
+
+    fn decl_relay_only() -> crate::reach::ReachDeclaration {
+        crate::reach::ReachDeclaration {
+            class: ReachClass::RelayOnly,
+            nat_class: crate::NatType::Symmetric,
+            declared_at_ms: crate::reach::now_ms(),
+            ttl_ms: crate::reach::DEFAULT_TTL_MS,
+        }
+    }
+
+    fn decl_direct() -> crate::reach::ReachDeclaration {
+        crate::reach::ReachDeclaration {
+            class: ReachClass::Direct,
+            nat_class: crate::NatType::PortRestrictedCone,
+            declared_at_ms: crate::reach::now_ms(),
+            ttl_ms: crate::reach::DEFAULT_TTL_MS,
+        }
+    }
+
+    #[test]
+    fn declared_limit_is_visible_to_another_client() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+
+        let mut holder = RelayClient::plaintext(addr.clone())
+            .connect(Duration::from_secs(2))
+            .unwrap();
+        let mut asker = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        let id_h = id(b'H');
+        let id_q = id(b'Q');
+
+        holder.register_declared(&id_h, &decl_relay_only()).unwrap();
+        asker.register(&id_q).unwrap();
+        let got = asker
+            .lookup_reach(&id_h, Duration::from_secs(2))
+            .unwrap()
+            .expect("已声明的节点应查得到");
+        assert_eq!(got.class, ReachClass::RelayOnly);
+        assert!(got.effective_at(crate::reach::now_ms()).allows_skipping_direct());
+
+        assert!(wait_until(
+            || handle.stats().declared_relay_only == 1,
+            Duration::from_secs(2)
+        ));
+        handle.stop();
+    }
+
+    /// 「没声明」必须回「不知道」，不能回一个看起来合理的默认类别。
+    /// 回 `RelayOnly` 会让所有没升级的节点被强制走中继；回 `Direct` 会让对称型
+    /// 节点被白白直连一次。两种都是编造。
+    #[test]
+    fn lookup_of_undeclared_node_returns_unknown_not_a_guess() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut c = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        c.register(&id(b'A')).unwrap();
+        let got = c
+            .lookup_reach(&id(b'Z'), Duration::from_secs(2))
+            .unwrap();
+        assert!(got.is_none(), "未声明的节点不能返回任何类别");
+        assert!(wait_until(
+            || handle.stats().reach_lookups == 1,
+            Duration::from_secs(2)
+        ));
+        handle.stop();
+    }
+
+    /// 老客户端只发 REGISTER：它必须被计为「未声明」，不能默认成任何类别。
+    #[test]
+    fn legacy_register_counts_as_undeclared() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut c = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        c.register(&id(b'L')).unwrap();
+        assert!(wait_until(
+            || handle.stats().declared_unknown == 1 && handle.stats().declared_direct == 0,
+            Duration::from_secs(2)
+        ), "老客户端应计为未声明（{:?}）", handle.stats());
+        handle.stop();
+    }
+
+    /// 跨实例：声明在 A 实例、查询在 B 实例。这条用例是 PEER_REACH 的存在理由——
+    /// 我们真实部署就是 222 + 209 两个实例，不能只在本地实例内可见。
+    #[test]
+    fn declaration_crosses_instances() {
+        let s1 = RelayServer::bind("127.0.0.1:0")
+            .unwrap()
+            .with_instance_id(parse_instance_id("relay-one").unwrap());
+        let p1 = s1.local_addr().unwrap().port();
+        let h1 = s1.spawn();
+        let s2 = RelayServer::bind("127.0.0.1:0")
+            .unwrap()
+            .with_instance_id(parse_instance_id("relay-two").unwrap())
+            .with_peer(&format!("127.0.0.1:{}", p1));
+        let p2 = s2.local_addr().unwrap().port();
+        let h2 = s2.spawn();
+
+        // 持有者挂在实例 1。
+        let mut holder = RelayClient::plaintext(format!("127.0.0.1:{}", p1))
+            .connect(Duration::from_secs(2))
+            .unwrap();
+        holder.register_declared(&id(b'H'), &decl_relay_only()).unwrap();
+        // 等两条实例链路建立。
+        assert!(wait_until(|| h2.stats().peers == 1, Duration::from_secs(5)), "实例链路未建立");
+        // 请求方挂在实例 2，查实例 1 上的节点。
+        let mut asker = RelayClient::plaintext(format!("127.0.0.1:{}", p2))
+            .connect(Duration::from_secs(2))
+            .unwrap();
+        asker.register(&id(b'Q')).unwrap();
+        let got = wait_until(
+            || {
+                asker
+                    .lookup_reach(&id(b'H'), Duration::from_secs(1))
+                    .ok()
+                    .flatten()
+                    .map(|d| d.class == ReachClass::RelayOnly)
+                    .unwrap_or(false)
+            },
+            Duration::from_secs(5),
+        );
+        assert!(got, "跨实例声明未同步（instance2: {:?}）", h2.stats());
+        h1.stop();
+        h2.stop();
+    }
+
+    /// 负向对照：客户端自己发 PEER_REACH 帧 = 想替任意节点声明类别，必须拒。
+    #[test]
+    fn client_cannot_forge_peer_reach_snapshot() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut c = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        c.register(&id(b'C')).unwrap();
+        // 伪造一条「节点 Z 可直连」的声明。
+        let fake = encode_reach_record(&id(b'Z'), ReachClass::Direct, crate::reach::now_ms());
+        let frame = RelayFrame {
+            kind: FrameKind::PeerReach,
+            node: id(b'C'),
+            payload: fake.to_vec(),
+        };
+        c.write_raw(&frame.encode()).unwrap();
+        assert!(wait_until(
+            || handle.stats().rejected >= 1,
+            Duration::from_secs(2)
+        ), "伪造快照应被计为 rejected（{:?}）", handle.stats());
+        assert_eq!(handle.stats().declared_direct, 0, "不得采信伪造声明");
+        handle.stop();
+    }
+
+    /// 负向对照：声明帧的负载 id 与帧头不一致 = 替别人声明，必须拒。
+    #[test]
+    fn declared_register_with_mismatched_id_is_rejected() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut c = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        // 帧头 C，负载 Z：想把自己的声明记到别人名下（或反过来抢占身份）。
+        let payload = encode_reach_record(&id(b'Z'), ReachClass::RelayOnly, crate::reach::now_ms());
+        let frame = RelayFrame {
+            kind: FrameKind::RegisterDeclared,
+            node: id(b'C'),
+            payload: payload.to_vec(),
+        };
+        c.write_raw(&frame.encode()).unwrap();
+        assert!(wait_until(
+            || handle.stats().rejected >= 1,
+            Duration::from_secs(2)
+        ), "id 不一致应被拒（{:?}）", handle.stats());
+        assert_eq!(handle.stats().declared_relay_only, 0);
+        handle.stop();
+    }
+
+    /// 断开后声明必须消失：一台关机/换网的机器不能永远留着「可直连」的旧声明。
+    #[test]
+    fn declaration_disappears_when_node_disconnects() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut holder = RelayClient::plaintext(addr.clone())
+            .connect(Duration::from_secs(2))
+            .unwrap();
+        holder.register_declared(&id(b'H'), &decl_direct()).unwrap();
+        assert!(wait_until(|| handle.stats().declared_direct == 1, Duration::from_secs(2)));
+        drop(holder);
+        assert!(
+            wait_until(|| handle.stats().declared_direct == 0, Duration::from_secs(5)),
+            "断开后声明应被清理（{:?}）",
+            handle.stats()
+        );
+        handle.stop();
+    }
+
 }

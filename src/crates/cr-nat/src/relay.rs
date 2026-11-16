@@ -17,6 +17,16 @@
 //!   kind=0x07 FORWARD    负载 = 16 字节原始来源 id + 16 字节目标 id + 消息
 //!                        （收到后只做本地投递，**不再转发**，因此最多一跳、无环）
 //!
+//! W3.12 可达性声明（借 eMule 的「登录时报 LowID」）：
+//!   kind=0x08 REGISTER_DECLARED 负载 = 16B node id + 1B 类别 + 8B 声明时刻
+//!   kind=0x09 PEER_REACH        负载 = n × (16B id + 1B 类别 + 8B 时刻)，实例间整份覆盖
+//!   kind=0x0A LOOKUP_REACH      负载 = 16B 目标 id（问「这台机器属于哪一类」）
+//!   kind=0x0B REACH_RESULT      负载 = 16B 目标 id + 1B 类别 + 8B 时刻（查不到时后两段为 0）
+//!
+//! 四类帧都是**纯追加**：旧版中继收到 0x08..0x0B 会走 `Unknown(kind)` 分支并计数拒帧，
+//! 不会误解析。代价是**部署顺序必须先升中继、再升客户端**——反过来会让新客户端
+//! 在注册阶段就被断开（表现为「中继未回 ACK」）。
+//!
 //! # W3.9：可选的安全传输
 //!
 //! 配了 PSK（`--auth-key` / `nat.relay_key`）时，上面的帧在 [`crate::secure`] 的记录层里
@@ -84,6 +94,21 @@ pub enum FrameKind {
     PeerSync,
     /// 实例间单跳转发（来源 id 原样带回，不二次转发）
     Forward,
+    /// **注册并声明自己的可达性类别**（W3.12）。负载 = 16B node id + 1B 类别 + 8B 声明时刻。
+    ///
+    /// 这是 eMule「登录时声明自己是 LowID」那一步：类别由节点自己实测得出、自己报给中继，
+    /// 而不是让别的节点去猜或试。旧版本中继收到它会走 `Unknown(0x08)` 分支并拒帧
+    /// （不解码、不误判），因此**部署顺序必须是先升级中继、再升级客户端**。
+    RegisterDeclared,
+    /// 实例间同步可达性声明（整份覆盖）。负载 = n × (16B id + 1B 类别 + 8B 时刻)。
+    ///
+    /// 单独一条帧而不是塞进 `PeerSync`：`PeerSync` 的负载是纯 `n × 16B`，
+    /// 改它的语义会让「新旧实例互连」从「解析不了」变成「解析成错的」——后者更难查。
+    PeerReach,
+    /// 查询某节点的可达性类别。负载 = 16B 目标 id。
+    LookupReach,
+    /// `LookupReach` 的应答。负载 = 16B 目标 id + 1B 类别 + 8B 声明时刻（查不到时后两段为 0）。
+    ReachResult,
     Unknown(u8),
 }
 
@@ -97,6 +122,10 @@ impl FrameKind {
             FrameKind::PeerHello => 0x05,
             FrameKind::PeerSync => 0x06,
             FrameKind::Forward => 0x07,
+            FrameKind::RegisterDeclared => 0x08,
+            FrameKind::PeerReach => 0x09,
+            FrameKind::LookupReach => 0x0a,
+            FrameKind::ReachResult => 0x0b,
             FrameKind::Unknown(c) => *c,
         }
     }
@@ -109,9 +138,44 @@ impl FrameKind {
             0x05 => FrameKind::PeerHello,
             0x06 => FrameKind::PeerSync,
             0x07 => FrameKind::Forward,
+            0x08 => FrameKind::RegisterDeclared,
+            0x09 => FrameKind::PeerReach,
+            0x0a => FrameKind::LookupReach,
+            0x0b => FrameKind::ReachResult,
             other => FrameKind::Unknown(other),
         }
     }
+}
+
+/// 一条可达性声明的线缆长度：16B id + 1B 类别 + 8B 声明时刻。
+pub const REACH_RECORD_LEN: usize = NODE_ID_LEN + 1 + 8;
+
+/// 把声明编码成 `REACH_RECORD_LEN` 字节。
+pub fn encode_reach_record(
+    id: &[u8; NODE_ID_LEN],
+    class: crate::reach::ReachClass,
+    declared_at_ms: u64,
+) -> [u8; REACH_RECORD_LEN] {
+    let mut out = [0u8; REACH_RECORD_LEN];
+    out[..NODE_ID_LEN].copy_from_slice(id);
+    out[NODE_ID_LEN] = class.wire();
+    out[NODE_ID_LEN + 1..].copy_from_slice(&declared_at_ms.to_be_bytes());
+    out
+}
+
+/// 解析一条声明记录。长度不足返回 `None`（调用方按「未知」处理，不猜）。
+pub fn decode_reach_record(
+    buf: &[u8],
+) -> Option<([u8; NODE_ID_LEN], crate::reach::ReachClass, u64)> {
+    if buf.len() < REACH_RECORD_LEN {
+        return None;
+    }
+    let mut id = [0u8; NODE_ID_LEN];
+    id.copy_from_slice(&buf[..NODE_ID_LEN]);
+    let class = crate::reach::ReachClass::from_wire(buf[NODE_ID_LEN]);
+    let mut ts = [0u8; 8];
+    ts.copy_from_slice(&buf[NODE_ID_LEN + 1..REACH_RECORD_LEN]);
+    Some((id, class, u64::from_be_bytes(ts)))
 }
 
 #[derive(Debug, Clone)]
@@ -322,6 +386,86 @@ impl RelayConn {
             return Err("relay 未回 ACK".into());
         }
         Ok(())
+    }
+
+    /// 注册并**声明**自己的可达性类别（eMule「登录时报 LowID」那一步）。
+    ///
+    /// 与 [`Self::register`] 的区别只有两点：帧类型是 `RegisterDeclared`，负载多带
+    /// 类别与声明时刻。语义差别则很大——中继从此知道「这台机器不该被直连」，
+    /// 别的节点可以查它再决定路径，而不必先试一次注定失败的直连。
+    ///
+    /// 类别**由节点自己实测得出**（见 [`crate::reach`]），中继只存储与转发，不做判断：
+    /// 一个中继没有能力、也不该去替客户端认定它自己的 NAT 行为。
+    pub fn register_declared(
+        &mut self,
+        node_id: &[u8; NODE_ID_LEN],
+        decl: &crate::reach::ReachDeclaration,
+    ) -> Result<(), String> {
+        let mut payload = Vec::with_capacity(REACH_RECORD_LEN);
+        payload.extend_from_slice(node_id);
+        payload.push(decl.class.wire());
+        payload.extend_from_slice(&decl.declared_at_ms.to_be_bytes());
+        let frame = RelayFrame {
+            kind: FrameKind::RegisterDeclared,
+            node: *node_id,
+            payload,
+        };
+        self.send(&frame)?;
+        let resp = self.recv_frame()?;
+        if resp.kind != FrameKind::Ack {
+            return Err("relay 未回 ACK（可能是不支持声明帧的旧版中继）".into());
+        }
+        Ok(())
+    }
+
+    /// 查询某节点的可达性类别。
+    ///
+    /// 返回 `None` = 中继不知道（没声明过、声明早被清理、或不在本实例也不在同侪快照里）。
+    /// **`None` 必须按「不知道」处理**：它不等于「连不上」。
+    ///
+    /// 用途是省掉一次注定超时的直连尝试，**不是**用来拒绝服务——因此调用方拿到
+    /// `RelayOnly` 时仍应保留中继这条路，拿到 `None` 时两条路都要试。
+    pub fn lookup_reach(
+        &mut self,
+        target: &[u8; NODE_ID_LEN],
+        timeout: Duration,
+    ) -> Result<Option<crate::reach::ReachDeclaration>, String> {
+        let frame = RelayFrame {
+            kind: FrameKind::LookupReach,
+            node: *target,
+            payload: target.to_vec(),
+        };
+        self.send(&frame)?;
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                return Err("查询可达性超时".into());
+            }
+            self.set_read_timeout(Some(left))?;
+            let resp = self.recv_frame()?;
+            if resp.kind != FrameKind::ReachResult {
+                // 同一连接上可能先来别的帧（例如 DELIVERED）；只认应答，其余忽略。
+                continue;
+            }
+            let Some((id, class, at)) = decode_reach_record(&resp.payload) else {
+                return Err("ReachResult 负载长度非法".into());
+            };
+            if &id != target {
+                continue;
+            }
+            if at == 0 {
+                return Ok(None);
+            }
+            return Ok(Some(crate::reach::ReachDeclaration {
+                class,
+                // 查询结果只带类别与时刻：探测时的 NAT 类型不是中继该记的东西，
+                // 硬塞一个 Unknown 会让「类别来自对称型」这类溯源信息看起来像缺失。
+                nat_class: crate::NatType::Unknown,
+                declared_at_ms: at,
+                ttl_ms: crate::reach::DEFAULT_TTL_MS,
+            }));
+        }
     }
 
     pub fn send_relay(&mut self, target: &[u8; NODE_ID_LEN], message: &[u8]) -> Result<(), String> {

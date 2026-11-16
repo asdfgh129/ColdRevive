@@ -27,6 +27,7 @@ fn main() {
     let mut gateway: Option<String> = None;
     let mut upnp_location: Option<String> = None;
     let mut relay_addr: Option<String> = None;
+    let mut lookup: Option<(String, String)> = None;
     let mut census_path: Option<String> = None;
     let mut report_path: Option<String> = None;
     let mut tags: Vec<(String, String)> = Vec::new();
@@ -63,6 +64,15 @@ fn main() {
             "--relay" => {
                 relay_addr = args.get(i + 1).cloned();
                 i += 1;
+            }
+            "--lookup" => {
+                let r = args.get(i + 1).cloned().unwrap_or_default();
+                let n = args.get(i + 2).cloned().unwrap_or_default();
+                if r.is_empty() || n.is_empty() {
+                    fail("--lookup 需要 <中继地址> <节点id-hex（32位）> 两个参数");
+                }
+                lookup = Some((r, n));
+                i += 2;
             }
             "--census" => {
                 census_path = args.get(i + 1).cloned();
@@ -106,6 +116,41 @@ fn main() {
             println!("{}", s.to_json().dump());
         } else {
             print_summary(&s);
+        }
+        return;
+    }
+
+    // 查询模式：问中继「某节点自报的可达性类别」。
+    // 这不是探测——本机不发任何 STUN/打洞包，只是问一句已经存在的声明。
+    if let Some((relay, hex_id)) = lookup {
+        let target = parse_node_hex(&hex_id);
+        let client = cr_nat::relay::RelayClient::new(relay.clone());
+        let mut conn = match client.connect(Duration::from_millis(timeout_ms.max(1000))) {
+            Ok(c) => c,
+            Err(e) => fail(&format!("连接中继 {} 失败: {}", relay, e)),
+        };
+        let session = cr_nat::relay::ephemeral_session_id(&target);
+        if let Err(e) = conn.register(&session) {
+            fail(&format!("注册会话失败（旧版中继不支持？）: {}", e));
+        }
+        match conn.lookup_reach(&target, Duration::from_millis(timeout_ms.max(1000))) {
+            Ok(Some(d)) => {
+                if as_json {
+                    println!("{}", d.to_json().dump());
+                } else {
+                    println!("REACH_CLASS={} nat_class={} declared_at_ms={} ttl_ms={}",
+                        d.class.label(), d.nat_class.label(),
+                        d.declared_at_ms, d.ttl_ms);
+                }
+            }
+            Ok(None) => {
+                if as_json {
+                    println!("{{\"reach_class\":\"unknown\",\"declared\":false}}");
+                } else {
+                    println!("REACH_CLASS=unknown（中继没有该节点的声明；unknown ≠ 连不上）");
+                }
+            }
+            Err(e) => fail(&format!("查询失败: {}", e)),
         }
         return;
     }
@@ -217,6 +262,25 @@ fn print_summary(s: &cr_nat::CensusSummary) {
 }
 
 
+/// 32 位十六进制 → 16 字节节点 id（coldrevive-cli 输出的 node_id 就是这个形态）。
+fn parse_node_hex(s: &str) -> [u8; cr_nat::relay::NODE_ID_LEN] {
+    let t = s.trim();
+    if t.len() != 2 * cr_nat::relay::NODE_ID_LEN
+        || !t.chars().all(|c| c.is_ascii_hexdigit())
+    {
+        fail(&format!(
+            "节点 id 必须是 {} 位十六进制: {}",
+            2 * cr_nat::relay::NODE_ID_LEN,
+            s
+        ));
+    }
+    let mut out = [0u8; cr_nat::relay::NODE_ID_LEN];
+    for k in 0..cr_nat::relay::NODE_ID_LEN {
+        out[k] = u8::from_str_radix(&t[2 * k..2 * k + 2], 16).unwrap_or(0);
+    }
+    out
+}
+
 fn parse_host_port(s: &str) -> Option<(String, u16)> {
     if let Some(colon) = s.rfind(':') {
         let host = &s[..colon];
@@ -284,6 +348,7 @@ fn to_json(r: &cr_nat::TraversalReport) -> String {
     );
     m.insert("mapped_address", jopt(&r.mapped_address));
     m.insert("filtering_behavior", jstr(r.filter_behavior.label()));
+    m.insert("reach_class", jstr(cr_nat::reach::ReachDeclaration::from_report(r, 0).class.label()));
     m.insert("observations", r.observations.len().to_string());
     m.insert(
         "distinct_mappings",
@@ -350,6 +415,10 @@ fn print_human(r: &cr_nat::TraversalReport) {
         r.recommended_strategy.label()
     );
     println!("需要中继回退        : {}", yn(needs_relay(r)));
+    println!(
+        "可达性类别（自报）  : {}",
+        cr_nat::reach::ReachDeclaration::from_report(r, 0).class.label()
+    );
     println!("---------------------------------------------------");
     println!("注：本工具仅做探测与策略建议，不宣称 S6/G2 达标。");
 }
@@ -379,6 +448,9 @@ fn print_help() {
   # 3) 只看已有样本的汇总（不探测）\n\
   coldrevive-nat --report <census.jsonl> [--json]\n\
 \n\
+  # 4) 问中继「某节点自报的可达性类别」（不发探测包）\n\
+  coldrevive-nat --lookup <中继地址> <节点id-hex（32位）> [--json]\n\
+\n\
 选项:\n\
   --json            以 JSON 输出（字段顺序稳定，供脚本解析）\n\
   --timeout <毫秒>  每次探测超时（默认 3000）\n\
@@ -386,6 +458,7 @@ fn print_help() {
   --gateway <h[:p]> 网关地址（启用 NAT-PMP / PCP 探测，默认端口 5351）\n\
   --upnp-location <url>  直接指定 UPnP IGD 控制地址（跳过 SSDP 发现）\n\
   --relay <addr>    中继地址（用于策略评估：对称 NAT 且无映射时回退）\n\
+  --lookup <中继> <id>  查询某节点的可达性声明；查不到回 unknown（unknown ≠ 连不上）\n\
   --census <文件>   探测后追加一条样本到 JSONL（同 sample_id 自动去重）\n\
   --report <文件>   只汇总已有样本，不探测\n\
   --tag k=v         样本元信息，可多次；egress 必填\n\
