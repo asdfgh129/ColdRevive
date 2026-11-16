@@ -60,6 +60,10 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const HEADER_LEN: usize = 1 + NODE_ID_LEN + 4;
 /// 单帧最大负载（1 MiB），防止恶意长度字段导致内存耗尽。
 pub const DEFAULT_MAX_FRAME: usize = 1 << 20;
+/// 不超过这个负载长度的帧视为**信令**：唤醒请求/应答、注册、声明查询都是几百字节，
+/// 它们绕过数据字节预算，只受每连接帧速率约束。中继是所有唤醒的信令前置依赖，
+/// 不能因为数据面拥塞把信令一起掐掉。超过阈值的帧才消耗数据预算（典型数据分片 ≥16 KiB）。
+pub const SIGNAL_FRAME_MAX: usize = 4096;
 /// 注册表快照周期。事件驱动（注册时）已推一次，这里只做漏包/漏链的兜底。
 pub const SYNC_INTERVAL: Duration = Duration::from_millis(500);
 /// 同侪链路断开后的重拨间隔。
@@ -70,7 +74,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// 握手必须在这么久内完成，否则按 slowloris 断开。
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// 公网运行的三道闸：连接数、每连接帧速率、空闲回收，以及注册表规模。
+/// 公网运行的闸门：连接数、每连接帧速率、空闲回收、注册表规模，
+/// 以及 W3.13 新增的**全局数据字节预算**。
 #[derive(Debug, Clone, Copy)]
 pub struct Limits {
     /// 每连接每秒允许的帧数（令牌桶速率）
@@ -85,6 +90,11 @@ pub struct Limits {
     pub max_nodes: usize,
     /// 握手必须在此时间内完成（slowloris 防护）
     pub handshake_timeout: Duration,
+    /// **本实例**每秒允许转发的数据字节数（全局令牌桶，不是每连接）。
+    /// 这是部署侧的带宽护栏，不是可达率承诺；按中继机器实际带宽用 `--data-rate` 调。
+    pub data_byte_rate: u64,
+    /// 数据字节令牌桶容量（允许的突发字节数）。
+    pub data_burst_bytes: u64,
 }
 
 impl Default for Limits {
@@ -96,6 +106,9 @@ impl Default for Limits {
             max_conns: 512,
             max_nodes: 8192,
             handshake_timeout: HANDSHAKE_TIMEOUT,
+            // 512 KiB/s ≈ 4 Mbps，给一台小 VPS 留出信令与系统余量；突发 4 秒。
+            data_byte_rate: 512 * 1024,
+            data_burst_bytes: 2 * 1024 * 1024,
         }
     }
 }
@@ -210,6 +223,35 @@ impl Bucket {
     }
 }
 
+/// 全局**数据字节**令牌桶。与 `Bucket` 分开：帧速率防刷帧，字节预算防占满中继带宽。
+/// 一次性申请整帧长度，宁可丢一帧也不半途截流——半帧比没帧更难排查。
+struct ByteBucket {
+    tokens: f64,
+    rate: f64,
+    burst: f64,
+    last: Instant,
+}
+
+impl ByteBucket {
+    fn new(limits: &Limits) -> Self {
+        let rate = limits.data_byte_rate.max(1) as f64;
+        let burst = limits.data_burst_bytes.max(1) as f64;
+        Self { tokens: burst, rate, burst, last: Instant::now() }
+    }
+    fn try_take(&mut self, bytes: usize) -> bool {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + dt * self.rate).min(self.burst);
+        let n = bytes as f64;
+        if self.tokens < n {
+            return false;
+        }
+        self.tokens -= n;
+        true
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RelayStats {
     /// 累计接受的 TCP 连接数
@@ -252,6 +294,13 @@ pub struct RelayStats {
     pub declared_unknown: u64,
     /// 查询可达性类别的次数（gauge 用途：判断这个能力到底有没有人用）
     pub reach_lookups: u64,
+    /// 通过数据字节预算的帧负载总字节数（累计）。**是放行量，不是实际送达量**。
+    pub data_bytes_admitted: u64,
+    /// 因数据字节预算不足而未进入路由的帧数。与 `dropped` 分开记，便于区分
+    /// 「找不到目标」和「中继带宽已满」——后者对用户应显示为「中继忙」而非「节点离线」。
+    pub bandwidth_limited: u64,
+    /// 被字节预算拒绝的帧负载字节数（累计）。
+    pub bandwidth_limited_bytes: u64,
 }
 
 /// 所有连接线程共享的状态。
@@ -276,6 +325,8 @@ struct Shared {
     allow_insecure: bool,
     limits: Limits,
     active_conns: AtomicU64,
+    /// 全实例共享的数据字节预算。信令帧不经过它。
+    data_budget: Mutex<ByteBucket>,
 }
 
 pub struct RelayServer {
@@ -385,6 +436,22 @@ pub fn parse_instance_id(text: &str) -> Result<[u8; NODE_ID_LEN], String> {
 impl Shared {
     fn stat<F: FnOnce(&mut RelayStats)>(&self, f: F) {
         f(&mut self.stats.lock().unwrap());
+    }
+
+    /// 数据帧入路由前申请字节额度。small frames（≤ `SIGNAL_FRAME_MAX`）不调用本函数，
+    /// 因此信令永远不会因为数据面拥塞被挡住。拒绝时**不**增加 `dropped`：
+    /// 那是「找不到目标」，与「中继忙」是两种完全不同的失败，不能混成一个数字。
+    fn charge_data(&self, bytes: usize) -> bool {
+        let allowed = self.data_budget.lock().unwrap().try_take(bytes);
+        self.stat(|s| {
+            if allowed {
+                s.data_bytes_admitted += bytes as u64;
+            } else {
+                s.bandwidth_limited += 1;
+                s.bandwidth_limited_bytes += bytes as u64;
+            }
+        });
+        allowed
     }
 
     fn local_nodes(&self) -> Vec<[u8; NODE_ID_LEN]> {
@@ -744,6 +811,7 @@ impl RelayServer {
             allow_insecure,
             limits,
             active_conns: AtomicU64::new(0),
+            data_budget: Mutex::new(ByteBucket::new(&limits)),
         });
         let handle = RelayHandle {
             shared: shared.clone(),
@@ -1073,6 +1141,12 @@ fn serve_chan(
                 }
                 let mut target = [0u8; NODE_ID_LEN];
                 target.copy_from_slice(&frame.payload[..NODE_ID_LEN]);
+                // 数据帧才计费；唤醒信令（几百字节）绕过预算，只受帧速率约束。
+                if frame.payload.len() > SIGNAL_FRAME_MAX
+                    && !shared.charge_data(frame.payload.len())
+                {
+                    continue;
+                }
                 let message = frame.payload[NODE_ID_LEN..].to_vec();
                 shared.route_relay(source, target, message);
             }
@@ -1089,6 +1163,12 @@ fn serve_chan(
                 source.copy_from_slice(&frame.payload[..NODE_ID_LEN]);
                 let mut target = [0u8; NODE_ID_LEN];
                 target.copy_from_slice(&frame.payload[NODE_ID_LEN..2 * NODE_ID_LEN]);
+                // 同侪转发来的数据帧同样要过本实例的预算（每个实例花自己的带宽）。
+                if frame.payload.len() > SIGNAL_FRAME_MAX
+                    && !shared.charge_data(frame.payload.len())
+                {
+                    continue;
+                }
                 let message = frame.payload[2 * NODE_ID_LEN..].to_vec();
                 // 只做本地投递，**不再转发**：保证最多一跳，不会成环。
                 if shared.deliver(&target, source, message) {
@@ -1900,6 +1980,59 @@ mod tests {
             handle.stats()
         );
         handle.stop();
+    }
+
+    /// W3.13：信令帧绕过数据预算，数据帧在预算耗尽时被明确拒绝（不是静默超时）。
+    #[test]
+    fn data_budget_blocks_payload_but_never_signaling() {
+        let limits = Limits {
+            data_byte_rate: 1,
+            data_burst_bytes: 1, // 任何超过 1 字节的数据帧一进来就不够
+            ..Limits::default()
+        };
+        let server = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut sender = RelayClient::plaintext(addr.clone()).connect(Duration::from_secs(2)).unwrap();
+        let mut holder = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        sender.register(&id(b'S')).unwrap();
+        holder.register(&id(b'H')).unwrap();
+        holder.set_read_timeout(Some(Duration::from_millis(250))).unwrap();
+
+        // 唤醒信令：远小于 4096 字节，即使预算为 1 也必须送达。
+        sender.send_relay(&id(b'H'), b"WAKEUP_REQ").unwrap();
+        let got = holder.recv_frame().unwrap();
+        assert_eq!(got.payload, b"WAKEUP_REQ");
+
+        // 数据帧：8 KiB 分片，预算不足 → 不投递，且计数与「找不到目标」分开。
+        sender.send_relay(&id(b'H'), &vec![0x5a; 8192]).unwrap();
+        let timed_out = holder.recv_frame().is_err();
+        assert!(timed_out, "预算不足的数据帧不应被投递");
+        let s = handle.stats();
+        assert_eq!(s.bandwidth_limited, 1, "应如实记一次带宽拒绝");
+        assert!(s.bandwidth_limited_bytes >= 8192);
+        assert_eq!(s.data_bytes_admitted, 0, "信令不能计入数据字节");
+        assert_eq!(s.dropped, 0, "带宽拒绝不能混成 dropped");
+        assert_eq!(s.delivered, 1);
+        handle.stop();
+    }
+
+    #[test]
+    fn byte_bucket_refills_by_elapsed_time_and_never_partial() {
+        let limits = Limits { data_byte_rate: 1000, data_burst_bytes: 1000, ..Limits::default() };
+        let mut bucket = ByteBucket::new(&limits);
+        assert!(bucket.try_take(1000));
+        assert!(!bucket.try_take(1), "突发用尽后连 1 字节也不能放行");
+        // 同一模块内可直接推进计时，避免用 sleep 做时序断言。
+        bucket.last = Instant::now() - Duration::from_secs(1);
+        assert!(bucket.try_take(1000), "1 秒应补回 1000 字节");
+        let mut tiny = ByteBucket::new(&Limits {
+            data_byte_rate: 1,
+            data_burst_bytes: 1,
+            ..Limits::default()
+        });
+        assert!(!tiny.try_take(2), "单帧超额必须整帧拒绝，不半途截流");
     }
 
 }

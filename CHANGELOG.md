@@ -2,6 +2,26 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.62] - 2026-11-16 — M2/W3.13：中继数据面字节预算（ADR-014）+ 路线重排
+
+> 范围声明：不改变任何 Spike 的 `status`；S3 / S5 / S6 仍 `not_run`，`g2_claim=false`。
+> 不改线格式，不需要 `PROTOCOL_VERSION` 递增，T0 golden 不受影响。
+
+### 变更
+- `cr-nat::relay_server`：`Limits` 加 `data_byte_rate`（默认 512 KiB/s）与
+  `data_burst_bytes`（默认 2 MiB）；≤4 KiB 的信令帧绕过预算，其余帧整帧放行/拒绝；
+  同侪 `FORWARD` 在接收实例再次计费。
+- `RelayStats` 加 `data_bytes_admitted` / `bandwidth_limited` / `bandwidth_limited_bytes`，
+  与 `dropped` 分开；`coldrevive-relay` 加 `--data-rate` / `--data-burst`，
+  `RELAY_LIMITS` 与 stats JSON 同步输出。
+- 路线重排：**先做标准协议互通（S1/S2 → G3 矩阵），再谈补种**；
+  出口类别 `--census` 移入 S6 证据阶段，当前不排期。
+- `cargo test --workspace --offline`：145 passed / 0 failed（新增 2 条）。
+
+### 边界
+带宽阈值是**部署侧资源护栏**，不是可达率承诺，不进 S6 判据；与 ADR-012 一致。
+默认 512 KiB/s 是初始值而非实测最优值，按部署机带宽调整。
+
 ## [2.4.61] - 2026-11-16 — M2/W3.12：借 eMule 的 LowID 自我声明（ADR-013）
 
 > 范围声明：不改变任何 Spike 的 `status`；S3 / S5 / S6 仍 `not_run`，`g2_claim=false`。

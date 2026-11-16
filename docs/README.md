@@ -152,6 +152,13 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.62 补记（2026-11-16 / W3.13）**：**中继数据面字节预算**（[ADR-014](../docs/02-architecture/adr/ADR-014-relay-data-budget.md)）。
+  所有者要求「数据中转要设阈值，别把中继带宽爆了」。新增全局令牌桶 `--data-rate`（默认
+  512 KiB/s）与 `--data-burst`（默认 2 MiB）：**≤4 KiB 的唤醒信令绕过预算**，其余帧整帧
+  放行或整帧拒绝；超限计 `bandwidth_limited` / `bandwidth_limited_bytes`，与 `dropped`
+  分开，便于区分「中继忙」与「节点离线」。这是部署侧带宽护栏，**不是可达率承诺**
+  （ADR-012 口径）。同轮按所有者决策重排路线：**先做标准协议互通（S1/S2 → G3 矩阵），
+  再谈补种**；出口类别 `--census` 移到 S6 证据阶段，当前不排期。145 passed / 0 failed。
 - **v2.4.61 补记（2026-11-16 / W3.12）**：**借 eMule 的 LowID 自我声明**\n  （[ADR-013](../docs/02-architecture/adr/ADR-013-emule-lowid-declaration.md)）。\n  所有者质疑「eMule 同样存在这几类 NAT 且多为 LowID，为什么不直接借鉴」——在 R-04 取消数值承诺后，\n  这是对「为什么还要自研穿透栈」的正面质询，必须回答而不能绕开。\n  回答分两半：**借**「失败应当被预先知道，而不是试出来」——节点自己探测、自己声明可达性类别\n  （`direct`/`relay-only`/`unknown`），注册中继即上报（0x08），跨实例同步（0x09），可查询（0x0A/0x0B）；\n  **不借**三个语义：LowID 即终点（我们能换一条路——中继转发的是几百字节唤醒信令，不是整个文件，\n  代价低六个数量级，这是本产品区别于「又一个 eMule」的存在理由）、HighID=谁都能连\n  （我们的 `direct` 是「配合打洞前提下可直连」）、让服务器替客户端判断。\n  纪律写进代码：`unknown` 永远不许当 lowid 用、cgnat 不自动分类、TTL 过期降级、时钟回拨算过期、\n  伪造快照拒 / id 不一致拒 / 断开即清理。**部署顺序先升中继再升客户端**。\n  边界：唤醒路径尚未接入「先查再打洞」，本轮只交付原语 + `coldrevive-nat --lookup` 诊断消费。\n  同轮撤掉 PRD「公开网络 ≥90%」数值承诺（ADR-012 口径覆盖产品层），并在 SRS 明确\n  「工程指标可设验收线、外部环境成功率不设数值目标」的分界。方法见 [nat-matrix §20](../tests/spikes/s6/nat-matrix.md)。\n- **v2.4.60 补记（2026-11-16 / W3.11）**：**R-04 改为「尽力」，取消公网可达率的数值承诺**
   （[ADR-012](../docs/02-architecture/adr/ADR-012-r04-best-effort.md)）。项目所有者明确「不能承诺具体数字，
   只能是尽力，我们是提供一个可能性，不是确保实现」。这不是「达不到所以放宽」，而是三条更根本的理由：

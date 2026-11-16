@@ -11,7 +11,10 @@
 //! - `--auth-key`（或环境变量 `CR_RELAY_KEY`、`--auth-key-file`）启用 PSK 双向握手 +
 //!   逐帧加密，**绑非回环地址时没有密钥会拒绝启动**（`--allow-insecure` 才放行明文）；
 //! - `--rate` / `--burst` 每连接令牌桶、`--max-conns` 并发上限、`--idle-timeout` 空闲回收、
-//!   `--max-nodes` 注册表上限。
+//!   `--max-nodes` 注册表上限；
+//! - `--data-rate` / `--data-burst` 全局**数据字节**预算（W3.13）：≤4 KiB 的唤醒信令
+//!   绕过预算，其余帧按字节计费，超额明确拒绝并计 `bandwidth_limited`。这是部署侧的
+//!   带宽护栏，不是可达率承诺。
 //!
 //! 用法：
 //!   coldrevive-relay --listen 0.0.0.0:7100 --auth-key <64hex|file:/path> \
@@ -122,6 +125,12 @@ fn main() {
     if let Some(v) = opt("--handshake-timeout").and_then(|s| s.parse::<u64>().ok()) {
         limits.handshake_timeout = Duration::from_secs(v.max(1));
     }
+    if let Some(v) = opt("--data-rate").and_then(|s| s.parse::<u64>().ok()) {
+        limits.data_byte_rate = v.max(1);
+    }
+    if let Some(v) = opt("--data-burst").and_then(|s| s.parse::<u64>().ok()) {
+        limits.data_burst_bytes = v.max(1);
+    }
 
     let mut server = match RelayServer::bind(&listen) {
         Ok(s) => s
@@ -159,9 +168,9 @@ fn main() {
     println!("RELAY_PEERS={}", peers.join(","));
     println!("RELAY_AUTH={}", auth_label);
     println!("RELAY_KEY_FP={}", fp);
-    println!("RELAY_LIMITS=rate:{}/s,burst:{},idle:{}s,max_conns:{},max_nodes:{}",
+    println!("RELAY_LIMITS=rate:{}/s,burst:{},idle:{}s,max_conns:{},max_nodes:{},data_rate:{}/s,data_burst:{}",
              limits.rate_per_sec, limits.burst, limits.idle.as_secs(),
-             limits.max_conns, limits.max_nodes);
+             limits.max_conns, limits.max_nodes, limits.data_byte_rate, limits.data_burst_bytes);
     println!(
         "[coldrevive-relay] 实例 {} 帧路由监听 {}，同侪 {} 个；认证={}；无业务解析、不合成应答",
         instance_label,
@@ -187,7 +196,8 @@ fn main() {
                  \"forward_dropped\":{},\"secure_handshakes\":{},\"secure_rejected\":{},\
                  \"bad_tag\":{},\"rate_limited\":{},\"idle_closed\":{},\"conn_cap_rejected\":{},\
                  \"declared_updates\":{},\"declared_direct\":{},\"declared_relay_only\":{},\
-                 \"declared_unknown\":{},\"reach_lookups\":{}}}",
+                 \"declared_unknown\":{},\"reach_lookups\":{},\
+                 \"data_bytes_admitted\":{},\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{}}}",
                 listen_label,
                 inst,
                 auth,
@@ -211,7 +221,10 @@ fn main() {
                 s.declared_direct,
                 s.declared_relay_only,
                 s.declared_unknown,
-                s.reach_lookups
+                s.reach_lookups,
+                s.data_bytes_admitted,
+                s.bandwidth_limited,
+                s.bandwidth_limited_bytes
             );
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);
@@ -260,7 +273,8 @@ fn print_usage() {
     println!("                        [--peer <ip:port>]... [--instance-id <label>] \\");
     println!("                        [--stats-file <path>] [--max-frame <bytes>] \\");
     println!("                        [--rate <帧/秒>] [--burst <帧>] [--idle-timeout <秒>] \\");
-    println!("                        [--max-conns <n>] [--max-nodes <n>] [--handshake-timeout <秒>]");
+    println!("                        [--max-conns <n>] [--max-nodes <n>] [--handshake-timeout <秒>] \\");
+    println!("                        [--data-rate <字节/秒>] [--data-burst <字节>]");
     println!();
     println!("  --listen              监听地址，默认 127.0.0.1:7000；端口 0 由内核分配并在首行回显");
     println!("  --auth-key            PSK：64 位十六进制，或 file:<路径>（文件内同样格式）");
@@ -275,6 +289,8 @@ fn print_usage() {
     println!("  --idle-timeout        空闲秒数（默认 300，0 = 关闭）：先发 PING，两轮无应答才断");
     println!("  --max-conns           并发连接上限（默认 512）");
     println!("  --max-nodes           本实例注册表上限（默认 8192）");
+    println!("  --data-rate           全局数据字节预算（默认 524288 B/s ≈ 4 Mbps），按机器带宽调");
+    println!("  --data-burst          数据字节突发容量（默认 2097152 B）；≤4096 B 的信令帧不计费");
     println!();
     println!("帧协议（大端）：1B kind + 16B node id + 4B 长度 + 负载，可整体跑在 PSK 记录层里");
     println!("  0x01 REGISTER(负载=16B node id) -> ACK(0x04)");
