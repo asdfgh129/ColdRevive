@@ -1,0 +1,68 @@
+# G3 兼容性矩阵客户端版本锁定（docs/05-quality/TEST.md §3）
+#
+# 规则：executable 为空 = 本机没有可核验的客户端，核验器如实记 blocked，
+# 绝不把「没装」写成「通过」。版本由核验器实际执行 `--version` 读取，
+# 读不到就写 unknown，不猜。evidence_glob 只指向**已存在**的本机证据文件，
+# 命中也只是「有素材」，不等于 G3 pass——G3 全绿由实验执行人手工判定。
+
+version = 1
+source = "docs/05-quality/TEST.md §3"
+
+[[rows]]
+id = "qbittorrent"
+client = "qBittorrent"
+scenario = "拿 magnet 连接被唤醒的 A，正常下载"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/qbittorrent-*.json"
+
+[[rows]]
+id = "transmission"
+client = "Transmission"
+scenario = "导入伴随 .torrent，正常解析与下载"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/transmission-*.json"
+
+[[rows]]
+id = "bitcomet"
+client = "BitComet"
+scenario = "标准 handshake + 长效种子共存"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/bitcomet-*.json"
+
+[[rows]]
+id = "emule_amule"
+client = "eMule / aMule"
+scenario = "ed2k 链接与 KAD 共存，不污染彼此命名空间"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/emule-*.json"
+
+[[rows]]
+id = "ariang"
+client = "AriaNg"
+scenario = "通过 /jsonrpc 管理任务"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/ariang-*.json"
+
+[[rows]]
+id = "browser_extension"
+client = "浏览器插件"
+scenario = "推送下载链接到 ColdRevive，任务创建成功"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/browser-extension-*.json"
+
+[[rows]]
+id = "ui_closed"
+client = "关闭 UI 窗口"
+scenario = "后台下载/做种不中断"
+executable = ""
+evidence_glob = "tests/e2e/g3/reports/ui-closed-*.json"
+
+# 已在 S1 留下素材的一行：Motrix Next 捆绑 aria2 1.36.0 作第三方 seeder，
+# rqbit cross-lee 拉取 2 MiB、128/128 片 SHA-1 校验通过（S1.cross_client_round）。
+[[rows]]
+id = "motrix_aria2"
+client = "Motrix Next (aria2)"
+scenario = "第三方客户端作 seeder，rqbit cross-lee 逐片校验"
+executable = "C:/Program Files/Rayburst/aria2-next.exe"
+evidence_glob = "tests/spikes/s1/reports/s1-cross-lee-*.json"
+evidence_note = "S1 cross_client_round：128/128 片校验；仅回环 TCP，非 G3 全行通过"

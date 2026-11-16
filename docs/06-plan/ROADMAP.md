@@ -420,6 +420,13 @@ ColdRevive
   与 ADR-012 口径一致。新增 2 条单测（信令绕过 + 整帧拒绝/按时间补充），`cargo test --workspace --offline`
   **145 passed / 0 failed**；真实进程启动验证过 `--data-rate` 回显与 stats JSON 三个新字段。
 
+- **M2/W3.14 已落地（2026-11-16）标准协议互通基线核验**：把 [TEST §3 兼容性矩阵](../../docs/05-quality/TEST.md)
+  的 8 行落成 [compat-matrix.toml](../../tests/fixtures/compat-matrix.toml) + 只读核验器
+  [compat_matrix.py](../../tests/e2e/g3/compat_matrix.py)。核验器只清点客户端可用性与历史素材，
+  `g3_status` / 每行 `g3_verdict` 恒为 `not_run`，`--self-test` 3/3 守这条纪律。
+  本机实测：7 行 `blocked_no_client`，只有 Motrix Next（aria2 1.36.0）有 S1
+  `cross_client_round` 的 128/128 片校验素材。**不是 G3 通过**，矩阵未全绿。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
   实网）作基础，下一步补 G3 第三方客户端矩阵与真实 Mainline DHT 公网加入，让 qBittorrent /

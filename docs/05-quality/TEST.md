@@ -131,6 +131,16 @@ WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**�
 
 客户端版本需在 `tests/fixtures/compat-matrix.toml` 中锁定。
 
+**2026-11-16 W3.14 基线核验**：上表已逐行落到
+[compat-matrix.toml](../../tests/fixtures/compat-matrix.toml)，
+配套只读核验器 [compat_matrix.py](../../tests/e2e/g3/compat_matrix.py)
+（`--self-test` 3/3 通过：脚本任何情况下都不会把 `g3_status` 写成 `pass`）。
+本机实测清点：**8 行中 7 行 `blocked_no_client`**（qBittorrent / Transmission / BitComet /
+eMule-aMule / AriaNg / 浏览器插件 / 关闭 UI），只有 Motrix Next（aria2 1.36.0）一行
+有 S1 `cross_client_round` 的 128/128 片校验素材（`runnable_with_evidence`）。
+这只是**可跑性与素材清点**，不是 G3 通过：矩阵仍要求全部行有真实互操作报告，
+`G3.status` 保持 `not_run`，由实验执行人在客户端齐备后手工回填。
+
 ## 4. 性能压测场景与基线
 
 | 场景 | 负载 | 通过标准 |
