@@ -2,7 +2,7 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.5
+version: 2.6
 status: 待评审
 owner: 测试组
 updated: 2026-11-16
@@ -171,8 +171,12 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 | 浏览器插件 | MV3 取证插件（Edge headless）向 ColdRevive `/jsonrpc` 发 `aria2.addUri` | 任务由插件进程创建，`aria2.tellActive` 返回同一 GID 与完整 URI；未让示例链接真实下载 | `browser-extension-20261116.json` |
 | 关闭 UI 窗口 | aria2-next 后台进程，无 AriaNg/WebUI 前端 | 任务由 `/jsonrpc` 创建后后台完成 1 MiB；中途采样 `524288 B @137458 B/s`，最终 SHA-1 匹配，seeder 与 tracker 双侧计数一致 | `ui-closed-20261116.json` |
 
-**边界（必须跟结论一起读）**：① BitComet 的 Long-Term Seed 模块虽启用，但本轮没有 LT seed 对端，
-`lt_seed_exercised=false`，只证明标准 handshake/tracker 路径可用，不宣称「长效种子共存传输」；
+> 报告文件说明：W3.16 的 `emule-amule-20261116.json` / `browser-extension-20261116.json` /
+> `ui-closed-20261116.json` 三份已被 W3.17 的实测报告取代（`emule-coexist-*.json`、
+> `browser-extension-<ts>.json`、`ui-closed-<ts>.json`）。报告目录是 gitignored 本地证据，
+> 这些旧文件未入库、也未回填成新结论；历史结论以本表与 [CHANGELOG](../../CHANGELOG.md) 2.4.65 为准。
+
+**边界（必须跟结论一起读）**：① BitComet 的 Long-Term Seed 模块虽启用，但本轮没有 LT seed 对端，`lt_seed_exercised=false`，只证明标准 handshake/tracker 路径可用，不宣称「长效种子共存传输」；
 ② aMule 的 KAD 在本轮保持 `Connected (firewalled)`，但未在同一轮同时发起 KAD 发布/搜索，
 `namespace_crosstalk_tested=false`；命名空间隔离由 16B `Hash16` 类型与既有 S2 KAD 证据支持，
 不把「结构上分离」写成「已完成同时双写压力测试」；③ 浏览器插件只验证任务创建，不验证内容下载；
@@ -180,6 +184,35 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 核验器基线随之变为 **8 行有素材（5 `runnable_with_evidence` + 3 `evidence_collected`）、0 `blocked_no_client`**，
 `g3_status` 仍为 `not_run`，`evidence_valid_for_pass=false`。完整报告在
 `tests/e2e/g3/reports/`（gitignored 本地证据），由实验执行人在剩余边界补齐后手工判定。
+
+**2026-11-16 W3.17 三条边界补做实（附件证据，G3 判据仍未回填）**：上一轮四条边界里三条可测的，
+本轮用可复现 harness 做实；第四条（BitComet 长效种子）受环境限制，明确保留为未验证。
+
+| 行 | 上一轮的弱在哪 | 本轮怎么补 | 结果 |
+| :-- | :-- | :-- | :-- |
+| eMule / aMule | KAD 只是「连着」，没有与 eD2k 传输同轮活动 | `emule_coexist.py`：同一轮里先起 KAD 轮（BOOTSTRAP/PUBLISH/SEARCH 真实帧），1 s 后并发真实 eD2k TCP 传输；重叠 30073 ms；期间用 EC 读 aMule 自述状态与上传速率 | 两条通道同轮共存：eD2k 262144 B / 25 块 / hash `19f7adef…` 全对；aMule `Kad: Connected (firewalled)` 传输前中后一致；传输窗口内 `Upload: 8.57 kB/s` |
+| 关闭 UI 窗口 | 上一轮是「本来就没有 UI」，不是「UI 被关掉」 | `ui_closed.py`：headless Edge 打开真实 AriaNg（CDP 可查页面 URL），任务开跑并已有 376832 B 后**杀浏览器进程树**，验证 PID 消失 + 调试端口关闭 | 杀后字节继续涨到 1048576 并 complete，SHA-1 `f0f990bb…`，seeder `uploaded_bytes=1048576/1048576`、`external_peer_completed=true`，tracker `completed left=0` |
+| 浏览器插件 | 推的是 `example.com` 占位链接，只能证明「登记」 | `browser_push.py`：MV3 模板按运行地址渲染（仓库里不再放占位链接），推一条真实 `.torrent`；`coldrevived` 的 `/jsonrpc` 真的取回并解析 | 任务 `gid=1a1e47831710000`，`coldrevive.torrentParsed=true`，info_hash `dbeabf89…` 与本脚本独立 bencode 复算一致，64 片 / 1048576 B |
+
+**仍然是「未通过」的部分（不许折算成 pass）**：
+
+- **BitComet 长效种子（LT Seed）**：`lt_seed_exercised=false`。该 build 的任务视图能读到
+  `Long-Term Seeds: 0 added, 0 received in total`，即模块在跑、标准 handshake 不受影响；
+  但要让它非零，必须有一个经 BitComet 自家分布式网络发现的第二个 LT 对端——那等于把测试
+  infohash 宣告到公共 DHT。G3 harness 的纪律是 `public_network_contacted=false`，不做公网写入，
+  因此本轮到此为止，该行的「长效种子共存传输」仍未验证。
+- **aMule 的 KAD 索引面**：`kad_publish_acked=false`。aMule 自述 `Connected (firewalled)`，
+  其 `Process2PublishKeyRequest` 对 firewalled 状态**静默丢弃** PUBLISH（源码级已知路径），
+  本机实测也复现：BOOTSTRAP 900 ms 有回包（UDP 双向通）、PUBLISH 无回包、SEARCH 无回包。
+  所以本轮只能说「两条通道共存且互不中断」，不能说「aMule 的 KAD 索引已验证入库/回查」。
+- **插件仍不下载内容**：`coldrevived` 还没有 BT 下载引擎（W5.1 才用 rqbit 替换最小服务端），
+  任务停在 `waiting`，报告里 `downloads_content=false`。
+- **关闭 UI 行的 UI 是浏览器（AriaNg），不是 BitComet/qBittorrent 的桌面窗口**。
+
+顺带修掉两个真缺陷：`/jsonrpc` 的 `aria2.tellStatus` 早先把 gid 取成 `params[1]`，
+任务在队列里却回「任务不存在」（本轮被 harness 抓到，已修 + 端到端复验）；
+`config/coldrevive.example.toml` 是 TOML，而 `Config::load` 走 `Json::load`，直接喂给守护进程
+会报「非法 JSON 字符 '#'」——本轮 harness 改为按真实 schema 生成 JSON 配置。
 
 ## 4. 性能压测场景与基线
 

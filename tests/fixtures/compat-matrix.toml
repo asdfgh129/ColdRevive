@@ -67,6 +67,7 @@ client = "BitComet"
 scenario = "标准 handshake + 长效种子共存"
 executable = ""
 evidence_glob = "tests/e2e/g3/reports/bitcomet-*.json"
+evidence_note = "标准 handshake 通过；LT seed 模块在跑但无对端，lt_seed_exercised=false"
 
 [[rows]]
 id = "emule_amule"
@@ -74,6 +75,7 @@ client = "eMule / aMule"
 scenario = "ed2k 链接与 KAD 共存，不污染彼此命名空间"
 executable = ""
 evidence_glob = "tests/e2e/g3/reports/emule-*.json"
+evidence_note = "W3.17 emule_coexist.py：KAD 帧与 eD2k TCP 同轮并发（重叠 30 s）；KAD 索引面因 aMule firewalled 未验证"
 
 [[rows]]
 id = "ariang"
@@ -81,6 +83,7 @@ client = "AriaNg"
 scenario = "通过 /jsonrpc 管理任务"
 executable = ""
 evidence_glob = "tests/e2e/g3/reports/ariang-*.json"
+evidence_note = "AriaNg UI Connected + 1 MiB 完成；UI 关闭场景见 ui-closed 行"
 
 [[rows]]
 id = "browser_extension"
@@ -88,6 +91,7 @@ client = "浏览器插件"
 scenario = "推送下载链接到 ColdRevive，任务创建成功"
 executable = ""
 evidence_glob = "tests/e2e/g3/reports/browser-extension-*.json"
+evidence_note = "W3.17 browser_push.py：插件推真实 .torrent，ColdRevive 取回并解析出真实 info_hash；不下载内容"
 
 [[rows]]
 id = "ui_closed"
@@ -95,6 +99,7 @@ client = "关闭 UI 窗口"
 scenario = "后台下载/做种不中断"
 executable = ""
 evidence_glob = "tests/e2e/g3/reports/ui-closed-*.json"
+evidence_note = "W3.17 ui_closed.py：真实 UI 进程被 kill 后下载继续到完成（两方计数 + SHA-1）"
 
 # 已在 S1 留下素材的一行：Motrix Next 捆绑 aria2 1.36.0 作第三方 seeder，
 # rqbit cross-lee 拉取 2 MiB、128/128 片 SHA-1 校验通过（S1.cross_client_round）。

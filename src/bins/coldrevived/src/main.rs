@@ -59,6 +59,14 @@ pub struct RpcTask {
     pub uri: String,
     pub status: String,
     pub created_unix: u64,
+    /// 任务若来自可解析的 `.torrent`，这里记真实值；拿不到就是空/0，绝不编造。
+    pub info_hash: String,
+    pub name: String,
+    pub total_length: u64,
+    pub piece_count: usize,
+    /// 是否真的把 `.torrent` 取回来并解析过（GUI/前端据此区分「已解析」与「只登记了 URI」）。
+    pub torrent_parsed: bool,
+    pub note: String,
 }
 
 pub struct NodeState {
@@ -390,18 +398,48 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
             let uri = uri_param.as_arr().and_then(|a| a.first())
                 .and_then(Json::as_str).unwrap_or("");
             if uri.is_empty() { return rpc_err(id, -32602, "addUri 需要至少一个 URI"); }
+            // `.torrent` 链接就真的取回来解析：任务带着真实 info_hash / 长度 / 片数，
+            // 而不是一个占位 URI。解析失败如实记在 note 里，不假装成功。
+            // 注意：这里只解析元数据，ColdRevive 目前没有 BT 下载引擎（W5.1 才用 rqbit 替换），
+            // 所以任务状态停在 `waiting`，不会伪造任何进度。
+            let (parsed, note): (Option<Torrent>, String) = if uri.starts_with("http://") {
+                match http_fetch(uri, Duration::from_secs(10)) {
+                    Ok(body) => match cr_torrent::parse(&body) {
+                        Ok(t) => (Some(t), "已取回并解析 .torrent；下载引擎尚未接入（W5.1），任务不传输".to_string()),
+                        Err(e) => (None, format!("取回成功但解析失败: {e}")),
+                    },
+                    Err(e) => (None, format!("取回 .torrent 失败: {e}")),
+                }
+            } else {
+                (None, "非 http(s) 的 .torrent 链接：只登记 URI，未解析".to_string())
+            };
             let mut st = state.lock().unwrap();
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
             let gid = format!("{:x}{:04x}", now.as_millis() as u64, st.rpc_tasks.len());
             st.rpc_tasks.push(RpcTask {
-                gid: gid.clone(), uri: uri.to_string(), status: "active".into(),
+                gid: gid.clone(), uri: uri.to_string(),
+                // 只有解析成功才可能有后续动作；两种情形都停在 waiting，不伪造 active。
+                status: "waiting".into(),
                 created_unix: now.as_secs(),
+                info_hash: parsed.as_ref().map(|t| t.info_hash.clone()).unwrap_or_default(),
+                name: parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default(),
+                total_length: parsed.as_ref().map(|t| t.length as u64).unwrap_or(0),
+                piece_count: parsed.as_ref().map(|t| t.pieces.len()).unwrap_or(0),
+                torrent_parsed: parsed.is_some(),
+                note,
             });
             ok(&id, Json::s(gid))
         }
         "aria2.tellStatus" => {
             let gid_param = arg(1);
-            let gid = gid_param.as_str().unwrap_or("");
+            // aria2 的 tellStatus 签名是 tellStatus(gid, keys)，gid 在 params[0]；
+            // 早先这里错取 params[1]，导致任务明明在队列里却回「任务不存在」。
+            // 两种位置都接受，避免调用方按不同习惯写就查不到。
+            let first_param = arg(0);
+            let gid = gid_param
+                .as_str()
+                .or_else(|| first_param.as_str())
+                .unwrap_or("");
             let st = state.lock().unwrap();
             match st.rpc_tasks.iter().find(|t| t.gid == gid) {
                 Some(t) => ok(&id, rpc_task_json(t)),
@@ -436,20 +474,74 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
 }
 
 fn rpc_task_json(t: &RpcTask) -> Json {
-    Json::obj(vec![
+    let total = t.total_length.to_string();
+    let path = if t.name.is_empty() { t.uri.clone() } else { t.name.clone() };
+    let mut fields = vec![
         ("gid", Json::s(&t.gid)), ("status", Json::s(&t.status)),
-        ("totalLength", Json::s("0")), ("completedLength", Json::s("0")),
+        // 解析过就报真实长度与片数；没解析就是 0，不猜。
+        ("totalLength", Json::s(&total)), ("completedLength", Json::s("0")),
         ("uploadLength", Json::s("0")), ("downloadSpeed", Json::s("0")),
         ("uploadSpeed", Json::s("0")), ("connections", Json::s("0")),
         ("files", Json::arr(vec![Json::obj(vec![
-            ("index", Json::s("1")), ("path", Json::s(&t.uri)),
-            ("length", Json::s("0")), ("completedLength", Json::s("0")),
+            ("index", Json::s("1")), ("path", Json::s(&path)),
+            ("length", Json::s(&total)), ("completedLength", Json::s("0")),
             ("selected", Json::b(true)),
             ("uris", Json::arr(vec![Json::obj(vec![
                 ("uri", Json::s(&t.uri)), ("status", Json::s("used")),
             ])])),
         ])])),
-    ])
+        ("coldrevive.torrentParsed", Json::b(t.torrent_parsed)),
+        ("coldrevive.pieceCount", Json::s(t.piece_count.to_string())),
+        ("coldrevive.note", Json::s(&t.note)),
+    ];
+    if !t.info_hash.is_empty() {
+        fields.push(("bittorrent", Json::obj(vec![("infoHash", Json::s(&t.info_hash))])));
+    }
+    Json::obj(fields)
+}
+
+/// 最小 HTTP/1.1 GET，只用于取回 `.torrent`（RFC1918 / 回环的取证环境）。
+///
+/// 不引入第三方 HTTP 客户端是刻意的：这里只需要「发一个 GET、读到 EOF、取 body」。
+/// 只支持 `http://`（取证服务器是明文 HTTP）；`https://` 会明确报错而不是静默降级。
+/// 不支持 chunked 编码时如实报错，解析失败由调用方记录，绝不假装拿到完整 body。
+fn http_fetch(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    let rest = url
+        .strip_prefix("http://")
+        .ok_or_else(|| "只支持 http:// 链接（https:// 需要 TLS，本进程未实现）".to_string())?;
+    let (authority, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    if authority.is_empty() {
+        return Err("URL 缺少主机名".into());
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h, p.parse::<u16>().map_err(|_| format!("端口非法: {p}"))?),
+        None => (authority, 80u16),
+    };
+    let addr = format!("{host}:{port}");
+    let mut stream = TcpStream::connect(&addr).map_err(|e| format!("connect {addr}: {e}"))?;
+    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    let req = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).map_err(|e| format!("write request: {e}"))?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).map_err(|e| format!("read response: {e}"))?;
+    let split = buf
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| "响应缺少头部分隔".to_string())?;
+    let head = String::from_utf8_lossy(&buf[..split]).to_string();
+    let body = buf[split + 4..].to_vec();
+    let status_line = head.lines().next().unwrap_or("").to_string();
+    if !status_line.contains(" 200") {
+        return Err(format!("HTTP 状态非 200: {status_line}"));
+    }
+    if head.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+        return Err("响应使用 chunked 编码，本最小客户端未实现".into());
+    }
+    Ok(body)
 }
 
 fn write_http_cors(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {
@@ -628,4 +720,70 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>, frame: &Json) -
                               entry.piece_size, me.bt_port));
     }
     None
+}
+
+#[cfg(test)]
+mod rpc_tests {
+    use super::*;
+
+    /// 起一个只服务一次的极简 HTTP 服务，把给定 body 作为 200 响应发出去。
+    fn serve_once(body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = s.read(&mut buf);
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/x-bittorrent\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&body);
+                let _ = s.flush();
+            }
+        });
+        format!("http://127.0.0.1:{}/sample.torrent", addr.port())
+    }
+
+    #[test]
+    fn adduri_fetches_and_parses_real_torrent() {
+        let data = vec![7u8; 40_000];
+        let torrent = cr_torrent::generate(&data, "rpc-sample.bin", 16_384, "http://127.0.0.1:1/announce");
+        let url = serve_once(torrent.raw.clone());
+
+        let fetched = http_fetch(&url, Duration::from_secs(5)).expect("fetch");
+        assert_eq!(fetched, torrent.raw, "取回的字节必须与发出的种子完全一致");
+
+        let parsed = cr_torrent::parse(&fetched).expect("parse");
+        assert_eq!(parsed.info_hash, torrent.info_hash);
+        assert_eq!(parsed.length, 40_000);
+        assert_eq!(parsed.name, "rpc-sample.bin");
+        assert_eq!(parsed.pieces.len(), 3, "40000 / 16384 向上取整 = 3 片");
+    }
+
+    #[test]
+    fn https_is_rejected_instead_of_silently_downgraded() {
+        let err = http_fetch("https://127.0.0.1:1/x.torrent", Duration::from_millis(200))
+            .expect_err("https 必须报错");
+        assert!(err.contains("http://"), "错误信息要说清楚只支持 http://: {err}");
+    }
+
+    #[test]
+    fn non_200_is_an_error_not_an_empty_torrent() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = s.flush();
+            }
+        });
+        let err = http_fetch(&format!("http://127.0.0.1:{}/missing.torrent", addr.port()), Duration::from_secs(3))
+            .expect_err("404 必须报错");
+        assert!(err.contains("404"), "错误信息要带上状态行: {err}");
+    }
 }

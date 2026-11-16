@@ -2107,13 +2107,13 @@
       "w37_real_nat": "W3.7（2026-11-15）：真实 NAT 档位落地 —— 持有者 222（真实 NAT → 112.5.32.34）、请求者 A（真实 NAT → 112.5.60.4）、中继 221 仅信令。现场分类修正为 symmetric（APDM，手工报文实验确证），并修掉两个'编造分类'缺陷（CLASSIFY-SINGLE-SAMPLE / CHANGE-REQ-NO-SOURCE-CHECK）与一个偶发测试。30 次/路径：direct 0/30（symmetric 的正确结果，抓包给出因果链）、relay 30/30、dropped=0。首次出现 evidence_valid=true 的单类报告（条款①②均成立），但 S6 仍 not_run、R-04 不判定。",
       "w38_relay_de_single_point": "W3.8（2026-11-15）：中继去单点化 —— 双实例（221:7100 relay-221 / 209:7100 relay-209，两台真实主机、真实 LAN）通过新增的实例间帧 PEER_HELLO(0x05)/PEER_SYNC(0x06)/FORWARD(0x07) 互认知并同步注册表快照；实测跨实例双向 30 轮 60 帧全送达（min 0.3 / max 0.6 / avg 0.3 ms），两端 dropped=0、forward_dropped=0；重启 relay-209 后持有者未重注册仍能收到帧（快照自愈）；反证：同机起一个未配 --peer 的隔离实例，同一条 cross 用例立即 FAIL 且 dropped=1，证明通过来自快照同步而非环境偶然。客户端侧 nat.relay 支持列表并顺序切换（relay_wake_any 聚合每条真实错误）。仍**不构成 S6 证据**：这是中继可用性工程，不是四类 NAT 可达率；S6 仍 not_run、G2 未达标。",
       "w39_relay_hardened": "W3.9（2026-11-16）：中继公网生产化 —— cr-nat::secure 补 PSK 双向认证 + 逐记录加密 + 序号防重放（明确不是 TLS：无证书/前向保密/密钥轮换，未经审计）；心跳 PING/PONG 放记录层；加 --max-conns/--rate/--burst/--idle-timeout/--max-nodes/--handshake-timeout 五道闸并可归因；绑非回环地址无 PSK 直接拒绝启动。两台真实主机：pair PASS、latency 30/30（p50 0.88 ms）、跨实例加密 60/60 帧（avg 0.4 ms）、两端 dropped=0；反证三条全部如实失败。公网入口 112.5.32.34:57100 实测未通（同 CPE 54022 27 ms 可达、57100 按对端 IP 抓包 0 包），因此本轮无跨公网时延数字。不构成 S6 证据：S6 仍 not_run、g2_claim=false。",
-    "w310_egress_census": "W3.10（2026-11-16）：出口类别清单 —— coldrevive-nat 新增 --census/--report，把每次探测沉淀为 JSONL 样本（nat_class + 正交两维 mapping_behavior/filtering_behavior + observations/distinct_mappings 依据 + double_nat 双层 NAT 判据 + variant 配置变体 + 防重 sample_id）；TraversalReport 补 filter_behavior 与原始 observations（此前算完即丢，结论无依据可查）。纪律写进代码：同一出口同一 variant 出现两类 ⇒ unresolved 整条不进清单；matrix_coverage=none / r04_judgeable=false / s6_status=not_run / g2_claim=false 是常量而非计算结果；读回未知字段报错带行号。实测 A 机家宽出口 112.5.60.4 = port-restricted-cone（eim + port-restricted），结合 W3.7 对 112.5.32.34 的 APDM 结论，现有两个出口本就是两类，缺 full-cone/restricted-cone/cgnat。不构成 S6 证据：S6 仍 not_run、g2_claim=false、R-04 不判定。",
-    "w311_r04_best_effort": "W3.11（2026-11-16）：R-04 改为「尽力」，取消可达率的数值承诺（ADR-012）。删除 R04_MIN_REACHABILITY=0.70，改 R04_STANCE=best-effort + R04_NUMERIC_COMMITMENT=None（保留字段名让机器读到「明确不给数」），加单测防阈值被加回；矩阵配置把 r04_min_reachability 换成 s6_pass_criteria 四条定性要求，nat_matrix.py 不再做阈值比较（自检 17/17，含 r04_has_no_numeric_threshold）；RISK R-04 触发条件改为「某类环境中直连与中继回退同时失败」。理由不是「达不到」而是：产品卖的是「多一条能叫醒机器的路」不是 SLA；阈值会污染测量（逼出挑环境/填格子）；分母不可抽样，百分比无统计意义却被当 SLA 引用。中继回退改为常开。一条强度都没放松：条款①②与 evidence_scope 分层不变，S6 仍 not_run、g2_claim=false。",
-    "w312_lowid_declaration": "W3.12（2026-11-16）：借 eMule 的 LowID 自我声明（ADR-013）。所有者质疑「eMule 同样存在这几类 NAT 且多为 LowID，为什么不直接借鉴」。回答：借「失败应当被预先知道，而不是试出来」——节点自己探测、自己声明可达性类别（direct/relay-only/unknown），注册即上报（REGISTER_DECLARED 0x08），跨实例同步（PEER_REACH 0x09），可查询（LOOKUP_REACH 0x0A / REACH_RESULT 0x0B），纯追加不改旧帧。不借三个语义：LowID 即终点（我们能换一条路：中继转发的是几百字节信令不是整个文件）、HighID=谁都能连（direct 是配合打洞前提下可直连）、不设服务器判断。纪律在代码：unknown 永远不许当 lowid 用（allows_skipping_direct 只认 relay-only）、cgnat 不自动分类（运营商侧那一层不可推断）、TTL 过期降级 unknown、时钟回拨算过期、伪造快照拒 / id 不一致拒 / 断开即清理声明，各有专门单测。持有者注册即声明、探测即重声明（unknown 兜底时间戳必须盖章一次，否则每 500ms 重声明到永远）。部署顺序先升中继再升客户端；PeerReach 必须排在 ACK 之后（实测踩到「期待 ACK，收到 PeerReach」导致实例永远连不上）。边界：唤醒路径尚未接入「先查再打洞」，本轮只交付原语 + coldrevive-nat --lookup 诊断消费，不宣称节省任何一次超时。测试 143 passed / 0 failed（+17）。S6 仍 not_run、g2_claim=false。",
-    "w313_relay_data_budget": "W3.13（2026-11-16）：中继数据面字节预算（ADR-014）+ 路线重排。所有者要求数据中继设阈值防止占满带宽影响体验。Limits 加 data_byte_rate（默认 512 KiB/s）与 data_burst_bytes（默认 2 MiB），全局令牌桶整帧放行/拒绝；负载 ≤4096 B 的唤醒信令绕过预算（中继是信令前置依赖，不能被数据面拥塞拖死）；同侪 FORWARD 在接收实例再计费。RelayStats 加 data_bytes_admitted/bandwidth_limited/bandwidth_limited_bytes，与 dropped 分开以区分「中继忙」与「节点离线」；CLI 加 --data-rate/--data-burst，RELAY_LIMITS 与 stats JSON 同步输出。cargo test --workspace --offline 145 passed / 0 failed（+2）；真实进程启动验证回显与 JSON 字段。带宽阈值是部署侧资源护栏，不是可达率承诺，不进 S6 判据。按所有者决策重排路线：先标准协议互通（S1/S2 → G3 矩阵），再补种；出口类别 --census 移入 S6 证据阶段，当前不排期。S6 仍 not_run、g2_claim=false、evidence_valid_for_pass=false。",
-    "w314_g3_baseline": "W3.14（2026-11-16）：标准协议互通基线核验。TEST.md §3 兼容性矩阵 8 行落成 tests/fixtures/compat-matrix.toml + tests/e2e/g3/compat_matrix.py（只读清点客户端可用性与历史素材，--self-test 3/3 保证 g3_status 恒 not_run、每行 verdict 恒 not_run）。本机实测 7 行 blocked_no_client，仅 Motrix Next/aria2 1.36.0 有 S1 cross_client_round 的 128/128 片校验素材（runnable_with_evidence）。不是 G3 通过：矩阵仍须全行真实互操作报告，由实验执行人手工回填。S3/S5/S6 状态不变。",
-    "w314b_ed2k_hash_in_production": "W3.14b（2026-11-16，v2.4.63）：把 S2 kad-mini 探针里的零依赖 MD4 / kad_keyword_hash / ed2k_hash / ed2k_link 迁入生产 cr-hash。ed2k_hash 按 aMule Red 整块边界规则（文件恰好 N 块时追加空块 MD4），此前生产 crate 没有 eD2k hash，旧客户端会搜得到却因 fileID 不对下载不了。新增 3 条单测（RFC 1320 向量 / aMule 1×PARTSIZE 向量 / ed2k 链接字段转义），cargo test --workspace --offline 148 passed / 0 failed。这是标准协议互通的生产侧前提，不宣称 eMule 互通已完成；S3/S5/S6 状态不变。",
-    "w315_third_party_interop": "W3.15（2026-11-16）：所有者提供三台可 SSH 的 LAN 主机（221/222/209），G3「本机无第三方客户端」卡点解除。新增 tests/e2e/g3/local_tracker.py（标准 BEP23 compact peer list，仅 RFC1918，来源 IP 为准，--self-test 3/3；修过一处二进制 info_hash 字节解析 bug：parse_qs 走 str 会对 >=128 字节 UnicodeEncodeError，改字节层 unquote_to_bytes）。A 上 S1 cross-seed 产标准单文件 .torrent（1 MiB，info_hash dbeabf89…），经 221 的 tracker 做 peer 发现，DHT/LSD 全禁、无补丁。三台机器发行版原样客户端各完成一轮真实下载：Transmission 3.00（221，s1-cross-seed-1794824073.json）、qBittorrent 4.5.1 nox（222，-4418）、aria2-next（209，-4506）；三份 seeder 报告均 uploaded_bytes=1048576 / external_peer_completed=true，远端 sha1sum 与 tracker completed 事件一致（SHA-1 f0f990bb…）。qBittorrent 首轮 peer_count_returned=4 残留 peer、seeder uploaded=0，判不干净废弃重跑，隔离后仅 1 个 peer 方采信。compat-matrix.toml 增加 [[remote_clients]]，compat_matrix.py 增 runnable_remote 状态与 summary 字段，基线 3 行 runnable / 5 行 blocked，--self-test 3/3 且 g3 恒 not_run。证据 tests/e2e/g3/reports/interop-bt-2026-11-16.json（gitignored 附件）。G3 未全绿（eMule GUI/BitComet/AriaNg/浏览器插件/关闭 UI 未取证），G3.status/S3/S5/S6 保持 not_run，g2_claim=false，evidence_valid_for_pass=false。"
+      "w310_egress_census": "W3.10（2026-11-16）：出口类别清单 —— coldrevive-nat 新增 --census/--report，把每次探测沉淀为 JSONL 样本（nat_class + 正交两维 mapping_behavior/filtering_behavior + observations/distinct_mappings 依据 + double_nat 双层 NAT 判据 + variant 配置变体 + 防重 sample_id）；TraversalReport 补 filter_behavior 与原始 observations（此前算完即丢，结论无依据可查）。纪律写进代码：同一出口同一 variant 出现两类 ⇒ unresolved 整条不进清单；matrix_coverage=none / r04_judgeable=false / s6_status=not_run / g2_claim=false 是常量而非计算结果；读回未知字段报错带行号。实测 A 机家宽出口 112.5.60.4 = port-restricted-cone（eim + port-restricted），结合 W3.7 对 112.5.32.34 的 APDM 结论，现有两个出口本就是两类，缺 full-cone/restricted-cone/cgnat。不构成 S6 证据：S6 仍 not_run、g2_claim=false、R-04 不判定。",
+      "w311_r04_best_effort": "W3.11（2026-11-16）：R-04 改为「尽力」，取消可达率的数值承诺（ADR-012）。删除 R04_MIN_REACHABILITY=0.70，改 R04_STANCE=best-effort + R04_NUMERIC_COMMITMENT=None（保留字段名让机器读到「明确不给数」），加单测防阈值被加回；矩阵配置把 r04_min_reachability 换成 s6_pass_criteria 四条定性要求，nat_matrix.py 不再做阈值比较（自检 17/17，含 r04_has_no_numeric_threshold）；RISK R-04 触发条件改为「某类环境中直连与中继回退同时失败」。理由不是「达不到」而是：产品卖的是「多一条能叫醒机器的路」不是 SLA；阈值会污染测量（逼出挑环境/填格子）；分母不可抽样，百分比无统计意义却被当 SLA 引用。中继回退改为常开。一条强度都没放松：条款①②与 evidence_scope 分层不变，S6 仍 not_run、g2_claim=false。",
+      "w312_lowid_declaration": "W3.12（2026-11-16）：借 eMule 的 LowID 自我声明（ADR-013）。所有者质疑「eMule 同样存在这几类 NAT 且多为 LowID，为什么不直接借鉴」。回答：借「失败应当被预先知道，而不是试出来」——节点自己探测、自己声明可达性类别（direct/relay-only/unknown），注册即上报（REGISTER_DECLARED 0x08），跨实例同步（PEER_REACH 0x09），可查询（LOOKUP_REACH 0x0A / REACH_RESULT 0x0B），纯追加不改旧帧。不借三个语义：LowID 即终点（我们能换一条路：中继转发的是几百字节信令不是整个文件）、HighID=谁都能连（direct 是配合打洞前提下可直连）、不设服务器判断。纪律在代码：unknown 永远不许当 lowid 用（allows_skipping_direct 只认 relay-only）、cgnat 不自动分类（运营商侧那一层不可推断）、TTL 过期降级 unknown、时钟回拨算过期、伪造快照拒 / id 不一致拒 / 断开即清理声明，各有专门单测。持有者注册即声明、探测即重声明（unknown 兜底时间戳必须盖章一次，否则每 500ms 重声明到永远）。部署顺序先升中继再升客户端；PeerReach 必须排在 ACK 之后（实测踩到「期待 ACK，收到 PeerReach」导致实例永远连不上）。边界：唤醒路径尚未接入「先查再打洞」，本轮只交付原语 + coldrevive-nat --lookup 诊断消费，不宣称节省任何一次超时。测试 143 passed / 0 failed（+17）。S6 仍 not_run、g2_claim=false。",
+      "w313_relay_data_budget": "W3.13（2026-11-16）：中继数据面字节预算（ADR-014）+ 路线重排。所有者要求数据中继设阈值防止占满带宽影响体验。Limits 加 data_byte_rate（默认 512 KiB/s）与 data_burst_bytes（默认 2 MiB），全局令牌桶整帧放行/拒绝；负载 ≤4096 B 的唤醒信令绕过预算（中继是信令前置依赖，不能被数据面拥塞拖死）；同侪 FORWARD 在接收实例再计费。RelayStats 加 data_bytes_admitted/bandwidth_limited/bandwidth_limited_bytes，与 dropped 分开以区分「中继忙」与「节点离线」；CLI 加 --data-rate/--data-burst，RELAY_LIMITS 与 stats JSON 同步输出。cargo test --workspace --offline 145 passed / 0 failed（+2）；真实进程启动验证回显与 JSON 字段。带宽阈值是部署侧资源护栏，不是可达率承诺，不进 S6 判据。按所有者决策重排路线：先标准协议互通（S1/S2 → G3 矩阵），再补种；出口类别 --census 移入 S6 证据阶段，当前不排期。S6 仍 not_run、g2_claim=false、evidence_valid_for_pass=false。",
+      "w314_g3_baseline": "W3.14（2026-11-16）：标准协议互通基线核验。TEST.md §3 兼容性矩阵 8 行落成 tests/fixtures/compat-matrix.toml + tests/e2e/g3/compat_matrix.py（只读清点客户端可用性与历史素材，--self-test 3/3 保证 g3_status 恒 not_run、每行 verdict 恒 not_run）。本机实测 7 行 blocked_no_client，仅 Motrix Next/aria2 1.36.0 有 S1 cross_client_round 的 128/128 片校验素材（runnable_with_evidence）。不是 G3 通过：矩阵仍须全行真实互操作报告，由实验执行人手工回填。S3/S5/S6 状态不变。",
+      "w314b_ed2k_hash_in_production": "W3.14b（2026-11-16，v2.4.63）：把 S2 kad-mini 探针里的零依赖 MD4 / kad_keyword_hash / ed2k_hash / ed2k_link 迁入生产 cr-hash。ed2k_hash 按 aMule Red 整块边界规则（文件恰好 N 块时追加空块 MD4），此前生产 crate 没有 eD2k hash，旧客户端会搜得到却因 fileID 不对下载不了。新增 3 条单测（RFC 1320 向量 / aMule 1×PARTSIZE 向量 / ed2k 链接字段转义），cargo test --workspace --offline 148 passed / 0 failed。这是标准协议互通的生产侧前提，不宣称 eMule 互通已完成；S3/S5/S6 状态不变。",
+      "w315_third_party_interop": "W3.15（2026-11-16）：所有者提供三台可 SSH 的 LAN 主机（221/222/209），G3「本机无第三方客户端」卡点解除。新增 tests/e2e/g3/local_tracker.py（标准 BEP23 compact peer list，仅 RFC1918，来源 IP 为准，--self-test 3/3；修过一处二进制 info_hash 字节解析 bug：parse_qs 走 str 会对 >=128 字节 UnicodeEncodeError，改字节层 unquote_to_bytes）。A 上 S1 cross-seed 产标准单文件 .torrent（1 MiB，info_hash dbeabf89…），经 221 的 tracker 做 peer 发现，DHT/LSD 全禁、无补丁。三台机器发行版原样客户端各完成一轮真实下载：Transmission 3.00（221，s1-cross-seed-1794824073.json）、qBittorrent 4.5.1 nox（222，-4418）、aria2-next（209，-4506）；三份 seeder 报告均 uploaded_bytes=1048576 / external_peer_completed=true，远端 sha1sum 与 tracker completed 事件一致（SHA-1 f0f990bb…）。qBittorrent 首轮 peer_count_returned=4 残留 peer、seeder uploaded=0，判不干净废弃重跑，隔离后仅 1 个 peer 方采信。compat-matrix.toml 增加 [[remote_clients]]，compat_matrix.py 增 runnable_remote 状态与 summary 字段，基线 3 行 runnable / 5 行 blocked，--self-test 3/3 且 g3 恒 not_run。证据 tests/e2e/g3/reports/interop-bt-2026-11-16.json（gitignored 附件）。G3 未全绿（eMule GUI/BitComet/AriaNg/浏览器插件/关闭 UI 未取证），G3.status/S3/S5/S6 保持 not_run，g2_claim=false，evidence_valid_for_pass=false。"
     },
     "validation": {
       "cargo_test_workspace_offline": "100 passed / 0 failed（W3.8 基线：17 crate + 5 bin；较 v2.4.56 的 96 新增 4 项）",
@@ -2158,7 +2158,7 @@
     "recorded_at": "2026-11-16",
     "milestone": "M2",
     "target_gate": "G3",
-    "status": "evidence_collected_all_rows",
+    "status": "three_boundaries_closed_one_blocked",
     "g3_status": "not_run",
     "evidence_valid_for_pass": false,
     "g3_claim": false,
@@ -2250,10 +2250,10 @@
     ],
     "explicit_gaps": [
       "G3 全绿未判定；每行 g3_verdict 仍 not_run，evidence_valid_for_pass=false",
-      "BitComet LT seed 只有模块启用、无对端，未做 LT seed 传输",
-      "aMule KAD 只观察到同进程 Connected (firewalled)，未同轮同时进行 KAD 发布/搜索",
-      "浏览器插件只验证任务创建，不验证内容下载",
-      "关闭 UI 行是 aria2 后台进程，不是 GUI 客户端关窗",
+      "BitComet LT seed 未触发传输：需把测试 infohash 宣告到 BitComet 公共 DHT，harness 纪律为 public_network_contacted=false",
+      "aMule KAD 索引面未验证：firewalled 状态下 aMule 静默丢弃 PUBLISH（实测 BOOTSTRAP 有回包、PUBLISH/SEARCH 无回包）",
+      "浏览器插件只验证「推送→取回→解析」，不下载内容（coldrevived 尚无 BT 下载引擎，W5.1 接入 rqbit）",
+      "关闭 UI 行的 UI 是浏览器（AriaNg），不是 BitComet/qBittorrent 桌面窗口",
       "报告均为本地 gitignored 证据，提交后需保留原始文件供复核"
     ],
     "gate_discipline": {
@@ -2261,7 +2261,50 @@
       "s3_s5_s6_status": "unchanged — 全部 not_run",
       "g2_claim": false
     },
-    "spike_status_changed": false
+    "spike_status_changed": false,
+    "harnesses": {
+      "emule_coexistence": "tests/e2e/g3/emule_coexist.py",
+      "ui_closed_kill": "tests/e2e/g3/ui_closed.py",
+      "browser_push": "tests/e2e/g3/browser_push.py",
+      "tracker": "tests/e2e/g3/local_tracker.py",
+      "matrix_checker": "tests/e2e/g3/compat_matrix.py"
+    },
+    "closed_in_w3_17": {
+      "emule_amule": {
+        "claim": "同一轮里 KAD 真实帧与真实 eD2k TCP 传输并发，aMule 状态不受影响",
+        "overlap_ms": 30073.4,
+        "ed2k_bytes": 262144,
+        "ed2k_blocks": 25,
+        "ed2k_hash": "19f7adefd986c9b959728aa1ce0fe53a",
+        "amule_kad_before_during_after": "Connected (firewalled) / Connected (firewalled) / Connected (firewalled)",
+        "amule_upload_rate_during": "8.57 kB/s",
+        "still_not_verified": "aMule KAD 索引入库/回查（其 firewalled 门控静默丢弃 PUBLISH）"
+      },
+      "ui_closed": {
+        "claim": "真实 UI 进程被终止后后台下载继续到完成",
+        "bytes_before_kill": 376832,
+        "bytes_after_kill": 1048576,
+        "file_sha1": "f0f990bb9800e61a4d2922b4fe4d4e5c3a544708",
+        "seeder_uploaded_bytes": 1048576,
+        "seeder_total_bytes": 1048576,
+        "tracker_completed": "left=0 downloaded=1048576",
+        "ui_killed": "Edge PID 消失 + CDP 端口关闭"
+      },
+      "browser_extension": {
+        "claim": "插件推真实 .torrent，ColdRevive 取回并解析出真实 info_hash",
+        "gid": "1a1e47831710000",
+        "info_hash": "dbeabf892c8b8aa8eae9f15bd39649a661224470",
+        "info_hash_independent_recompute": true,
+        "piece_count": 64,
+        "payload_bytes": 1048576,
+        "downloads_content": false
+      }
+    },
+    "bugs_fixed_in_w3_17": [
+      "/jsonrpc aria2.tellStatus 早先读 params[1]，任务在队列却回 -32001；现同时接受 params[0]/params[1]",
+      "harness 侧：插件 SW 在 about:blank 下不启动、复用旧 profile 不重载插件、1 MiB 传输过快导致杀 UI 无窗口——均已在脚本里修"
+    ],
+    "known_inconsistency": "config/coldrevive.example.toml 是 TOML，但 Config::load 走 Json::load；直接喂给守护进程会报「非法 JSON 字符 '#'」"
   },
   "t1_progress": {
     "recorded_at": "2026-11-14",

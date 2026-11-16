@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "ColdRevive G3 link push (evidence asset)",
+  "version": "1.1.0",
+  "description": "G3 浏览器插件行取证资产：把一条真实的 .torrent 链接推送到 ColdRevive 的 aria2 兼容 /jsonrpc。",
+  "background": { "service_worker": "sw.js" },
+  "host_permissions": ["__RPC_ORIGIN__/*"]
+}

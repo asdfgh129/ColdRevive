@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.11
+version: 2.12
 status: 持续维护
 owner: 项目组
 updated: 2026-11-16
@@ -449,6 +449,19 @@ ColdRevive
   `0 added / 0 received`（未做 LT seed 传输）；aMule 未在同一轮同时做 KAD 发布/搜索；
   浏览器插件只验证任务创建；关闭 UI 行是 aria2 后台进程，不是 GUI 客户端关窗。
   详见 [TEST §3](../05-quality/TEST.md) 与 `tests/e2e/g3/reports/`（gitignored）。
+
+- **W3.17（2026-11-16）G3 边界补做实：三条转成真观测，一条明确保留**：新增三个可复现 harness
+  （均带 `--self-test`，且都硬编码 `g3_verdict=not_run`）。
+  ① `emule_coexist.py`：同一轮里 KAD 帧与真实 eD2k TCP 传输并发，重叠 30073 ms，aMule
+  `Kad: Connected (firewalled)` 全程不变、传输期 `Upload: 8.57 kB/s`，文件 262144 B / 25 块全对；
+  ② `ui_closed.py`：headless Edge 里真实 AriaNg 开着，传到 376832 B 时**杀掉浏览器进程树**
+  （PID 消失 + CDP 端口关闭），下载继续到 1048576 并 complete，SHA-1 匹配，seeder 与 tracker 双侧计数一致；
+  ③ `browser_push.py`：MV3 模板按运行地址渲染后推**真实** `.torrent`，`coldrevived` 取回并解析，
+  info_hash 与脚本独立 bencode 复算一致（64 片 / 1048576 B）。
+  仍保留：BitComet LT seed 未触发（需公共 DHT 宣告，harness 不做公网写入）、aMule KAD 索引面
+  被其自身 firewalled 门控静默丢弃 PUBLISH、插件不下载内容（无下载引擎）。
+  顺带修复 `/jsonrpc` `tellStatus` 取错参数位的真 bug，并暴露 `config/*.toml` 与 JSON loader 不一致。
+  **G3 仍 `not_run`**：7 行有素材，判定仍待实验执行人回填。
 
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈

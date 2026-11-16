@@ -1,8 +1,0 @@
-{
-  "manifest_version": 3,
-  "name": "ColdRevive G3 link push (evidence asset)",
-  "version": "1.0.0",
-  "description": "G3 浏览器插件行取证资产：把下载链接推送到 ColdRevive 的 aria2 兼容 /jsonrpc。",
-  "background": { "service_worker": "sw.js" },
-  "host_permissions": ["http://127.0.0.1:18800/*"]
-}

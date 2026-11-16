@@ -1082,6 +1082,15 @@ struct LanIndexArgs {
     rate: f64,
     bisect: bool,
     tag_probe: bool,
+    /// W3.17 namespace test: pin the 16-byte index key instead of deriving it
+    /// from the logical name, so one entry can live under an eD2k MD4 hash and
+    /// another under a truncated BT SHA-1 infohash.
+    key_hex: Option<String>,
+    /// Suffix for the logical name / descriptor id. Two entries in the same
+    /// test must be distinguishable when read back.
+    label: Option<String>,
+    /// Read-only round: skip PUBLISH and only run BOOTSTRAP + SEARCH_KEY.
+    search_only: bool,
 }
 
 /// S2 PLAN §18.6 option D: index-plane interop against a real aMule on the LAN.
@@ -1119,12 +1128,23 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
     // A logical name that has never existed anywhere. Any answer to the later
     // SEARCH therefore proves *this* run's PUBLISH was stored -- not that some
     // older entry under a reused key survived.
-    let logical = format!("lan-index-probe:{ms}");
-    let key = namespaced_key(&logical);
-    let descriptor_id = node_id(&format!("lan-descriptor-{ms}"));
+    let label = args.label.clone().unwrap_or_else(|| "lan-index-probe".to_string());
+    let logical = format!("{label}:{ms}");
+    // `--key-hex` pins the 16-byte index key. W3.17 uses it to put one entry
+    // under a real eD2k MD4 hash and another under a truncated BT SHA-1
+    // infohash, then prove the two slots never alias. Without it the key stays
+    // derived from the logical name.
+    let (key, key_source) = match args.key_hex.as_deref() {
+        Some(h) => (
+            kad_from_hex(h).ok_or_else(|| format!("--key-hex 必须是 32 位十六进制: {h}"))?,
+            "explicit",
+        ),
+        None => (namespaced_key(&logical), "namespaced"),
+    };
+    let descriptor_id = node_id(&format!("lan-descriptor-{ms}-{label}"));
     let entry = IndexEntry {
         source_id: descriptor_id,
-        tags: descriptor_tags(&logical, "lan-index-probe", client.addr().port()),
+        tags: descriptor_tags(&logical, &label, client.addr().port()),
     };
     let publish_frame = publish_key_req(&key, &[entry.clone()]);
 
@@ -1193,7 +1213,9 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
     }
 
     // --- 1. PUBLISH_KEY_REQ -> PUBLISH_RES ----------------------------------
-    let publish = if reachable {
+    // `--search-only` skips this step so a later round can read back an entry
+    // published by an earlier round without re-creating it.
+    let publish = if reachable && !args.search_only {
         Some(client.exchange(
             dest,
             &publish_frame,
@@ -1207,7 +1229,13 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
         None
     };
     let (publish_res, publish_load, publish_rtt, publish_err, publish_key_echo) = match publish {
-        None => (false, 0i64, 0.0, "skipped (peer unreachable)".to_string(), false),
+        None => (
+            false,
+            0i64,
+            0.0,
+            if args.search_only { "skipped (--search-only)".to_string() } else { "skipped (peer unreachable)".to_string() },
+            false,
+        ),
         Some(Ok((p, rtt))) => match parse_publish_res(&p) {
             Ok(r) => (true, r.load as i64, rtt, String::new(), r.key == key),
             Err(e) => (true, -1, rtt, format!("PUBLISH_RES parse: {e}"), false),
@@ -1226,8 +1254,13 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
     let mut search_answers = 0usize;
     let mut hit = false;
     let mut tags_match = false;
+    // Every entry aMule hands back for this key, tag by tag. W3.17 reads this to
+    // prove the eD2k-keyed slot contains only the eD2k-labelled entry and the
+    // BT-truncated slot only the BT-labelled one.
+    let mut answers_detail: Vec<J> = Vec::new();
+    let mut label_present = false;
     for attempt in 0..2 {
-        if !reachable || !publish_res {
+        if !reachable || (!publish_res && !args.search_only) {
             break;
         }
         if attempt > 0 {
@@ -1254,6 +1287,16 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
                             _ => false,
                         })
                     });
+                    // A --search-only round cannot own the descriptor id minted
+                    // by the earlier publish round, so fall back to matching the
+                    // label carried in the entry's string tags.
+                    label_present = r.answers.iter().any(|a| {
+                        a.tags.iter().any(|t| match &t.value {
+                            TagValue::Str(v) => v.contains(&label),
+                            _ => false,
+                        })
+                    });
+                    answers_detail = r.answers.iter().map(answer_json).collect();
                     search_attempts.push(obj(vec![
                         ("attempt", n(attempt as f64)),
                         ("search_ok", b(true)),
@@ -1261,6 +1304,7 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
                         ("answers", n(r.answers.len() as f64)),
                         ("target_echo_matches", b(r.target == key)),
                         ("our_descriptor_returned", b(hit)),
+                        ("label_present", b(label_present)),
                         ("namespace_tag_matches", b(tags_match)),
                         ("responder_id", s(id_hex(&r.sender))),
                     ]));
@@ -1286,6 +1330,14 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
 
     let verdict = if !reachable {
         "unreachable"
+    } else if args.search_only {
+        if label_present {
+            "search_only_label_found"
+        } else if search_res {
+            "search_only_answered_without_label"
+        } else {
+            "search_only_silent"
+        }
     } else if !publish_res {
         "publish_silent_on_lan"
     } else if hit && tags_match {
@@ -1305,7 +1357,10 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
         ("public_kad_contacted", b(false)),
         ("evidence_valid_for_pass", b(false)),
         ("s2_status", s("not_run")),
-        ("publish_sent", b(reachable)),
+        ("publish_sent", b(reachable && !args.search_only)),
+        ("search_only", b(args.search_only)),
+        ("label", s(&label)),
+        ("key_source", s(key_source)),
         ("rate_limit_pps", n(rate)),
         ("local_kad_id", s(id_hex(&client.id))),
         ("key_logical", s(&logical)),
@@ -1326,6 +1381,8 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
         ("publish_error", s(publish_err)),
         ("search_responded", b(search_res)),
         ("search_answers", n(search_answers as f64)),
+        ("answers_detail", J::Arr(answers_detail)),
+        ("sel_label_present", b(label_present)),
         ("our_entry_returned", b(hit)),
         ("namespace_tag_matches", b(tags_match)),
         ("tag_bisect", J::Arr(bisect)),
@@ -1349,6 +1406,42 @@ fn tag_name_display(name: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Render a KAD tag value for reports without losing the type: a 16-byte
+/// `Hash16` and a hex-looking `Str` must not look identical in evidence.
+fn tag_value_display(v: &TagValue) -> String {
+    match v {
+        TagValue::U8(x) => format!("u8:{x}"),
+        TagValue::U16(x) => format!("u16:{x}"),
+        TagValue::U32(x) => format!("u32:{x}"),
+        TagValue::U64(x) => format!("u64:{x}"),
+        TagValue::Str(x) => format!("str:{x}"),
+        TagValue::Hash16(h) => format!("hash16:{}", sha1::hex(h)),
+        TagValue::Raw(t, b) => format!("raw{t}:{}", sha1::hex(b)),
+    }
+}
+
+/// One index entry as returned by aMule, flattened for evidence. The W3.17
+/// namespace test reads these tags directly instead of trusting a summary flag.
+fn answer_json(a: &IndexEntry) -> J {
+    obj(vec![
+        ("source_id", s(id_hex(&a.source_id))),
+        (
+            "tags",
+            J::Arr(
+                a.tags
+                    .iter()
+                    .map(|t| {
+                        obj(vec![
+                            ("name", s(tag_name_display(&t.name))),
+                            ("value", s(tag_value_display(&t.value))),
+                        ])
+                    })
+                    .collect(),
+            ),
+        ),
+    ])
 }
 
 fn lan_index_note() -> &'static str {
@@ -2813,6 +2906,8 @@ fn print_usage() {
     println!("  kad-mini loopback [--keys N] [--rate R]   real 0xE4 frames on 127.0.0.1");
     println!("  kad-mini lan-probe --ip IP --port UDP     RFC1918-only real-client probe, no publish");
     println!("  kad-mini lan-index-probe --ip IP --port UDP   RFC1918-only PUBLISH/SEARCH roundtrip (PLAN §18.6 D)");
+    println!("            [--key-hex 32HEX] [--label NAME] [--search-only]");
+    println!("            --key-hex 固定 16B 索引键（W3.17 命名空间隔离测试）；--search-only 只读回不回写");
     println!("  kad-mini ed2k-dict-probe --ip IP --port UDP [--keyword TERM]   RFC1918-only eMule keyword dictionary (ADR-011 L1)");
     println!("  kad-mini l2-source-probe --ip IP --port UDP   RFC1918-only 0x43+0x44 / 0x33+0x34 dual-track (ADR-011 L2)");
     println!("  kad-mini split-probe --stage publish|search --bootstrap FILE --handoff FILE \\");
@@ -2851,6 +2946,9 @@ fn main() {
                 rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
                 bisect: argv.iter().any(|a| a == "--bisect"),
                 tag_probe: argv.iter().any(|a| a == "--tag-probe"),
+                key_hex: arg_value(&argv, "--key-hex"),
+                label: arg_value(&argv, "--label"),
+                search_only: argv.iter().any(|a| a == "--search-only"),
             };
             run_lan_index_probe(&args).map(|r| (r, "kad-lan-index-probe", 0))
         }

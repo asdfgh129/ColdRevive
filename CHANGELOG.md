@@ -2,6 +2,43 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.66] - 2026-11-16 — M2/W3.17：G3 三条边界补做成真观测（仍不判通过）
+
+> 范围声明：`g3_status` 仍 `not_run`，`g3_claim=false`，`evidence_valid_for_pass=false`。
+> 本轮把 W3.16 的四条「场景没做实」里的三条转成可复现观测，第四条明确保留为未验证。
+
+- **新增 harness（均可复现、带 `--self-test`、硬编码 `g3_verdict=not_run`）**
+  - `tests/e2e/g3/emule_coexist.py`：同一轮里 KAD 真实帧与真实 eD2k TCP 传输并发。
+    实测重叠 30073 ms，eD2k 262144 B / 25 块 / hash `19f7adef…` 全对；aMule 自述
+    `Kad: Connected (firewalled)` 传输前中后一致，传输窗口内 `Upload: 8.57 kB/s`。
+  - `tests/e2e/g3/ui_closed.py`：headless Edge 打开真实 AriaNg（CDP 可查页面 URL），
+    传至 376832 B 时杀浏览器进程树（PID 消失 + CDP 端口关闭），下载继续到 1048576
+    complete，SHA-1 `f0f990bb…`，seeder `uploaded_bytes=1048576/1048576`。
+  - `tests/e2e/g3/browser_push.py`：MV3 模板按运行地址渲染（仓库里不再留占位链接），
+    推真实 `.torrent`，`coldrevived` 取回并解析；info_hash 与脚本独立 bencode 复算一致。
+- **`coldrevived` `/jsonrpc` 真的解析种子**：`aria2.addUri` 对 `http://` 链接做最小
+  HTTP/1.1 GET + `cr_torrent::parse`，`tellStatus` 回真实 `totalLength` / `bittorrent.infoHash` /
+  `coldrevive.pieceCount` / `coldrevive.torrentParsed`。**没有下载引擎**：任务停在 `waiting`，
+  不伪造进度（`downloads_content=false`）。3 个新单测覆盖「取回+解析」「https 明确拒绝」「非 200 报错」。
+- **修复 `/jsonrpc` `aria2.tellStatus` 取错参数位**：早先读 `params[1]`，导致任务在队列里
+  却回 `-32001 任务不存在`。现同时接受 `params[0]`/`params[1]`，由 harness 端到端复验。
+- **已知不一致（本轮暴露，未擅自改语义）**：`config/coldrevive.example.toml` 是 TOML，
+  而 `Config::load` 走 `Json::load`，直接喂给守护进程会报「非法 JSON 字符 '#'」；
+  harness 改为按真实 schema 生成 JSON 配置。
+
+**明确仍未验证（不得折算为通过）**
+- BitComet 长效种子传输：`lt_seed_exercised=false`。模块在跑（计数 `0 added / 0 received`）、
+  标准 handshake 不受影响；触发 LT 需把测试 infohash 宣告到 BitComet 公共 DHT，
+  harness 纪律是 `public_network_contacted=false`，故不做。
+- aMule KAD 索引面：`kad_publish_acked=false`。aMule 报 firewalled 时其
+  `Process2PublishKeyRequest` 静默丢弃 PUBLISH；实测 BOOTSTRAP 有回包（UDP 双向通）、
+  PUBLISH/SEARCH 无回包。只能证明「两条通道共存」，不能证明「索引已入库/回查」。
+- 插件不下载内容；关闭 UI 行的 UI 是浏览器（AriaNg），不是 BitComet/qBittorrent 桌面窗口。
+
+**验证**：`cargo test --workspace --offline` **151 passed / 0 failed**；
+五个 harness `--self-test` 分别 3/3、3/3、3/3、3/3、4/4；`compat_matrix.py` 基线仍
+8 行有素材、`g3_status=not_run`。
+
 ## [2.4.65] - 2026-11-16 — M2/W3.16：G3 剩余五行补充取证（8/8 有素材，仍未判通过）
 
 > 范围声明：`g3_status` 仍 `not_run`，`g3_claim=false`，`evidence_valid_for_pass=false`；
