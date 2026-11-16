@@ -310,6 +310,12 @@ python tests/spikes/s6/nat_lab/relay_probe.py --relay 112.5.32.34:57100 --relay 
 报告 `tests/spikes/s6/reports/relay/w39-relay-hardened-2026-11-16.json`
 （`evidence_scope=relay-availability`、`is_s6_evidence=false`）。
 
+> **2026-11-16 复测更正**：上文示例里的公网入口 `112.5.32.34:57100` 实测仍不通
+> （5–6 s 超时，按对端公网 IP 抓包 0 条）；但 `112.5.32.34:7100` **可用**，
+> `relay_probe.py --mode pair --key <PSK>` 双向投递 PASS（A=0.1 ms / B=2.3 ms），
+> 222 上抓到 `112.5.60.4 → 192.168.34.222:7100`。
+> 做公网探针时请先用 `54022`（管理面对照）、再用 `7100`（中继入口），别再用 `57100`。
+
 ## 证据边界（不得突破）
 
 - 判据是**两个互相独立的条款**：
