@@ -2,6 +2,22 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.64] - 2026-11-16 — M2/W3.15：三台 LAN 主机真实第三方客户端互操作（G3 附件证据）
+
+- **卡点解除**：所有者提供 221/222/209 三台可 SSH 主机，分别装有 Transmission 3.00、
+  qBittorrent 4.5.1 (nox)、aria2-next（Motrix Next）；本机另有 Motrix。G3「本机无客户端」不再成立。
+- **新增** `tests/e2e/g3/local_tracker.py`：标准 BEP23 compact peer list tracker，仅 RFC1918，
+  以连接来源 IP 为准，`--self-test` 3/3。修复二进制 info_hash 用 `parse_qs` 走 str 时的
+  `UnicodeEncodeError`（改为字节层 `unquote_to_bytes`）。
+- **真实互操作**：A 上 S1 cross-seed 产标准 `.torrent`（1 MiB），三台机器原样客户端各下一轮，
+  均 1 MiB 全量、SHA-1 `f0f990bb…` 匹配、seeder `uploaded_bytes=1048576`、tracker `completed`。
+  qBittorrent 首轮因残留 peer（`peer_count=4`）被判不干净并废弃，清场重跑后仅 1 peer 方采信。
+- **核验器**：`compat-matrix.toml` 增 `[[remote_clients]]`，`compat_matrix.py` 增
+  `runnable_remote` 状态；基线 3 行 runnable / 5 行 blocked，`--self-test 3/3`，`g3_status` 恒 `not_run`。
+- **纪律**：证据是附件（gitignored `tests/e2e/g3/reports/interop-bt-2026-11-16.json`），
+  G3 未全绿（eMule GUI/BitComet/AriaNg/浏览器插件/关闭 UI 未取证），S3/S5/S6 `not_run`，
+  `g2_claim=false`，`evidence_valid_for_pass=false`。
+
 ## [2.4.63] - 2026-11-16 — M2/W3.14b：生产 crate 具备真实 eD2k hash
 
 > 范围声明：S3 / S5 / S6 仍 `not_run`，`g2_claim=false`；不改线格式与 T0 golden。

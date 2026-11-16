@@ -8,6 +8,31 @@
 version = 1
 source = "docs/05-quality/TEST.md §3"
 
+# 远端已实测可用的第三方客户端（2026-11-16，SSH 登录执行 --version 读取）。
+# 本机 installs 为空的行，可借这些 LAN 主机取证；readonly 核验器把这类行标为
+# runnable_remote，但**仍不判 pass**（G3 全绿须执行人手工回填）。
+# 密码/密钥不入库：221/222 用实验室 ed25519，209 用 askpass，均不在此文件。
+[[remote_clients]]
+row_id = "qbittorrent"
+host = "192.168.1.222"
+executable = "/usr/bin/qbittorrent-nox"
+version_observed = "qBittorrent v4.5.1"
+mode = "nox (无 GUI)，种子文件作位置参数自动添加"
+
+[[remote_clients]]
+row_id = "transmission"
+host = "192.168.1.221"
+executable = "/usr/bin/transmission-daemon"
+version_observed = "transmission-daemon 3.00 (bb6b5a062e)"
+mode = "transmission-remote RPC 驱动"
+
+[[remote_clients]]
+row_id = "motrix_aria2"
+host = "192.168.1.209"
+executable = "C:/Program Files/Rayburst/aria2-next.exe"
+version_observed = "aria2-next (Motrix Next 捆绑)"
+mode = "--bt-tracker 指向标准 tracker，DHT/LPD 关闭"
+
 [[rows]]
 id = "qbittorrent"
 client = "qBittorrent"

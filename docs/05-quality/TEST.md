@@ -141,6 +141,23 @@ eMule-aMule / AriaNg / 浏览器插件 / 关闭 UI），只有 Motrix Next（ari
 这只是**可跑性与素材清点**，不是 G3 通过：矩阵仍要求全部行有真实互操作报告，
 `G3.status` 保持 `not_run`，由实验执行人在客户端齐备后手工回填。
 
+**2026-11-16 W3.15 第三方客户端实网互操作（附件证据，非 G3 结论）**：三台 LAN 主机
+（221/222/209）的发行版原样客户端各完成一轮真实下载——我方 S1 seeder 在 A 生成标准单文件
+`.torrent`，经 221 上 `local_tracker.py`（BEP23 compact，仅 RFC1918）做 peer 发现，
+无 DHT/LSD/补丁：
+
+| 行 | 客户端（远端实测版本） | 主机 | 结果 |
+| :-- | :-- | :-- | :-- |
+| Transmission | transmission-daemon 3.00 | 192.168.1.221 | 1 MiB 全量，SHA-1 匹配，seeder `uploaded_bytes=1048576` |
+| qBittorrent | qBittorrent v4.5.1 (nox) | 192.168.1.222 | 1 MiB 全量，SHA-1 匹配，隔离干净（tracker 仅返回 seeder） |
+| Motrix/aria2 | aria2-next | 192.168.1.209 | tracker `completed` + seeder `uploaded_bytes=1048576` |
+
+证据：`tests/e2e/g3/reports/interop-bt-2026-11-16.json`（gitignored 本地取证），
+Seeder 上传计数来自 `s1-cross-seed-17948240{73}/4418/4506.json`。
+首轮 qBittorrent `peer_count_returned=4` 时 seeder `uploaded=0`，判为不干净并废弃重跑，
+未混入结论。**仍有 5 行未覆盖**（BitComet / eMule-aMule GUI / AriaNg / 浏览器插件 / 关闭 UI），
+G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第三方客户端经标准 tracker 下载」。
+
 ## 4. 性能压测场景与基线
 
 | 场景 | 负载 | 通过标准 |

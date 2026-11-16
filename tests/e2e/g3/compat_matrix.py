@@ -74,13 +74,27 @@ def evidence_for(pattern: str) -> list[str]:
 
 def audit(fixture: Path) -> dict:
     data = load_toml(fixture)
+    # 远端客户端注册表：本机没装的行可借 LAN 主机取证（只读登记，不联网、不判 pass）。
+    remote = {}
+    for rc in data.get("remote_clients", []):
+        remote[str(rc.get("row_id"))] = {
+            "host": str(rc.get("host", "")),
+            "executable": str(rc.get("executable", "")),
+            "version_observed": str(rc.get("version_observed", "")),
+            "mode": str(rc.get("mode", "")),
+        }
     rows = []
     for spec in data.get("rows", []):
+        rid = str(spec.get("id"))
         exe = find_executable(str(spec.get("executable", "")))
         version = read_version(exe)
         evidence = evidence_for(str(spec.get("evidence_glob", "")))
-        if exe is None:
+        rc = remote.get(rid)
+        if exe is None and rc is None:
             status = "blocked_no_client"
+        elif exe is None and rc is not None:
+            status = "runnable_remote"
+            version = rc["version_observed"]
         elif not evidence:
             status = "runnable_no_evidence"
         else:
@@ -92,6 +106,7 @@ def audit(fixture: Path) -> dict:
                 "scenario": spec.get("scenario"),
                 "executable": exe,
                 "version_observed": version,
+                "remote_client": rc,
                 "evidence": evidence,
                 "evidence_note": spec.get("evidence_note", ""),
                 "status": status,
@@ -111,6 +126,7 @@ def audit(fixture: Path) -> dict:
             "total": len(rows),
             "runnable_with_evidence": sum(r["status"] == "runnable_with_evidence" for r in rows),
             "runnable_no_evidence": sum(r["status"] == "runnable_no_evidence" for r in rows),
+            "runnable_remote": sum(r["status"] == "runnable_remote" for r in rows),
             "blocked_no_client": sum(r["status"] == "blocked_no_client" for r in rows),
         },
     }

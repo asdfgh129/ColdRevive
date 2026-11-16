@@ -1200,3 +1200,54 @@ CLI 为 `--data-rate` / `--data-burst`。全局令牌桶、整帧申请：
 按所有者决策，当前顺序改为**标准协议互通（S1/S2 → G3 矩阵）→ 补种唤醒路径**。
 清单工具与其纪律（同出口同 variant 多类 ⇒ unresolved、常量口径、未知字段报错）
 保持不变，只是不再占本轮工时。
+
+## 22. 第三方客户端互操作：G3 卡点解除但矩阵未全绿（W3.15，2026-11-16，v2.4.64）
+
+本节与 NAT 分类判据无关，只记录「**我方标准协议产物能否被旧客户端零改造使用**」这一
+标准协议互通前提；不产生任何可达率数字，不进 S6 判据。
+
+### 22.1 卡点与解除
+
+W3.14 的 G3 基线核验结论是「8 行中 7 行 `blocked_no_client`」——本机只有 Motrix。
+所有者提供三台可 SSH 的 LAN 主机，装有不同的发行版原样客户端：
+
+| 主机 | 客户端 | 驱动方式 |
+| :-- | :-- | :-- |
+| 192.168.1.221 | Transmission 3.00 (bb6b5a062e) | `transmission-remote` RPC |
+| 192.168.1.222 | qBittorrent v4.5.1 (nox) | 种子文件作位置参数，无 GUI |
+| 192.168.1.209 | aria2-next（Motrix Next 捆绑） | `--bt-tracker` 指向标准 tracker |
+
+### 22.2 做法与证据
+
+A（192.168.1.210）上跑 S1 `coldrevive-s1-probe cross-seed`，生成标准单文件 `.torrent`
+（info 字典字节的 SHA-1 即 InfoHash；1 MiB、64 片、`info_hash=dbeabf89…`），DHT/LSD 关闭，
+只经 221 上新增的 `tests/e2e/g3/local_tracker.py`（标准 BEP23 compact peer list，仅 RFC1918，
+以连接来源 IP 为准）做 peer 发现。三台机器**不打任何补丁**，只拿到 `.torrent` 与 tracker URL。
+
+三轮结果（每轮独立清 tracker peer 状态）：
+
+| 行 | 客户端 | 结果 | 我方 seeder 侧 |
+| :-- | :-- | :-- | :-- |
+| Transmission | 221 | 1 MiB 全量，`sha1sum=f0f990bb…` | `uploaded_bytes=1048576` |
+| qBittorrent | 222 | 1 MiB 全量，SHA-1 一致，tracker 仅返回 1 个 peer | `uploaded_bytes=1048576` |
+| aria2-next | 209 | tracker `event=completed downloaded=1048576` | `uploaded_bytes=1048576` |
+
+「通了」的判据不是客户端自报，而是**两方独立计数器交叉印证**：远端 `sha1sum` / tracker
+`completed` 字节数 + 我方 rqbit `stats().uploaded_bytes >= total`。qBittorrent 首轮
+`peer_count_returned=4`（残留 Transmission / 旧 qBittorrent peer）时 seeder `uploaded=0`，
+说明下载来自别的 peer 而非我方——该轮**判为不干净证据并废弃**，清场重跑确认 tracker 只返回
+seeder 一个 peer 后才采信。这正是「拿假设当测量」那类坑的又一次现场复现。
+
+`local_tracker.py` 本身也踩过一个真 bug：`parse_qs` 把原始二进制 `info_hash` 当 str 解码，
+对 `>=128` 的字节抛 `UnicodeEncodeError`；改为字节层 `unquote_to_bytes` 后，rqbit 的
+`%XX` 全字节编码可被正确还原。`--self-test 3/3` 覆盖 peer 列表、`stopped` 清理与二进制解析。
+
+### 22.3 纪律边界
+
+证据落在 gitignored 附件 `tests/e2e/g3/reports/interop-bt-2026-11-16.json`，
+`g3_status` / 每行 `g3_verdict` 恒 `not_run`。核验器登记远端客户端后基线为 3 行 runnable /
+5 行 blocked，但**不自动升级判据**：G3 仍差 eMule（GUI，未无头驱动）/ BitComet / AriaNg /
+浏览器插件 / 关闭 UI 五行，S3/S5/S6 保持 `not_run`，`g2_claim=false`。
+
+这三行能证明的只有一件事：**我方标准 `.torrent` + 标准 BT tracker 可被零改造第三方客户端
+下载**。它不证明 eMule 互通（那需要 ed2k 链接与 KAD 共存取证），也不证明 NAT 可达性。

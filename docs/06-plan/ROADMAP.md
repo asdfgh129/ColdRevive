@@ -429,6 +429,15 @@ ColdRevive
   同轮 **W3.14b（v2.4.63）** 把 S2 探针里的 MD4 / eD2k hash 迁入生产 `cr-hash`
   （aMule Red 分块规则 + 标准 `ed2k://` 链接），补 3 条单测，148 passed / 0 failed。
   这是「旧客户端能真正下载」的生产侧前提，不是宣称已完成 eMule 互通。
+- **W3.15（2026-11-16）**：所有者提供三台可 SSH 的 LAN 主机，G3「本机无第三方客户端」卡点解除。
+  新增 [local_tracker.py](../../tests/e2e/g3/local_tracker.py)（标准 BEP23 compact，仅 RFC1918，
+  `--self-test` 3/3）。在 A 用 S1 cross-seed 产标准 `.torrent`，三台机器发行版原样客户端各跑一轮：
+  **Transmission 3.00（221）/ qBittorrent 4.5.1（222）/ aria2-next（209）** 均完成 1 MiB 全量下载，
+  SHA-1 一致、seeder `uploaded_bytes=1048576`、tracker 记录 `completed`。qBittorrent 首轮因
+  `peer_count=4` 残留 peer 被判不干净并废弃重跑。核验器登记远端客户端后基线为
+  3 行 `runnable`(2 remote+1 local) / 5 行 blocked，但 `g3_status` 仍 `not_run`。
+  证据见 `tests/e2e/g3/reports/interop-bt-2026-11-16.json`（本地 gitignored）。
+  **G3 未全绿**（eMule GUI / BitComet / AriaNg / 浏览器插件 / 关闭 UI 未取证），S3 不变。
 
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈

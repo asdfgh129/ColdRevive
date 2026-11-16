@@ -152,6 +152,16 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.64 补记（2026-11-16 / W3.15）**：**三台 LAN 主机真实第三方客户端互操作**。所有者提供
+  221/222/209（SSH），分别装 Transmission 3.00 / qBittorrent 4.5.1 (nox) / aria2-next，G3
+  「本机无第三方客户端」卡点解除。新增 [local_tracker.py](../tests/e2e/g3/local_tracker.py)
+  （标准 BEP23 compact，仅 RFC1918，`--self-test` 3/3；修过二进制 info_hash 字节解析 bug）。
+  A 上 S1 cross-seed 产标准 `.torrent`（1 MiB），三台机器原样客户端各下一轮：均 1 MiB 全量、
+  SHA-1 `f0f990bb…` 匹配、seeder `uploaded_bytes=1048576`、tracker `completed`；qBittorrent
+  首轮残留 peer 被判不干净废弃重跑。`compat-matrix.toml` 增 `[[remote_clients]]`，核验器增
+  `runnable_remote`，基线 3 行 runnable / 5 行 blocked，`g3_status` 恒 `not_run`。证据是 gitignored
+  附件 `tests/e2e/g3/reports/interop-bt-2026-11-16.json`。**G3 未全绿**（eMule GUI / BitComet /
+  AriaNg / 浏览器插件 / 关闭 UI 未取证），S3/S5/S6 `not_run`、`g2_claim=false` 不变。
 - **v2.4.63 补记（2026-11-16 / W3.14b）**：生产 `cr-hash` 补齐真实 eD2k hash —— 从 S2 kad-mini
   探针迁入零依赖 MD4、`kad_keyword_hash`、`ed2k_hash`（aMule 的 **Red** 整块边界规则：
   文件刚好 N 块时追加空块 MD4）与标准 `ed2k://|file|...|/` 链接生成（文件名做最小百分号编码）。
