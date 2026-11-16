@@ -311,6 +311,8 @@ pub struct Config {
     pub nat_upnp_location: Option<String>,
     /// 单个中继地址（首个），保留旧字段语义；多中继见 `nat_relays`。
     pub nat_relay: Option<String>,
+    /// 中继 PSK：64 位十六进制，或 `file:<路径>`。`None` = 明文（仅回环/实验）。
+    pub nat_relay_key: Option<String>,
     /// W3.8：中继列表（`nat.relay` 支持逗号分隔），客户端按顺序尝试并在失败时切换。
     pub nat_relays: Vec<String>,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
@@ -401,6 +403,7 @@ impl Config {
             nat_gateway: nat_get("gateway"),
             nat_upnp_location: nat_get("upnp_location"),
             nat_relay,
+            nat_relay_key: nat_get("relay_key"),
             nat_relays,
             nat_bt_external,
         })

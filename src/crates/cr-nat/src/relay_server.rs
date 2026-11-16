@@ -25,18 +25,32 @@
 //! 3. `FORWARD`（原始来源 id + 目标 id + 消息）：目标不在本地时，按快照里的归属转发给同侪，
 //!    对端**只做本地投递、不再转发**——最多一跳，不存在环路。
 //!
+//! # W3.9：可放到公网
+//!
+//! 上面所有帧都可以跑在 [`crate::secure`] 的记录层里：配了 PSK 就必须先做双向握手，
+//! 之后每条记录独立加密 + HMAC，序号严格递增（重放/乱序直接断链）。另外补了三件公网
+//! 必须有的东西：
+//!
+//! 1. **连接数上限**（`--max-conns`）：超出直接关，不再无限起线程；
+//! 2. **每连接速率上限**（`--rate`，令牌桶）：刷帧的连接计 `rate_limited` 后断开；
+//! 3. **空闲超时**（`--idle-timeout`）：超时先发 `PING`，连续两轮无应答才断——订阅连接
+//!    不需要业务保活，也不会被误杀；注册表另有 `--max-nodes` 上限。
+//!
+//! 未配 PSK 时是明文，只允许绑回环（策略在二进制里，见 `coldrevive-relay`）。
+//!
 //! 诚实边界：`FORWARD` 是一次性尽力投递，链路断在半路就如实计 `forward_dropped`，不做重传、
 //! 不做多副本；多实例只解决「单实例宕机后注册表丢失」，不等于任播/共识，也不是 S6 的四类
 //! NAT 实测。`S6.status` 仍为 `not_run`，不得据此宣称 G2 达标。
 
 use crate::relay::{FrameKind, RelayFrame, NODE_ID_LEN};
+use crate::secure::{self, RecvError, SecureReader, SecureStats, SecureWriter, PSK_LEN};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// 帧头 = 1 字节 kind + 16 字节 node id + 4 字节大端长度。
 pub const HEADER_LEN: usize = 1 + NODE_ID_LEN + 4;
@@ -49,6 +63,148 @@ pub const PEER_RETRY: Duration = Duration::from_secs(1);
 /// 到同侪 / 订阅连接的写超时：避免一个卡死的对端把写锁永久占住。
 const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// 握手必须在这么久内完成，否则按 slowloris 断开。
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 公网运行的三道闸：连接数、每连接帧速率、空闲回收，以及注册表规模。
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    /// 每连接每秒允许的帧数（令牌桶速率）
+    pub rate_per_sec: u32,
+    /// 令牌桶容量（允许的突发帧数）
+    pub burst: u32,
+    /// 空闲多久先发 PING（再一轮无应答才断）；`Duration::ZERO` = 不判空闲
+    pub idle: Duration,
+    /// 并发连接上限
+    pub max_conns: usize,
+    /// 注册表上限（本实例声明的节点数）
+    pub max_nodes: usize,
+    /// 握手必须在此时间内完成（slowloris 防护）
+    pub handshake_timeout: Duration,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            rate_per_sec: 200,
+            burst: 400,
+            idle: Duration::from_secs(300),
+            max_conns: 512,
+            max_nodes: 8192,
+            handshake_timeout: HANDSHAKE_TIMEOUT,
+        }
+    }
+}
+
+/// 写侧：明文（回环/测试）或加密记录层。
+pub enum ChanWriter {
+    Plain(TcpStream),
+    /// 与读侧共享同一个 `SecureWriter`：读侧收到 `PING` 时要能立刻回 `PONG`。
+    Secure(Arc<Mutex<SecureWriter>>),
+}
+
+impl ChanWriter {
+    fn send(&mut self, frame: &RelayFrame) -> bool {
+        match self {
+            ChanWriter::Plain(s) => write_frame(s, frame).is_ok(),
+            ChanWriter::Secure(w) => match w.lock() {
+                Ok(mut g) => g.send_frame(frame).is_ok(),
+                Err(_) => false,
+            },
+        }
+    }
+    /// 空闲探测。明文模式没有心跳，返回 true（不参与空闲判定）。
+    fn ping(&mut self) -> bool {
+        match self {
+            ChanWriter::Plain(_) => true,
+            ChanWriter::Secure(w) => match w.lock() {
+                Ok(mut g) => g.send_ping().is_ok(),
+                Err(_) => false,
+            },
+        }
+    }
+    fn shutdown(&self) {
+        match self {
+            ChanWriter::Plain(s) => {
+                let _ = s.shutdown(Shutdown::Both);
+            }
+            ChanWriter::Secure(w) => {
+                if let Ok(g) = w.lock() {
+                    g.shutdown();
+                }
+            }
+        }
+    }
+}
+
+/// 读侧：明文或加密记录层，统一成 `recv()`。
+pub enum ChanReader {
+    Plain { stream: TcpStream, max_frame: usize },
+    Secure(SecureReader),
+}
+
+impl ChanReader {
+    fn recv(&mut self) -> Result<RelayFrame, RecvError> {
+        match self {
+            ChanReader::Plain { stream, max_frame } => {
+                read_frame(stream, *max_frame).map_err(RecvError::Protocol)
+            }
+            ChanReader::Secure(r) => r.recv(),
+        }
+    }
+    fn set_read_timeout(&self, t: Option<Duration>) -> Result<(), String> {
+        match self {
+            ChanReader::Plain { stream, .. } => {
+                stream.set_read_timeout(t).map_err(|e| e.to_string())
+            }
+            ChanReader::Secure(r) => r.set_read_timeout(t),
+        }
+    }
+    fn records_in(&self) -> u64 {
+        match self {
+            ChanReader::Plain { .. } => 0,
+            ChanReader::Secure(r) => r.counters().records_in.load(Ordering::Relaxed),
+        }
+    }
+    fn stats(&self) -> Option<SecureStats> {
+        match self {
+            ChanReader::Plain { .. } => None,
+            ChanReader::Secure(r) => Some(r.counters().snapshot()),
+        }
+    }
+}
+
+/// 每连接令牌桶。用「按时间补充」而不是「每秒清零」，避免窗口边界上放过 2 倍突发。
+struct Bucket {
+    tokens: f64,
+    rate: f64,
+    burst: f64,
+    last: Instant,
+}
+
+impl Bucket {
+    fn new(limits: &Limits) -> Self {
+        let rate = limits.rate_per_sec.max(1) as f64;
+        let burst = limits.burst.max(1) as f64;
+        Self {
+            tokens: burst,
+            rate,
+            burst,
+            last: Instant::now(),
+        }
+    }
+    fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + dt * self.rate).min(self.burst);
+        if self.tokens < 1.0 {
+            return false;
+        }
+        self.tokens -= 1.0;
+        true
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct RelayStats {
@@ -70,20 +226,37 @@ pub struct RelayStats {
     pub forwarded: u64,
     /// 转发失败的帧数（写同侪失败 / 对端收到 FORWARD 但已无该目标）
     pub forward_dropped: u64,
+    /// 安全握手成功次数
+    pub secure_handshakes: u64,
+    /// 安全握手失败 / 明文连到要求密钥的实例
+    pub secure_rejected: u64,
+    /// 记录 tag 校验失败（篡改或重放：序号被固定，重放必然过不了 tag）
+    pub bad_tag: u64,
+    /// 触发每连接速率上限而断开的连接数
+    pub rate_limited: u64,
+    /// 空闲超时回收的连接数
+    pub idle_closed: u64,
+    /// 因并发连接数上限被拒的连接数
+    pub conn_cap_rejected: u64,
 }
 
 /// 所有连接线程共享的状态。
 struct Shared {
     instance: [u8; NODE_ID_LEN],
     /// 本实例自己的注册表：node id → 该客户端的写连接
-    registry: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<TcpStream>>>>,
+    registry: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>>,
     /// 从同侪快照学到的归属：node id → 拥有它的实例 id
     peer_registry: Mutex<HashMap<[u8; NODE_ID_LEN], [u8; NODE_ID_LEN]>>,
     /// 同侪实例 id → 链路写连接
-    peers: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<TcpStream>>>>,
+    peers: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>>,
     stats: Mutex<RelayStats>,
     stop: Arc<AtomicBool>,
     max_frame: usize,
+    /// `Some` = 必须双向握手；`None` = 明文（仅 `allow_insecure` 时放行）
+    psk: Option<[u8; PSK_LEN]>,
+    allow_insecure: bool,
+    limits: Limits,
+    active_conns: AtomicU64,
 }
 
 pub struct RelayServer {
@@ -91,6 +264,9 @@ pub struct RelayServer {
     instance: [u8; NODE_ID_LEN],
     peers: Vec<String>,
     max_frame: usize,
+    psk: Option<[u8; PSK_LEN]>,
+    allow_insecure: bool,
+    limits: Limits,
 }
 
 /// `spawn()` 返回的句柄；持有者可读取真实计数并请求停止所有循环。
@@ -110,13 +286,13 @@ impl RelayHandle {
     pub fn stop(&self) {
         self.shared.stop.store(true, Ordering::Relaxed);
         // 叫醒阻塞在 read_exact 上的同侪链路与订阅连接：直接关闭写端。
-        let links: Vec<Arc<Mutex<TcpStream>>> = {
+        let links: Vec<Arc<Mutex<ChanWriter>>> = {
             let mut p = self.shared.peers.lock().unwrap();
             p.drain().map(|(_, w)| w).collect()
         };
         for w in links {
-            if let Ok(s) = w.lock() {
-                let _ = s.shutdown(std::net::Shutdown::Both);
+            if let Ok(g) = w.lock() {
+                g.shutdown();
             }
         }
     }
@@ -151,6 +327,24 @@ pub fn derive_instance_id(tag: &str) -> [u8; NODE_ID_LEN] {
     out[..7].copy_from_slice(b"RLYINST");
     out[7..15].copy_from_slice(&h.to_be_bytes());
     out[15] = (nanos & 0xff) as u8;
+    out
+}
+
+/// 把实例 id 转成**可打印标签**（日志与计数文件用）。
+///
+/// 派生 id 的 8 字节哈希里可能含 `0x00..0x1F`：直接塞进日志会打印乱码，塞进 `--stats-file`
+/// 的 JSON 会变成**非法 JSON**（裸控制字符），让读取方每次都解析失败——T2 就因此报
+/// 「中继服务端未就绪」而服务端其实好好的。协议身份仍用原始 16 字节，这里只管展示。
+pub fn printable_instance(id: &[u8; NODE_ID_LEN]) -> String {
+    let mut out = String::with_capacity(NODE_ID_LEN);
+    for b in id {
+        match b {
+            // `parse_instance_id` 用 \0 右填充，尾部这些字节不是身份的一部分。
+            0 => {}
+            0x20..=0x7e => out.push(*b as char),
+            _ => out.push('.'),
+        }
+    }
     out
 }
 
@@ -189,7 +383,7 @@ impl Shared {
         });
     }
 
-    fn install_peer(&self, id: [u8; NODE_ID_LEN], writer: Arc<Mutex<TcpStream>>) -> bool {
+    fn install_peer(&self, id: [u8; NODE_ID_LEN], writer: Arc<Mutex<ChanWriter>>) -> bool {
         let mut p = self.peers.lock().unwrap();
         if p.contains_key(&id) {
             // 双方都配了 --peer 时会各拨一次；保留已有链路，避免来回抢。
@@ -222,7 +416,7 @@ impl Shared {
             node: self.instance,
             payload,
         };
-        let links: Vec<([u8; NODE_ID_LEN], Arc<Mutex<TcpStream>>)> = self
+        let links: Vec<([u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>)> = self
             .peers
             .lock()
             .unwrap()
@@ -330,7 +524,27 @@ impl RelayServer {
             instance: derive_instance_id(addr),
             peers: Vec::new(),
             max_frame: DEFAULT_MAX_FRAME,
+            psk: None,
+            allow_insecure: true,
+            limits: Limits::default(),
         })
+    }
+
+    /// 要求所有连接（含同侪链路）先做 PSK 握手。
+    pub fn with_psk(mut self, psk: Option<[u8; PSK_LEN]>) -> Self {
+        self.psk = psk;
+        self
+    }
+
+    /// 是否允许明文连接。**二进制只在绑回环时置 true**，公网部署必须配 PSK。
+    pub fn with_allow_insecure(mut self, allow: bool) -> Self {
+        self.allow_insecure = allow;
+        self
+    }
+
+    pub fn with_limits(mut self, limits: Limits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn with_max_frame(mut self, max: usize) -> Self {
@@ -360,6 +574,9 @@ impl RelayServer {
             instance,
             peers,
             max_frame,
+            psk,
+            allow_insecure,
+            limits,
         } = self;
         let shared = Arc::new(Shared {
             instance,
@@ -369,6 +586,10 @@ impl RelayServer {
             stats: Mutex::new(RelayStats::default()),
             stop: Arc::new(AtomicBool::new(false)),
             max_frame,
+            psk,
+            allow_insecure,
+            limits,
+            active_conns: AtomicU64::new(0),
         });
         let handle = RelayHandle {
             shared: shared.clone(),
@@ -423,34 +644,145 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
     }
 }
 
-fn send_frame(w: &Arc<Mutex<TcpStream>>, frame: &RelayFrame) -> bool {
+fn send_frame(w: &Arc<Mutex<ChanWriter>>, frame: &RelayFrame) -> bool {
     match w.lock() {
-        Ok(mut g) => write_frame(&mut *g, frame).is_ok(),
+        Ok(mut g) => g.send(frame),
         Err(_) => false,
     }
 }
 
-/// 单条连接的处理循环。
+/// 单条**新接入**连接：先过闸（连接数 / 传输层握手），再进入统一的通道循环。
+fn conn_loop(
+    stream: TcpStream,
+    shared: Arc<Shared>,
+    registered: Option<[u8; NODE_ID_LEN]>,
+    peer: Option<[u8; NODE_ID_LEN]>,
+) {
+    // 0) 并发连接上限：先占位再判，超出立刻关，避免 accept 风暴无限起线程。
+    let active = shared.active_conns.fetch_add(1, Ordering::SeqCst) + 1;
+    if active > shared.limits.max_conns as u64 {
+        shared.active_conns.fetch_sub(1, Ordering::SeqCst);
+        shared.stat(|s| s.conn_cap_rejected += 1);
+        let _ = stream.shutdown(Shutdown::Both);
+        return;
+    }
+    let _guard = ConnGuard(shared.clone());
+
+    // 1) 传输层：配了 PSK 就必须握手；没配只在 allow_insecure 时放行明文。
+    let (reader, writer) = match shared.psk {
+        Some(psk) => {
+            let _ = stream.set_read_timeout(Some(shared.limits.handshake_timeout));
+            match secure::server_handshake(stream, &psk, shared.max_frame) {
+                Ok(ch) => {
+                    shared.stat(|s| s.secure_handshakes += 1);
+                    (
+                        ChanReader::Secure(ch.reader),
+                        Arc::new(Mutex::new(ChanWriter::Secure(ch.writer))),
+                    )
+                }
+                Err(e) => {
+                    shared.stat(|s| s.secure_rejected += 1);
+                    eprintln!("[relay] 握手失败，已断开: {}", e);
+                    return;
+                }
+            }
+        }
+        None => {
+            if !shared.allow_insecure {
+                shared.stat(|s| s.secure_rejected += 1);
+                let _ = stream.shutdown(Shutdown::Both);
+                return;
+            }
+            let r = match stream.try_clone() {
+                Ok(r) => r,
+                Err(_) => return,
+            };
+            (
+                ChanReader::Plain {
+                    stream: r,
+                    max_frame: shared.max_frame,
+                },
+                Arc::new(Mutex::new(ChanWriter::Plain(stream))),
+            )
+        }
+    };
+    serve_chan(reader, writer, shared, registered, peer);
+}
+
+struct ConnGuard(Arc<Shared>);
+
+impl Drop for ConnGuard {
+    fn drop(&mut self) {
+        self.0.active_conns.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// 已建立通道（明文或加密）后的统一循环。
 ///
 /// `registered`：这条连接以哪个节点 id 注册（客户端）；`peer`：这条连接是同侪实例链路。
 /// 两者互斥——同侪链路不允许发客户端 `RELAY`，否则来源身份会被实例 id 污染。
-fn conn_loop(
-    stream: TcpStream,
+fn serve_chan(
+    mut reader: ChanReader,
+    writer: Arc<Mutex<ChanWriter>>,
     shared: Arc<Shared>,
     mut registered: Option<[u8; NODE_ID_LEN]>,
     mut peer: Option<[u8; NODE_ID_LEN]>,
 ) {
-    let writer = match stream.try_clone() {
-        Ok(w) => Arc::new(Mutex::new(w)),
-        Err(_) => return,
-    };
-    let mut reader = stream;
+    let secure_chan = matches!(reader, ChanReader::Secure(_));
+    let idle = shared.limits.idle;
+    let idle_enabled = secure_chan && !idle.is_zero();
+    if idle_enabled {
+        let _ = reader.set_read_timeout(Some(idle));
+    }
+    let mut missed_idle = 0u32;
+    let mut bucket = Bucket::new(&shared.limits);
 
     loop {
-        let frame = match read_frame(&mut reader, shared.max_frame) {
-            Ok(f) => f,
-            Err(_) => break,
+        let before = reader.records_in();
+        let frame = match reader.recv() {
+            Ok(f) => {
+                missed_idle = 0;
+                f
+            }
+            Err(e) => {
+                if !e.is_timeout() {
+                    // 链路断开或协议违规（tag 失败/重放/非法记录）——如实计入统计后收尾。
+                    if let Some(st) = reader.stats() {
+                        shared.stat(|s| s.bad_tag += st.bad_tag);
+                    }
+                    break;
+                }
+                if !idle_enabled {
+                    break;
+                }
+                if reader.records_in() > before {
+                    // 超时期间其实收到了控制记录（PONG），链路还活着。
+                    missed_idle = 0;
+                    continue;
+                }
+                missed_idle += 1;
+                if missed_idle >= 2 {
+                    shared.stat(|s| s.idle_closed += 1);
+                    break;
+                }
+                // 先发 PING 探活；发不出去就是链路已死。
+                let alive = match writer.lock() {
+                    Ok(mut g) => g.ping(),
+                    Err(_) => false,
+                };
+                if !alive {
+                    break;
+                }
+                continue;
+            }
         };
+
+        // 每连接速率上限：超了就断开，而不是无限吞帧把内存吃光。
+        if !bucket.allow() {
+            shared.stat(|s| s.rate_limited += 1);
+            break;
+        }
+
         match frame.kind {
             FrameKind::Register => {
                 if peer.is_some() {
@@ -464,7 +796,22 @@ fn conn_loop(
                     break;
                 }
                 let id = frame.node;
-                shared.registry.lock().unwrap().insert(id, writer.clone());
+                // 一条连接只认一个身份：改名会与快照归属冲突。
+                if let Some(cur) = registered {
+                    if cur != id {
+                        shared.stat(|s| s.rejected += 1);
+                        break;
+                    }
+                }
+                {
+                    let mut reg = shared.registry.lock().unwrap();
+                    if !reg.contains_key(&id) && reg.len() >= shared.limits.max_nodes {
+                        drop(reg);
+                        shared.stat(|s| s.rejected += 1);
+                        break;
+                    }
+                    reg.insert(id, writer.clone());
+                }
                 registered = Some(id);
                 let ack = RelayFrame {
                     kind: FrameKind::Ack,
@@ -599,6 +946,9 @@ fn conn_loop(
     if let Some(id) = peer {
         shared.drop_peer(&id);
     }
+    if let Ok(g) = writer.lock() {
+        g.shutdown();
+    }
 }
 
 /// 拨同侪并维持一条长连接。断线按 `PEER_RETRY` 重拨；不阻塞 accept。
@@ -613,14 +963,15 @@ fn dial_loop(shared: Arc<Shared>, addr: String) {
             }
         }
         match dial_once(&shared, &addr) {
-            Ok((peer_id, stream, writer)) => {
+            Ok((peer_id, reader, writer)) => {
                 learned = Some(peer_id);
-                if !shared.install_peer(peer_id, writer) {
+                if !shared.install_peer(peer_id, writer.clone()) {
                     sleep_unless_stopped(&shared, PEER_RETRY);
                     continue;
                 }
                 shared.broadcast_snapshot();
-                conn_loop(stream, shared.clone(), None, Some(peer_id));
+                // 拨号侧已经完成过握手，直接进入通道循环（不再走 conn_loop 的握手分支）。
+                serve_chan(reader, writer, shared.clone(), None, Some(peer_id));
                 shared.drop_peer(&peer_id);
             }
             Err(e) => {
@@ -643,7 +994,7 @@ impl Shared {
 fn dial_once(
     shared: &Arc<Shared>,
     addr: &str,
-) -> Result<([u8; NODE_ID_LEN], TcpStream, Arc<Mutex<TcpStream>>), String> {
+) -> Result<([u8; NODE_ID_LEN], ChanReader, Arc<Mutex<ChanWriter>>), String> {
     let sock_addr = addr
         .to_socket_addrs_first()
         .ok_or_else(|| format!("同侪地址无解析结果: {}", addr))?;
@@ -651,9 +1002,28 @@ fn dial_once(
         .map_err(|e| format!("connect: {}", e))?;
     let _ = stream.set_nodelay(true);
     let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
-    let _ = stream.set_read_timeout(Some(CONNECT_TIMEOUT));
+    let _ = stream.set_read_timeout(Some(shared.limits.handshake_timeout));
 
-    let writer = Arc::new(Mutex::new(stream.try_clone().map_err(|e| e.to_string())?));
+    // 同侪链路与普通连接走同一套传输层：配了 PSK 就同样要握手。
+    let (mut reader, writer) = match shared.psk {
+        Some(psk) => {
+            let ch = secure::client_handshake(stream, &psk, shared.max_frame)?;
+            (
+                ChanReader::Secure(ch.reader),
+                Arc::new(Mutex::new(ChanWriter::Secure(ch.writer))),
+            )
+        }
+        None => {
+            let r = stream.try_clone().map_err(|e| e.to_string())?;
+            (
+                ChanReader::Plain {
+                    stream: r,
+                    max_frame: shared.max_frame,
+                },
+                Arc::new(Mutex::new(ChanWriter::Plain(stream))),
+            )
+        }
+    };
     let hello = RelayFrame {
         kind: FrameKind::PeerHello,
         node: shared.instance,
@@ -662,8 +1032,7 @@ fn dial_once(
     if !send_frame(&writer, &hello) {
         return Err("发送 PEER_HELLO 失败".into());
     }
-    let mut reader = stream;
-    let ack = read_frame(&mut reader, shared.max_frame)?;
+    let ack = reader.recv().map_err(|e| e.to_string())?;
     if ack.kind != FrameKind::Ack {
         return Err(format!("期待 ACK，收到 {:?}", ack.kind));
     }
@@ -674,7 +1043,7 @@ fn dial_once(
     if peer_id == shared.instance {
         return Err("对端实例 id 与本机相同（--peer 指错或重复实例）".into());
     }
-    // 进入长连接阶段：读侧不再有握手超时（DELIVERED/FORWARD 是事件驱动的）。
+    // 进入长连接阶段：空闲判定由 serve_chan 统一接管。
     let _ = reader.set_read_timeout(None);
     Ok((peer_id, reader, writer))
 }
@@ -838,6 +1207,23 @@ mod tests {
         handle.stop();
     }
 
+    /// 派生 id 含控制字节时，展示标签必须是可打印 ASCII（否则计数文件不是合法 JSON）。
+    #[test]
+    fn printable_instance_never_emits_control_bytes() {
+        let mut id = [0u8; NODE_ID_LEN];
+        id[..7].copy_from_slice(b"RLYINST");
+        id[7] = 0x0a;
+        id[8] = 0x01;
+        id[9] = 0x7f;
+        id[10] = 0x20;
+        let label = printable_instance(&id);
+        assert!(label.starts_with("RLYINST"), "{}", label);
+        assert!(!label.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f),
+                "标签仍含控制字符: {:?}", label);
+        let named = parse_instance_id("relay-222").unwrap();
+        assert_eq!(printable_instance(&named), "relay-222");
+    }
+
     #[test]
     fn frame_size_limit_is_enforced() {
         let mut raw = vec![0x02u8];
@@ -960,5 +1346,115 @@ mod tests {
                 "应计 1 次 dropped（{:?}）", h2.stats());
         assert_eq!(h2.stats().forwarded, 0, "不能把帧转进已消失的同侪");
         h2.stop();
+    }
+
+    // ---------- W3.9：传输层与限额 ----------
+
+    const K: [u8; PSK_LEN] = [0x5Au8; PSK_LEN];
+
+    /// 配了 PSK 的实例：明文客户端连不上，且拒绝要能被统计到。
+    #[test]
+    fn secure_instance_rejects_plaintext_client() {
+        let limits = Limits {
+            handshake_timeout: Duration::from_millis(300),
+            ..Limits::default()
+        };
+        let server = RelayServer::bind("127.0.0.1:0")
+            .unwrap()
+            .with_psk(Some(K))
+            .with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let mut c = RelayClient::plaintext(format!("127.0.0.1:{}", port))
+            .connect(Duration::from_secs(2))
+            .unwrap();
+        // 服务端在读 hello 时就会失败/超时；客户端的 ACK 永远等不到。
+        let err = c.register(&id(b'A')).err().unwrap_or_default();
+        assert!(!err.is_empty(), "明文客户端不得注册成功");
+        assert!(wait_until(|| handle.stats().secure_rejected == 1, Duration::from_secs(3)),
+                "应计一次 secure_rejected（{:?}）", handle.stats());
+        assert_eq!(handle.stats().registered, 0);
+        handle.stop();
+    }
+
+    /// 两端都带同一把 PSK：投递必须成立，且握手计数为 2。
+    #[test]
+    fn secure_instance_routes_between_authenticated_clients() {
+        let limits = Limits {
+            handshake_timeout: Duration::from_millis(300),
+            ..Limits::default()
+        };
+        let server = RelayServer::bind("127.0.0.1:0")
+            .unwrap()
+            .with_psk(Some(K))
+            .with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut a = RelayClient::new(addr.clone()).with_psk(Some(K))
+            .connect(Duration::from_secs(3)).unwrap();
+        let mut b = RelayClient::new(addr).with_psk(Some(K))
+            .connect(Duration::from_secs(3)).unwrap();
+        assert!(a.is_secure() && b.is_secure());
+        a.register(&id(b'A')).unwrap();
+        b.register(&id(b'B')).unwrap();
+        b.send_relay(&id(b'A'), b"WAKEUP_REQ").unwrap();
+        let got = a.recv_frame().unwrap();
+        assert_eq!(got.kind, FrameKind::Delivered);
+        assert_eq!(got.payload, b"WAKEUP_REQ");
+        assert_eq!(got.node, id(b'B'));
+        assert!(wait_until(|| handle.stats().secure_handshakes == 2, Duration::from_secs(2)),
+                "两次握手都应成功（{:?}）", handle.stats());
+        assert_eq!(handle.stats().secure_rejected, 0);
+        handle.stop();
+    }
+
+    /// 每连接速率上限：刷帧的连接被断开，计数器可归因。
+    #[test]
+    fn flooding_connection_is_rate_limited() {
+        let limits = Limits {
+            rate_per_sec: 1,
+            burst: 2,
+            idle: Duration::ZERO,
+            ..Limits::default()
+        };
+        let server = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let mut c = RelayClient::plaintext(format!("127.0.0.1:{}", port))
+            .connect(Duration::from_secs(2)).unwrap();
+        c.register(&id(b'F')).unwrap();
+        for _ in 0..8 {
+            // 写到被断开为止；失败也算预期（服务端已经关了连接）。
+            if c.send_relay(&id(b'Z'), b"flood").is_err() {
+                break;
+            }
+        }
+        assert!(wait_until(|| handle.stats().rate_limited == 1, Duration::from_secs(3)),
+                "应因超速断开一次（{:?}）", handle.stats());
+        handle.stop();
+    }
+
+    /// 并发连接上限：超出的连接被立刻关闭并计数。
+    #[test]
+    fn connection_cap_is_enforced() {
+        let limits = Limits {
+            max_conns: 1,
+            ..Limits::default()
+        };
+        let server = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{}", port);
+        let mut first = RelayClient::plaintext(addr.clone())
+            .connect(Duration::from_secs(2)).unwrap();
+        first.register(&id(b'1')).unwrap();
+        assert!(wait_until(|| handle.stats().registered == 1, Duration::from_secs(2)));
+        let mut second = RelayClient::plaintext(addr).connect(Duration::from_secs(2)).unwrap();
+        let err = second.register(&id(b'2')).err().unwrap_or_default();
+        assert!(!err.is_empty(), "第二个连接应被拒（实际: {}）", err);
+        assert!(wait_until(|| handle.stats().conn_cap_rejected == 1, Duration::from_secs(2)),
+                "应计一次 conn_cap_rejected（{:?}）", handle.stats());
+        handle.stop();
     }
 }

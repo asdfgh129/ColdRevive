@@ -93,6 +93,15 @@ fn main() {
     if let Some(w) = opt("--workdir") { cfg.workdir = PathBuf::from(w); }
     if let Some(s) = opt("--sample") { cfg.sample_path = PathBuf::from(s); }
     if let Some(d) = opt("--downloader") { cfg.downloader = PathBuf::from(d); }
+    // 中继 PSK：`nat.relay_key`（64 位十六进制或 file:<路径>）。写错就打字说明并**不覆盖**
+    // 现有设置——静默退回明文会让「本来加密」的部署以为自己还在加密。
+    match cr_nat::relay::set_psk_from_spec(cfg.nat_relay_key.as_deref()) {
+        Ok(Some(k)) => eprintln!("[nat] 中继 PSK 已装载，指纹 {}（须与中继端一致）",
+                                 cr_nat::secure::fingerprint(&k)),
+        Ok(None) => {}
+        Err(e) => eprintln!("[nat] nat.relay_key 非法: {}（中继仍按未配置处理）", e),
+    }
+
     let me = match cfg.me() {
         Ok(m) => m.clone(),
         Err(e) => { eprintln!("{}", e); std::process::exit(2); }

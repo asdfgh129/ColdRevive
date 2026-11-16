@@ -2,6 +2,60 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.58] - 2026-11-16 — M2/W3.9：中继公网生产化（PSK 认证 + 逐帧加密 + 三道闸）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；`evidence_valid_for_pass=false`，R-04 仍不判定。
+> 这是**中继可用性与传输安全工程**，没有产生任何 NAT 类别样本。
+
+### 先让它只服务持钥方
+W3.4 的中继是**无认证明文**：任何人可注册任意 16 字节 id 顶掉别人、可监听载荷、可重放。
+`cr-nat::secure`（std-only，复用 `cr-hash`）补上 PSK 传输层：
+
+- 握手：`CRRL|ver|nonce_c|HMAC(psk,"client-hello"|nonce_c)` → `ver|nonce_s|HMAC(psk,"server-hello"|nonce_c|nonce_s)`；
+- 会话密钥：`HMAC(psk,"master"|nonce_c|nonce_s)` 分方向派生 enc/mac；
+- 记录：`type(1)|len(4)|密文|tag(32)`，密钥流 = `HMAC(k_enc, seq|block)`，tag 覆盖 `seq|type|len|密文`；
+- **序号严格递增，不重同步**：篡改与重放都表现为「固定序号上 tag 失败」→ 断链；
+- **心跳放在记录层**（`PING`/`PONG`），`relay_sub` 的订阅连接不需要业务保活，也不会收到假 `DELIVERED`。
+
+**明确不是 TLS**：无证书/域名校验、无前向保密、无密钥轮换，未经独立密码学审计。
+它能挡无凭证注册、窃听、篡改、重放；挡不住持钥内部人。
+
+### 三道闸与一条启动策略
+`--max-conns` / `--rate`+`--burst`（令牌桶，按时间补充而非每秒清零）/ `--idle-timeout`
+（先 `PING`、两轮无应答才断）/ `--max-nodes` / `--handshake-timeout`；计数分别可归因
+（`conn_cap_rejected` / `rate_limited` / `idle_closed` / `secure_rejected` / `bad_tag`）。
+**绑非回环地址且无 PSK → 拒绝启动**并打印三种处置方式；明文只允许回环或显式 `--allow-insecure`。
+客户端侧 `nat.relay_key`（64 hex 或 `file:`）写错会打字告警，**不静默退回明文**。
+
+### 实测（两台真实主机：relay-222 公网侧 / relay-209 内网侧）
+| 用例 | 结果 |
+| :--- | :--- |
+| `pair` @ 222 | PASS，ACK 0.6 / 0.7 ms |
+| `latency` 30 轮 | 30/30，min 0.30 / p50 0.88 / max 1.41 / avg 0.85 ms |
+| 跨实例加密投递 30 轮（60 帧） | 60/60，avg 0.4 ms，两端 `dropped=0` |
+| 两实例互认 | 各 `peers=1`，`key_fp` 一致 |
+| 反证 | 错误 PSK / 明文客户端均被拒并计入 `secure_rejected`；无密钥绑 `0.0.0.0` 拒绝启动 |
+
+`cargo test --workspace --offline` **114 passed / 0 failed**（+14：`cr-nat::secure` 9 条、
+`relay_server` 5 条含限额与认证）。
+
+### 顺带修掉一个只在「派生实例 id」下才现形的缺陷
+`--stats-file` 里的 `instance` 取自实例 id，而**派生 id 的 8 字节哈希可能含裸控制字符** →
+计数文件不是合法 JSON，读取方每次都解析失败。T2 的 `--mode local` 因此报「中继服务端未就绪」，
+而服务端其实一直正常（`relay.log` 里有 `RELAY_LISTEN`，端口也在听）。现在拆成两个东西：
+协议身份仍用原始 16 字节，**展示/落盘一律走 `printable_instance`**（非可打印字节换成 `.`），
+并加了一条断言「标签里不得出现控制字符」的用例。这类问题在公网监控上尤其坑：
+服务活着、指标全空。
+
+### 纠正：57100 映射其实**没**打通（上一轮写错了）
+上一轮把 `112.5.32.34:57100 → 192.168.34.222:7100` 记成「已实测可用、中继公网化不必另找 VPS」。
+**这是错的。** 实测：`54022 → 22` 在 27 ms 内建连成功（同一 CPE、同一内网主机），`57100` 超时；
+222 上按**对端公网 IP** 抓包 **0 包**（按端口抓同样 0 包，但这次先排除了「端口被改写」），
+`ufw` inactive、`iptables -S INPUT` 为 ACCEPT、`0.0.0.0:7100` 正在监听 —— 包根本没到 222。
+所以是这条映射自身没有投递，与中继实现无关。**本轮因此没有任何跨公网时延数字**：
+LAN 的 0.85 ms 不外推到公网，`nat-matrix.md §17.6` 与 `spikes.json` 均按此记录。
+
 ## [2.4.57] - 2026-11-15 — M2/W3.8：中继去单点化（多实例注册同步 + 客户端列表切换）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

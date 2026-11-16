@@ -88,6 +88,9 @@ dependencies = [
 [[package]]
 name = "cr-nat"
 version = "0.1.0"
+dependencies = [
+ "cr-hash",
+]
 
 [[package]]
 name = "cr-notify"

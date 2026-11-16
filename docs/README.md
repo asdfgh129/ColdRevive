@@ -152,6 +152,21 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.58 补记（2026-11-16 / W3.9）**：中继公网生产化 —— 新增 `cr-nat::secure`（std-only，
+  复用 `cr-hash`）：PSK 双向挑战应答 + HMAC-SHA256 计数器密钥流 + 逐记录 HMAC，序号严格递增
+  （篡改与重放都表现为固定序号上 tag 失败 → 断链，不重同步）；`PING`/`PONG` 放在记录层，
+  订阅连接不需要业务保活。**明确不是 TLS**（无证书/域名校验、无前向保密、无密钥轮换，未经审计）。
+  `coldrevive-relay` 新增 `--auth-key` / `--auth-key-file` / `--allow-insecure` / `--rate` /
+  `--burst` / `--idle-timeout` / `--max-conns` / `--max-nodes` / `--handshake-timeout`，
+  并新增启动策略：**绑非回环地址且无 PSK 直接拒绝启动**。客户端侧新增 `nat.relay_key`。
+  两台真实主机实测：`pair` PASS、`latency` 30/30（p50 0.88 ms）、跨实例加密 60/60 帧、
+  两端 `dropped=0`；三条反证（错误密钥 / 明文客户端 / 无密钥绑公网）全部如实失败。
+  同轮**纠正**：`112.5.32.34:57100 → 192.168.34.222:7100` 并未打通（同 CPE 的 `54022`
+  27 ms 可达、`57100` 按对端公网 IP 抓包 0 包），因此**本轮没有跨公网时延数字**。
+  改动落在 [nat-matrix.md §17](../tests/spikes/s6/nat-matrix.md)、
+  [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-14（ROADMAP）与 spikes.json；
+  未改 `PROTOCOL_VERSION` 与 T0 golden（记录层在中继链路内部，业务帧语义不变）。
+  **这是中继可用性与传输安全工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
 - 协议（DOC-09）**私有契约字段**（§3 `WAKEUP_REQ` / `WAKEUP_ACK`）变更必须递增 `PROTOCOL_VERSION`、新增 ADR 并更新 T0 golden，禁止静默修改。
 - **映射修订例外**：只改 §1 / §2 的**外部 KAD / eD2k 集成映射**（如 v2.3 的 Kad tag 帧头、v2.4 的双轨 Key、v2.5 的 `0x44` / `0x34` 载荷与 eD2k TCP 序列）且不动 §3 字段时，按 [PROTO §4](04-protocol/PROTO.md) 只递增该文档的 `version` 并记录源码依据，`PROTOCOL_VERSION` 与 T0 golden 保持不变。本条与 PROTO §4 是同一规则的两处表述。
 

@@ -268,6 +268,48 @@ python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.221:7100 --mode 
 报告 `tests/spikes/s6/reports/relay/w38-cross-peer-sync-2026-11-15.json`
 （`evidence_scope=relay-availability`、`is_s6_evidence=false`）。
 
+## 中继公网生产化（relay-hardening，2026-11-16 W3.9）
+
+中继从「能转发帧」变成「可以摆在公网」：PSK 双向认证 + 逐记录加密 + 序号防重放，外加
+连接数 / 速率 / 空闲三道闸。**仍不是 NAT 档位**，不产生任何 NAT 类别样本。
+
+```bash
+# 生成一把密钥（64 位十六进制），两端各放一份，权限 600
+python3 -c "import os;print(os.urandom(32).hex())" > /root/bin/psk.txt
+
+# 公网侧实例（本例 222，公网入口应为 112.5.32.34:57100）
+setsid nohup /root/bin/coldrevive-relay \
+  --listen 0.0.0.0:7100 --peer 192.168.1.209:7100 --instance-id relay-222 \
+  --auth-key file:/root/bin/psk.txt --stats-file /root/relay/stats.json \
+  --idle-timeout 120 > /root/relay/relay.log 2>&1 < /dev/null &
+
+# 内网侧实例（Windows：必须用计划任务，见下）
+schtasks /create /tn crRelayB /tr "C:/coldrevive/bin/coldrevive-relay.exe \
+  --listen 192.168.1.209:7100 --peer 192.168.1.222:7100 --instance-id relay-209 \
+  --auth-key file:C:/coldrevive/bin/psk.txt --stats-file C:/coldrevive/bin/relay-b-stats.json" \
+  /sc once /st 00:00 /f
+schtasks /run /tn crRelayB
+
+# 客户端（coldrevived）配置里给同一把钥匙
+#   "nat": { "relay": ["a:7100","b:7100"], "relay_key": "file:/path/psk.txt" }
+
+# 探针
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 192.168.1.222:7100 --mode pair --key file:/path/psk.txt
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 112.5.32.34:57100 --mode latency --repeat 30 --key file:/path/psk.txt
+python tests/spikes/s6/nat_lab/relay_probe.py --relay 112.5.32.34:57100 --relay 192.168.1.209:7100 \
+  --mode cross --repeat 30 --key file:/path/psk.txt
+```
+
+启动首行会打印 `RELAY_AUTH` 与 `RELAY_KEY_FP`：**两端指纹必须一致**，不一致就是配错了钥匙，
+不要靠「能连上」猜。绑非回环地址又不给密钥会**拒绝启动**，`--allow-insecure` 才放行明文。
+
+实测（2026-11-16，两实例两主机）：`pair` PASS、`latency` 30/30（p50 0.88 ms，LAN）、
+跨实例 60/60 帧（avg 0.4 ms）、两端 `dropped=0`；反证为错误密钥 / 明文客户端均被拒、
+无密钥绑 `0.0.0.0` 直接拒绝启动。
+
+报告 `tests/spikes/s6/reports/relay/w39-relay-hardened-2026-11-16.json`
+（`evidence_scope=relay-availability`、`is_s6_evidence=false`）。
+
 ## 证据边界（不得突破）
 
 - 判据是**两个互相独立的条款**：
@@ -344,3 +386,14 @@ sudo bash setup_nat_lab.sh down
     （54022 → 28698）。曾因此把一条**本来可用**的映射判成「设备把 DNAT 与放行策略分开」。
     正确做法：按**对端公网 IP** 过滤。同一条坑在第 13 条里已经写过一次，这次是在映射侧复现，
     说明它是口径问题而不是场景问题。
+20. **`file:` 前缀是给密钥用的，不是给二进制用的**：把 Windows 的 `.exe` 拷到 Linux 上跑，
+    报错是 `Syntax error: word unexpected`（shell 试图执行 PE 头）。跨平台必须各自编译；
+    本次是靠 221 编译后经本地中转传到 222 —— 注意 `221 → 222` 的 scp 没有可用私钥，绕道更快。
+21. **`pkill -f "<自己命令行里出现的字符串>"` 会杀掉自己的 ssh 会话**（bash -c 的命令行同样
+    匹配）。表现是 ssh 返回 255、后半条命令没执行。用 `pkill -f "[c]oldrevive-relay"` 这种
+    字符类写法避开自匹配。
+22. **公网映射通不通，先拿同设备上已确认可用的另一条规则做对照**（54022 通 / 57100 不通），
+    再按**对端公网 IP** 抓包。只按端口抓会得到 0 包，既可能是「端口被改写」也可能是
+    「包根本没来」，两种情况处置完全不同。
+23. **客户端探针的异常必须收敛成 FAIL 而不是抛栈**：明文连加密服务端会卡到超时，
+    栈回溯会把「预期失败」和「探针坏了」混在一起，读报告的人分不清。

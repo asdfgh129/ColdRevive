@@ -16,13 +16,23 @@
 //!   kind=0x06 PEER_SYNC  负载 = n × 16 字节本地注册节点 id（整份快照，覆盖语义）
 //!   kind=0x07 FORWARD    负载 = 16 字节原始来源 id + 16 字节目标 id + 消息
 //!                        （收到后只做本地投递，**不再转发**，因此最多一跳、无环）
+//!
+//! # W3.9：可选的安全传输
+//!
+//! 配了 PSK（`--auth-key` / `nat.relay_key`）时，上面的帧在 [`crate::secure`] 的记录层里
+//! 加密传输：握手双向认证、逐帧 HMAC、序号严格递增。**未配 PSK 就是明文**——服务端默认
+//! 只允许明文绑回环地址，公网部署必须配密钥（见 `coldrevive-relay --allow-insecure`）。
 
+use crate::relay_server::DEFAULT_MAX_FRAME;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub const NODE_ID_LEN: usize = 16;
+/// 帧头长度：1B kind + 16B node id + 4B 大端长度。
+pub const FRAME_HEADER_LEN: usize = 1 + NODE_ID_LEN + 4;
 
 /// 为一次唤醒请求生成**临时会话 id**（std-only，无 rand 依赖）。
 ///
@@ -148,11 +158,75 @@ impl RelayFrame {
 
 pub struct RelayClient {
     pub addr: String,
+    psk: PskChoice,
+}
+
+/// 密钥来源：默认跟随进程级配置（`set_default_psk`），也可显式指定（测试用明文）。
+#[derive(Debug, Clone, Copy)]
+enum PskChoice {
+    Default,
+    Explicit(Option<[u8; crate::secure::PSK_LEN]>),
+}
+
+/// 进程级默认 PSK。由守护进程/CLI 在读配置后设置一次，避免把密钥层层透传到每个调用点。
+static DEFAULT_PSK: Mutex<Option<[u8; crate::secure::PSK_LEN]>> = Mutex::new(None);
+
+/// 设置进程级 PSK（`None` = 明文）。
+pub fn set_default_psk(psk: Option<[u8; crate::secure::PSK_LEN]>) {
+    if let Ok(mut g) = DEFAULT_PSK.lock() {
+        *g = psk;
+    }
+}
+
+/// 当前进程级 PSK。
+pub fn default_psk() -> Option<[u8; crate::secure::PSK_LEN]> {
+    DEFAULT_PSK.lock().ok().and_then(|g| *g)
+}
+
+/// 从配置里的 `nat.relay_key`（64 位十六进制或 `file:<路径>`）安装进程级 PSK。
+///
+/// 返回错误但**不改变**当前设置：配置写错时宁可让调用方打印告警，也不要静默退回明文
+/// —— 那会让「本来加密」的部署以为自己在加密。
+pub fn set_psk_from_spec(spec: Option<&str>) -> Result<Option<[u8; crate::secure::PSK_LEN]>, String> {
+    match spec.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(text) => {
+            let k = crate::secure::parse_psk(text)?;
+            set_default_psk(Some(k));
+            Ok(Some(k))
+        }
+        None => {
+            set_default_psk(None);
+            Ok(None)
+        }
+    }
 }
 
 impl RelayClient {
     pub fn new(addr: String) -> Self {
-        Self { addr }
+        Self {
+            addr,
+            psk: PskChoice::Default,
+        }
+    }
+
+    /// 强制明文（仅用于本地 mock 与回环诊断；公网对端会拒绝）。
+    pub fn plaintext(addr: String) -> Self {
+        Self {
+            addr,
+            psk: PskChoice::Explicit(None),
+        }
+    }
+
+    pub fn with_psk(mut self, psk: Option<[u8; crate::secure::PSK_LEN]>) -> Self {
+        self.psk = PskChoice::Explicit(psk);
+        self
+    }
+
+    pub fn resolve_psk(&self) -> Option<[u8; crate::secure::PSK_LEN]> {
+        match self.psk {
+            PskChoice::Default => default_psk(),
+            PskChoice::Explicit(p) => p,
+        }
     }
 
     pub fn connect(&self, timeout: Duration) -> Result<RelayConn, String> {
@@ -163,27 +237,85 @@ impl RelayClient {
             .next()
             .ok_or_else(|| "relay 地址无解析结果".to_string())?;
         let stream = TcpStream::connect(addr).map_err(|e| format!("connect: {}", e))?;
-        stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
-        stream.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
-        Ok(RelayConn { stream })
+        let _ = stream.set_nodelay(true);
+        stream
+            .set_read_timeout(Some(timeout))
+            .map_err(|e| e.to_string())?;
+        stream
+            .set_write_timeout(Some(timeout))
+            .map_err(|e| e.to_string())?;
+        match self.resolve_psk() {
+            Some(psk) => {
+                let ch = crate::secure::client_handshake(stream, &psk, DEFAULT_MAX_FRAME)?;
+                Ok(RelayConn {
+                    io: ConnIo::Secure {
+                        reader: ch.reader,
+                        writer: ch.writer,
+                        counters: ch.counters,
+                    },
+                })
+            }
+            None => Ok(RelayConn {
+                io: ConnIo::Plain {
+                    reader: stream.try_clone().map_err(|e| e.to_string())?,
+                    writer: stream,
+                },
+            }),
+        }
     }
 }
 
+/// 单条中继连接的两种形态：明文（回环/测试）与加密（配了 PSK）。
+enum ConnIo {
+    Plain {
+        reader: TcpStream,
+        writer: TcpStream,
+    },
+    Secure {
+        reader: crate::secure::SecureReader,
+        writer: Arc<Mutex<crate::secure::SecureWriter>>,
+        counters: Arc<crate::secure::SecureCounters>,
+    },
+}
+
 pub struct RelayConn {
-    stream: TcpStream,
+    io: ConnIo,
 }
 
 impl RelayConn {
+    pub fn is_secure(&self) -> bool {
+        matches!(self.io, ConnIo::Secure { .. })
+    }
+
+    pub fn secure_stats(&self) -> Option<crate::secure::SecureStats> {
+        match &self.io {
+            ConnIo::Secure { counters, .. } => Some(counters.snapshot()),
+            ConnIo::Plain { .. } => None,
+        }
+    }
+
+    fn send(&mut self, frame: &RelayFrame) -> Result<(), String> {
+        match &mut self.io {
+            ConnIo::Plain { writer, .. } => {
+                writer
+                    .write_all(&frame.encode())
+                    .and_then(|_| writer.flush())
+                    .map_err(|e| e.to_string())
+            }
+            ConnIo::Secure { writer, .. } => {
+                let mut g = writer.lock().map_err(|_| "写锁中毒".to_string())?;
+                g.send_frame(frame)
+            }
+        }
+    }
+
     pub fn register(&mut self, node_id: &[u8; NODE_ID_LEN]) -> Result<(), String> {
         let frame = RelayFrame {
             kind: FrameKind::Register,
             node: *node_id,
             payload: node_id.to_vec(),
         };
-        self.stream
-            .write_all(&frame.encode())
-            .map_err(|e| e.to_string())?;
-        self.stream.flush().map_err(|e| e.to_string())?;
+        self.send(&frame)?;
         // 等待 ACK
         let resp = self.recv_frame()?;
         if resp.kind != FrameKind::Ack {
@@ -201,46 +333,56 @@ impl RelayConn {
             node: *target,
             payload,
         };
-        self.stream
-            .write_all(&frame.encode())
-            .map_err(|e| e.to_string())?;
-        self.stream.flush().map_err(|e| e.to_string())
+        self.send(&frame)
     }
 
     /// 长连接订阅（持有者侧）用 `None` 阻塞等待 DELIVERED；探测类客户端用短超时。
     pub fn set_read_timeout(&self, timeout: Option<Duration>) -> Result<(), String> {
-        self.stream.set_read_timeout(timeout).map_err(|e| e.to_string())
+        match &self.io {
+            ConnIo::Plain { reader, .. } => reader.set_read_timeout(timeout).map_err(|e| e.to_string()),
+            ConnIo::Secure { reader, .. } => reader.set_read_timeout(timeout),
+        }
     }
 
-    /// 仅供协议一致性单测发送畸形/自定义帧；生产路径只用 `register` / `send_relay`。
+    /// 仅供协议一致性单测发送畸形/自定义帧；加密连接不支持（否则会破坏序号语义）。
     pub fn write_raw(&mut self, data: &[u8]) -> Result<(), String> {
-        self.stream.write_all(data).map_err(|e| e.to_string())?;
-        self.stream.flush().map_err(|e| e.to_string())
+        match &mut self.io {
+            ConnIo::Plain { writer, .. } => {
+                writer.write_all(data).map_err(|e| e.to_string())?;
+                writer.flush().map_err(|e| e.to_string())
+            }
+            ConnIo::Secure { .. } => Err("加密连接不支持 write_raw".into()),
+        }
     }
 
     pub fn recv_frame(&mut self) -> Result<RelayFrame, String> {
-        let mut head = [0u8; 1 + NODE_ID_LEN + 4];
-        self.stream
-            .read_exact(&mut head)
-            .map_err(|e| format!("读帧头失败: {}", e))?;
-        let len = u32::from_be_bytes([
-            head[1 + NODE_ID_LEN],
-            head[2 + NODE_ID_LEN],
-            head[3 + NODE_ID_LEN],
-            head[4 + NODE_ID_LEN],
-        ]) as usize;
-        let mut payload = vec![0u8; len];
-        if len > 0 {
-            self.stream
-                .read_exact(&mut payload)
-                .map_err(|e| format!("读帧体失败: {}", e))?;
+        match &mut self.io {
+            ConnIo::Plain { reader, .. } => {
+                let mut head = [0u8; FRAME_HEADER_LEN];
+                reader
+                    .read_exact(&mut head)
+                    .map_err(|e| format!("读帧头失败: {}", e))?;
+                let len = u32::from_be_bytes([
+                    head[1 + NODE_ID_LEN],
+                    head[2 + NODE_ID_LEN],
+                    head[3 + NODE_ID_LEN],
+                    head[4 + NODE_ID_LEN],
+                ]) as usize;
+                if len > DEFAULT_MAX_FRAME {
+                    return Err(format!("帧体超限: {}", len));
+                }
+                let mut payload = vec![0u8; len];
+                if len > 0 {
+                    reader
+                        .read_exact(&mut payload)
+                        .map_err(|e| format!("读帧体失败: {}", e))?;
+                }
+                let mut raw = head.to_vec();
+                raw.extend_from_slice(&payload);
+                RelayFrame::decode(&raw).ok_or_else(|| "帧解析失败".into())
+            }
+            ConnIo::Secure { reader, .. } => reader.recv().map_err(|e| e.to_string()),
         }
-        RelayFrame::decode(&{
-            let mut v = head.to_vec();
-            v.extend_from_slice(&payload);
-            v
-        })
-        .ok_or_else(|| "帧解析失败".into())
     }
 }
 
@@ -327,7 +469,7 @@ mod tests {
     #[test]
     fn register_and_relay_against_mock() {
         let port = spawn_mock_relay();
-        let client = RelayClient::new(format!("127.0.0.1:{}", port));
+        let client = RelayClient::plaintext(format!("127.0.0.1:{}", port));
         let mut conn = client.connect(Duration::from_secs(2)).unwrap();
         let id = [1u8; NODE_ID_LEN];
         conn.register(&id).expect("register 应成功");

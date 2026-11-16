@@ -1696,11 +1696,27 @@
             "cross_two_instance_30rounds": {
               "frames": 60,
               "delivered": 60,
-              "rtt_ms": {"min": 0.3, "max": 0.6, "avg": 0.3},
+              "rtt_ms": {
+                "min": 0.3,
+                "max": 0.6,
+                "avg": 0.3
+              },
               "source_id_preserved": true,
               "payload_bytes_identical": true,
-              "relay_221": {"delivered": 31, "forwarded": 30, "dropped": 0, "forward_dropped": 0, "peers": 1},
-              "relay_209": {"delivered": 30, "forwarded": 31, "dropped": 0, "forward_dropped": 0, "peers": 1}
+              "relay_221": {
+                "delivered": 31,
+                "forwarded": 30,
+                "dropped": 0,
+                "forward_dropped": 0,
+                "peers": 1
+              },
+              "relay_209": {
+                "delivered": 30,
+                "forwarded": 31,
+                "dropped": 0,
+                "forward_dropped": 0,
+                "peers": 1
+              }
             },
             "snapshot_self_heal": {
               "scenario": "持有者常驻 relay-221 不重注册，重启 relay-209 进程后由新客户端从 209 直投",
@@ -1746,7 +1762,147 @@
             "spike_status_changed": false,
             "g2_claim": false,
             "r04_judged": false
-          }
+          },
+          "corrections_after_run_w39": [
+            "上一轮记载「112.5.32.34:57100 → 192.168.34.222:7100 是真实公网端口、可直接用于 W3.9 公网入口」——该结论**未经验证**，W3.9 实测为不可达（见 w39_relay_hardened_2026_11_16.public_entry_blocked）。",
+            "教训：把「用户设置了映射」当成「映射可用」。本轮先拿同设备上已确认可用的 54022 做对照，再按对端公网 IP 抓包，才把「映射没投递」与「中继没监听」分开。"
+          ]
+        },
+        "w39_relay_hardened_2026_11_16": {
+          "date": "2026-11-16",
+          "stage": "M2/W3.9",
+          "title": "中继公网生产化：PSK 双向认证 + 逐记录加密 + 五道闸",
+          "why": "W3.6 起直连依赖中继做信令，而 W3.4 的中继是无认证明文：任何人可注册任意 id 顶掉别人、可监听载荷、可重放。公网化不是加端口映射，而是先让它只服务持钥方。",
+          "transport": {
+            "scheme": "PSK(32B) + 双向挑战应答 + HMAC-SHA256 计数器密钥流 + 逐记录 HMAC",
+            "record": "type(1)|len(4)|ct|tag(32)；tag=HMAC(k_mac, seq|type|len|ct)；seq 严格递增",
+            "replay_and_tamper": "篡改与重放都表现为固定序号上 tag 失败 → 断链，不重同步",
+            "heartbeat": "PING/PONG 在记录层，订阅连接无需业务保活",
+            "not_tls": true,
+            "not_tls_reasons": [
+              "无证书与域名校验",
+              "无前向保密",
+              "无密钥轮换",
+              "HMAC-SHA256 密钥流未经独立密码学审计"
+            ]
+          },
+          "limits": {
+            "max_conns": 512,
+            "rate_per_sec": 200,
+            "burst": 400,
+            "idle_timeout_sec": 300,
+            "handshake_timeout_sec": 10,
+            "max_nodes": 8192,
+            "attributable_counters": [
+              "conn_cap_rejected",
+              "rate_limited",
+              "idle_closed",
+              "secure_rejected",
+              "bad_tag"
+            ]
+          },
+          "startup_policy": "绑非回环地址且无 PSK → 拒绝启动（exit 2）；明文只允许回环或显式 --allow-insecure；客户端 nat.relay_key 写错打字告警，不静默退回明文",
+          "topology": {
+            "relay_222": {
+              "host": "192.168.34.222",
+              "listen": "0.0.0.0:7100",
+              "egress": "112.5.32.34",
+              "peer": "192.168.1.209:7100",
+              "key_fp": "037d79762181690e"
+            },
+            "relay_209": {
+              "host": "192.168.1.209",
+              "listen": "192.168.1.209:7100",
+              "peer": "192.168.1.222:7100",
+              "key_fp": "037d79762181690e"
+            }
+          },
+          "results": {
+            "pair_222": {
+              "verdict": "PASS",
+              "ack_ms": [
+                0.6,
+                0.7
+              ],
+              "b_to_a_ms": 0.6,
+              "a_to_b_ms": 0.4
+            },
+            "latency_30_lan": {
+              "verdict": "PASS",
+              "samples": 30,
+              "min_ms": 0.3,
+              "p50_ms": 0.88,
+              "max_ms": 1.41,
+              "avg_ms": 0.85
+            },
+            "cross_instance_encrypted_30": {
+              "verdict": "PASS",
+              "frames": 60,
+              "delivered": 60,
+              "avg_ms": 0.4
+            },
+            "server_counters": {
+              "relay-222": {
+                "delivered": 62,
+                "forwarded": 30,
+                "dropped": 0,
+                "secure_handshakes": 6,
+                "secure_rejected": 5,
+                "bad_tag": 0,
+                "rate_limited": 0,
+                "idle_closed": 0
+              },
+              "relay-209": {
+                "delivered": 30,
+                "forwarded": 30,
+                "dropped": 0,
+                "secure_handshakes": 2,
+                "secure_rejected": 0
+              }
+            },
+            "negative_controls": [
+              {
+                "case": "错误 PSK",
+                "observed": "握手处关闭连接，secure_rejected += 1",
+                "verdict": "FAIL（预期）"
+              },
+              {
+                "case": "明文客户端",
+                "observed": "读不满 hello 超时断开，secure_rejected += 1",
+                "verdict": "FAIL（预期）"
+              },
+              {
+                "case": "无 PSK 绑 0.0.0.0",
+                "observed": "拒绝启动并打印处置方式",
+                "verdict": "拒绝（预期）"
+              }
+            ]
+          },
+          "public_entry_blocked": {
+            "target": "112.5.32.34:57100 → 192.168.34.222:7100",
+            "verdict": "BLOCKED",
+            "evidence": [
+              "A → 112.5.32.34:54022 建连成功 27 ms（同 CPE、同内网主机）",
+              "A / 221 → 112.5.32.34:57100 均超时",
+              "222 上 tcpdump -i ens160 'tcp port 7100 or tcp port 57100' → 0 packets",
+              "222 上 tcpdump -i any 'host 112.5.60.4'（A 正在连）→ 0 packets，排除目的端口被改写",
+              "ufw inactive / iptables INPUT ACCEPT / 0.0.0.0:7100 LISTEN 均已核对"
+            ],
+            "conclusion": "包未到达 222，属该条映射自身未投递；与中继监听、防火墙、PSK 无关。修好后可直接复跑 latency/cross，无需改代码。",
+            "consequence": "本轮**没有任何跨公网时延/丢包数字**；LAN 的 0.85 ms 不外推到公网。"
+          },
+          "tests": {
+            "cargo_test_workspace_offline": "113 passed / 0 failed",
+            "new_unit_tests": 13
+          },
+          "evidence_scope": "relay-availability",
+          "is_s6_evidence": false,
+          "s6_status_after": "not_run",
+          "g2_claim": false,
+          "spike_status_changed": false,
+          "evidence_valid_for_pass": false,
+          "report": "tests/spikes/s6/reports/relay/w39-relay-hardened-2026-11-16.json",
+          "doc": "tests/spikes/s6/nat-matrix.md §17"
         }
       }
     },
@@ -1945,7 +2101,8 @@
       "w36b_cross_host": "2026-11-15：把请求者挪到第二台物理主机 A（192.168.1.210），持有者仍在 ubuntu(221) 的 netns 内，判据条款①成立。链路用 link_physical.sh（网关 WAN 挂物理 LAN 地址 .241~.245 + 221 proxy ARP 代答，对 A 零改动零权限），编排用 run_cross_host.py（在 A 上执行）。30 次/路径：direct full/restricted/port-restricted/cgnat 均 30/30、symmetric 0/30、relay 五类 30/30，与同机 netns 的 W3.6 逐行一致；分类在同一链路上复测 5/5 与建网声明一致。报告 evidence_scope=cross-host-lab、条款① true / 条款② false、evidence_valid=false。顺带定位 cr-nat 分类缺陷（classify_cone_subtype 恒判 restricted-cone）。",
       "w36c_harness_integrity": "W3.6c（2026-11-15）：跨主机档位做到可复现 —— 修掉 RESET-NEVER-RAN / ADDR-POOL-COLLISION / LIFECYCLE-SILENT-DEGRADE 三处 harness 缺陷，并给每条加上独立反证（reset_exit_code、ARP 身份 MAC、STUN 真实往返、分类复测 5/5）；最终 direct 四类 30/30、symmetric 0/30、relay 全 30/30",
       "w37_real_nat": "W3.7（2026-11-15）：真实 NAT 档位落地 —— 持有者 222（真实 NAT → 112.5.32.34）、请求者 A（真实 NAT → 112.5.60.4）、中继 221 仅信令。现场分类修正为 symmetric（APDM，手工报文实验确证），并修掉两个'编造分类'缺陷（CLASSIFY-SINGLE-SAMPLE / CHANGE-REQ-NO-SOURCE-CHECK）与一个偶发测试。30 次/路径：direct 0/30（symmetric 的正确结果，抓包给出因果链）、relay 30/30、dropped=0。首次出现 evidence_valid=true 的单类报告（条款①②均成立），但 S6 仍 not_run、R-04 不判定。",
-      "w38_relay_de_single_point": "W3.8（2026-11-15）：中继去单点化 —— 双实例（221:7100 relay-221 / 209:7100 relay-209，两台真实主机、真实 LAN）通过新增的实例间帧 PEER_HELLO(0x05)/PEER_SYNC(0x06)/FORWARD(0x07) 互认知并同步注册表快照；实测跨实例双向 30 轮 60 帧全送达（min 0.3 / max 0.6 / avg 0.3 ms），两端 dropped=0、forward_dropped=0；重启 relay-209 后持有者未重注册仍能收到帧（快照自愈）；反证：同机起一个未配 --peer 的隔离实例，同一条 cross 用例立即 FAIL 且 dropped=1，证明通过来自快照同步而非环境偶然。客户端侧 nat.relay 支持列表并顺序切换（relay_wake_any 聚合每条真实错误）。仍**不构成 S6 证据**：这是中继可用性工程，不是四类 NAT 可达率；S6 仍 not_run、G2 未达标。"
+      "w38_relay_de_single_point": "W3.8（2026-11-15）：中继去单点化 —— 双实例（221:7100 relay-221 / 209:7100 relay-209，两台真实主机、真实 LAN）通过新增的实例间帧 PEER_HELLO(0x05)/PEER_SYNC(0x06)/FORWARD(0x07) 互认知并同步注册表快照；实测跨实例双向 30 轮 60 帧全送达（min 0.3 / max 0.6 / avg 0.3 ms），两端 dropped=0、forward_dropped=0；重启 relay-209 后持有者未重注册仍能收到帧（快照自愈）；反证：同机起一个未配 --peer 的隔离实例，同一条 cross 用例立即 FAIL 且 dropped=1，证明通过来自快照同步而非环境偶然。客户端侧 nat.relay 支持列表并顺序切换（relay_wake_any 聚合每条真实错误）。仍**不构成 S6 证据**：这是中继可用性工程，不是四类 NAT 可达率；S6 仍 not_run、G2 未达标。",
+      "w39_relay_hardened": "W3.9（2026-11-16）：中继公网生产化 —— cr-nat::secure 补 PSK 双向认证 + 逐记录加密 + 序号防重放（明确不是 TLS：无证书/前向保密/密钥轮换，未经审计）；心跳 PING/PONG 放记录层；加 --max-conns/--rate/--burst/--idle-timeout/--max-nodes/--handshake-timeout 五道闸并可归因；绑非回环地址无 PSK 直接拒绝启动。两台真实主机：pair PASS、latency 30/30（p50 0.88 ms）、跨实例加密 60/60 帧（avg 0.4 ms）、两端 dropped=0；反证三条全部如实失败。公网入口 112.5.32.34:57100 实测未通（同 CPE 54022 27 ms 可达、57100 按对端 IP 抓包 0 包），因此本轮无跨公网时延数字。不构成 S6 证据：S6 仍 not_run、g2_claim=false。"
     },
     "validation": {
       "cargo_test_workspace_offline": "100 passed / 0 failed（W3.8 基线：17 crate + 5 bin；较 v2.4.56 的 96 新增 4 项）",
