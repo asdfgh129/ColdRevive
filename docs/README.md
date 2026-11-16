@@ -152,6 +152,7 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.59 补记（2026-11-16 / W3.10）**：出口类别清单 —— 条件是「一个出口只对应一个真实 NAT 类别」，所以「用现有两个 IP 一次验证一类」的正确读法不是「把同一个出口分五次测」，而是**换出口再测**。为了让「环境不够」不变成「结论靠编」，新增 `coldrevive-nat --census <jsonl>` / `--report <jsonl>`：把每次探测沉淀成单行 JSON 样本（`nat_class` + 正交两维 `mapping_behavior`/`filtering_behavior` + `observations`/`distinct_mappings` 依据 + `double_nat` 双层 NAT 判据 + `variant` 配置变体 + 防重 `sample_id`）；`TraversalReport` 相应补 `filter_behavior` 与原始 `observations`（此前算完即丢，导致「能说类别、说不出依据」）。**三条纪律写进代码**：① 同一出口同一 `variant` 出现两个类别 ⇒ `unresolved`，整条不进清单；② `matrix_coverage="none"` / `r04_judgeable=false` / `s6_status="not_run"` / `g2_claim=false` 是常量，因为清单在原理上不含可达性数字；③ 读回遇未知字段直接报错并带行号。实测 A 机家宽出口 `112.5.60.4` = `port-restricted-cone`（eim + port-restricted）；结合 W3.7 对 `112.5.32.34` 的 APDM 结论，**现有两个出口本就是两类**，缺 `full-cone`/`restricted-cone`/`cgnat`。改动落在 [nat-matrix.md §18](../tests/spikes/s6/nat-matrix.md)、DOC-14（ROADMAP）与 spikes.json；未改 `PROTOCOL_VERSION` 与 T0 golden（只加探测输出字段与新的 CLI 入口，业务帧不变）。
 - **v2.4.58 补记（2026-11-16 / W3.9）**：中继公网生产化 —— 新增 `cr-nat::secure`（std-only，
   复用 `cr-hash`）：PSK 双向挑战应答 + HMAC-SHA256 计数器密钥流 + 逐记录 HMAC，序号严格递增
   （篡改与重放都表现为固定序号上 tag 失败 → 断链，不重同步）；`PING`/`PONG` 放在记录层，

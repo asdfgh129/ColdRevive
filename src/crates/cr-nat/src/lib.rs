@@ -8,6 +8,7 @@
 //! 环境实测，**S6.status 保持 `not_run`，不宣称 G2 达标**。S6 首个先导样本见 `tests/spikes/s6/`。
 
 pub mod classify;
+pub mod census;
 pub mod endpoint;
 pub mod holepunch;
 pub mod natpmp;
@@ -17,6 +18,10 @@ pub mod secure;
 pub mod relay_server;
 pub mod stun;
 pub mod upnp;
+
+pub use census::{
+    double_nat, summarize, MappingBehavior, CensusRecord, CensusSummary, SampleMeta,
+};
 
 pub use classify::{
     classify_from_filter, classify_from_mappings, cgnat_suspected, FilterBehavior, NatType,
@@ -79,6 +84,13 @@ pub struct TraversalReport {
     pub cgnat_suspected: bool,
     pub mapped_address: Option<String>,
     pub recommended_strategy: Strategy,
+    /// RFC 3489 Test II/III 的实测过滤行为。**与 `nat_type` 分开存**：`nat_type` 是结论，
+    /// 这个字段是结论的依据；只有 `Unknown` 时才允许 `nat_type` 停在 `full-cone` 占位。
+    pub filter_behavior: FilterBehavior,
+    /// 得出上述结论的原始观测（`(stun 服务器, 观测到的映射地址)`，仅成功项）。
+    /// 存在这里是为了让任何一次分类都能回溯到**具体哪几条报文**——
+    /// 说不出依据的分类必须返回 Unknown，而不是给一个看起来合理的结果。
+    pub observations: Vec<(String, String)>,
 }
 
 /// 穿透探测配置。所有字段可选，便于在测试与受限环境逐步启用。
@@ -121,6 +133,8 @@ impl Traversal {
         let mut nat_type = NatType::Unknown;
         let mut mapped_address = None;
         let mut public_udp_egress_ok = false;
+        let mut filter_behavior = FilterBehavior::Unknown;
+        let mut observations: Vec<(String, String)> = Vec::new();
         if !self.stun_servers.is_empty() {
             if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
                 let session = stun::StunSession::new(self.stun_servers.clone());
@@ -140,13 +154,13 @@ impl Traversal {
                     if nat_type == NatType::FullCone {
                         if let Some(first) = results.iter().find(|r| r.ok) {
                             if let Some((h, p)) = split_host_port(&first.server) {
-                                nat_type = classify_from_filter(
-                                    stun::filter_behavior_fresh(&h, p, timeout),
-                                );
+                                filter_behavior = stun::filter_behavior_fresh(&h, p, timeout);
+                                nat_type = classify_from_filter(filter_behavior);
                             }
                         }
                     }
                 }
+                observations = observed;
             }
         }
 
@@ -214,6 +228,8 @@ impl Traversal {
             cgnat_suspected,
             mapped_address: mapped_address.clone(),
             recommended_strategy: Strategy::None,
+            filter_behavior,
+            observations: observations.clone(),
         }, self.relay_addr.is_some());
 
         TraversalReport {
@@ -227,6 +243,8 @@ impl Traversal {
             cgnat_suspected,
             mapped_address,
             recommended_strategy,
+            filter_behavior,
+            observations,
         }
     }
 }
@@ -283,6 +301,8 @@ mod tests {
             cgnat_suspected: false,
             mapped_address: Some("1.2.3.4:5000".into()),
             recommended_strategy: Strategy::Upnp,
+            filter_behavior: FilterBehavior::Unknown,
+            observations: Vec::new(),
         };
         assert!(!needs_relay(&r));
     }
@@ -300,6 +320,8 @@ mod tests {
             cgnat_suspected: false,
             mapped_address: Some("1.2.3.4:5000".into()),
             recommended_strategy: Strategy::Relay,
+            filter_behavior: FilterBehavior::Unknown,
+            observations: Vec::new(),
         };
         assert!(needs_relay(&r));
     }

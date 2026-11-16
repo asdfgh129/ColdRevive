@@ -89,6 +89,7 @@ dependencies = [
 name = "cr-nat"
 version = "0.1.0"
 dependencies = [
+ "cr-core",
  "cr-hash",
 ]
 

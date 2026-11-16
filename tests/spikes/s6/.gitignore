@@ -1,3 +1,6 @@
 /reports/*
 !/reports/.gitkeep
+# 出口类别清单（egress census）：本地证据，含出口名与公网 IP，不入库
+/census/*
+!/census/.gitkeep
 __pycache__/

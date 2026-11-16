@@ -87,6 +87,17 @@ pub enum FilterBehavior {
     Unknown,
 }
 
+impl FilterBehavior {
+    pub fn label(&self) -> &'static str {
+        match self {
+            FilterBehavior::FullCone => "unfiltered",
+            FilterBehavior::RestrictedCone => "address-restricted",
+            FilterBehavior::PortRestrictedCone => "port-restricted",
+            FilterBehavior::Unknown => "unknown",
+        }
+    }
+}
+
 /// 把实测的过滤行为映射为 NAT 类型。
 pub fn classify_from_filter(f: FilterBehavior) -> NatType {
     match f {

@@ -78,6 +78,8 @@ fn empty_report() -> TraversalReport {
         cgnat_suspected: false,
         mapped_address: None,
         recommended_strategy: Strategy::None,
+        filter_behavior: cr_nat::FilterBehavior::Unknown,
+        observations: Vec::new(),
     }
 }
 

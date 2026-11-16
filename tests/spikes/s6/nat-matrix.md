@@ -902,3 +902,116 @@ python tests/spikes/s6/nat_lab/relay_probe.py --relay 112.5.32.34:57100 \
 - 速率与连接数是尽力而为，不抗真正的 DDoS；没有按 IP 的黑名单/限速；
 - 跨公网时延、丢包、抖动**尚未测量**（入口未通，见 §17.6）；
 - 仍然不产生任何 NAT 类别样本：`S6.status` 仍 `not_run`、`g2_claim=false`、R-04 不判定。
+
+## 18. 出口类别清单：条件不齐时先把样本沉淀下来（W3.10，2026-11-16，v2.4.59）
+
+### 18.1 起因：一个出口只有一个类别，这是原理不是配置
+
+上一轮之后用户提了一个很实在的问题：**能不能用现有两个公网 IP 一次验证一类，不追求同时凑齐？**
+
+「一次验证一类」本来就是这套矩阵的工作方式——`nat_matrix.py` 每次只跑一个类别。
+但把它当成「那就分五次做」是**误读**：判据要的不是「同时存在」，而是
+
+> 4 类 NAT + 1 个 CGNAT，**各有** ≥1 个来自真实 NAT 设备的样本。
+
+一个出口（一条宽带、一个手机热点后面）在任一时刻只表现为**一个**真实 NAT 类别。所以：
+
+- **串行做**：第 1 天量 A 出口 = `port-restricted-cone`，第 2 天再量 A 出口 —— 还是
+  `port-restricted-cone`。**时间不改变类别**，串行不产生新的一格。
+- **串行做（真正有用的一半）**：换**出口**再量。同一套工具、同一个流程，只是把 `--tag egress=`
+  换个名字。这才是「一次验证一类」的正确形态：**不是分五次做，是分类五次测不同出口**。
+- **配置变体**：部分 CPE 带「全锥 NAT / NAT 加速」开关，同一台真实设备可以配出两种行为。
+  这是真实设备的真实行为，可以测，但**必须标注 `variant`**，且**不计入独立出口覆盖**——
+  真实用户不会去拨这个开关，把它算成「我们覆盖了这一类」就是拿配置冒充总体。
+
+### 18.2 因此新增：`coldrevive-nat --census / --report`
+
+条件不齐时的正确做法不是伪造覆盖，而是**把每次能做的观测按统一格式存下来**，
+等条件齐了直接汇总，不必回头重测。工具：
+
+```bash
+# 探测并归档为一条样本（egress 必填，其余 tag 可选）
+coldrevive-nat --census tests/spikes/s6/census/egress.jsonl \
+               --tag egress=home-a --tag operator=cmcc \
+               --tag device=HG6145F --tag variant= --tag notes="..."
+
+# 只看汇总，不探测（避免「想看一眼却顺手多打了几枪」）
+coldrevive-nat --report tests/spikes/s6/census/egress.jsonl [--json]
+```
+
+记录是单行 JSON（JSONL，字段顺序固定），关键字段：
+
+| 字段 | 含义 | 为什么必须有 |
+| :--- | :--- | :--- |
+| `nat_class` | 类别 | 清单主键 |
+| `mapping_behavior` | `eim` / `apdm` / `unknown` | 与过滤行为正交，缺一个都说不清是哪一类 |
+| `filtering_behavior` | `unfiltered` / `address-restricted` / `port-restricted` / `unknown` | 同上 |
+| `observations` / `distinct_mappings` | 得出结论的观测条数 | 让「结论来自哪几条报文」可复核，不是凭印象 |
+| `double_nat` | CPE 自报 WAN 与 STUN 映射是否一致 | 不一致 ⇒ 中间还有一层（运营商 CGNAT 的典型形态） |
+| `variant` | 配置变体标签 | 区分「同一设备不同配置」与「不同出口」 |
+| `sample_id` | 出口+时间+类别+映射的哈希前 16 位 | 去重：同一份输出贴两次不该算两个样本 |
+
+`filter_behavior` 与原始 `observations` 这一轮才进 `TraversalReport`——此前它们只用于
+当场算 `nat_type`，算完就丢，导致报告能说「是 port-restricted-cone」却说不出依据。
+现在「说不出依据就返回 Unknown」这条纪律有了数据结构支撑。
+
+### 18.3 三个反滥用设计（都是纪律写成代码）
+
+1. **一个出口一个类别**。同一 `egress` 在**同一 `variant`** 下出现两个类别 ⇒ 记为
+   `unresolved` 冲突，**该出口整条不进清单**。两个类别里哪个才对是未知的，任选一个都是编。
+2. **清单 ≠ 覆盖**。`CensusSummary` 里 `matrix_coverage` 恒为 `"none"`、
+   `r04_judgeable` 恒为 `false`、`s6_status` 恒为 `"not_run"`、`g2_claim` 恒为 `false`。
+   这四个是**常量不是计算结果**——普查在原理上不产生可达性数字，因此不能折算成
+   `matrix_coverage`，也不能用于 R-04。看清单的人必须看到这四个字段才能下判断。
+3. **读回严格**。`--report` 遇到未知字段直接报错并带行号，不跳过。放宽会让「字段名改了
+   却照样读得通」变成静默的数据缺失。
+
+### 18.4 本轮实测（真实网络，一次样本）
+
+A 机（`192.168.1.210`，家宽出口 `112.5.60.4`）：
+
+```json
+{"census_version":1,"kind":"class-inventory","sample_id":"5560ced40a259875",
+ "measured_at":"2026-11-16T01:24:11.333Z","host":"A","egress":"home-a","operator":"cmcc",
+ "device":null,"variant":null,"nat_class":"port-restricted-cone","mapping_behavior":"eim",
+ "filtering_behavior":"port-restricted","mapped_address":"112.5.60.4:3008",
+ "wan_address":null,"double_nat":null,"cgnat_suspected":false,"observations":2,
+ "distinct_mappings":1,"stun_servers":"stun.cloudflare.com:3478,stun.l.google.com:19302"}
+```
+
+解读：2 个目的地址映射一致（`eim`，`distinct_mappings=1`）⇒ 锥形；过滤实测为
+`port-restricted` ⇒ **`port-restricted-cone`**。与 W3.6/W3.7 在同一出口上的历史结论一致。
+
+汇总输出（同一份文件）：
+
+```
+样本数              : 1（其中 unknown 0）
+出口数              : 1
+判据要求 / 独立覆盖 : 5 类 / 1 类
+  port-restricted-cone  : home-a
+  缺（无独立出口）    : full-cone, restricted-cone, symmetric, cgnat
+警告:
+  - 只有 1 个出口样本：任何「跨出口」结论都不成立...
+  - 全部样本来自同一运营商（cmcc）：类别分布对「真实家用 NAT 总体」没有代表性。
+MATRIX_COVERAGE=none  R04_JUDGEABLE=false  S6_STATUS=not_run  G2_CLAIM=false
+```
+
+`double_nat=null` 是因为该 CPE 不提供 UPnP/NAT-PMP 外部地址（探测报 `否`），缺数据不下结论。
+
+### 18.5 现有两个出口各自是哪一类（这是 S6 的第一个真答案）
+
+| 出口 | 公网 IP | 类别 | 证据 |
+| :--- | :--- | :--- | :--- |
+| 家宽（A 所在） | `112.5.60.4` | `port-restricted-cone` | 本轮 §18.4 实测（eim + port-restricted） |
+| 222 所在 | `112.5.32.34` | `symmetric`（APDM） | W3.7 手工报文：同一 socket、同本地端口、三个目的 IP → 三个不同映射端口（§15） |
+
+即**现有两个出口本来就是两类**。这对「还要几个 IP」是关键信息：缺的是
+`full-cone` / `restricted-cone` / `cgnat` 三类，而不是「再多几个 IP」——
+同一运营商再加一条线，大概率还是 `port-restricted-cone`。
+
+### 18.6 没解决什么
+
+- 清单里**没有一个可达性数字**：`port-restricted-cone` 这一类「能不能打通、30 次通几次」
+  仍要 `nat_matrix.py` 在四类环境里跑，本文档给不出。
+- 类别判定依赖 STUN 可达：只有一个目的地址应答时一律 `unknown`（宁可说不出，也不编）。
+- 手机热点/VPS 这些出口**尚未测**：工具就绪，等环境。

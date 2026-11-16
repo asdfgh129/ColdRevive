@@ -5,4 +5,5 @@ edition.workspace = true
 description = "NAT 穿透前置栈（std-only）：STUN 探测 + UPnP IGD / NAT-PMP / PCP 映射 + 中继回退。M2 合法前置，S6 实测仍 not_run。"
 
 [dependencies]
+cr-core = { path = "../cr-core" }
 cr-hash = { path = "../cr-hash" }

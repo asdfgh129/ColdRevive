@@ -2,6 +2,45 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.59] - 2026-11-16 — M2/W3.10：出口类别清单（条件不齐时先沉淀样本）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；`evidence_valid_for_pass=false`，R-04 仍不判定。
+> 本轮也**没有**对矩阵做任何回填：清单不是覆盖。
+
+### 先纠正一个读法：「一次验证一类」不等于「分五次做」
+判据要的是「4 类 NAT + 1 个 CGNAT 各有 ≥1 个真实设备样本」，而一个出口在任一时刻
+只表现为**一个**类别。所以把同一个出口测五天，得到的是同一个类别五条样本，
+不会多出一格。真正有用的是**换出口**再测 —— 这才是「一次验证一类」的正确形态。
+
+### 因此把「环境不够」变成「样本先存起来」
+`coldrevive-nat` 新增 `--census <jsonl>` / `--report <jsonl>`，把每次探测沉淀成
+**出口类别清单**（JSONL，单行、字段顺序固定、可去重、读回严格）：
+
+- 记录 `nat_class` + **正交两维** `mapping_behavior`（eim/apdm）+ `filtering_behavior`；
+- 记录 `observations` / `distinct_mappings`：让「结论来自哪几条报文」可复核；
+- 记录 `double_nat`：CPE 自报 WAN 与 STUN 映射不一致 ⇒ 中间还有一层（运营商 CGNAT 形态）；
+- `variant` 区分「同一设备不同配置」；`sample_id`（哈希前 16 位）防同一份输出贴两次算两个样本。
+
+为此 `TraversalReport` 新增 `filter_behavior` 与原始 `observations`——此前它们只用于
+当场算 `nat_type`，算完即丢，导致报告能说「是 port-restricted-cone」却说不出依据。
+
+### 三条纪律写进代码，而不是写进文档
+1. **一个出口一个类别**：同一出口同一 `variant` 出现两个类别 ⇒ `unresolved`，
+   **整条不进清单**（哪个才对是未知的，任选一个都是编）；
+2. **清单 ≠ 覆盖**：`matrix_coverage="none"`、`r04_judgeable=false`、`s6_status="not_run"`、
+   `g2_claim=false` 是**常量不是计算结果**；
+3. **读回严格**：未知字段直接报错带行号，不跳过。
+
+### 实测（真实网络，A 机家宽出口）
+`nat_class=port-restricted-cone`、`mapping_behavior=eim`（2 个目的地址映射一致）、
+`filtering_behavior=port-restricted`、`mapped=112.5.60.4:3008`；
+汇总输出 `5 类 / 独立覆盖 1 类`，缺 `full-cone / restricted-cone / symmetric / cgnat`。
+结合 W3.7 对 `112.5.32.34` 的 APDM 结论，**现有两个出口本来就是两类**
+（`port-restricted-cone` + `symmetric`），缺的是另外三类。
+
+`cargo test --workspace --offline` **125 passed / 0 failed**（+11：`cr-nat::census`）。
+
 ## [2.4.58] - 2026-11-16 — M2/W3.9：中继公网生产化（PSK 认证 + 逐帧加密 + 三道闸）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

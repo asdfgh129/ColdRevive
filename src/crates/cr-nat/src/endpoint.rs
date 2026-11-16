@@ -363,6 +363,8 @@ mod tests {
             cgnat_suspected: false,
             mapped_address: mapped.map(str::to_string),
             recommended_strategy: strategy,
+            filter_behavior: crate::FilterBehavior::Unknown,
+            observations: Vec::new(),
         }
     }
 

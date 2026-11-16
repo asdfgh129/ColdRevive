@@ -373,12 +373,33 @@ ColdRevive
   它**不产生任何 NAT 类别样本**：S6 仍 `not_run`、`g2_claim=false`、R-04 不判定。
   机读见 `S6.observations.w39_relay_hardened_2026_11_16` 与 `m2_progress.scope_done.w39_relay_hardened`。
 
-- **下一步计划（W3.10 候选）**：① **修好 57100 映射后复跑公网时延/丢包/抖动**（代码已就绪，
-  只差入口）；② 按 IP 的连接/注册限速与黑名单、注册表分片（实例数上千时全量快照会抖）；
-  ③ BT/TCP 打洞；④ M2 其余骨架 crate 的内置引擎与资源治理；
-  ⑤ **补齐真实出口**：S6 的 4 类 + CGNAT 需要 ≥4 个**不同行为**的真实 NAT 出口（同一 ISP 的
-  两条宽带往往同类，增加条数不等于增加类别）；⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，
-  分别回填 S3 / S5。
+- **M2/W3.10 已落地（2026-11-16，v2.4.59）出口类别清单：条件不齐时先把样本沉淀下来**：
+  起因是一个合理但会误判的设想——「能不能用现有两个公网 IP 一次验证一类，不追求凑齐？」
+  「一次验证一类」本来就是矩阵的工作方式，但把它读成「分五次做」是错的：一个出口在任一时刻
+  只表现为**一个**真实类别，同一个出口测五天得到同一个类别五条样本，不会多出一格。
+  ① **正确形态**：串行有用的是**换出口**再测（同一套工具，只改 `--tag egress=`）；
+  配置变体（CPE 的「全锥 NAT / NAT 加速」开关）可测，但必须标 `variant` 且**不计入独立出口覆盖**。
+  ② **新增** `coldrevive-nat --census <jsonl>` / `--report <jsonl>`：把每次探测沉淀成 JSONL
+  清单，记录 `nat_class` + 正交两维（`mapping_behavior` / `filtering_behavior`）+
+  `observations`/`distinct_mappings`（结论依据）+ `double_nat`（CPE 自报 WAN 与 STUN 映射不一致
+  ⇒ 中间还有一层，运营商 CGNAT 的典型形态）+ `variant` + 防重 `sample_id`。
+  为此 `TraversalReport` 新增 `filter_behavior` 与原始 `observations`——此前算完即丢，
+  报告能说「是 port-restricted-cone」却说不出依据。
+  ③ **三条纪律写进代码**：同一出口同一 `variant` 出现两个类别 ⇒ `unresolved`，**整条不进清单**；
+  `matrix_coverage="none"`/`r04_judgeable=false`/`s6_status="not_run"`/`g2_claim=false`
+  是常量而非计算结果（清单在原理上不含可达性数字）；读回遇未知字段报错带行号，不跳过。
+  ④ **实测**：A 机家宽出口 `112.5.60.4` = `port-restricted-cone`（eim + port-restricted，
+  2 个目的地址映射一致）。结合 W3.7 对 `112.5.32.34` 的 APDM 结论，
+  **现有两个出口本来就是两类**，缺的是 `full-cone` / `restricted-cone` / `cgnat`。
+  ⑤ 单测新增 11 条（`cargo test` 125 passed）。它**不产生任何可达性数字**：
+  S6 仍 `not_run`、`g2_claim=false`、R-04 不判定。机读见
+  `m2_progress.scope_done.w310_egress_census`，方法见 `tests/spikes/s6/nat-matrix.md §18`。
+
+- **下一步计划（W3.11 候选）**：① **修好 57100 映射后复跑公网时延/丢包/抖动**（代码已就绪，
+  只差入口）；② 手机热点 / 云 VPS 各测一条 `--census`（预计补 `cgnat` 与 `full-cone`），
+  122/222 之外再找一个 `restricted-cone`；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
+  ④ BT/TCP 打洞；⑤ M2 其余骨架 crate 的内置引擎与资源治理；
+  ⑥ G3 第三方客户端兼容性矩阵与真实拥塞链路，分别回填 S3 / S5。
 
 ## 相关文档
 
