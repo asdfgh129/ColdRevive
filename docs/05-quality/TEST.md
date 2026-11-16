@@ -2,7 +2,7 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.6
+version: 2.7
 status: 待评审
 owner: 测试组
 updated: 2026-11-16
@@ -213,6 +213,47 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 任务在队列里却回「任务不存在」（本轮被 harness 抓到，已修 + 端到端复验）；
 `config/coldrevive.example.toml` 是 TOML，而 `Config::load` 走 `Json::load`，直接喂给守护进程
 会报「非法 JSON 字符 '#'」——本轮 harness 改为按真实 schema 生成 JSON 配置。
+
+**2026-11-16 W3.18 G3 结案（人工判定，带 6 条例外）**：所有者决定「先按现状结案，不再为补齐残余边界
+追加环境改造；以后有机会再测」。结案记录落在
+[g3-closeout.toml](../../tests/fixtures/g3-closeout.toml)，核验器只**转述**它
+（`closeout.machine_inferred=false`），不据此改写自己的机器字段。因此 G3 现在有两个并行口径，
+读数时必须分清：
+
+| 口径 | 字段 | 值 | 含义 |
+| :--- | :--- | :--- | :--- |
+| 机器 | `g3_status` / `evidence_valid_for_pass` | `not_run` / `false` | 核验器没跑过互操作，无权主张通过；永久常量 |
+| 人工 | `g3_status_declared` | `closed_with_exceptions` | 项目所有者 2026-11-16 结案：**带例外通过**，不是全绿 |
+
+逐行判定（`accepted` = 场景已有真实观测支撑；`accepted_with_gap` = 主路径有观测、存在写明未验证处）：
+
+| 行 | 判定 | 支撑 | 缺口 |
+| :-- | :-- | :-- | :-- |
+| qBittorrent | `accepted_with_gap` | 1 MiB 全量 + SHA-1 + 双侧计数 | 喂的是 `.torrent` 非 magnet；唤醒环节未参与 |
+| Transmission | `accepted` | 种子文件导入 + 1 MiB 全量 + SHA-1 | — |
+| BitComet | `accepted_with_gap` | 1 MiB 全量、tracker `completed`、seeder 计数 | LT Seed `0 added / 0 received` |
+| eMule / aMule | `accepted_with_gap` | eD2k 262144 B / 25 块 / hash 全对；KAD 同轮并发 30 s | KAD 索引入库未验证；命名空间交叉污染未实测 |
+| AriaNg | `accepted` | UI Connected + 1 MiB 完成 + 双侧计数 | — |
+| 浏览器插件 | `accepted_with_gap` | 推真实 `.torrent`，ColdRevive 取回并解析出真 info_hash | 只到解析，不下载内容 |
+| 关闭 UI 窗口 | `accepted_with_gap` | 杀浏览器进程树后继续到完成，SHA-1 + 双侧计数 | UI 是浏览器 AriaNg；数据面是 aria2 |
+| Motrix/aria2（附加行） | `accepted` | 128/128 片校验 + 本轮 1 MiB | — |
+
+**结案时明确不装作已解决的 6 条**（`[[exception]]`，`recheck_trigger` 写明何时可重测）：
+
+1. `g3.wake_path_not_exercised` —— 全矩阵共同缺口：每行接收端都是「一直醒着的 A」，唤醒→连接这一环
+   没参与。唤醒链路已在 G1 T0/T1 单独取证，不在此重复。
+2. `g3.bitcomet_lt_seed` —— LT 计数非零需要把测试 infohash 宣告到 BitComet 公共 DHT，
+   harness 纪律为 `public_network_contacted=false`，**需所有者放行**才做。
+3. `g3.amule_kad_index` —— aMule 在 `firewalled` 下静默丢弃 PUBLISH，**需所有者开公网入向**：
+   UDP 4672（KAD）+ TCP 4662（eD2k）；221 在 VMware 内，公网映射要落宿主再转 221，两跳都得通。
+4. `g3.browser_extension_no_download` —— 依赖 W5.1 引擎接入。
+5. `g3.ui_closed_ui_is_browser` —— 依赖 W5.1 + ColdRevive 自带 UI（W6.1/W6.4）。
+6. `g3.namespace_pollution` —— 16B `Hash16` 与 20B infohash 的类型分离是既有 S2 结论，
+   不是同轮污染实验；等 aMule 脱离 firewalled、KAD 索引可写后重测。
+
+> 结案不含任何可达率、成功率数字，也不构成 SLA —— 与 [ADR-012](../02-architecture/adr/ADR-012-r04-best-effort.md)
+> 的「best-effort、只提供一种可能性」口径一致。要重开 G3，把 `decision` 改成 `reopened`
+> 并补齐对应 `recheck_trigger` 即可，矩阵与 harness 都可直接复用。
 
 ## 4. 性能压测场景与基线
 

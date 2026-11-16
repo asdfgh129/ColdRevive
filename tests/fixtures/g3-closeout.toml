@@ -1,0 +1,140 @@
+# G3 结案记录（人工判定，不是机器推断）
+#
+# 为什么不写进 compat-matrix.toml：那是「客户端与素材清单」，由只读核验器读取。
+# 本文件是**人的判定**。两者混在一起，脚本就会被动地把人的结论当成自己的输出，
+# 以后没人分得清「谁说的、凭什么」。所以分开：
+#   - compat-matrix.toml  = 有哪些客户端、有哪些报告（机器可核）
+#   - g3-closeout.toml    = 这些素材够不够、按什么口径结案（只有人能定）
+#
+# 脚本纪律（tests/e2e/g3/compat_matrix.py 的 --self-test 守着）：
+#   - 只**转述**本文件，不据此改写自己的机器字段；
+#   - 机器字段 g3_status 恒 not_run、evidence_valid_for_pass 恒 false ——
+#     意思是「核验器自己没有跑互操作、不主张通过」，与本文件的人工结论互不覆盖；
+#   - 本文件缺失时，结案结论就是「没有」，不猜。
+
+schema = "coldrevive.g3.closeout/v1"
+authority = "human"
+decided_by = "项目所有者"
+decided_at = "2026-11-16"
+decision = "close_with_exceptions"
+gate_status_declared = "closed_with_exceptions"
+commitment = "best-effort"
+
+rationale = """
+所有者 2026-11-16 决定：先按现状结案，不再为补齐残余边界追加环境改造；以后有机会再测。
+所以这里记的是「G3 结案，带 6 条明确例外」，不是「G3 全绿」。
+按 ADR-012 口径，本记录不含任何可达率/成功率数字，也不构成 SLA。
+"""
+
+# ---------------------------------------------------------------------------
+# 逐行判定
+#
+# verdict 取值（只有这三种，避免出现「大概还行」这类不可核的表述）：
+#   accepted              — 该行场景已有真实观测支撑，未发现残余缺口
+#   accepted_with_gap     — 场景主路径有真实观测，但存在写明的一处或多处未验证
+# 任何一行都不写 pass/通过：矩阵级的结论在 gate_status_declared，这里是证据支撑度。
+# ---------------------------------------------------------------------------
+
+[[row_verdict]]
+id = "qbittorrent"
+verdict = "accepted_with_gap"
+observed = "qBittorrent v4.5.1 (nox, 192.168.1.222) 经 221 的 BEP23 tracker 完成 1 MiB 标准 .torrent 全量下载，SHA-1 匹配，seeder uploaded_bytes=1048576"
+gap = "喂的是 .torrent 文件而非 magnet 链接；『被唤醒的 A』这一环未参与（seeder 自始至终在线）"
+
+[[row_verdict]]
+id = "transmission"
+verdict = "accepted"
+observed = "transmission-daemon 3.00 (192.168.1.221) 以种子文件为位置参数导入并完成 1 MiB 全量，SHA-1 匹配，seeder 计数交叉印证"
+gap = ""
+
+[[row_verdict]]
+id = "bitcomet"
+verdict = "accepted_with_gap"
+observed = "BitComet 2.23.1 经 WebUI /panel 上传标准 .torrent，完成 1 MiB，SHA-1 f0f990bb… 匹配，tracker event=completed left=0，seeder uploaded_bytes=1048576"
+gap = "长效种子共存传输未验证：Long-Term Seeds 0 added / 0 received，标准 handshake 路径不受影响"
+
+[[row_verdict]]
+id = "emule_amule"
+verdict = "accepted_with_gap"
+observed = "aMuleD 2.3.3 经标准 eD2k TCP 4662 交付 262144 B / 25 个 OP_SENDINGPART，独立重算 hash 19f7adef… 与逐字节比较均通过；同一轮 KAD 真实帧并发，重叠 30073 ms，aMule 自述 Kad 状态前后一致"
+gap = "aMule 自报 firewalled 时静默丢弃 PUBLISH，KAD 索引入库/回查未验证；『不污染彼此命名空间』只有类型层分离 + 同轮共存，未做交叉污染实测"
+
+[[row_verdict]]
+id = "ariang"
+verdict = "accepted"
+observed = "AriaNg 1.3.15 对 aria2-next 3.1.0 /jsonrpc 显示 Connected，1 MiB 任务完成，tracker completed + seeder uploaded_bytes=1048576，SHA-1 匹配"
+gap = ""
+
+[[row_verdict]]
+id = "browser_extension"
+verdict = "accepted_with_gap"
+observed = "MV3 插件（Edge）按运行地址渲染后推真实 .torrent，coldrevived 取回并用 cr_torrent::parse 解析，info_hash dbeabf89… 与脚本独立 bencode 复算一致，64 片 / 1048576 B"
+gap = "只到『取回并解析』，不下载内容——coldrevived 尚无 BT 下载引擎（W5.1）"
+
+[[row_verdict]]
+id = "ui_closed"
+verdict = "accepted_with_gap"
+observed = "headless Edge 开真实 AriaNg，传到 376832 B 时杀浏览器进程树（PID 消失 + CDP 端口关闭），下载继续到 1048576 并 complete，SHA-1 与双侧计数一致"
+gap = "被关的 UI 是浏览器（AriaNg），不是 BitComet/qBittorrent 桌面窗口；数据面是 aria2，不是 ColdRevive 自家引擎"
+
+[[row_verdict]]
+id = "motrix_aria2"
+verdict = "accepted"
+observed = "Motrix Next 捆绑 aria2 作第三方 seeder，rqbit cross-lee 拉取并逐片校验 128/128；本轮又作为下载端完成 1 MiB"
+gap = ""
+
+# ---------------------------------------------------------------------------
+# 例外清单：结案时明确不装作已解决的部分
+#
+# needs_owner_action = true 的条目，等所有者开了环境（端口/权限）随时可重测；
+# 其余条目要么依赖 W5.1 引擎，要么需要我们主动向公网写入（本仓库纪律不允许擅自做）。
+# ---------------------------------------------------------------------------
+
+[[exception]]
+id = "g3.wake_path_not_exercised"
+scope = "matrix"
+what = "全矩阵共同缺口：每一行的接收端都是『一直醒着的 A』，真实唤醒→连接这一环没有参与"
+why = "本轮目标是标准协议互通（旧客户端能否零改造下载我们发的东西），唤醒链路已在 G1 T0/T1 单独取证，不在此重复"
+recheck_trigger = "M2 唤醒路径接入『先查再打洞』之后，用真实休眠主机跑一轮端到端"
+needs_owner_action = false
+
+[[exception]]
+id = "g3.bitcomet_lt_seed"
+scope = "row:bitcomet"
+what = "长效种子（LT Seed）共存传输未触发，lt_seed_exercised=false"
+why = "要让 LT 计数非零，必须有第二个经 BitComet 自家分布式网络发现的 LT 对端，等于把测试 infohash 宣告到公共 DHT；G3 harness 纪律为 public_network_contacted=false"
+recheck_trigger = "所有者明确允许一次受控的公共 DHT 宣告时"
+needs_owner_action = true
+
+[[exception]]
+id = "g3.amule_kad_index"
+scope = "row:emule_amule"
+what = "aMule 的 KAD 索引入库/回查未验证，kad_publish_acked=false"
+why = "aMule 自报 Connected (firewalled) 时 Process2PublishKeyRequest 静默丢弃 PUBLISH。实测 BOOTSTRAP 924 ms 有回包（UDP 双向通）、PUBLISH/SEARCH 无回包，属源码级门控而非网络故障"
+recheck_trigger = "221 的 aMule 获得公网入向可达、脱离 firewalled 之后"
+needs_owner_action = true
+owner_action = "为 aMule 开公网入向：UDP 4672（KAD）+ TCP 4662（eD2k）。注意 221 是 VMware 里的 Ubuntu，公网映射需落在宿主再转到 221，两跳都要通"
+
+[[exception]]
+id = "g3.browser_extension_no_download"
+scope = "row:browser_extension"
+what = "插件推的任务只被解析、不下载内容（downloads_content=false），任务停在 waiting"
+why = "coldrevived 还没有 BT 下载引擎，W5.1 才接入 rqbit"
+recheck_trigger = "W5.1 引擎接入后，同一 harness 直接断言进度到 100%"
+needs_owner_action = false
+
+[[exception]]
+id = "g3.ui_closed_ui_is_browser"
+scope = "row:ui_closed"
+what = "『关闭 UI』关的是浏览器里的 AriaNg，不是桌面客户端窗口；数据面是 aria2 不是 ColdRevive 引擎"
+why = "本机没有可脚本驱动的 BitComet/qBittorrent 桌面窗口，且 ColdRevive 自身还没有引擎"
+recheck_trigger = "W5.1 之后用 ColdRevive 自带 UI（W6.1/W6.4）关闭窗口验证"
+needs_owner_action = false
+
+[[exception]]
+id = "g3.namespace_pollution"
+scope = "row:emule_amule"
+what = "『不污染彼此命名空间』未做交叉污染实测"
+why = "本轮证明的是两条通道同轮共存、互不中断；16B Hash16 与 20B BT infohash 的类型分离是既有 S2 结论，但不是同一轮的污染实验"
+recheck_trigger = "aMule 脱离 firewalled、KAD 索引可写之后，用同一 16B 键做写入/回查对比"
+needs_owner_action = true

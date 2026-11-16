@@ -2,6 +2,42 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.67] - 2026-11-16 — M2/W3.18：G3 按「带例外」结案（人工判定，非机器推断）
+
+> 口径声明：**这是结案，不是全绿**。`g3_claim=false` 不变，`g3_status`（机器）仍 `not_run`；
+> 新增 `g3_status_declared=closed_with_exceptions`（人工）。两者并存，是分工不是冲突。
+
+- **新增人工判定记录 `tests/fixtures/g3-closeout.toml`**（所有者 2026-11-16 决定「先按现状结案，
+  以后有机会再测」）。为什么单独一个文件：`compat-matrix.toml` 是「有哪些客户端、有哪些报告」，
+  机器可核；结案是**人的判断**。混在一起，脚本就会被动地把人的结论当成自己的输出，以后没人分得清
+  谁说的、凭什么。
+- **`compat_matrix.py` 只转述、不推断**：新增 `--closeout`，输出 `closeout` 块并标
+  `machine_inferred=false`；机器字段 `g3_status` / `evidence_valid_for_pass` / 每行 `g3_verdict`
+  仍为硬常量。`--self-test` 从 3/3 扩到 **4/4**：新增「结案结论若存在必须是转述」「结案行必须是
+  矩阵内的行（防止记录漂移被静默接受）」。取值白名单校验：`decision` / `gate_status_declared` /
+  每行 `verdict` 写错值直接报错——写错值比写错结论更危险。
+- **逐行判定 8 行：3 `accepted` / 5 `accepted_with_gap`**
+  - `accepted`：Transmission、AriaNg、Motrix/aria2
+  - `accepted_with_gap`：qBittorrent（喂 `.torrent` 非 magnet）、BitComet（LT seed 未触发）、
+    eMule/aMule（KAD 索引面未验证、命名空间交叉污染未实测）、浏览器插件（不下载内容）、
+    关闭 UI（UI 是浏览器、数据面是 aria2）
+- **6 条例外，每条例明 `recheck_trigger`**：`g3.wake_path_not_exercised`（全矩阵共同缺口：
+  接收端自始至终在线，唤醒→连接没参与）、`g3.bitcomet_lt_seed`、`g3.amule_kad_index`、
+  `g3.browser_extension_no_download`、`g3.ui_closed_ui_is_browser`、`g3.namespace_pollution`。
+- **3 条需要所有者开环境才能重测**（已登记 `needs_owner_action`，不催办）：
+  ① 放行一次受控的公共 DHT 宣告（给 BitComet LT 计数）；② 221 的 aMule 公网入向
+  **UDP 4672 + TCP 4662**（221 在 VMware 内，公网映射需落宿主再转 221，两跳都要通）；
+  ③ 二者完成后重测命名空间污染。
+- 文档：[TEST §3](../docs/05-quality/TEST.md) 增结案表与「机器/人工双口径」读数说明（2.7）；
+  [ROADMAP](../docs/06-plan/ROADMAP.md) 增 W3.18 并把「下一步」改写为「卡点不是客户端，是我们
+  自己没有数据面」（2.13）；`spikes.json` `g3_progress.status=closed_with_exceptions_by_owner`。
+
+**没有做的（别读成做了）**：没有把任何一行写成 pass；没有为结案放宽任何 harness 断言；
+没有向公网写入任何报文；`S3`/`S5`/`S6` 状态不变（`not_run`），`g2_claim=false`。
+
+**验证**：`compat_matrix.py --self-test` **4/4 PASS**；基线重算 8 行有素材
+（5 `runnable_with_evidence` + 3 `evidence_collected`、0 blocked）。
+
 ## [2.4.66] - 2026-11-16 — M2/W3.17：G3 三条边界补做成真观测（仍不判通过）
 
 > 范围声明：`g3_status` 仍 `not_run`，`g3_claim=false`，`evidence_valid_for_pass=false`。

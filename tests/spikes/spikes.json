@@ -2158,7 +2158,7 @@
     "recorded_at": "2026-11-16",
     "milestone": "M2",
     "target_gate": "G3",
-    "status": "three_boundaries_closed_one_blocked",
+    "status": "closed_with_exceptions_by_owner",
     "g3_status": "not_run",
     "evidence_valid_for_pass": false,
     "g3_claim": false,
@@ -2249,17 +2249,19 @@
       }
     ],
     "explicit_gaps": [
-      "G3 全绿未判定；每行 g3_verdict 仍 not_run，evidence_valid_for_pass=false",
-      "BitComet LT seed 未触发传输：需把测试 infohash 宣告到 BitComet 公共 DHT，harness 纪律为 public_network_contacted=false",
-      "aMule KAD 索引面未验证：firewalled 状态下 aMule 静默丢弃 PUBLISH（实测 BOOTSTRAP 有回包、PUBLISH/SEARCH 无回包）",
-      "浏览器插件只验证「推送→取回→解析」，不下载内容（coldrevived 尚无 BT 下载引擎，W5.1 接入 rqbit）",
-      "关闭 UI 行的 UI 是浏览器（AriaNg），不是 BitComet/qBittorrent 桌面窗口",
-      "报告均为本地 gitignored 证据，提交后需保留原始文件供复核"
+      "G3 已按「带例外」结案（6 条例外），不是全绿；g3_claim=false",
+      "唤醒→连接环节未参与任何一行：接收端自始至终在线（唤醒链路在 G1 单独取证）",
+      "BitComet LT seed 未触发传输：需公共 DHT 宣告，纪律禁止，待所有者放行",
+      "aMule KAD 索引面未验证：firewalled 下静默丢弃 PUBLISH；需所有者开公网入向",
+      "浏览器插件只验证「推送→取回→解析」，不下载内容（依赖 W5.1 引擎）",
+      "关闭 UI 行的 UI 是浏览器（AriaNg），数据面是 aria2，非 ColdRevive 自家引擎",
+      "命名空间交叉污染未实测（类型层分离 + 同轮共存在案）"
     ],
     "gate_discipline": {
       "no_auto_pass": "compat_matrix.py 的 g3_status / 每行 g3_verdict / evidence_valid_for_pass 均为硬常量，不自动判 pass",
       "s3_s5_s6_status": "unchanged — 全部 not_run",
-      "g2_claim": false
+      "g2_claim": false,
+      "closeout_separation": "人工结论只在 g3-closeout.toml；compat_matrix.py 只转述并标 machine_inferred=false，自身 g3_status 恒 not_run。--self-test 4/4 守这条。"
     },
     "spike_status_changed": false,
     "harnesses": {
@@ -2304,7 +2306,45 @@
       "/jsonrpc aria2.tellStatus 早先读 params[1]，任务在队列却回 -32001；现同时接受 params[0]/params[1]",
       "harness 侧：插件 SW 在 about:blank 下不启动、复用旧 profile 不重载插件、1 MiB 传输过快导致杀 UI 无窗口——均已在脚本里修"
     ],
-    "known_inconsistency": "config/coldrevive.example.toml 是 TOML，但 Config::load 走 Json::load；直接喂给守护进程会报「非法 JSON 字符 '#'」"
+    "known_inconsistency": "config/coldrevive.example.toml 是 TOML，但 Config::load 走 Json::load；直接喂给守护进程会报「非法 JSON 字符 '#'」",
+    "g3_closeout": {
+      "record": "tests/fixtures/g3-closeout.toml",
+      "authority": "human:项目所有者",
+      "decided_at": "2026-11-16",
+      "decision": "close_with_exceptions",
+      "gate_status_declared": "closed_with_exceptions",
+      "machine_inferred": false,
+      "read_as": "G3 结案（带例外），不是 G3 全绿；g3_claim 仍为 false",
+      "row_verdicts": {
+        "accepted": [
+          "transmission",
+          "ariang",
+          "motrix_aria2"
+        ],
+        "accepted_with_gap": [
+          "qbittorrent",
+          "bitcomet",
+          "emule_amule",
+          "browser_extension",
+          "ui_closed"
+        ]
+      },
+      "exceptions": [
+        "g3.wake_path_not_exercised",
+        "g3.bitcomet_lt_seed",
+        "g3.amule_kad_index",
+        "g3.browser_extension_no_download",
+        "g3.ui_closed_ui_is_browser",
+        "g3.namespace_pollution"
+      ],
+      "needs_owner_action": [
+        "g3.bitcomet_lt_seed",
+        "g3.amule_kad_index",
+        "g3.namespace_pollution"
+      ],
+      "owner_action_detail": "aMule 需公网入向 UDP 4672(KAD)+TCP 4662(eD2k)，221 在 VMware 内需两跳；BitComet LT 需放行一次公共 DHT 宣告",
+      "numeric_commitment": null
+    }
   },
   "t1_progress": {
     "recorded_at": "2026-11-14",

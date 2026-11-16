@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.12
+version: 2.13
 status: 持续维护
 owner: 项目组
 updated: 2026-11-16
@@ -463,10 +463,21 @@ ColdRevive
   顺带修复 `/jsonrpc` `tellStatus` 取错参数位的真 bug，并暴露 `config/*.toml` 与 JSON loader 不一致。
   **G3 仍 `not_run`**：7 行有素材，判定仍待实验执行人回填。
 
+- **W3.18（2026-11-16）G3 结案（人工判定，带 6 条例外）**：所有者决定「先按现状结案，
+  以后有机会再测」。结案记录落在 [g3-closeout.toml](../../tests/fixtures/g3-closeout.toml)，
+  核验器只转述（`closeout.machine_inferred=false`），不改写机器字段；于是并存两个口径：
+  `g3_status=not_run`（机器：核验器没跑互操作）与 `g3_status_declared=closed_with_exceptions`
+  （人工：带例外结案）。逐行 8 行判定为 3 `accepted` / 5 `accepted_with_gap`，
+  6 条例外各带 `recheck_trigger`：全矩阵「唤醒环节未参与」、BitComet LT seed、
+  aMule KAD 索引面、插件不下载、UI 关闭关的是浏览器、命名空间交叉污染未实测。
+  **需要所有者开环境的 3 条**：公共 DHT 宣告放行、221 的 aMule 公网入向 UDP 4672 + TCP 4662。
+  结案口径与判定表见 [TEST §3](../05-quality/TEST.md)；**不含任何可达率数字**（ADR-012）。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
-  ① **标准协议互通**：已有 S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
-  实网）作基础，下一步补 G3 第三方客户端矩阵与真实 Mainline DHT 公网加入，让 qBittorrent /
-  eMule 零改造就能发现并下载我们发布的资源；② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
+  ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
+  实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**当前卡点不再是客户端，而是我们自己没有
+  数据面**：所有互通证据都由 spike 二进制（`s1-probe` / `ed2k-mini`）产生，生产守护进程只能解析
+  种子、不能下载——这正是 W5.1 要解决的；② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
   unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
   ④ 公网入口 **7100→7100**（实测可用；`57100` 规则不存在）复跑时延/丢包/抖动；
   ⑤ BT/TCP 打洞；⑥ S3 / S5 继续 `not_run`，待 G3 矩阵与真实拥塞链路证据齐备后由人手工回填。
