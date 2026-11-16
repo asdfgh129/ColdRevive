@@ -3,7 +3,16 @@
   "milestone": "M2/W3.5①",
   "spike": "S6",
   "gate": "G2 (未宣称达标)",
-  "r04_min_reachability": 0.70,
+  "r04_stance": "best-effort",
+  "r04_numeric_commitment": null,
+  "r04_requirement": "不承诺任何可达率数值。产品承诺的是：每类环境都有一条可用的路（直连或中继回退），且失败必须可解释、可感知。可达率只作为描述性统计记录（含样本量与观测环境），不作达标线。",
+  "s6_pass_criteria": [
+    "5 类环境（4 类 NAT + CGNAT）各有 ≥1 份 evidence_valid=true 的逐类报告",
+    "每类 direct 与 relay 两条路径各 ≥30 次真实观测，成功判据是收到真实 WAKEUP_ACK",
+    "direct 失败的环境里 relay 必须送达；两条都失败的环境记为该类不可用，作为已知限制写入报告",
+    "结论由实验执行人依证据手工回填 spikes.json；脚本永不置 pass"
+  ],
+  "s6_not_required": "不要求 aggregate_reachability 达到任何阈值；该字段仅供描述",
   "min_trials_per_path": 30,
   "required_classes": [
     {

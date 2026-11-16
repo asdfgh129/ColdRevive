@@ -2,6 +2,46 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.60] - 2026-11-16 — M2/W3.11：R-04 改为「尽力」，取消可达率的数值承诺（ADR-012）
+
+> 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、
+> `spike_status_changed=false`；`evidence_valid_for_pass=false`。
+> 这一轮改的是**验收口径**，不是实测结论 —— 撤掉一个「本来就不该许」的承诺。
+
+### 决定
+项目所有者：**「我们不能承诺具体数字，只能是尽力，我们是提供一个可能性，不是确保实现，也没必要。」**
+故 `R-04 ≥70%` 取消，S6 从「百分比够不够」改为四条定性要求。决策记录 [ADR-012]。
+
+### 为什么这不是「达不到所以放宽」
+1. **产品卖的不是百分比**：提供的是「除在线唤醒之外，多一条能叫醒机器的路」；
+   用户要的是「叫得醒 / 叫不醒时我知道为什么」，不是 SLA。
+2. **数字会污染测量**：阈值一存在，「测不到 70%」就被读成「不合格」，只剩两条路——
+   挑环境凑数字，或把没测到的格子填成「看起来通过」。后者正是本项目反复在打的那类缺陷。
+3. **分母不可抽样**：「所有家用 NAT」无法抽样（运营商、光猫型号、月份策略都不同），
+   5 个样本算出的百分比没有统计意义，却会被当 SLA 引用。
+
+### 落地（可检查，不是表态）
+| 位置 | 改动 |
+| :--- | :--- |
+| `cr-nat/src/lib.rs` | 删 `R04_MIN_REACHABILITY`；加 `R04_STANCE="best-effort"` 与 `R04_NUMERIC_COMMITMENT: Option<f64> = None`（保留字段名，让机器读到「明确不给数」而不是以为漏了）；单测 `r04_has_no_numeric_commitment` 防阈值被好心加回 |
+| `nat_matrix_config.json` | `r04_min_reachability` → `r04_stance` / `r04_numeric_commitment: null` / `r04_requirement` / `s6_pass_criteria`（四条） |
+| `nat_matrix.py` | 聚合报告不再做阈值比较，输出 `r04_stance` + `reachability_note`（可达率是**描述性统计**）；自检新增 `r04_has_no_numeric_threshold`，**17/17 PASS** |
+| `RISK.md` R-04 | 触发条件由「公网可达率 <70%」改为「**某类环境中直连与中继回退同时失败**」 |
+| `TECH-STACK` / `TEST` / `OPEN-QUESTIONS` / `G0-REVIEW`（追加不改行）/ `nat-matrix.md §19` | 同步为定性口径 |
+
+### S6 现在的判据（替代 70%）
+5 类环境各 ≥1 份 `evidence_valid=true` 报告；每类 `direct`/`relay` 各 ≥30 次真实观测（成功＝真实 `WAKEUP_ACK`）；
+`direct` 失败时 `relay` 必须送达，两条都失败记为该类**不可用**并写入已知限制；结论手工回填。
+**要的是「每一类会怎样」被查清，不是「总体够不够好」。** 少一类就是地图缺一块，标出来即可。
+
+### 一条强度都没放松
+条款①（两台不同物理主机）与②（真实 NAT 设备）一条没动，`--evidence-scope` 分层不变，
+`S6` 仍 `not_run`、`g2_claim=false`。反向约束反而更强：以前「direct 0/30」可以含糊成「没到 70%」，
+现在必须逐类说明原因（如 §15 的 symmetric：网关无 DNAT、映射随目的变，只能中继）。
+**中继回退因此改为常开**，不再等一个永远不会到来的触发条件。
+
+`cargo test --workspace --offline` **126 passed / 0 failed**。
+
 ## [2.4.59] - 2026-11-16 — M2/W3.10：出口类别清单（条件不齐时先沉淀样本）
 
 > 范围声明：**不改变任何 Spike 的 `status`**：S3 / S5 / S6 仍 `not_run`，`g2_claim` 未立、

@@ -119,7 +119,7 @@ coldrevive-relay --listen <ip:port> [--stats-file <path>] [--max-frame <bytes>]
 ## 7. 已知边界（M2 后续）
 
 1. **S6**：四类 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 的真实可达率矩阵未测；
-   R-04 ≥70% 阈值未判定。T1-08 与 S6 pilot 都是同一出口的单样本。
+   R-04 已改为「尽力」不设阈值（ADR-012）；T1-08 与 S6 pilot 都是同一出口的单样本。
 2. **BT/TCP 穿透**：tracker 只使用 `internal_port == bt_port` 的真实显式端口映射；
    STUN 学到的 UDP 映射不用于 BT/TCP，TCP 打洞未实现。
 3. ~~**中继服务端**~~ → **帧路由核心 + 持有者订阅已落地（W3.4）**。仍缺生产化：

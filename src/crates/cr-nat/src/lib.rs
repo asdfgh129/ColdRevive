@@ -42,7 +42,18 @@ pub const S6_REQUIRED_MATRIX: [NatType; 5] = [
     NatType::Symmetric,
     NatType::Cgnat,
 ];
-pub const R04_MIN_REACHABILITY: f64 = 0.70;
+/// R-04 的立场：**尽力提供一种可能性，不承诺任何数值**（ADR-012，2026-11-16 项目所有者决定）。
+///
+/// 旧的 `R04_MIN_REACHABILITY = 0.70` 已删除。理由不是「达不到」，而是**这个数字从一开始
+/// 就不该被承诺**：产品提供的是「多一条能叫醒机器的路」，不是「公网可达率 70%」这种 SLA。
+/// 一旦写成阈值，「测不到 70%」就会被读成「不合格」，从而逼出两条坏路——
+/// 要么为了凑数字去挑环境，要么把没测到的格子填成「看起来通过」。
+/// 现在保留的是**描述性统计**（每类各自的观测成功率与样本量）与**定性要求**：
+/// 失败路径必须有可用回退，且失败要能被感知和解释。
+pub const R04_STANCE: &str = "best-effort";
+/// 数值承诺：无。字段保留是为了让机器能读到「这里本来会有一个数，我们明确选择不给」，
+/// 而不是让读方以为「漏了」。
+pub const R04_NUMERIC_COMMITMENT: Option<f64> = None;
 pub const MILESTONE: &str = "M2/W3.3 (S6)";
 
 /// 穿透策略（按优先级排序的推荐结果）。
@@ -284,7 +295,14 @@ mod tests {
     #[test]
     fn matrix_covers_all_four_nat_types_plus_cgnat() {
         assert_eq!(S6_REQUIRED_MATRIX.len(), 5);
-        assert_eq!(R04_MIN_REACHABILITY, 0.70);
+    }
+
+    #[test]
+    fn r04_has_no_numeric_commitment() {
+        // ADR-012：R-04 是「尽力」，不是 SLA。这条测试存在的目的是防止有人
+        // 出于好心把阈值加回来——它一旦回来，「测不到」就会被读成「不合格」。
+        assert_eq!(R04_STANCE, "best-effort");
+        assert!(R04_NUMERIC_COMMITMENT.is_none());
     }
 
     #[test]

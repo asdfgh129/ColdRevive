@@ -157,7 +157,7 @@ python3 tests/spikes/s6/nat_matrix.py --aggregate tests/spikes/s6/reports
 
 **S5（R-07，uTP/LEDBAT 后台退让满足 NFR-03）：`not_run`（本地量测就绪，已获 G0 条件冻结豁免）。** `s5/qos_bench.py` 真实 TCP 双流 + 令牌桶 + 瓶颈整形量测：后台上行硬卡 ≤20.25% 链路（NFR-03 第一半成立），**但默认 20% 配置前台劣化 20.12%**、LEDBAT 式退让模型 15.0%，ratio=0.05 → 6.19%，**ratio=0.02 → 4.03%（进入 ≤5% 目标）**。结论：**默认配置不满足 NFR-03 ≤5%，M1 默认值须按实测回调，R-07 未完全去险**。该数字来自本地模型而非真实 uTP，不能支撑 `pass`；M1/G3 真实拥塞链路实测方案见 `s5/README.md`。
 
-**S6（R-04，常见家用 NAT 可达率）：`not_run`（1 个真实先导样本，已获 G0 条件冻结豁免）。** 穿透栈覆盖四类 NAT，分析型含中继可达率 ≥95%（> R-04 70% 阈值）。`s6/stun_probe.py` 于 2026-11-13 取得首个真实样本：`192.168.1.210` → `112.5.60.4:36764`，跨 4 台 STUN 映射不变（cone 类）、公网 UDP 可达；**UPnP IGD 与 NAT-PMP 在本环境均不可用**，二跳公网、未见 CGNAT → R-04 不能按「UPnP 可用」假设估计。单样本不满足矩阵判据，须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。矩阵见 `s6/nat-matrix.md`。
+**S6（R-04，常见家用 NAT 可达率）：`not_run`（1 个真实先导样本，已获 G0 条件冻结豁免）。** 穿透栈覆盖四类 NAT，分析型估计已随 ADR-012 删除（不承诺百分比）。`s6/stun_probe.py` 于 2026-11-13 取得首个真实样本：`192.168.1.210` → `112.5.60.4:36764`，跨 4 台 STUN 映射不变（cone 类）、公网 UDP 可达；**UPnP IGD 与 NAT-PMP 在本环境均不可用**，二跳公网、未见 CGNAT → R-04 不能按「UPnP 可用」假设估计。单样本不满足矩阵判据，须 M2 真实多 NAT 实测（OPEN-QUESTIONS Q4）。矩阵见 `s6/nat-matrix.md`。
 >
 > **2026-11-14 补记（M2/W3.3）**：`cr-nat` 已接入 `coldrevived` 复活路径（端点候选计划、
 > 单 socket 打洞、中继帧回退、tracker 私网/公网 peer 分流），T1 `--mode real` 现场 STUN 探针与
@@ -167,7 +167,7 @@ python3 tests/spikes/s6/nat_matrix.py --aggregate tests/spikes/s6/reports
 > **2026-11-14 W3.4 补记**：中继已由 mock 桥换成真实 `coldrevive-relay` 服务端 +
 > 持有者订阅线程，`S6.observations` 再增 `w34_relay_2026_11_14`（真实中继计数
 > `delivered=2 / dropped=0`，但 `evidence_valid_for_pass=false`、`matrix_coverage=0/4`）。
-> **真实组件 ≠ 真实 NAT 环境**，`S6.status` 保持 `not_run`，R-04 ≥70% 阈值未判定；四类 NAT + CGNAT 矩阵仍须 M2 在真实
+> **真实组件 ≠ 真实 NAT 环境**，`S6.status` 保持 `not_run`，R-04 已改为「尽力」不设阈值（ADR-012）；四类 NAT + CGNAT 矩阵仍须 M2 在真实
 > 多 NAT 环境逐类实测后由实验执行人手工回填，**脚本与 harness 不得自动置 `pass`**。
 
 ## 6. 结论回填规则

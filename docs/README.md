@@ -152,6 +152,17 @@ updated: YYYY-MM-DD
   [nat_lab README](../tests/spikes/s6/nat_lab/README.md)、DOC-15（ROADMAP）与 spikes.json；
   未改 `PROTOCOL_VERSION` 与 T0 golden（新帧只在中继实例之间使用，客户端不发）。
   **这是中继可用性工程，不产生 NAT 类别样本**：S3/S5/S6 仍 `not_run`、G2 未达标、R-04 不判定。
+- **v2.4.60 补记（2026-11-16 / W3.11）**：**R-04 改为「尽力」，取消公网可达率的数值承诺**
+  （[ADR-012](../docs/02-architecture/adr/ADR-012-r04-best-effort.md)）。项目所有者明确「不能承诺具体数字，
+  只能是尽力，我们是提供一个可能性，不是确保实现」。这不是「达不到所以放宽」，而是三条更根本的理由：
+  ① 产品卖的是「多一条能叫醒机器的路」，不是可达率 SLA；② 阈值会污染测量——「测不到 70%」被读成「不合格」，
+  只剩「挑环境凑数字」或「把没测到的格子填成通过」两条路；③ 分母（所有家用 NAT）不可抽样，
+  5 个样本的百分比没有统计意义却会被当 SLA 引用。
+  落地：删 `R04_MIN_REACHABILITY`，改 `R04_STANCE` + `R04_NUMERIC_COMMITMENT=None`（保留字段名，
+  让机器读到「明确不给数」），加单测防阈值被加回；矩阵配置换成 `s6_pass_criteria` 四条定性要求；
+  `nat_matrix.py` 不再做阈值比较（自检 17/17）；RISK R-04 触发条件改为「某类环境中直连与中继同时失败」。
+  **中继回退改为常开**。一条强度都没放松：条款①②与 `evidence_scope` 分层不变，S6 仍 `not_run`。
+  方法见 [nat-matrix.md §19](../tests/spikes/s6/nat-matrix.md)。
 - **v2.4.59 补记（2026-11-16 / W3.10）**：出口类别清单 —— 条件是「一个出口只对应一个真实 NAT 类别」，所以「用现有两个 IP 一次验证一类」的正确读法不是「把同一个出口分五次测」，而是**换出口再测**。为了让「环境不够」不变成「结论靠编」，新增 `coldrevive-nat --census <jsonl>` / `--report <jsonl>`：把每次探测沉淀成单行 JSON 样本（`nat_class` + 正交两维 `mapping_behavior`/`filtering_behavior` + `observations`/`distinct_mappings` 依据 + `double_nat` 双层 NAT 判据 + `variant` 配置变体 + 防重 `sample_id`）；`TraversalReport` 相应补 `filter_behavior` 与原始 `observations`（此前算完即丢，导致「能说类别、说不出依据」）。**三条纪律写进代码**：① 同一出口同一 `variant` 出现两个类别 ⇒ `unresolved`，整条不进清单；② `matrix_coverage="none"` / `r04_judgeable=false` / `s6_status="not_run"` / `g2_claim=false` 是常量，因为清单在原理上不含可达性数字；③ 读回遇未知字段直接报错并带行号。实测 A 机家宽出口 `112.5.60.4` = `port-restricted-cone`（eim + port-restricted）；结合 W3.7 对 `112.5.32.34` 的 APDM 结论，**现有两个出口本就是两类**，缺 `full-cone`/`restricted-cone`/`cgnat`。改动落在 [nat-matrix.md §18](../tests/spikes/s6/nat-matrix.md)、DOC-14（ROADMAP）与 spikes.json；未改 `PROTOCOL_VERSION` 与 T0 golden（只加探测输出字段与新的 CLI 入口，业务帧不变）。
 - **v2.4.58 补记（2026-11-16 / W3.9）**：中继公网生产化 —— 新增 `cr-nat::secure`（std-only，
   复用 `cr-hash`）：PSK 双向挑战应答 + HMAC-SHA256 计数器密钥流 + 逐记录 HMAC，序号严格递增

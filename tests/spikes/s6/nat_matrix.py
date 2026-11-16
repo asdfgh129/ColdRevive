@@ -432,9 +432,11 @@ def aggregate(folder: Path, cfg: dict, condition_path: str | None = None) -> dic
         "matrix_coverage": f"{coverage} / 4 类真实 NAT（含 CGNAT 环境 {int(bool(cgnat_files))}/1）",
         "matrix_complete": complete,
         "aggregate_reachability": overall,
-        "r04_min_reachability": cfg["r04_min_reachability"],
-        "r04_threshold_note": ("仅在 matrix_complete=true 时可与阈值比较；"
-                               "脚本仍不判定达标"),
+        "r04_stance": cfg.get("r04_stance", "best-effort"),
+        "r04_numeric_commitment": cfg.get("r04_numeric_commitment"),
+        "reachability_note": ("aggregate_reachability 是**描述性统计**（须与样本量、观测环境一并读），"
+                              "不是达标线。R-04 承诺的是「每类都有一条可用的路 + 失败有回退」，"
+                              "不是百分比（ADR-012）。"),
         "status": "OBSERVED" if complete else "BLOCKED",
         "evidence_valid": complete,
         "evidence_valid_for_pass": False,
@@ -484,6 +486,12 @@ def self_test(cfg: dict) -> int:
                    ag["g2_claim"] is False and ag["s6_status"] == "not_run"
                    and ag["spike_status_changed"] is False))
     checks.append(("no_auto_pass_flag", cfg["evidence_policy"]["no_auto_pass"] is True))
+    # ADR-012：R-04 是「尽力」，不是 SLA。这条断言的作用是防止阈值被好心加回来。
+    checks.append(("r04_has_no_numeric_threshold",
+                   "r04_min_reachability" not in cfg
+                   and cfg.get("r04_numeric_commitment") is None
+                   and ag.get("r04_numeric_commitment") is None
+                   and ag.get("r04_stance") == "best-effort"))
 
     # 证据层级：两个条款必须能被独立判定（这是本轮新增的判据语义）
     st_same_host = clause_state(

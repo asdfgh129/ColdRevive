@@ -98,7 +98,10 @@ WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**�
 > `t1-nat-20261114T084639Z.json`），与 T0 21/21 共同构成 **G1 通过**；「只有一台物理主机」的阻塞条件已消除。
 > 「M1 无 NAT 穿透栈」的**接线层**缺口已由 M2/W3.3 的 `cr-nat` 接入关闭
 > （[T2 本地接线验收](../../tests/e2e/t2/README.md) 10/10 PASS，`evidence_valid=false`）。
-> **S6 四类真实 NAT（含 CGNAT）可达率矩阵仍未实测**，`S6.status` 保持 `not_run`。
+> **S6 四类真实 NAT（含 CGNAT）矩阵仍未实测**，`S6.status` 保持 `not_run`。
+> **2026-11-16 口径变更（[ADR-012](../02-architecture/adr/ADR-012-r04-best-effort.md)）**：
+> S6 不再以「可达率 ≥70%」判定，改为四条定性要求（5 类各有真实设备证据 / 每类两条路径各 ≥30 次
+> 真实观测 / 直连失败时中继必须送达 / 结论由执行人手工回填）。可达率降为描述性统计。
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 〔**以上结句为 2026-11-13 时点口径；2026-11-14 已更正为 G1 通过**（T0 21/21 + T1 real 11/11，均

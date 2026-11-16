@@ -108,7 +108,10 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 > mock STUN + 中继（W3.3 为 mock 桥，**W3.4 起为真实 `coldrevive-relay` 二进制**），
 > `evidence_valid=false`，**不是新的 NAT 样本**：真实中继组件不等于真实 NAT 环境。
 > 2026-11-14 的 T1-08 现场 STUN 探针仍是同一出口单样本（cone 类、UPnP/NAT-PMP 不可用）。
-> S6 四类 NAT（含 CGNAT）实测与 R-04 ≥70% 阈值判定仍待用户提供多 NAT 环境后执行。
+> S6 四类 NAT（含 CGNAT）逐类实测仍待用户提供多 NAT 环境后执行。
+> **2026-11-16 口径变更（[ADR-012](../02-architecture/adr/ADR-012-r04-best-effort.md)）**：
+> 原先的「R-04 ≥70% 判定」已取消，改为定性要求（每类两条路径各 ≥30 次真实观测、
+> 直连失败时中继必须送达、两条都失败则记为已知限制）。可达率只作描述性统计。
 >
 > **2026-11-14 W3.5① 补记（Q4 仍未结案）**：[条件探针](../../tests/spikes/probe_conditions.py)
 > 确认本机仅 1 类真实 NAT 出口、无 CGNAT、无全局 IPv6、虚拟交换出口不可达、无内核整形能力。
