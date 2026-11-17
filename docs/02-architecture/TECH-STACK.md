@@ -221,6 +221,11 @@ UDP 与 BT 端口同号；`nat.utp=false` 可退回纯 TCP。uTP 的绑定失败
 `utp_udp_port_occupied`，而**真正的判据是系统连接表里该 UDP 端口的 PID**——见
 [TEST §2.7](../05-quality/TEST.md)。
 
+**W5.1f（2026-11-17）把这条补到公网**：µTP 的入向映射与 TCP 是**两条独立规则**，同一端口号也不能
+互替。公网实测（外部主机 WAN `112.5.32.34`、qBittorrent 仅 uTP）通过：客户端自报
+`ip=<A 公网>:17802, connection=μTP`，A 侧 `bt_port` 全程零 TCP 连接——见
+[TEST §2.8](../05-quality/TEST.md)。
+
 **2026-11-17 公网入向（W5.1d）的边界**：引擎能做「监听 + 接收入向」，但**能不能被外面连上
 不是代码决定的**——取决于 CPE 上有没有真实端口映射。本轮把可声明、可验证的部分做齐
 （`nat.bt_external` / `nat.http_external` → 监听 `0.0.0.0`、BEP 12 `announce-list`、tracker 按请求方

@@ -204,7 +204,7 @@ Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`�
    `complete=1 / incomplete=0`），单测 2 条覆盖（含二进制 hash 不能被当字符串处理）。
 
 **边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
-不含任何可达率数字，也不构成 G2/G3 新证据。公网入向见 §2.6、µTP 见 §2.7。
+不含任何可达率数字，也不构成 G2/G3 新证据。公网入向见 §2.6、µTP 见 §2.7、公网 µTP 见 §2.8。
 
 ### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 PASS）
 验证「外部主机能否越过互联网从 A 的引擎取片」。脚本 `tests/e2e/w51d/public_inbound.py`：
@@ -310,9 +310,7 @@ A        = 192.168.1.210（nat.utp 默认开；引擎 TCP + uTP 同端口监听�
 | A 侧 TCP 连接 | 8 次采样、0 次命中 | 同 |
 
 **边界**：LAN（同一二层网段）、无公网报文；`evidence_scope=lan-utp-interop`、`is_s6_evidence=false`；
-不含任何速率/可达率数字（ADR-012）。**公网 µTP 未验**：CPE 上目前只有两条 **TCP** 映射，
-µTP 入向还需要一条 `UDP 112.5.60.4:17802 → 192.168.1.210:17802`；没有它外部客户端会回落 TCP
-（§2.6 的路径不受影响）。
+不含任何速率/可达率数字（ADR-012）。**公网 µTP 已在 §2.8 补验**（本轮只覆盖 LAN）。
 
 **这一轮纠的是一年前的判断，不是代码**：`librqbit` 9.x 自带 `librqbit-utp`，
 `ListenerOptions.mode` 默认 `TcpOnly`。把「默认关」读成「不支持」，才会得出「要自己写 µTP」的结论。
@@ -322,6 +320,59 @@ A        = 192.168.1.210（nat.utp 默认开；引擎 TCP + uTP 同端口监听�
 第一次就是这么把「走了 µTP」误判成「没走」的。改成在 221 本地起一个 0.1 s 间隔的采样进程、
 事后取文件，才拿到 50 条样本。同类问题还有：`Session\BTProtocol` 是位掩码
 （1=TCP、2=uTP、3=两者），之前 w51c 里写的 `0` 并不等于「仅 TCP」。
+
+### 2.8 W5.1f 公网 µTP（BEP 29）复核（2026-11-17 新增，PASS）
+
+把 §2.6（公网 TCP）与 §2.7（LAN µTP）拼起来。**拼不起来的点是映射**：CPE 上的两条 TCP 规则
+对 UDP 无效，µTP 的入向是另一条独立的 `UDP <wan>:17802 → 192.168.1.210:17802`。
+没有它，默认配置的客户端会先等 µTP 超时再回落 TCP——公网侧看起来就是「连上了但迟迟没数据」。
+脚本 `tests/e2e/w51f/public_utp.py`：
+
+```
+A        = 192.168.1.210（nat.bt_external/http_external + nat.utp=true，监听 0.0.0.0:17802 TCP+UDP）
+下载方   = 192.168.1.222（WAN 112.5.32.34）：qBittorrent 4.5.1，Session\BTProtocol=2（仅 uTP）
+样本 4 MiB；`--probe-only` 只验三条映射；`--keep` 保留现场
+```
+
+判据**必须两侧同时成立**，另加一条与 µTP 无关的「量具」前置：
+
+| # | 判据 | 观测手段 |
+| :--- | :--- | :--- |
+| ⓪ | CPE 上确有 **UDP** 公网映射 | 用**回显服务**（与 µTP 无关）单独验证：外部发 3 包，包从 `<wan>:17802` 原路返回 |
+| ⓪b | 该映射没有走 LAN 捷径 | A 侧回显进程记录的源地址必须是 `112.5.32.34`（若为 `192.168.1.222` 则作废） |
+| ① | A 的引擎在 BT 端口上真的绑了 UDP | `netstat -ano -p UDP` 的 PID 与守护进程 PID 比对（不看自报） |
+| ② | 客户端物理上不可能走 TCP | `Session\BTProtocol=2`（仅 uTP） |
+| ③ | 客户端**自报** peer 是公网端点且走 µTP | qB `torrentPeers`：`ip=112.5.60.4, port=17802, connection=μTP`（0.1 s 采样） |
+| ④ | A 侧 bt_port 全程没有 TCP 连接 | 逐 0.3 s 采样 `netstat`，按对端 IP 分类：公网与 LAN 都必须为空 |
+| ⑤ | COLD 负对照仍成立 | 唤醒前客户端 0%、`state=cold`、`served_bytes=0` |
+| ⑥ | 数据确实是 A 给的 | 落盘 SHA-1 一致 + 供片方 `served_bytes` 增量覆盖全量 |
+
+**2026-11-17 实测：PASS，25/25，连续 3 轮**（`run-20261117T1551/1555/1558`）：
+
+| 观测 | 结果 |
+| :--- | :--- |
+| UDP 映射量具 | 3/3 回显；A 侧源地址 `112.5.32.34`（公网，非 LAN） |
+| tracker 决策 | 对公网请求方回 `112.5.60.4:17802` |
+| 客户端进度 | `progress=1.000000`（3 轮分别 143 / 153 / 147 次轮询，1 s/次） |
+| 客户端自报 | 1473–1577 条采样，peer 恒为 `112.5.60.4:17802` / `connection=uTP`；**TCP peer 0 条** |
+| 落盘 SHA-1 | `5118386a…f308a483`（3 轮均与样本一致） |
+| 供片方增量 | `4194304`（基线 0 → 全量） |
+| A 侧 TCP | 公网 `[]`、LAN `[]`（无 TCP，也就没有 LAN 捷径） |
+| COLD 负对照 | 客户端 0%、`served=0` |
+
+**边界**：单个出口（A 的家宽）；`evidence_scope=public-utp-single-egress`、`is_s6_evidence=false`；
+不含任何可达率数字（ADR-012）。**观察项**：4 MiB 走公网 µTP 用 143–153 s，与 §2.6 的 TCP 档
+（155–235 s）同量级——未见 µTP 额外恶化，成因仍未定位，不折算成吞吐结论。
+
+**harness 三个坑（都已修，且都不是产品行为）**：
+- 轮询最后一块尾部带着 `POLL_END`，直接 `json.loads` 会失败，**100% 那一格被静默丢掉**，
+  读出来恒为 97%；
+- 中断条件写成 `0\.99[0-9]*`，会在 **`0.992188`（16 片里还差两片）** 就 break——把「已完成」
+  写成「没下完」，而同一轮的 SHA-1 其实已经一致；`int()` 截断也会把非 1 的收尾值读成 99%。
+  现在只认 `progress=1`，百分比只用于显示；
+- 复位只发一条 delete 就重加，qB 会重新校验残留文件并**断点续传 48 KiB**，
+  于是供片增量恰好少 49152 B。现在必须先证明文件不存在（`test -e` → `GONE`）再重加。
+
 
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
