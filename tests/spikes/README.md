@@ -1,6 +1,13 @@
 # M0 Spike 实验包（tests/spikes/）
 
-> **【当前状态更正 · 2026-11-14 / v2.4.47】下方多条 `>` 补记均为 2026-11-13 时点历史口径，不是现状。**
+> **【当前状态 · 2026-11-17】S3 = `pass`（限定范围）/ S5 = `fallback` / S6 = `pass`（`closed_with_exceptions`）**，
+> 八项 Spike 全部有结论。判定由所有者依证据手工回填，记录见
+> [G2-SPIKE-VERDICT-2026-11-17](../../docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md) 与
+> `tests/fixtures/g2-spike-verdicts.toml`。**`g2_claim=false` 不变**（G2 还欠 M2 实现项）；
+> 脚本仍一律不写 `spikes.json`、不自动置 pass，§6 的回填规则原样有效。
+> 下方 2026-11-13 ~ 11-16 的补记按历史保留，不再代表现状。
+
+> **【历史状态 · 2026-11-14 / v2.4.47】下方多条 `>` 补记均为 2026-11-13 时点历史口径，不是现状。**
 > **G1 已于 2026-11-14 通过**（T0 21/21 + T1 `--mode real` 双物理主机 11/11，均 `evidence_valid=true`）；
 > **M2 门禁解除并已开工**（W3.3 `cr-nat` 接入 `coldrevived` 复活路径，机读 `spikes.json` 的 `m2_progress`）。
 > **S3 / S5 / S6 状态仍为 `not_run`**，G2 未达标；[T2 本地接线验收](../e2e/t2/README.md) 10/10 的

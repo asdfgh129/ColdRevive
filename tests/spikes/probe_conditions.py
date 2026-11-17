@@ -6,7 +6,8 @@
 判据来源：
   * S3：`tests/spikes/s3/README.md` + `spikes.json` → M1 真实双栈集成 + G3 兼容性矩阵；
   * S5：`tests/spikes/s5/README.md` → tc/netem 或实验室整形链路 + 真实 rqbit uTP ≤5%；
-  * S6：`tests/spikes/s6/nat-matrix.md` → 四类真实 NAT（含 CGNAT）可达率矩阵。
+  * S6：`tests/spikes/s6/nat-matrix.md` + ADR-016 → eMule 式可达语义
+    （两路各 ≥30 次真实唤醒，HighID / LowID 两半各有证据；类别覆盖为描述性清单）。
 
 红线（tests/spikes/README.md §6）：
   * 本地回环 / 用户态整形 / 单 NAT 样本**只能作为附件**，不能单独支撑 pass；
@@ -271,7 +272,7 @@ def build_snapshot(peer_health: str, rtt_n: int) -> dict:
             "verdict": "PARTIAL_RUNNABLE",
             "experiment_allowed": True,
             "evidence_valid_for_pass": False,
-            "note": "可跑真实 M1 双栈集成 wire 实验，但结果只能作为附件；S3.status 保持 not_run",
+            "note": "本字段是 2026-11-14 的条件审计快照：跑真实 M1 双栈集成 wire 实验时结果只能作为附件。2026-11-17 所有者已判定 S3=pass，现状态见 spikes.json",
         },
         "S5": {
             "pass_conditions": ["tc/netem 或实验室整形链路",
@@ -287,24 +288,25 @@ def build_snapshot(peer_health: str, rtt_n: int) -> dict:
             "verdict": "PARTIAL_RUNNABLE",
             "experiment_allowed": True,
             "evidence_valid_for_pass": False,
-            "note": "可跑真实 uTP 栈复现实验，但用户态整形不构成 NFR-03 pass 证据；S5.status 保持 not_run",
+            "note": "本字段是 2026-11-14 的条件审计快照（本机无 tc/netem，用户态整形不构成 NFR-03 pass 证据）。2026-11-17 已在 221 用真实内核 tc/netem 补齐并判定 S5=fallback，现状态见 spikes.json",
         },
         "S6": {
-            "pass_conditions": ["四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）可达率矩阵",
-                                "至少一个 CGNAT 环境",
-                                "真实双端唤醒 → 直连 / 中继两条路径"],
+            "pass_conditions": ["【2026-11-17 起按 ADR-016】eMule 式可达语义：两路各 ≥30 次真实唤醒，"
+                                "至少一份 direct 可达（HighID）+ 一份 direct 失败但 relay 送达（LowID）",
+                                "真实 NAT 设备 + 两台不同物理主机 + 映射可证伪",
+                                "NAT 类别覆盖为描述性清单，不再是 pass 前提"],
             "locally_available": [
                 f"{real_nat_classes_observed} 类真实 NAT 出口（单一 cone 类样本）",
                 "真实公网 STUN 往返 + RFC 3489 CHANGE-REQUEST 行为测试",
                 "真实 coldrevive-relay 服务端与持有者订阅线程",
             ],
-            "missing": ["另外 3 类真实 NAT 设备/环境", "CGNAT 真实环境（本样本未检出）",
-                        "跨 NAT 双端可达率矩阵（每类 ≥30 次真实唤醒）",
+            "missing": ["另外 3 类真实 NAT 设备/环境（ADR-016 后降为已知限制，不是 pass 前提）",
+                        "CGNAT 真实环境（本样本未检出，登记为已知限制）",
                         "实验执行人对真实 NAT 环境的书面声明/attestation"],
             "verdict": "PARTIAL_RUNNABLE",
             "experiment_allowed": True,
             "evidence_valid_for_pass": False,
-            "note": "可做单类真实 NAT 深度行为实测 + 矩阵 harness 干跑；矩阵覆盖率仍 0/4，S6.status 保持 not_run",
+            "note": "本字段是 2026-11-14 的条件审计快照。2026-11-17 已按 ADR-016 补齐两半真实证据并判定 S6=pass（closed_with_exceptions），现状态见 spikes.json",
         },
     }
 
@@ -346,13 +348,29 @@ def build_snapshot(peer_health: str, rtt_n: int) -> dict:
         "verdicts": verdicts,
         "gate_discipline": {
             "spike_status_changed": False,
-            "s3_s5_s6_status": "not_run",
-            "s6_matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）",
+            "s3_s5_s6_status": {k: v for k, v in current_spike_statuses().items()
+                                if k in ("S3", "S5", "S6")} or "unknown（spikes.json 不可读）",
+            "source": "只读转述 spikes.json 的现状，本脚本不改判据、不置 pass",
+            "s6_stance": "emule-like-reach（ADR-016）；类别覆盖为描述性清单",
+            "s6_matrix_coverage": "描述性：已知 port-restricted-cone + symmetric；缺 full-cone / restricted-cone / cgnat，登记为已知限制",
             "g2_claim": False,
             "no_auto_pass": True,
             "decision": "结论由实验执行人依 evidence_required 手工回填 spikes.json",
         },
     }
+
+
+def current_spike_statuses() -> dict:
+    """只读 spikes.json 的当前状态（2026-11-17 起 S3/S5/S6 已有人工判定）。
+
+    本函数不写任何文件、不改判据；spikes.json 缺失时返回 unknown，不猜。
+    """
+    p = ROOT / "tests/spikes/spikes.json"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+        return {s["id"]: s.get("status", "unknown") for s in d.get("spikes", [])}
+    except Exception:
+        return {}
 
 
 def self_test() -> int:
@@ -405,7 +423,9 @@ def main() -> int:
               f"evidence_valid_for_pass={v['evidence_valid_for_pass']}")
     print(f"  STUN mapped: {snap['real_probes']['stun']['distinct_mapped_addresses'] or 'none'}")
     print(f"  B host reachable: {snap['real_probes']['second_physical_host']['reachable']}")
-    print("  spike_status_changed: False | s6_matrix_coverage: 0 / 4 | g2_claim: False")
+    print(f"  spike_status（只读转述）: {snap['gate_discipline']['s3_s5_s6_status']} | "
+          f"g2_claim: {snap['gate_discipline']['g2_claim']}")
+    print("  spike_status_changed: False（本脚本不改判据）")
     print("report:", out)
     return 0
 

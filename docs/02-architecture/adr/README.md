@@ -2,15 +2,15 @@
 doc_id: DOC-05
 title: 架构决策记录集（ADR 索引）
 category: 架构决策
-version: 2.3
+version: 2.4
 status: 持续维护
 owner: 架构组
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # 架构决策记录集（ADR 索引）
 
-> 编号 DOC-05 · 版本 2.3 · 状态 持续维护 · 责任人 架构组 · 更新 2026-11-16
+> 编号 DOC-05 · 版本 2.4 · 状态 持续维护 · 责任人 架构组 · 更新 2026-11-17
 > 一份 ADR 只记录**一个**技术抉择：上下文、选项、结论、后果、复核时点。状态为「待定」的 ADR 由 M0 Spike 或里程碑门禁触发定稿。
 
 ## 1. 决策清单
@@ -32,8 +32,9 @@ updated: 2026-11-16
 | [ADR-013](ADR-013-emule-lowid-declaration.md) | 节点如何告知自身可达性 | 借 eMule LowID：注册时自我声明 direct/relay-only/unknown + TTL | ✅ 已接受（2026-11-16） | M2 / S6 |
 | [ADR-014](ADR-014-relay-data-budget.md) | 中继数据面是否限流 | 全局字节令牌桶 + 信令（≤4 KiB）优先 | ✅ 已接受（2026-11-16） | 部署中继带宽时 |
 | [ADR-015](ADR-015-dependency-layering.md) | 是否继续全局零第三方依赖 | 取消全局零依赖：协议层保持 std-only，`cr-engine`/`coldrevived` 可用 librqbit + tokio | ✅ 已接受（2026-11-16 所有者决策） | 升级 librqbit / 补种上线前复核体积与内存 |
+| [ADR-016](ADR-016-s6-emule-like-reach.md) | S6 是否仍须穷举 4 类 NAT + CGNAT | **阶段性改为 eMule 式可达语义**：类别覆盖降为描述性清单，不再是 pass 前提；真实设备 / 两台主机 / 30 次观测 / 不自动 pass 一条不松 | ✅ 已接受（2026-11-17 所有者决策） | **M4 前**，或当 ≥4 个不同真实出口可用时（先到为准） |
 
-**统计**：15 项决策，14 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
+**统计**：16 项决策，15 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 
 > **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
 > RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、

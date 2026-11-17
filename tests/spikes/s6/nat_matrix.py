@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""W3.5① — S6 四类真实 NAT（含 CGNAT）可达率矩阵 harness。
+"""W3.5① — S6 真实 NAT 唤醒证据 harness（ADR-016 后按 eMule 式可达语义汇总）。
 
-**这是矩阵执行协议，不是矩阵结论。** 本机只有一个真实 cone 类 NAT 出口，
-因此默认 `--dry-run` 会把四类 NAT + CGNAT 全部如实判为 `BLOCKED`：
-`matrix_coverage = 0 / 4`、`evidence_valid=false`、`s6_status=not_run`、`g2_claim=false`。
+**这是执行协议，不是结论。** 2026-11-17 起判据为 [ADR-016]：不再穷举 4 类 NAT + CGNAT，
+改为证明「每个节点都有一条可用的路，且失败可预知」（HighID 直连 / LowID 只走中继）。
+`required_classes` 降级为**描述性类别清单**，不再是 pass 前提。
 
-红线（tests/spikes/README.md §6 / spikes.json gate_discipline）：
+不变的红线（tests/spikes/README.md §6 / spikes.json gate_discipline / ADR-012 / ADR-013）：
+  * 条款①两端分处两台不同物理主机、条款② NAT 是真实设备——一条没松；
+  * 每条路径 ≥30 次真实唤醒，成功只认真实 `WAKEUP_ACK(status=OK)`；
   * 脚本**永不**修改 spikes.json 的 status，也**永不**自动置 pass；
   * 缺失 / 失败 / 超时一律 `BLOCKED` 或计入失败，不回填「看起来通过」的默认值；
-  * 达率只由真实 `WAKEUP_ACK` 计数得出；attestation 自报类型不能替代真实 STUN 分类报告；
-  * 即使四类 + CGNAT 证据齐备，聚合结果仍标 `s6_status=not_run`，由实验执行人手工回填。
+  * 不承诺任何可达率数字；`s6_status=not_run`、`g2_claim=false`、
+    `evidence_valid_for_pass=false` 恒成立；
+  * G2 只能写「按 eMule 语义结案，带已知限制」，不得写「NAT 矩阵通过」。
 
 用法：
   python3 tests/spikes/s6/nat_matrix.py --self-test
@@ -32,6 +35,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -51,6 +55,8 @@ def load_config() -> dict:
 
 
 def class_ids(cfg: dict) -> list[str]:
+    # ADR-016：这里的类别只用于标注报告 / 描述性清单与 attestation 校验，
+    # **不是** pass 前提。是否达标由 reach_evidence_state() 按可达语义判定。
     return [c["id"] for c in cfg["required_classes"]]
 
 
@@ -358,11 +364,14 @@ def dry_run(cfg: dict, condition_path: str | None) -> dict:
         "mode": "dry-run",
         "status": "BLOCKED",
         "required_classes": class_ids(cfg),
+        "s6_reach_stance": cfg.get("s6_reach_stance", "emule-like-reach"),
+        "class_coverage_required_for_pass": cfg.get("class_coverage_required_for_pass", False),
         "rows": rows,
-        "cgnat": {"status": "BLOCKED", "reason": "未检出 CGNAT 出口，且缺少 CGNAT 真实环境与 attestation",
+        "cgnat": {"status": "BLOCKED", "reason": "未检出 CGNAT 出口；ADR-016 后仅作描述性样本，不判 S6 失败",
                   "evidence_valid": False},
-        "matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）",
-        "matrix_coverage_numeric": {"classes": 0, "required": 4, "cgnat": 0, "cgnat_required": 1},
+        "matrix_coverage": "0 / 4 类真实 NAT（含 CGNAT 环境 0/1）—— 描述性清单，非 pass 前提",
+        "matrix_coverage_numeric": {"classes": 0, "required": 4, "cgnat": 0, "cgnat_required": 1,
+                                    "required_for_pass": False},
         "local_real_sample": {
             "available": bool(observed),
             "distinct_mapped_addresses": observed,
@@ -376,67 +385,136 @@ def dry_run(cfg: dict, condition_path: str | None) -> dict:
         "g2_claim": False,
         "spike_status_changed": False,
         "no_auto_pass": True,
-        "decision": "结论由实验执行人依 evidence_required 手工回填 spikes.json",
+        "decision": "结论由实验执行人依 evidence_required 手工回填 spikes.json；声明口径见 s6_claim_wording",
+        "s6_claim_wording": cfg.get("s6_claim_wording", "按 eMule 语义结案，带已知限制"),
         "next_actions": [
-            "在 4 类真实 NAT（含至少 1 个 CGNAT）环境各部署两台物理主机 + coldrevived + coldrevive-relay",
-            "每类由实验执行人签 attestation 并附真实 STUN 分类报告",
-            "用 --mode real 执行 ≥30 次真实唤醒/路径，产出逐类 real 报告",
-            "--aggregate 汇总；只有 4 类 + CGNAT 齐备才计算聚合可达率",
+            "用现有两台物理主机 + 真实 NAT 设备补跑 eMule 式可达证据：至少一份 direct 可达、一份 direct 失败但 relay 送达",
+            "补跑时由实验执行人签 attestation（真实网关 WAN IP / 两端内网 IP / 两台 machine_id / 真实 STUN 分类报告），层级必须 real-multi-nat",
+            "两条路径各 ≥30 次真实唤醒，同时记录唤醒前的可达性声明查询结果（ADR-013）",
+            "--aggregate 按 HighID / LowID 两半汇总；类别覆盖只作描述性清单，未覆盖类别写入已知限制",
         ],
     }
 
 
 # ---------------------------------------------------------------------------
-# 聚合：只汇总真实报告；即便齐备也不置 pass
+# 聚合（ADR-016）：按 eMule 式可达语义判定证据齐备；类别只作描述性清单。
+# 只汇总真实报告；即便齐备也不置 pass。
 # ---------------------------------------------------------------------------
 
-def aggregate(folder: Path, cfg: dict, condition_path: str | None = None) -> dict:
-    found: dict[str, dict] = {}
-    required = class_ids(cfg)
-    for cid in required:
-        for p in sorted(folder.glob(f"*class-{cid}*real.json")):
-            try:
-                d = json.loads(p.read_text(encoding="utf-8"))
-            except (ValueError, OSError):
-                continue
-            if d.get("evidence_valid") is True and d.get("synthetic_evidence", False) is False:
-                found[cid] = {"report": p.name, "data": d}
-                break
-    cgnat_files = []
-    for p in sorted(folder.glob("*cgnat*real.json")):
+REAL_REPORT_SCHEMA_PREFIX = "coldrevive.s6.nat-matrix.class-real"
+
+
+def collect_real_reports(folder: Path) -> list[dict]:
+    """递归读取真实矩阵报告；非报告文件跳过，损坏文件不参与判定。"""
+    out: list[dict] = []
+    for p in sorted(folder.rglob("*real.json")):
         try:
             d = json.loads(p.read_text(encoding="utf-8"))
         except (ValueError, OSError):
             continue  # 损坏/不可读报告不得当作证据
-        if d.get("evidence_valid") is True and d.get("synthetic_evidence", False) is False:
-            cgnat_files.append(p)
-    missing = [c for c in required if c not in found]
-    coverage = len(found)
-    complete = not missing and bool(cgnat_files)
+        if not isinstance(d, dict) or not str(d.get("schema", "")).startswith(REAL_REPORT_SCHEMA_PREFIX):
+            continue
+        out.append({"file": p.name, "data": d})
+    return out
+
+
+def reach_evidence_state(reports: list[dict], cfg: dict) -> dict:
+    """按 ADR-016 判定 HighID / LowID 两半是否各有真实证据（纯计算，不写结论）。
+
+    字段缺失、层级不是 real-multi-nat、试验次数不足一律记为 rejected，
+    绝不回填默认值 —— 与「缺失/失败一律 BLOCKED」的纪律一致。
+    """
+    min_trials = cfg["min_trials_per_path"]
+    usable: list[dict] = []
+    rejected: list[dict] = []
+    for r in reports:
+        d = r["data"]
+        paths = d.get("paths") or {}
+        reasons: list[str] = []
+        if d.get("evidence_valid") is not True:
+            reasons.append("evidence_valid!=true")
+        if d.get("synthetic_evidence") is not False:
+            reasons.append("synthetic_evidence!=false")
+        if d.get("evidence_scope") != "real-multi-nat":
+            reasons.append("evidence_scope!=real-multi-nat")
+        for name in ("direct", "relay"):
+            q = paths.get(name) or {}
+            if not isinstance(q.get("trials"), int) or q["trials"] < min_trials:
+                reasons.append(f"{name}.trials<{min_trials}")
+            if not isinstance(q.get("succeeded"), int):
+                reasons.append(f"{name}.succeeded 缺失")
+        if reasons:
+            rejected.append({"file": r["file"], "reasons": reasons})
+            continue
+        usable.append({
+            "file": r["file"], "class": d.get("class"),
+            "direct_succeeded": paths["direct"]["succeeded"],
+            "relay_succeeded": paths["relay"]["succeeded"],
+        })
+    highid = [u["file"] for u in usable if u["direct_succeeded"] > 0]
+    lowid = [u["file"] for u in usable
+             if u["direct_succeeded"] == 0 and u["relay_succeeded"] > 0]
+    both_failed = [u["file"] for u in usable
+                   if u["direct_succeeded"] == 0 and u["relay_succeeded"] == 0]
+    return {
+        "criterion": "emule-like-reach (ADR-016)",
+        "usable_reports": usable,
+        "rejected_reports": rejected,
+        "highid_reports": highid,
+        "lowid_reports": lowid,
+        "both_paths_failed": both_failed,
+        "known_limitations": [f"{f}: direct 与 relay 两条都失败" for f in both_failed],
+        "complete": bool(highid) and bool(lowid),
+        "declaration_consistency_source": "ADR-013 / W5.2 21/21×3 真实证据；补跑时须同时记录声明查询结果",
+    }
+
+
+def aggregate(folder: Path, cfg: dict, condition_path: str | None = None) -> dict:
+    reports = collect_real_reports(folder)
+    reach = reach_evidence_state(reports, cfg)
+    required = class_ids(cfg)
+    found: dict[str, str | None] = {}
+    for cid in required:
+        found[cid] = next((r["file"] for r in reports
+                           if r["data"].get("class") == cid
+                           and r["data"].get("evidence_valid") is True), None)
+    cgnat_files = [r["file"] for r in reports
+                   if r["data"].get("class") == "cgnat"
+                   and r["data"].get("evidence_valid") is True]
+    missing = [c for c in required if found[c] is None]
+    coverage = len([c for c in required if found[c]])
+    # 描述性：类别清单是否凑齐，与 pass 无关（ADR-016）。
+    matrix_complete = not missing and bool(cgnat_files)
+    complete = reach["complete"]
     overall = None
     if complete:
-        vals = [found[c]["data"].get("overall_reachability") for c in required]
-        if all(isinstance(v, (int, float)) for v in vals):
+        picked = set(reach["highid_reports"]) | set(reach["lowid_reports"])
+        vals = [r["data"].get("overall_reachability") for r in reports if r["file"] in picked]
+        if vals and all(isinstance(v, (int, float)) for v in vals):
             overall = sum(vals) / len(vals)
-        else:
-            complete = False
     return {
-        "schema": "coldrevive.s6.nat-matrix.aggregate/v1",
+        "schema": "coldrevive.s6.nat-matrix.aggregate/v2",
         "harness": "tests/spikes/s6/nat_matrix.py",
         "recorded_at": now(),
         "mode": "aggregate",
         "source_dir": str(folder),
-        "rows": {c: (found[c]["report"] if c in found else None) for c in required},
+        "s6_reach_stance": cfg.get("s6_reach_stance", "emule-like-reach"),
+        "class_coverage_required_for_pass": cfg.get("class_coverage_required_for_pass", False),
+        "matrix_complete_is_pass_condition": False,
+        "reach_evidence": reach,
+        "rows": found,
         "missing_classes": missing,
+        "missing_classes_note": "描述性清单，不构成门禁失败（ADR-016）",
         "cgnat_evidence": bool(cgnat_files),
-        "matrix_coverage": f"{coverage} / 4 类真实 NAT（含 CGNAT 环境 {int(bool(cgnat_files))}/1）",
-        "matrix_complete": complete,
+        "matrix_coverage": (f"{coverage} / 4 类真实 NAT（含 CGNAT 环境 {int(bool(cgnat_files))}/1）"
+                            " —— 描述性，非 pass 前提"),
+        "matrix_complete": matrix_complete,
         "aggregate_reachability": overall,
         "r04_stance": cfg.get("r04_stance", "best-effort"),
         "r04_numeric_commitment": cfg.get("r04_numeric_commitment"),
         "reachability_note": ("aggregate_reachability 是**描述性统计**（须与样本量、观测环境一并读），"
-                              "不是达标线。R-04 承诺的是「每类都有一条可用的路 + 失败有回退」，"
-                              "不是百分比（ADR-012）。"),
+                              "不是达标线。产品承诺的是「每个节点都有一条可用的路 + 失败可解释」，"
+                              "不是百分比（ADR-012 / ADR-016）。"),
         "status": "OBSERVED" if complete else "BLOCKED",
         "evidence_valid": complete,
         "evidence_valid_for_pass": False,
@@ -444,7 +522,9 @@ def aggregate(folder: Path, cfg: dict, condition_path: str | None = None) -> dic
         "g2_claim": False,
         "spike_status_changed": False,
         "no_auto_pass": True,
-        "decision": "结论由实验执行人依 evidence_required 手工回填 spikes.json",
+        "s6_claim_wording": cfg.get("s6_claim_wording", "按 eMule 语义结案，带已知限制"),
+        "decision": ("结论由实验执行人依 evidence_required 手工回填 spikes.json；"
+                     "满足本判据后 G2 只能写「按 eMule 语义结案，带已知限制」"),
     }
 
 
@@ -478,7 +558,9 @@ def self_test(cfg: dict) -> int:
                    dr["evidence_valid"] is False and dr["g2_claim"] is False
                    and dr["s6_status"] == "not_run" and dr["spike_status_changed"] is False))
     checks.append(("dryrun_zero_coverage", dr["matrix_coverage_numeric"]["classes"] == 0))
-    ag = aggregate(REPORT_DIR, cfg)
+    # 自检必须与报告目录里当前的真实证据无关，否则补跑后会把「已有真实证据」误判成自检失败。
+    with tempfile.TemporaryDirectory() as empty_dir:
+        ag = aggregate(Path(empty_dir), cfg)
     checks.append(("aggregate_incomplete_is_blocked",
                    ag["status"] == "BLOCKED" and ag["matrix_complete"] is False
                    and ag["aggregate_reachability"] is None))
@@ -492,6 +574,54 @@ def self_test(cfg: dict) -> int:
                    and cfg.get("r04_numeric_commitment") is None
                    and ag.get("r04_numeric_commitment") is None
                    and ag.get("r04_stance") == "best-effort"))
+    checks.append(("aggregate_still_never_evidence_for_pass",
+                   ag["evidence_valid_for_pass"] is False))
+
+    # ADR-016：eMule 式可达语义（纯逻辑，synthetic=true，绝不当作证据）
+    checks.append(("s6_stance_is_emule_like_reach",
+                   cfg.get("s6_reach_stance") == "emule-like-reach"
+                   and cfg.get("class_coverage_required_for_pass") is False
+                   and cfg["evidence_policy"].get("class_coverage_required_for_pass") is False))
+    checks.append(("class_coverage_not_a_pass_condition",
+                   ag["class_coverage_required_for_pass"] is False
+                   and ag["matrix_complete_is_pass_condition"] is False
+                   and cfg["additional_environment"]["required"] is False))
+
+    def fake_report(name: str, direct_ok: int, relay_ok: int, **over: object) -> dict:
+        d = {
+            "schema": "coldrevive.s6.nat-matrix.class-real/v1",
+            "class": "port-restricted-cone",
+            "evidence_valid": True,
+            "synthetic_evidence": False,
+            "evidence_scope": "real-multi-nat",
+            "paths": {
+                "direct": {"trials": 30, "succeeded": direct_ok},
+                "relay": {"trials": 30, "succeeded": relay_ok},
+            },
+            "overall_reachability": 1.0,
+        }
+        d.update(over)
+        return {"file": name, "data": d}
+
+    both = reach_evidence_state(
+        [fake_report("highid.json", 30, 0), fake_report("lowid.json", 0, 30)], cfg)
+    checks.append(("reach_evidence_needs_both_halves",
+                   both["complete"] is True
+                   and len(both["highid_reports"]) == 1 and len(both["lowid_reports"]) == 1))
+    checks.append(("reach_evidence_lowid_only_incomplete",
+                   reach_evidence_state([fake_report("lowid.json", 0, 30)], cfg)["complete"] is False))
+    weak = reach_evidence_state(
+        [fake_report("highid.json", 30, 0),
+         fake_report("lowid.json", 0, 30, evidence_scope="cross-host-lab")], cfg)
+    checks.append(("lab_scope_rejected_from_reach_evidence",
+                   weak["complete"] is False and len(weak["rejected_reports"]) == 1))
+    broken = fake_report("broken.json", 0, 30)
+    broken["data"]["paths"]["direct"] = {"trials": 30}
+    lacking = reach_evidence_state([fake_report("highid.json", 30, 0), broken], cfg)
+    checks.append(("missing_succeeded_never_defaulted",
+                   lacking["complete"] is False
+                   and any("succeeded 缺失" in " ".join(r["reasons"])
+                           for r in lacking["rejected_reports"])))
 
     # 证据层级：两个条款必须能被独立判定（这是本轮新增的判据语义）
     st_same_host = clause_state(

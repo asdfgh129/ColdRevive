@@ -20,7 +20,9 @@ updated: 2026-11-17
 > `coldrevive-relay` 二进制 + 持有者订阅线程已落地）；[T2 本地接线验收](../../tests/e2e/t2/README.md)
 > 10/10 PASS，中继改用真实服务端但仍**无真实 NAT**，`evidence_valid=false`、
 > `s6_status=not_run`、`g2_claim=false`，**不构成 S6 / G2 证据**。
-> **S3 / S5 / S6 仍 `not_run`，G2 未达标、未宣称**；`cargo test --workspace --offline` 80/80。
+> **S3 / S5 / S6 状态：2026-11-17 已由所有者依证据判定**（S3 `pass` / S5 `fallback` /
+> S6 `pass`（`closed_with_exceptions`），见 §2.11 与[判定记录](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)）；
+> **G2 仍未达标、未宣称**（`g2_claim=false`，欠 M2 实现项）；`cargo test --workspace --offline` 168/168。
 > 详见 [G0-REVIEW §11](../06-plan/G0-REVIEW.md) 与 [ROADMAP §6](../06-plan/ROADMAP.md)。
 
 ## 1. 测试分层
@@ -98,10 +100,25 @@ WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**�
 > `t1-nat-20261114T084639Z.json`），与 T0 21/21 共同构成 **G1 通过**；「只有一台物理主机」的阻塞条件已消除。
 > 「M1 无 NAT 穿透栈」的**接线层**缺口已由 M2/W3.3 的 `cr-nat` 接入关闭
 > （[T2 本地接线验收](../../tests/e2e/t2/README.md) 10/10 PASS，`evidence_valid=false`）。
-> **S6 四类真实 NAT（含 CGNAT）矩阵仍未实测**，`S6.status` 保持 `not_run`。
+> **S6 判据现状**：2026-11-17 两半真实证据已齐，所有者判定 `pass`（`closed_with_exceptions`），
+> 详见 §2.11；机器常量 `s6_status` 仍为 `not_run`（工具不替人下结论）。
 > **2026-11-16 口径变更（[ADR-012](../02-architecture/adr/ADR-012-r04-best-effort.md)）**：
 > S6 不再以「可达率 ≥70%」判定，改为四条定性要求（5 类各有真实设备证据 / 每类两条路径各 ≥30 次
 > 真实观测 / 直连失败时中继必须送达 / 结论由执行人手工回填）。可达率降为描述性统计。
+> **2026-11-17 第二次口径变更（[ADR-016](../02-architecture/adr/ADR-016-s6-emule-like-reach.md)）**：
+> 上一条的「5 类各有真实设备证据」**不再是 pass 前提**——S6 阶段性改为 eMule 式可达语义：
+> 真实 NAT 设备上 HighID（`direct` 可达）与 LowID（`direct` 失败但 `relay` 送达）两半
+> 各有真实证据，节点自报声明与实测一致（ADR-013 / W5.2）；类别覆盖降级为描述性清单。
+> **一条没松**：条款①两台不同物理主机 / 条款②真实设备 / 每路径 30 次真实 `WAKEUP_ACK` /
+> 无数值承诺 / 不自动 pass / `S6.status=not_run` / `g2_claim=false`。
+> 满足后 G2 只能写「按 eMule 语义结案，带已知限制」。`nat_matrix.py --self-test` **24/24**。
+> 现有证据（2026-11-17 补跑后）：W3.7 symmetric 真实报告覆盖 LowID 一半
+> （direct 0/30 + relay 30/30）；反向拓扑报告覆盖 HighID 一半
+> （port-restricted-cone 持有 + symmetric 请求，direct **3/30** + relay **30/30**）。
+> `--aggregate` 得 `status=OBSERVED`、`evidence_valid=true`、`reach_evidence.complete=true`；
+> `full-cone`/`restricted-cone`/`cgnat` 仍登记为已知限制，类别清单（2/4）不是 pass 前提。
+> 按 eMule 语义可结案，但不得写「NAT 矩阵通过」或「G2 达标」。
+> 方法见 [nat-matrix.md §23](../../tests/spikes/s6/nat-matrix.md)。
 
 ### 2.3 W5.1 引擎下载验收（2026-11-16 新增）
 
@@ -473,6 +490,25 @@ ssh 退出会带走它，首轮 0 行；③ `-c 80` 被 aMule 自身的 KAD 流�
 缺口依旧：该 LAN 对端共享文件数为 0，能力「从旧客户端下载」只能靠自两端回环证明，须在 M1
 换真有共享文件的对端补测；`OP_SETREQFILEID (0x4F)` 的源码/客户端差异登记为开放观测。
 详见 [PLAN §23](../../tests/spikes/s2/PLAN.md)。
+
+### 2.11 2026-11-17 补跑与判定：S3 公网 key / S5 真实 tc/netem / S6 HighID
+
+按项目所有者显式授权（`S3 可以向公网发 key 测试…s6 的一半也进入实测，s5 也真实测一下`），
+三个残余证据缺口本轮都补了真实观测；随后由所有者依证据下判定
+（[G2-SPIKE-VERDICT-2026-11-17](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)）：
+
+| 项 | 真实证据 | 判定 |
+| :--- | :--- | :--- |
+| S3 公网 Mainline DHT | 两个独立进程、不同 node id；announce 宣告测试 infohash `f273a297…` 与 18081；query 不宣告，从公网 DHT 取回 `112.5.60.4:18081` | S3 = **`pass`**（只发 S3 测试 key；不代表 `cr-dht` 已实现） |
+| S3 跨进程 RSS | 两个并发真实进程逐秒采样；峰值 Working Set 12.38 + 12.66 = **25.04 MiB**，Private 7.96 MiB | 同上（低于 NFR-05 的 100 MB；是观测，不是承诺） |
+| S5 真实拥塞链路 | 221 上跨 netns veth + 内核 `htb 16mbit + netem 20ms`，RTT 19.9/27.0/41.0 ms；单条 BBR iperf3 会话内比较区间 | S5 = **`fallback`**：默认 ratio=0.02 前台劣化 **0.00%（3/3）**；ratio=0.2 中位 20% 不达标；ratio=0.05 有 1 轮 19.99%（未解释） |
+| S6 HighID 一半 | A（112.5.60.4，cone）持有 + 222（112.5.32.34，symmetric）请求；30 次/路径真实 `WAKEUP_ACK` | S6 = **`pass`**（`closed_with_exceptions`）：direct **3/30**、relay **30/30**；两半 `complete=true` |
+
+证据文件：`tests/spikes/s3/mainline_probe/reports/`、`tests/spikes/s5/utp_netem/reports/`、
+`tests/spikes/s6/reports/highid-run-30/` 与 `tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json`
+（均按各自 `.gitignore` 留作本地证据，不入库）。判定**不改写**报告里的
+`evidence_valid_for_pass=false` / `auto_pass=false`；`g2_claim` 仍为 `false`——
+三项 Spike 只回答技术路线，G2 仍欠 M2 实现项（`cr-dht`、LRU 调度接引擎、中继生产化、BT/TCP 打洞）。
 
 ## 3. 兼容性矩阵（必须全绿）
 

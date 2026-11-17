@@ -1,41 +1,67 @@
 {
-  "schema": "coldrevive.s6.nat-matrix/v1",
+  "schema": "coldrevive.s6.nat-matrix/v2",
   "milestone": "M2/W3.5①",
   "spike": "S6",
   "gate": "G2 (未宣称达标)",
   "r04_stance": "best-effort",
   "r04_numeric_commitment": null,
-  "r04_requirement": "不承诺任何可达率数值。产品承诺的是：每类环境都有一条可用的路（直连或中继回退），且失败必须可解释、可感知。可达率只作为描述性统计记录（含样本量与观测环境），不作达标线。",
+  "r04_requirement": "不承诺任何可达率数值。产品承诺的是：每个节点都有一条可用的路（直连或中继回退），且失败必须可解释、可感知。可达率只作为描述性统计记录（含样本量与观测环境），不作达标线。",
+  "s6_reach_stance": "emule-like-reach",
+  "s6_stance_status": "interim",
+  "s6_stance_decided_by": "项目所有者",
+  "s6_stance_decided_at": "2026-11-17",
+  "s6_stance_adr": "ADR-016",
+  "s6_stance_review_trigger": "M4 前，或当 >=4 个不同真实出口可用时（先到为准），重新评审是否恢复完整类别矩阵；维持本判据须追加复审记录，不得默示延期",
+  "s6_stance_summary": "阶段性判据：达到 eMule 式可达语义即可（HighID 直连 / LowID 只走中继 / 失败可预知）。NAT 类别覆盖降级为描述性清单，不再是 pass 前提；真实设备、两台物理主机、30 次真实 WAKEUP_ACK、不自动 pass 一条不松。",
+  "class_coverage_required_for_pass": false,
   "s6_pass_criteria": [
-    "5 类环境（4 类 NAT + CGNAT）各有 ≥1 份 evidence_valid=true 的逐类报告",
-    "每类 direct 与 relay 两条路径各 ≥30 次真实观测，成功判据是收到真实 WAKEUP_ACK",
-    "direct 失败的环境里 relay 必须送达；两条都失败的环境记为该类不可用，作为已知限制写入报告",
-    "结论由实验执行人依证据手工回填 spikes.json；脚本永不置 pass"
+    "在真实 NAT 设备上取得 >=1 份 evidence_valid=true 的 real-multi-nat 报告；条款①两端分处两台不同物理主机、条款② nat_is_real_device 可证伪，两条都不变",
+    "每份报告的 direct 与 relay 两条路径各 >=30 次真实唤醒，成功判据是收到真实 WAKEUP_ACK(status=OK)；超时、缺字段、载体错误一律计入失败",
+    "至少一份报告显示 direct 可达（HighID 语义），至少一份显示 direct 失败但 relay 送达（LowID 语义）；两条都失败的环境记为已知限制并写明，不得静默省略",
+    "节点自报可达性与实测行为一致：只有 relay-only 可跳过直连，unknown 不得当作 LowID（ADR-013 / W5.2 证据）",
+    "NAT 类别覆盖不再构成门禁条件；--census 清单保留为描述性材料，未覆盖类别写入已知限制，不得折算成矩阵覆盖或可达率",
+    "不承诺任何可达率数值（ADR-012）；结论由实验执行人依证据手工回填 spikes.json；脚本永不置 pass；s6_status=not_run / g2_claim=false / evidence_valid_for_pass=false 不变"
   ],
-  "s6_not_required": "不要求 aggregate_reachability 达到任何阈值；该字段仅供描述",
+  "s6_not_required": "不要求凑齐 4 类 NAT + CGNAT，不要求 aggregate_reachability 达到任何阈值；后者仅供描述",
+  "s6_claim_wording": "按 eMule 语义结案，带已知限制；不得写成「NAT 矩阵通过」或「G2 达标」",
   "min_trials_per_path": 30,
+  "required_reach_evidence": {
+    "highid_like": "至少一份 evidence_valid=true 的真实报告，direct 路径 succeeded > 0",
+    "lowid_like": "至少一份 evidence_valid=true 的真实报告，direct 路径 succeeded == 0 且 relay 路径 succeeded > 0",
+    "both_paths_min_trials": 30,
+    "success_signal": "WAKEUP_ACK(status=OK)",
+    "declaration_consistency": "由 ADR-013 / W5.2 的 21/21×3 真实证据承担；补跑时须同时记录声明查询结果"
+  },
   "required_classes": [
     {
       "id": "full-cone",
       "label": "完全锥型 NAT",
+      "role": "descriptive-inventory",
+      "pass_requirement": false,
       "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
       "paths": ["direct", "relay"]
     },
     {
       "id": "restricted-cone",
       "label": "地址限制锥型 NAT",
+      "role": "descriptive-inventory",
+      "pass_requirement": false,
       "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
       "paths": ["direct", "relay"]
     },
     {
       "id": "port-restricted-cone",
       "label": "端口限制锥型 NAT",
+      "role": "descriptive-inventory",
+      "pass_requirement": false,
       "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
       "paths": ["direct", "relay"]
     },
     {
       "id": "symmetric",
       "label": "对称型 NAT",
+      "role": "descriptive-inventory",
+      "pass_requirement": false,
       "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
       "paths": ["direct", "relay"]
     }
@@ -43,25 +69,30 @@
   "additional_environment": {
     "id": "cgnat",
     "label": "运营商级 NAT（CGNAT）",
-    "required": true,
+    "role": "descriptive-inventory",
+    "pass_requirement": false,
+    "required": false,
     "required_attestation": ["class", "gateway_wan_ip", "local_ip", "peer_ip", "machine_ids", "real_nat_evidence", "operator", "recorded_at"],
     "paths": ["direct", "relay"],
-    "note": "四类 NAT 之外必须至少覆盖 1 个 CGNAT 出口；不单独计入 4 类覆盖率，但缺失时不得宣称矩阵完成"
+    "note": "ADR-016 后不再是 pass 前提；仍可作为描述性样本归档，但缺失时不得据此判 S6 失败，也不得把已有覆盖写成矩阵完成"
   },
-  "classification_method": "RFC 5389 STUN 映射行为 + RFC 3489/5780 CHANGE-REQUEST 过滤行为 + CGNAT 启发式；分类证据须来自真实 STUN 探针报告，不得由 attestation 自称类型替代",
+  "classification_method": "RFC 5389 STUN 映射行为 + RFC 3489/5780 CHANGE-REQUEST 过滤行为 + CGNAT 启发式；分类证据须来自真实 STUN 探针报告，不得由 attestation 自称类型替代。分类仅用于标注报告与 --census 清单，不用于判定覆盖是否达标",
   "measurement_protocol": [
-    "每类 NAT 环境在两台**不同物理主机**上各启动 coldrevived，配置 nat 段并指向真实 STUN / 真实中继",
-    "由实验执行人签 attestation：真实网关 WAN IP、两端内网 IP、两台 machine_id、STUN 分类报告路径、CGNAT 证据",
-    "对每条路径（direct 打洞 / relay 回退）执行 ≥30 次真实唤醒；成功判据是收到真实 WAKEUP_ACK（status=OK）",
-    "记录每次真实 CLI 输出的 ok / ack_status / path / rtt_ms；超时、错误、字段缺失一律计入失败，不回填默认值",
-    "逐类产出 real 报告；--aggregate 只有在 4 类 + CGNAT 证据齐备且 evidence_valid=true 时才计算聚合可达率",
-    "脚本永远不改 spikes.json 的 status；pass / fail 由实验执行人依 evidence_required 手工回填"
+    "每个被测环境在两台**不同物理主机**上各启动 coldrevived，配置 nat 段并指向真实 STUN / 真实中继",
+    "由实验执行人签 attestation：真实网关 WAN IP、两端内网 IP、两台 machine_id、真实 STUN 分类报告路径；层级必须 real-multi-nat",
+    "对每条路径（direct 打洞 / relay 回退）执行 >=30 次真实唤醒；成功判据是收到真实 WAKEUP_ACK（status=OK）",
+    "记录每次真实 CLI 输出的 ok / ack_status / path / rtt_ms，以及唤醒前的可达性声明查询结果（ADR-013）；超时、错误、字段缺失一律计入失败，不回填默认值",
+    "逐环境产出 real 报告；--aggregate 按 eMule 式可达语义汇总（HighID / LowID 两半各有真实证据），类别覆盖只作描述性清单",
+    "脚本永远不改 spikes.json 的 status；结论由实验执行人依 evidence_required 手工回填，声明口径为「按 eMule 语义结案，带已知限制」"
   ],
   "evidence_policy": {
     "no_auto_pass": true,
     "no_synthetic_evidence": true,
     "missing_or_failed": "BLOCKED",
     "s6_status_always": "not_run",
-    "g2_claim_always": false
+    "g2_claim_always": false,
+    "evidence_valid_for_pass_always": false,
+    "s6_reach_stance": "emule-like-reach",
+    "class_coverage_required_for_pass": false
   }
 }

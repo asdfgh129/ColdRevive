@@ -2,6 +2,121 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.78] - 2026-11-17 — S3 / S5 / S6 判据判定（所有者依证据手工回填）
+
+> 所有者指令：「根据实验的结果，给 S3/s5/s6 下判据」。本轮是**判定**，不是新的测量：
+> 不改任何实测报告，不改任何工具常量，也不宣称 G2 达标。
+> 判定记录：[G2-SPIKE-VERDICT-2026-11-17](docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md)、
+> 机读 `tests/fixtures/g2-spike-verdicts.toml`。
+
+- **S3 = `pass`**（限定范围）：两条判据均有真实观测直接支撑 —— 串扰 0（结构层 anomalies/leak=0、
+  线级 1437/1437 畸形帧被拒 + misrouted=0 + loss=0、跨主机 17/17）；资源增量 10k=2.26 MiB /
+  50k=11.08 MiB、跨进程峰值合计 25.04 MiB、双栈带宽 3.276 Mbit/s 呈加法；公网 Mainline 测试 key
+  由独立进程取回 `112.5.60.4:18081`。**边界**：`cr-dht` 仍是骨架，此判定只回答「双栈资源可控」，
+  不得推出「双栈 DHT 已实现」；G3 仍按 `close_with_exceptions` 结案。
+- **S5 = `fallback`**：Spike 主张的机制（uTP/LEDBAT 自动退让）为假（`librqbit-utp 0.7.0` 仅 CUBIC）；
+  NFR-03 两半由 `spikes.json` 早已登记的 fallback「令牌桶 + 连接数限制」在真实内核链路达成 ——
+  默认 `ratio=0.02` 前台劣化 0.00%（3/3 轮）。**风险形态改为「配置不变量被改回」**：
+  默认值不得回调到 0.05/0.2；0.05 档 1/3 轮 19.99% 记为未解释观测。R-07 维持 🟠。
+- **S6 = `pass`（`closed_with_exceptions`）**：ADR-016 判据 2/3 满足 —— HighID direct 3/30 +
+  relay 30/30，LowID direct 0/30 + relay 30/30，`aggregate` 为 `OBSERVED` / `complete=true` /
+  `rejected=[]`。结案口径固定为「按 eMule 语义结案，带已知限制」；`full-cone`/`restricted-cone`/
+  `cgnat` 仍是已知限制；**机器字段 `census s6_status=not_run` / `g2_claim=false` /
+  `evidence_valid_for_pass=false` 不变**（工具不替人下结论，办法同 G3 的
+  `g3_status` vs `g3_status_declared`）。
+- **G2 仍未达标**：`g2_claim=false`。三项 Spike 只回答技术路线是否成立；M2 还欠实现项 ——
+  `cr-dht` 等骨架 crate 的引擎与资源治理、LRU 调度接引擎、中继生产化收尾、BT/TCP 打洞。
+- **连带修改**：`spikes.json`（三个 `status` + `verdict_2026_11_17` 块 + `m2_progress`）、
+  `probe_conditions.py`（状态改为只读转述 `spikes.json`，S6 判据文字改按 ADR-016，不再硬编码
+  `not_run`）、`G0-REVIEW` §2/§11、`TEST.md` 头部与 §2.11、`RISK.md` R-03/R-04/R-07 补记、
+  `ROADMAP` 新增判定条目、S3/S5/S6 三个 README、`README` 版本行。
+- **纪律**：判定不改写 `evidence_valid_for_pass=false` / `auto_pass=false`；
+  `probe_conditions.py --self-test` 5/5、`nat_matrix.py --self-test` 24/24、
+  `cargo test --workspace --offline` 168/168、`build_docs.py --check` 通过。
+
+## [2.4.77] - 2026-11-17 — 三个残余证据缺口的真实回填（S3 公网 key / S5 内核拥塞链路 / S6 HighID）
+
+> 所有者显式授权：「S3 可以向公网发 key 测试，未完成的 3 项都进入测试完成，s6 的一半也进入实测，s5 也真实测一下」。
+> 本轮是**证据回填**，不是门禁放行：S3/S5/S6 的 `status` 仍 `not_run`，`g2_claim=false`，
+> `evidence_valid_for_pass=false`，脚本没有自动置 pass。
+
+- **S3 公网 Mainline DHT 测试 key（已完成）**：新增独立工程 `tests/spikes/s3/mainline_probe/`
+  （依赖已锁定的 `librqbit-dht 9.1.0`）。两个独立进程、不同 node id：announce 进程加入公网
+  DHT（bootstrap 后路由表 82 节点）并宣告测试 infohash `f273a297…` 与端口 18081；
+  query 进程**不宣告**，只按同一 infohash 查询，从公网 DHT 取回 `112.5.60.4:18081`。
+  只发布 S3 测试 key，不发布产品资源 Key；报告
+  `s3-mainline-public-20261117.json`（工作区产物，gitignore）。
+- **S3 跨进程 RSS（已完成）**：`sample_rss.sh` 并发跑两个真实 probe 进程，逐秒采样 Windows
+  `WorkingSet64` / `PrivateMemorySize64`。峰值 12.38 + 12.66 = **25.04 MiB**，
+  Private 合计 7.96 MiB，低于 SRS NFR-05 的 100 MB；报告
+  `s3-cross-process-rss-20261117.json`（工作区产物，gitignore）。
+- **S3 G3 口径**：沿用 2026-11-16 所有者人工结论 `close_with_exceptions`
+  （`tests/fixtures/g3-closeout.toml`），**不是全绿**。本轮公网 key 测试没有复审
+  BitComet LT Seed / aMule KAD 索引两条例外。
+- **S5 真实拥塞链路（已完成）**：新增 `tests/spikes/s5/utp_netem/`（跨 netns veth +
+  内核 `htb 16mbit + netem delay 20ms 2ms`，RTT 19.9/27.0/41.0 ms）。首版独立会话基线漂移
+  太大，改为**单条连续 iperf3 BBR 会话**内比较 baseline/concurrent/recovery 区间中位。
+  结果：默认 `ratio=0.02` 后台实际占比 0.0199、前台劣化 **0.00%（3/3）**；
+  `ratio=0.2` 中位 20% 不达标；`ratio=0.05` 中位 0.01% 但有 1 轮 19.99%，不写稳定达标。
+  报告 `s5-utp-netem-20261117.json`（工作区产物，gitignore）。
+- **S6 HighID 一半（已完成实测）**：补齐 `run_real_nat_highid.py` 的非 smoke 30 次分支。
+  反向拓扑 A（112.5.60.4，cone）持有 + 222（112.5.32.34，symmetric）请求：
+  direct **3/30 成功**（打到公网 47488、`ack_status=OK`）、relay **30/30 成功**，
+  载体错误 0；持有者 STUN 映射端口 47488 ≠ 内部 17801，真实设备可证伪。
+  与 W3.7 LowID 报告（direct 0/30 + relay 30/30）合并后，`--aggregate` 得
+  `status=OBSERVED`、`evidence_valid=true`、`reach_evidence.complete=true`；
+  类别覆盖 2/4（CGNAT 0/1）仍是描述性清单。
+- **声明口径不变**：S6 只能写「按 eMule 语义结案，带已知限制」，不得写「NAT 矩阵通过 /
+  G2 达标」。direct 3/30 是描述性观测，不是可达率数字承诺；
+  `full-cone`/`restricted-cone`/`cgnat` 未测，登记为已知限制。
+- **文档/机读回填**：`spikes.json` 的 S3/S5/S6 observations 增补本轮证据；
+  `nat-matrix.md` §23.4、`TEST.md` §2.11、`G0-REVIEW`、`RISK` R-03/R-04/R-07、`README` 版本行同步。
+
+## [2.4.76] - 2026-11-17 — ADR-016：S6 判据改为 eMule 式可达语义，类别覆盖不再是 pass 前提
+
+> 项目所有者 2026-11-17 决定：「改判据，目前只要达到 eMule 类似的可达就可以了」。
+> 这是**阶段性判据 + 明确复审时点**，不是 G2 达标声明，也不是把没测的格子填成通过。
+
+- **决策**：新增 [ADR-016](docs/02-architecture/adr/ADR-016-s6-emule-like-reach.md)（已接受）。
+  按 ADR 索引 §4「已接受的 ADR 不修改正文」，**不改写 ADR-012 / ADR-013 正文**；
+  ADR-016 取代 ADR-012「S6 现在的验收口径」第 1 条（5 类各有逐类报告）与
+  `required_classes` 作为 pass 前提的地位。ADR-012 取消一切数值承诺的结论继续有效。
+- **背景**：§13 已论证「一个出口只对应一个真实 NAT 类别」，凑齐 4 类 + CGNAT 需 ≥4 个不同
+  真实出口；§18.1 否证串行重测 / 配置变体 / 合成 NAT 可以凑格子。G2 被卡在环境采购而非工程能力。
+  ADR-013 / W5.2 已把 eMule 的 LowID 自我声明落地（真实环境 21/21 连续 3 轮），
+  因此「按类别抽样出数字」本就失去意义。
+- **新判据**（`nat_matrix_config.json` → `s6_pass_criteria`）：真实 NAT 设备上
+  HighID（`direct` 可达）与 LowID（`direct` 失败但 `relay` 送达）两半各有真实证据；
+  节点自报声明与实测一致（只有 `relay-only` 可跳过直连，`unknown` 不得当 LowID）；
+  类别覆盖降为描述性清单，未覆盖类别写入已知限制。
+- **一条没松**：条款①两台不同物理主机、条款② `nat_is_real_device` 可证伪、
+  每条路径 ≥30 次真实 `WAKEUP_ACK(status=OK)`、无可达率数字、脚本永不置 pass、
+  `S6.status=not_run` / `g2_claim=false` / `evidence_valid_for_pass=false`。
+  **声明口径**：满足后 G2 只能写「按 eMule 语义结案，带已知限制」，不得写「NAT 矩阵通过 / G2 达标」。
+- **机器侧落地**：`nat_matrix_config.json` 升 `/v2`（`s6_reach_stance=emule-like-reach`、
+  `class_coverage_required_for_pass=false`、重写 `s6_pass_criteria` 与 `measurement_protocol`）；
+  `nat_matrix.py` 的 `--aggregate` 改按 `reach_evidence_state()` 汇总 HighID/LowID 两半，
+  类别 `matrix_complete` 保留但 `matrix_complete_is_pass_condition=false`，
+  `--self-test` **24/24 PASS**（新增 7 条：立场常量、覆盖非前提、两半判据、弱层级拒收、缺字段不回填等）；
+  `cr-nat` 新增 `S6_REACH_STANCE` / `S6_CLASS_COVERAGE_REQUIRED_FOR_PASS` / `S6_CLAIM_WORDING`
+  与 2 条单测；`census.rs` 汇总 JSON、`coldrevive-nat --report` 输出显式带上立场，
+  「判据要求 / 独立覆盖」改为「清单类别 / 独立覆盖（描述性，非 pass 前提）」。
+- **机读状态**：`spikes.json` 的 `S6.criteria` 改写、`g0_review.must_validate.S6` 追加口径变更、
+  新增 `g0_review.s6_criteria_amendment_2026_11_17` 留痕；
+  **8 项 Spike 状态一字未动**（S3/S5/S6 仍 `not_run`），`g2_claim=false`、`spike_status_changed=false`。
+- **用现有环境复核**：对 `tests/spikes/s6/reports` 跑新 `--aggregate` →
+  `status=BLOCKED`、`evidence_valid=false`、`highid_reports=[]`、
+  `lowid_reports=['s6-matrix-class-symmetric-real.json']`（W3.7：direct 0/30 + relay 30/30）。
+  即 **LowID 一半已有真实设备证据**；`112.5.60.4`（EIM / port-restricted cone）仍只有分类、
+  缺逐类 30 次实测，**HighID 一半待用现有两台物理主机补跑，无需新增出口**。
+- **文档同步**：ADR 索引（16 项 / 15 已接受 / 1 待定）、`nat-matrix.md` 新增 §23（并在抬头标注
+  §13/§18/§19 为历史论证）、G0-REVIEW 第二次口径变更、ROADMAP v2.16（G2 两处行 + 路线说明）、
+  TEST §2.2、OPEN-QUESTIONS Q4、RISK R-04、docs/README、本文件与 README 版本行。
+- **回归**：`cargo test --workspace --offline` **168 passed / 0 failed**（原 166 + 2 条新单测）；
+  `nat_matrix.py --self-test` 24/24；`scripts/build_docs.py --check` 通过。
+- **复审时点（必须）**：**M4 前**，或当 ≥4 个不同真实出口可用时（先到为准），
+  重新评审是否恢复完整类别矩阵；维持本判据须在 ADR-016 追加复审记录，不得默示延期。
+
 ## [2.4.75] - 2026-11-17 — M2/W5.1g + W5.2：aMule 公网 KAD 复核、「先查再打洞」收口
 
 > W5.1g 把 G3 里「aMule KAD 索引面」的取证缺口关掉；W5.2 把 ADR-013 的可达性声明真正接进

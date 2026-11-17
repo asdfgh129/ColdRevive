@@ -20,7 +20,7 @@ updated: 2026-11-11
 | **Q1** | 公共 KAD 网络对 `ColdRevive_V1:` **按运营速率**发布是否视为污染？<br>（接纳性已解决：2026-11-10 S2 `pass`，`PUBLISH_RES` + 跨进程取回） | 决定 [ADR-001](../02-architecture/adr/ADR-001-kad-network.md) 默认模式与「生态借力」是否成立 | S2 / R-02 | M4 前 |
 | **Q2** | 中文分词方案与关键词 Key 数量的性价比拐点在哪？ | 搜索召回率与 KAD 负载的权衡（默认 8 个 Key 未经验证） | R-13 | M0 压测 |
 | **Q3** | 伴随种子的分片大小策略（固定 vs 自适应）与跨客户端兼容取舍 | 造种开销、Swarm 合并可能性 | S7 | M1 |
-| **Q4** | 私有唤醒 UDP 在对称 NAT / CGNAT 下的实际成功率 | 决定是否加大中继投入 | S6 / R-04 / [G0-REVIEW §5](G0-REVIEW.md) | M2 |
+| **Q4** | 私有唤醒 UDP 在对称 NAT / CGNAT 下的实际成功率<br>（**2026-11-17 结案**：数值问法已随 ADR-012 作废；eMule 式可达两半证据齐，S6 = `pass`（`closed_with_exceptions`），见 §2 补记） | 决定是否加大中继投入 | S6 / R-04 / [G0-REVIEW §5](G0-REVIEW.md) | ~~M2~~ 已结案 |
 | **Q5** | 是否向公共 Mainline DHT 发布影子索引（可能放大「虚假在线」观感） | 兼容性与生态礼貌的边界 | [ADR-007](../02-architecture/adr/ADR-007-tracker.md) | M2 |
 | **Q6** | 激励机制是否必要、如何抗女巫 | 长期节点留存 | [ADR-005](../02-architecture/adr/ADR-005-incentive.md) | M4 |
 | **Q7** | 跨协议补源（MD4 9.28 MB ↔ BT 动态分片）**哈希转译**投入产出比<br>（范围已由 [ADR-011](../02-architecture/adr/ADR-011-ed2k-interop.md) 收窄；eD2k 传输栈已排 v1） | v2 是否排期 | [ADR-004](../02-architecture/adr/ADR-004-ed2k-scope.md) / R-10 | M5 前 |
@@ -122,3 +122,22 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 > [四类 NAT 矩阵执行协议](../../tests/spikes/s6/nat_matrix.py) 已交付，本机 `--dry-run` /
 > `--aggregate` 均 `BLOCKED`、`matrix_coverage=0/4`；Q4 的对称 NAT / CGNAT 成功率
 > 仍须用户提供真实多 NAT 环境并签 attestation 逐类实测后，由实验执行人手工回填。
+>
+> **2026-11-17 补记（Q4 范围收窄，仍未结案）**：[ADR-016](../02-architecture/adr/ADR-016-s6-emule-like-reach.md)
+> 由项目所有者决定把 S6 阶段性判据改为 **eMule 式可达语义**，类别覆盖不再是 pass 前提。
+> 因此 Q4 中「对称 NAT / CGNAT 的**成功率**」这一问法**已随 ADR-012 一并作废**（不承诺数值），
+> 「必须凑齐 4 类 + CGNAT 出口」也不再是 G2 前置条件。
+> Q4 剩下的有效部分是：**在真实 NAT 设备上，每个节点是否都有一条可用的路（direct 或 relay），
+> 失败是否可预知可解释、声明是否与实测一致**。W3.7 的 symmetric 真实报告已答 LowID 一半，
+> `112.5.60.4`（EIM）的 HighID 一半待用现有两台物理主机补跑；未覆盖类别登记为已知限制。
+> `S6.status` 仍 `not_run`、`g2_claim=false`。复审时点 **M4 前，或 ≥4 个不同真实出口可用时**。
+>
+> **2026-11-17 结案（Q4 → 移出开放问题）**：HighID 那一半已用现有两台物理主机补跑
+> （A `112.5.60.4` 持有 / 222 请求，direct 3/30 + relay 30/30，载体错误 0），
+> 与 W3.7 的 LowID 报告（direct 0/30 + relay 30/30）合起来，`--aggregate` 得
+> `OBSERVED` / `evidence_valid=true` / `complete=true`。所有者据此判 **S6 = `pass`
+> （`closed_with_exceptions`）**，结案口径「按 eMule 语义结案，带已知限制」。
+> **Q4 剩下的是已知限制，不是问题**：`full-cone` / `restricted-cone` / `cgnat` 未测，
+> 登记在 [nat-matrix.md §23.5](../../tests/spikes/s6/nat-matrix.md) 与判定记录
+> [G2-SPIKE-VERDICT-2026-11-17](G2-SPIKE-VERDICT-2026-11-17.md)；复审时点不变。
+> `g2_claim` 仍为 `false`——S6 有结论不等于 G2 达标（还欠 M2 实现项）。

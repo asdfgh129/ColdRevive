@@ -47,6 +47,11 @@ updated: 2026-11-13
 
 **风险映射**：S1 → R-05、S2 → R-02、S3 → R-03、S4/S5/S7 → R-06/R-07、S6 → R-04、S8 → R-11，详见 [RISK](../05-quality/RISK.md)。
 
+> **现状（2026-11-17）**：**S3 = `pass`（限定范围）/ S5 = `fallback` / S6 = `pass`（`closed_with_exceptions`）**，
+> 八项 Spike 至此全部有结论。判定记录见 [DOC-23](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)；
+> 下文 2026-11-10 ~ 11-16 的状态描述按历史保留，不再代表现状。`g2_claim` 仍为 `false`
+> —— 三项判定只回答技术路线，G2 还欠 M2 实现项。
+
 > **当前状态（2026-11-10）**：**S2 = `pass`** —— 公共 KAD 的第三方节点接受并返回了我们的命名空间条目
 > （`PUBLISH_RES load=1` → `SEARCH_RES` 命中，5 个 tag 原样返回）；随后以两个独立进程补做 A/B
 > （`split-a` 发布 / `split-b` 不同 socket、KadID 种子与 bootstrap 入口独立取回），返回的 descriptor

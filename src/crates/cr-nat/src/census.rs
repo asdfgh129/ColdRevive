@@ -2,10 +2,10 @@
 //!
 //! # 为什么需要它
 //!
-//! S6 的矩阵判据要求「4 类 NAT + 1 个 CGNAT」各有真实设备证据，而**一个出口只对应一个
-//! 真实 NAT 类别**——类别多样性买不到，只能凑环境。真实条件不齐时（例如手上所有出口
-//! 同属一个运营商），正确的做法不是伪造覆盖，而是**把每一次能做的观测按统一格式存下来**，
-//! 等条件齐了直接汇总，不必回头重测。本模块就是那个统一格式。
+//! ADR-016（2026-11-17）后 S6 按 **eMule 式可达语义**验收，类别覆盖**不再是 pass 前提**：
+//! 本模块的清单纯粹是描述性材料（「手上这些出口各是哪一类」），缺哪一类都不得据此判
+//! S6 失败，也不得折算成矩阵覆盖。真实条件不齐时，正确的做法是把每次能做的观测按统一
+//! 格式存下来，等条件齐了直接汇总，不必回头重测；本模块就是那个统一格式。
 //!
 //! # 门禁边界（必须逐条读）
 //!
@@ -33,7 +33,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use cr_core::Json;
 
-use crate::{FilterBehavior, NatType, TraversalReport, S6_REQUIRED_MATRIX};
+use crate::{
+    FilterBehavior, NatType, TraversalReport, S6_CLASS_COVERAGE_REQUIRED_FOR_PASS,
+    S6_REACH_STANCE, S6_REQUIRED_MATRIX,
+};
 
 /// 普查记录格式版本。字段只增不改；改语义必须升版本。
 pub const CENSUS_VERSION: u32 = 1;
@@ -532,7 +535,7 @@ pub struct CensusSummary {
     pub class_inventory: BTreeMap<String, Vec<String>>,
     /// 只能靠配置变体复现的类别（有样本，但都带 `variant`）。
     pub variant_only_classes: Vec<String>,
-    /// 判据要求但**没有任何独立出口**覆盖的类别。
+    /// 清单中**尚无独立出口**覆盖的类别（描述性；ADR-016 后不构成门禁失败）。
     pub missing_classes: Vec<String>,
     pub conflicts: Vec<String>,
     pub warnings: Vec<String>,
@@ -543,7 +546,7 @@ pub struct CensusSummary {
 }
 
 impl CensusSummary {
-    /// 独立出口覆盖的类别数（判据要求 5 类）。
+    /// 独立出口覆盖的类别数（描述性清单长度，ADR-016 后不是达分数）。
     pub fn independent_classes(&self) -> usize {
         self.class_inventory.len()
     }
@@ -583,7 +586,12 @@ impl CensusSummary {
             ("egresses", Json::arr(egresses)),
             ("class_inventory", Json::Obj(inv)),
             ("independent_classes", Json::n(self.independent_classes() as f64)),
+            ("class_inventory_size", Json::n(S6_REQUIRED_MATRIX.len() as f64)),
+            // 兼容旧报告读取方：字段名保留，但 ADR-016 后数值只是清单长度，
+            // 是否构成 pass 前提一律看 class_coverage_required_for_pass。
             ("required_classes", Json::n(S6_REQUIRED_MATRIX.len() as f64)),
+            ("s6_reach_stance", Json::s(S6_REACH_STANCE)),
+            ("class_coverage_required_for_pass", Json::b(S6_CLASS_COVERAGE_REQUIRED_FOR_PASS)),
             (
                 "variant_only_classes",
                 Json::arr(self.variant_only_classes.iter().map(|s| Json::s(s.as_str())).collect()),
@@ -943,6 +951,20 @@ mod tests {
         assert!(!s.g2_claim);
         assert_eq!(s.independent_classes(), 1);
         assert_eq!(s.missing_classes.len(), S6_REQUIRED_MATRIX.len() - 1);
+    }
+
+    #[test]
+    fn summary_states_that_class_coverage_is_not_a_pass_condition() {
+        // ADR-016：清单必须自带「我不要求类别覆盖」的机器可读声明，
+        // 免得看报告的人把 class_inventory_size 当成达标线。
+        let s = summarize(&[]);
+        let j = s.to_json();
+        assert_eq!(j.get("s6_reach_stance").and_then(Json::as_str), Some(S6_REACH_STANCE));
+        assert_eq!(j.get("class_coverage_required_for_pass").and_then(Json::as_bool), Some(false));
+        assert_eq!(j.get("class_inventory_size").and_then(Json::as_i64), Some(5));
+        assert_eq!(s.matrix_coverage, "none");
+        assert_eq!(s.s6_status, "not_run");
+        assert!(!s.g2_claim);
     }
 
     #[test]

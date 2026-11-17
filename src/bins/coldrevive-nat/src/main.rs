@@ -213,12 +213,12 @@ fn meta_from_tags(tags: &[(String, String)]) -> SampleMeta {
 }
 
 fn print_summary(s: &cr_nat::CensusSummary) {
-    println!("ColdRevive 出口普查汇总（类别清单，非矩阵覆盖；S6=not_run）");
+    println!("ColdRevive 出口普查汇总（描述性类别清单；S6=not_run，判据=eMule 式可达）");
     println!("---------------------------------------------------------------");
     println!("样本数              : {}（其中 unknown {}）", s.samples, s.unknown_class_samples);
     println!("出口数              : {}", s.egresses.len());
     println!(
-        "判据要求 / 独立覆盖 : {} 类 / {} 类",
+        "清单类别 / 独立覆盖 : {} 类 / {} 类（描述性，非 pass 前提）",
         cr_nat::S6_REQUIRED_MATRIX.len(),
         s.independent_classes()
     );
@@ -229,7 +229,7 @@ fn print_summary(s: &cr_nat::CensusSummary) {
     if !s.variant_only_classes.is_empty() {
         println!("  仅配置变体可复现    : {}", s.variant_only_classes.join(", "));
     }
-    println!("  缺（无独立出口）    : {}",
+    println!("  清单中未覆盖（描述性）: {}",
         if s.missing_classes.is_empty() { "-".to_string() } else { s.missing_classes.join(", ") });
     println!();
     println!("出口明细:");
@@ -255,10 +255,13 @@ fn print_summary(s: &cr_nat::CensusSummary) {
     }
     println!("---------------------------------------------------------------");
     println!(
-        "MATRIX_COVERAGE={}  R04_JUDGEABLE={}  S6_STATUS={}  G2_CLAIM={}",
+        "S6_STANCE={}  CLASS_COVERAGE_REQUIRED_FOR_PASS={}  MATRIX_COVERAGE={}  R04_JUDGEABLE={}  S6_STATUS={}  G2_CLAIM={}",
+        cr_nat::S6_REACH_STANCE,
+        cr_nat::S6_CLASS_COVERAGE_REQUIRED_FOR_PASS,
         s.matrix_coverage, s.r04_judgeable, s.s6_status, s.g2_claim
     );
     println!("注：类别清单不含任何可达性数字，不能折算成矩阵覆盖，也不能用于 R-04。");
+    println!("    ADR-016 后类别覆盖不是 pass 前提；S6 按 eMule 式可达语义验收（HighID 直连 / LowID 只走中继）。");
 }
 
 

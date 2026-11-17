@@ -35,7 +35,11 @@ pub use relay_server::{
     read_frame, write_frame, RelayHandle, RelayServer, RelayStats, DEFAULT_MAX_FRAME, HEADER_LEN,
 };
 
-/// S6 判据要求的 NAT 类型矩阵（四类 + CGNAT）。
+/// NAT 类别清单（四类 + CGNAT），**描述性用途**。
+///
+/// ADR-016（2026-11-17）后它**不再是 S6 的 pass 前提**：类别覆盖降级为 `--census`
+/// 归档清单与报告标注，缺任何一类都不得据此判 S6 失败，也不得折算成矩阵覆盖。
+/// S6 现在按 eMule 式可达语义验收（见 `S6_REACH_STANCE`）。
 pub const S6_REQUIRED_MATRIX: [NatType; 5] = [
     NatType::FullCone,
     NatType::RestrictedCone,
@@ -43,6 +47,18 @@ pub const S6_REQUIRED_MATRIX: [NatType; 5] = [
     NatType::Symmetric,
     NatType::Cgnat,
 ];
+
+/// S6 阶段性立场：**与 eMule 同语义的可达性**（ADR-016，2026-11-17 项目所有者决定）。
+/// 即「每个节点都有一条可用的路（direct / relay），且失败可预知、可解释」，
+/// 不是「穷举 4 类 NAT + CGNAT」，也不是任何可达率数字。
+pub const S6_REACH_STANCE: &str = "emule-like-reach";
+
+/// 类别覆盖是否构成 pass 前提：**否**。保留字段是为了让机器读到
+/// 「这里本来会要求覆盖，我们明确选择不要求」，而不是以为漏了。
+pub const S6_CLASS_COVERAGE_REQUIRED_FOR_PASS: bool = false;
+
+/// S6 声明口径：满足判据后 G2 只能这样写，不得写「NAT 矩阵通过 / G2 达标」。
+pub const S6_CLAIM_WORDING: &str = "按 eMule 语义结案，带已知限制";
 /// R-04 的立场：**尽力提供一种可能性，不承诺任何数值**（ADR-012，2026-11-16 项目所有者决定）。
 ///
 /// 旧的 `R04_MIN_REACHABILITY = 0.70` 已删除。理由不是「达不到」，而是**这个数字从一开始
@@ -294,8 +310,19 @@ pub fn needs_relay(report: &TraversalReport) -> bool {
 mod tests {
     use super::*;
     #[test]
-    fn matrix_covers_all_four_nat_types_plus_cgnat() {
+    fn matrix_is_a_five_class_descriptive_inventory() {
+        // ADR-016 后这个表只是描述性类别清单，不再是 pass 前提；
+        // 长度断言保留是为了防止清单被人悄悄删类，而不是为了判覆盖达标。
         assert_eq!(S6_REQUIRED_MATRIX.len(), 5);
+    }
+
+    #[test]
+    fn s6_stance_has_no_class_coverage_requirement_and_no_number() {
+        // ADR-016 + ADR-012：类别覆盖不是 pass 前提，也不许把可达率阈值加回来。
+        assert_eq!(S6_REACH_STANCE, "emule-like-reach");
+        assert!(!S6_CLASS_COVERAGE_REQUIRED_FOR_PASS);
+        assert_eq!(S6_CLAIM_WORDING, "按 eMule 语义结案，带已知限制");
+        assert!(R04_NUMERIC_COMMITMENT.is_none());
     }
 
     #[test]

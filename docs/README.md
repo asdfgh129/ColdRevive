@@ -64,6 +64,7 @@ updated: 2026-11-13
 | DOC-19 | 参考资料与待核实项 | [08-reference/REFERENCES.md](08-reference/REFERENCES.md) | 有效 |
 | DOC-21 | 法务评审材料包（S8） | [07-operations/LEGAL-REVIEW.md](07-operations/LEGAL-REVIEW.md) | 草稿 |
 | DOC-22 | G0 技术路线冻结评审记录 | [06-plan/G0-REVIEW.md](06-plan/G0-REVIEW.md) | 已接受 |
+| DOC-23 | S3 / S5 / S6 判据判定记录 | [06-plan/G2-SPIKE-VERDICT-2026-11-17.md](06-plan/G2-SPIKE-VERDICT-2026-11-17.md) | 已定稿 |
 
 ## 4. Front Matter 规范
 
@@ -129,6 +130,27 @@ updated: YYYY-MM-DD
 
 - 文档体系版本记录在 `CHANGELOG.md`；单文档版本记录在各自 front matter。
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
+- **v2.4.78 补记（2026-11-17 / 判定）**：**S3 = `pass`、S5 = `fallback`、S6 = `pass`（`closed_with_exceptions`）**
+  —— 三项 Spike 由所有者依真实证据手工判定，记录见
+  [G2-SPIKE-VERDICT-2026-11-17](06-plan/G2-SPIKE-VERDICT-2026-11-17.md) 与 `tests/fixtures/g2-spike-verdicts.toml`。
+  S3 限定在「资源可控 + 无串扰 + 公网 Mainline 测试 key 闭环」，不含 `cr-dht` 实现；
+  S5 的 NFR-03 由令牌桶 + 默认 `ratio=0.02` 满足，uTP/LEDBAT 退让被否证；
+  S6 只能写「按 eMule 语义结案，带已知限制」。
+  **机器常量不变**（`s6_status=not_run` / `g2_claim=false` / `evidence_valid_for_pass=false`），
+  **G2 仍未达标**（欠 M2 实现项）。新增 DOC-23。
+- **v2.4.76 补记（2026-11-17 / ADR-016）**：**S6 阶段性判据改为 eMule 式可达语义**
+  （[ADR-016](02-architecture/adr/ADR-016-s6-emule-like-reach.md)，项目所有者决定「目前只要达到
+  eMule 类似的可达就可以了」）。不再穷举 4 类 NAT + CGNAT：`required_classes` 降级为描述性清单、
+  不再是 pass 前提；改为要求真实 NAT 设备上 HighID（`direct` 可达）与 LowID（`direct` 失败但
+  `relay` 送达）两半各有真实证据，且节点自报声明与实测一致（ADR-013 / W5.2）。
+  **不变**：条款①两台不同物理主机 / 条款②真实设备 / 每路径 ≥30 次真实 `WAKEUP_ACK` /
+  ADR-012 无数值承诺 / 脚本不自动 pass / `S6.status=not_run` / `g2_claim=false`。
+  满足后 G2 只能写「按 eMule 语义结案，带已知限制」，不得写「NAT 矩阵通过」。
+  落地：新 ADR-016 + ADR 索引 16 项；`nat_matrix_config.json` / `nat_matrix.py`（`--self-test` 24/24）、
+  `cr-nat` 常量与 census 输出、`spikes.json` 的 `S6.criteria` 与
+  `g0_review.s6_criteria_amendment_2026_11_17`；G0-REVIEW / ROADMAP / TEST / RISK / OPEN-QUESTIONS
+  同步口径。`cargo test --workspace --offline` **168 passed / 0 failed**。
+  方法见 [nat-matrix §23](../tests/spikes/s6/nat-matrix.md)；复审时点 M4 前或 ≥4 个真实出口可用时。
 - **v2.7（2026-11-13，M1 开工补记）**：DOC-04 → 2.5、DOC-11 → 2.1（S5 实测标定默认值）、
   DOC-13 → 2.2、DOC-14 → 2.9、DOC-22 → 1.1；本轮未新增 DOC 编号，未改 `PROTOCOL_VERSION` 与 T0 golden。
   T0 real 21/21 PASS 只覆盖单机回环，G1 仍需 T1 与 S3/S5/S6 必测回填，M2 保持 `blocked_by_G1`（**历史口径，下条为更正**）。

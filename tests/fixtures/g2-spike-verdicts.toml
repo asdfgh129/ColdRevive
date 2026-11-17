@@ -1,0 +1,128 @@
+# S3 / S5 / S6 判据判定（人工判定，不是机器推断）
+#
+# 与 tests/fixtures/g3-closeout.toml 同一套办法：
+#   - spikes.json 记「有哪些证据、状态是什么」（机读）；
+#   - 本文件记「这些证据够不够、按什么口径结案、哪些话不许说」（只有人能定）。
+#
+# 脚本纪律：
+#   - 任何脚本都不得读取本文件去改写自己的输出字段；
+#   - census 的 s6_status 恒 not_run、报告里的 g2_claim / evidence_valid_for_pass 恒 false ——
+#     意思是「工具没有替人下结论」，与本文件的人工结论互不覆盖；
+#   - 本文件缺失时，判定就是「没有」，不许猜。
+
+schema = "coldrevive.g2.spike-verdicts/v1"
+authority = "human"
+decided_by = "项目所有者"
+decided_at = "2026-11-17"
+doc = "docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md"
+
+# 结论取值沿用 spikes.json 的 conclusion_values：not_run / pass / fail / fallback
+# 另加 closed_with_exceptions，只用于「判据满足但知识面有明写空白」的情形。
+g2_claim = false
+g2_note = """
+三项 Spike 判定完成不等于 G2 达标。G2 是 M2 出口，另欠实现项：
+cr-dht 等骨架 crate 的引擎与资源治理、LRU 冷热调度器接引擎、中继生产化收尾、BT/TCP 打洞。
+"""
+
+[[spike]]
+id = "S3"
+status = "pass"
+criteria_source = "spikes.json → S3.criteria"
+evidence = [
+  "tests/spikes/s3/mainline_probe/reports/s3-mainline-public-20261117.json",
+  "tests/spikes/s3/reports/s3-dualstack-io-20261113T062159Z.json",
+  "tests/spikes/s3/reports/s3-m1-dualstack-w35.json",
+]
+observed = """
+串扰 0（结构层 anomalies/leak = 0；线级 1437/1437 畸形帧被拒、misrouted=0、loss=0；跨主机 17/17）；
+资源增量 10k=2.26 MiB / 50k=11.08 MiB，跨进程峰值合计 25.04 MiB，带宽双栈相加 3.276 Mbit/s；
+公网 Mainline 测试 key 宣告后由独立进程取回 112.5.60.4:18081。
+"""
+boundaries = [
+  "cr-dht 仍是骨架，S3 的 pass 不表示 DHT 已在产品内实现",
+  "KAD 128-bit 的公网行为由 S2 承担，本轮未重复",
+  "G3 是 close_with_exceptions，不是全绿",
+  "25.04 MiB / 11.08 MiB 是观测，不是承诺",
+]
+claims_forbidden = [
+  "双栈 DHT 已实现",
+  "cr-dht 可用",
+  "内存占用不超过 25 MiB",
+]
+
+[[spike]]
+id = "S5"
+status = "fallback"
+criteria_source = "spikes.json → S5.criteria + NFR-03"
+evidence = [
+  "tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json",
+  "tests/spikes/s5/utp_netem/run_netem.sh",
+]
+observed = """
+真实内核 htb 16mbit + netem 20ms 跨 netns，后台为真实 librqbit-utp 0.7.0：
+ratio=0.02（现行默认）后台实际占比 0.0199、前台劣化 0.00%（3/3 轮）；
+ratio=0.05 中位 0.01% 但有 1 轮 19.99%（未解释，不得当稳定档）；
+ratio=0.20 中位 20.00%。librqbit-utp 0.7.0 源码只有 Cubic，无 LEDBAT。
+"""
+fallback_mechanism = "令牌桶限流（background_upload_ratio）+ 默认值 0.02"
+boundaries = [
+  "NFR-03 由 fallback 满足，不是 uTP/LEDBAT 退让",
+  "只在 16 Mbit / 20ms / 单机双 netns 上测过，未跨物理主机",
+  "0.05 档的 19.99% 单轮至今未解释",
+]
+claims_forbidden = [
+  "uTP 会自动退让",
+  "LEDBAT 已生效",
+  "0.05 档满足 NFR-03",
+  "任意链路下前台劣化不超过 5%",
+]
+
+[[spike]]
+id = "S6"
+status = "pass"
+verdict_kind = "closed_with_exceptions"
+claim_wording = "按 eMule 语义结案，带已知限制"
+criteria_source = "spikes.json → S6.criteria（ADR-016）"
+evidence = [
+  "tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json",
+  "tests/spikes/s6/reports/highid-run-30/s6-matrix-class-port-restricted-cone-real.json",
+  "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
+]
+observed = """
+HighID 语义：A(112.5.60.4, port-restricted-cone) 持有 / 222 请求，direct 3/30（命中 112.5.60.4:47488，ack OK）+ relay 30/30；
+LowID 语义：symmetric(112.5.32.34) direct 0/30 + relay 30/30；
+aggregate: OBSERVED / evidence_valid=true / complete=true / rejected=[]。
+"""
+machine_fields_unchanged = [
+  "census s6_status = not_run",
+  "report g2_claim = false",
+  "report evidence_valid_for_pass = false",
+]
+known_limitations = [
+  "full-cone / restricted-cone / cgnat 三类未测",
+  "symmetric 请求者打不通 direct 是 NAT 行为，不是缺陷",
+  "direct 3/30 只是描述性观测，不含可达率含义",
+]
+claims_forbidden = [
+  "NAT 矩阵通过",
+  "G2 达标",
+  "任意可达率 / 成功率百分比",
+]
+
+# ---------------------------------------------------------------------------
+# 复审
+# ---------------------------------------------------------------------------
+[[review_trigger]]
+id = "s6.semantics"
+what = "ADR-016 的 eMule 式语义是否恢复为完整类别矩阵"
+trigger = "M4 前，或 ≥4 个不同真实出口可用时（先到为准）"
+
+[[review_trigger]]
+id = "s5.fallback"
+what = "令牌桶 fallback 是否可换回协议退让"
+trigger = "接入带 LEDBAT 的 uTP 实现，或更换链路形状（带宽 / RTT）时重跑 utp_netem"
+
+[[review_trigger]]
+id = "s3.impl"
+what = "S3 的资源结论在真实 DHT 实现下是否仍成立"
+trigger = "cr-dht 真实实现接入后，用同一 harness 复测双栈资源增量"

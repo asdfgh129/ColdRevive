@@ -3,7 +3,7 @@
   "suite": "M0",
   "gate": "G0",
   "source": "docs/02-architecture/TECH-STACK.md §2",
-  "status_note": "当前状态（2026-11-13）：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-14 状态更正（以上均为历史演化记录，保留不改写）：G1 已通过（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true），M2 门禁解除并已开工（cr-nat 接入复活路径；T2 本地接线预检 10/10、evidence_valid=false，非 S6 证据）；S3/S5/S6 状态仍为 not_run，G2 未宣称达标。当前机读进度见 m1_progress.m2_gate 与 m2_progress；S6 四类 NAT（含 CGNAT）矩阵实测仍待真实多 NAT 环境，由实验执行人据证据手工回填。 2026-11-16：G3 兼容性矩阵 8/8 行已有真实互操作报告（5 runnable_with_evidence + 3 evidence_collected，0 blocked），但 g3_status 仍 not_run、evidence_valid_for_pass=false；BitComet LT seed 未做传输、aMule 未同轮双写 KAD、浏览器插件只验证任务创建、关闭 UI 行使用 aria2 后台进程。S3/S5/S6 仍 not_run，G2/G3 均未宣称达标。",
+  "status_note": "【2026-11-17 最新】S3=`pass`（限定范围）/ S5=`fallback` / S6=`pass`（`closed_with_exceptions`，按 eMule 语义结案带已知限制）；`g2_claim=false`（G2 还欠 M2 实现项）。以下为历史演化记录，自 2026-11-13 起：S1 / S2 / S4 / S7 / S8 = pass；S3 / S5 / S6 = not_run（已产出本地真实量测与先导实测证据，量化判据按设计须 M1/M2 真实环境验证）。S8 于 2026-11-09 由项目所有者豁免登记 pass（无书面法务意见，R-11 保留）。S1 于 2026-11-11 依 two-peer 4/4 verified 回填 pass，并以 Motrix Next(aria2) 第三方客户端互操作轮补 G3 证据；S4/S7 于 2026-11-11 经真实量测回填 pass。2026-11-13 项目所有者显式签署 ADR-001 默认模式 public 并批准 G0 条件冻结：豁免 S3/S5/S6 在 G0 时点给出最终结论（状态仍保持 not_run、不虚判 pass），须在 M1/M2 按 G0-REVIEW.md 所列判据实测回填。Spike 结论只能由实验执行人据证据手工改为 pass/fail/fallback，脚本禁止自动置 pass。 2026-11-13 M1 已按条件冻结开工并跑通 T0 真实链路（21/21 PASS、evidence_valid=true）；但 T1 局域网双机与 S3/S5/S6 必测回填未完成，G1 仍未通过、M2 继续被门禁阻塞，S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-13（本轮）M1 增加按节点 host 的跨主机寻址并建立 T1 双机验收 harness；单机环境实测跨 IP UDP 不可达、无第二台物理主机，T1 --mode real 明确 BLOCKED，G1 仍未通过、M2 继续 blocked_by_G1。S5 用真实 librqbit-utp 0.7.0 协议栈实测并否证 LEDBAT 退让假设（该版本仅 CUBIC），S3/S5/S6 状态继续保持 not_run，不虚判 pass。 2026-11-14 状态更正（以上均为历史演化记录，保留不改写）：G1 已通过（T0 21/21 + T1 --mode real 双机 11/11，均 evidence_valid=true），M2 门禁解除并已开工（cr-nat 接入复活路径；T2 本地接线预检 10/10、evidence_valid=false，非 S6 证据）；S3/S5/S6 状态仍为 not_run，G2 未宣称达标。当前机读进度见 m1_progress.m2_gate 与 m2_progress；S6 四类 NAT（含 CGNAT）矩阵实测仍待真实多 NAT 环境，由实验执行人据证据手工回填。 2026-11-16：G3 兼容性矩阵 8/8 行已有真实互操作报告（5 runnable_with_evidence + 3 evidence_collected，0 blocked），但 g3_status 仍 not_run、evidence_valid_for_pass=false；BitComet LT seed 未做传输、aMule 未同轮双写 KAD、浏览器插件只验证任务创建、关闭 UI 行使用 aria2 后台进程。S3/S5/S6 仍 not_run，G2/G3 均未宣称达标。 2026-11-17（ADR-016，所有者决定）：S6 阶段性判据改为 eMule 式可达语义，类别覆盖不再是 pass 前提；S6.status 仍 not_run、g2_claim=false，不虚判 pass。 2026-11-17（判定，项目所有者）：S3=pass、S5=fallback、S6=pass（closed_with_exceptions，按 eMule 语义结案带已知限制）；三项判定记录见 docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md 与 tests/fixtures/g2-spike-verdicts.toml。g2_claim 仍为 false —— Spike 判定只回答技术路线是否成立，M2 实现项（cr-dht 等骨架 crate、LRU 调度接引擎、中继生产化、BT/TCP 打洞）未完成即不构成 G2 达标。以上均为历史演化记录，保留不改写。",
   "conclusion_values": [
     "not_run",
     "pass",
@@ -603,7 +603,28 @@
       "title": "KAD 128-bit 与 Mainline 160-bit 双栈资源可控",
       "priority": "P1",
       "risk": "R-03",
-      "status": "not_run",
+      "status": "pass",
+      "verdict_2026_11_17": {
+        "authority": "human",
+        "decided_by": "项目所有者",
+        "decided_at": "2026-11-17",
+        "verdict": "pass",
+        "record": "tests/fixtures/g2-spike-verdicts.toml",
+        "doc": "docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md",
+        "basis": "两条判据均有真实观测直接支撑：串扰 0（结构层 anomalies/leak=0、线级 1437/1437 畸形帧被拒 + misrouted=0 + loss=0、跨主机 17/17）；资源增量 10k=2.26 MiB、50k=11.08 MiB，跨进程峰值合计 25.04 MiB，双栈带宽 3.276 Mbit/s 呈加法；公网 Mainline 测试 key 由独立进程取回 112.5.60.4:18081（expected_ip_hit=true）",
+        "boundaries": [
+          "cr-dht 仍是骨架：本判定只回答「双栈资源可不可控」，不表示 DHT 已在产品内实现",
+          "KAD 128-bit 的公网行为由 S2（pass）承担，本轮未重复宣告",
+          "G3 为 close_with_exceptions（2026-11-16 人工结案），不是全绿"
+        ],
+        "claims_forbidden": [
+          "双栈 DHT 已实现",
+          "cr-dht 可用",
+          "对内存或带宽给出数值承诺"
+        ],
+        "numeric_commitment": false,
+        "g2_claim": false
+      },
       "criteria": [
         "双栈并行压测无 ID 空间串扰",
         "内存与带宽增量在可接受范围"
@@ -632,7 +653,7 @@
         "scope": "本地双 HashMap 数据结构隔离 + 资源增量上界估算；不做真实 KAD/Mainline DHT 网络加入",
         "public_network_contacted": false,
         "evidence_valid_for_pass": false,
-        "status_note": "S3.status 保持 not_run；C1 已在结构层与线级 demux 双重 verified，C2 内存上界与带宽均已实测。最终 pass 须 M1 真实双栈集成 + G3 矩阵。2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论。",
+        "status_note": "2026-11-17 所有者判定 S3=pass（判据：无串扰 + 资源增量可接受，均有真实观测直接支撑）；C1 已在结构层、线级 demux、跨主机三层 verified，C2 内存上界与带宽均已实测，并经所有者授权补做公网 Mainline DHT 测试 key 宣告/取回与跨进程 RSS。公开只允许说「双栈资源可控」；cr-dht 仍是骨架，不得由此推出「双栈 DHT 已实现」。G3 仍按既有 closed_with_exceptions 结案，不是全绿。2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论。判定记录见 docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md。",
         "wire_io_2026_11_13": {
           "harness": "tests/spikes/s3/dualstack_io.py",
           "report": "tests/spikes/s3/reports/s3-dualstack-io-20261113T062159Z.json",
@@ -681,6 +702,41 @@
           "s3_status_after": "not_run",
           "status_unchanged": true,
           "note": "按 README §6 第 3 条，本地/私有 LAN 实测只能作附件；S3 最终 pass 仍须 G3 矩阵与真实双栈公网加入，由实验执行人手工回填"
+        },
+        "public_mainline_and_rss_2026_11_17": {
+          "authorized_by": "项目所有者显式指令：S3 可以向公网发 key 测试，未完成的 3 项都进入测试完成",
+          "public_dht_key_test": {
+            "harness": "tests/spikes/s3/mainline_probe/（librqbit-dht 9.1.0 真实公网 Mainline DHT）",
+            "summary_report": "tests/spikes/s3/mainline_probe/reports/s3-mainline-public-20261117.json",
+            "key_label": "coldrevive:s3:public-mainline:20261117",
+            "info_hash": "f273a2971086f726e1ddb03fc8480c5121f846fa",
+            "announce_node_id": "2d7251393130302d6ec09922b59f4f61763b790b",
+            "query_node_id": "2d7251393130302d4da5aed56b24e93dd1ad6844",
+            "announce_bootstrap_routing_table_size": 82,
+            "query_result_peers": [
+              "112.5.60.4:18081"
+            ],
+            "public_network_contacted": true,
+            "result": "两个独立进程、不同 node id：announce 宣告测试 infohash 和端口 18081；query 不宣告，只按同一 infohash 从公网 DHT 取回宣告地址 112.5.60.4:18081",
+            "evidence_valid": true,
+            "evidence_valid_for_pass": false
+          },
+          "cross_process_rss": {
+            "harness": "tests/spikes/s3/mainline_probe/sample_rss.sh（Windows Get-Process 每秒采样两个并发真实进程）",
+            "report": "tests/spikes/s3/mainline_probe/reports/s3-cross-process-rss-20261117.json",
+            "duration_sec": 30,
+            "announce_peak_working_set_mib": 12.38,
+            "query_peak_working_set_mib": 12.66,
+            "combined_peak_working_set_mib": 25.04,
+            "combined_peak_private_mib": 7.96,
+            "within_srs_nfr05_100mb": true,
+            "evidence_valid": true,
+            "evidence_valid_for_pass": false
+          },
+          "g3_closeout_status": "既有人工结论仍为 close_with_exceptions（tests/fixtures/g3-closeout.toml, 2026-11-16）；本轮公网 key 测试不是 BitComet LT seed / aMule KAD 索引的 G3 复审，不改写 6 条例外",
+          "scope_limitation": "公网 key 测试针对 librqbit-dht 而非 M1 守护进程内部 cr-dht 骨架；S3.status 仍由实验执行人手工判定，脚本不自动 pass",
+          "s3_status_after": "not_run",
+          "status_unchanged": true
         }
       },
       "fallback": "收敛为单一 DHT + 外部映射服务",
@@ -690,7 +746,9 @@
         "tests/spikes/s3/reports/s3-m1-dualstack-*.json",
         "tests/spikes/s3/src/main.rs",
         "tests/spikes/s3/dualstack_io.py",
-        "tests/spikes/s3/m1_dualstack_integration.py"
+        "tests/spikes/s3/m1_dualstack_integration.py",
+        "tests/spikes/s3/mainline_probe/src/main.rs",
+        "tests/spikes/s3/mainline_probe/sample_rss.sh"
       ]
     },
     {
@@ -730,7 +788,33 @@
       "title": "uTP / LEDBAT 后台退让满足 NFR-03",
       "priority": "P1",
       "risk": "R-07",
-      "status": "not_run",
+      "status": "fallback",
+      "verdict_2026_11_17": {
+        "authority": "human",
+        "decided_by": "项目所有者",
+        "decided_at": "2026-11-17",
+        "verdict": "fallback",
+        "record": "tests/fixtures/g2-spike-verdicts.toml",
+        "doc": "docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md",
+        "basis": "Spike 主张的机制（uTP/LEDBAT 自动退让）为假：librqbit-utp 0.7.0 源码只有 Cubic、留着 TODO: LEDBAT。NFR-03 两半在真实内核链路上由 fallback 满足：ratio=0.02（现行默认）后台实际占比 0.0199、前台劣化 0.00%（3/3 轮）；ratio=0.20 中位 20.00% 不达标；ratio=0.05 中位 0.01% 但有单轮 19.99%",
+        "fallback_mechanism": "令牌桶限流（qos.background_upload_ratio）+ 默认值 0.02",
+        "boundaries": [
+          "NFR-03 的达成依赖配置不变量（默认 0.02），不是协议能力；不得把默认值回调到 0.05/0.2 再声称满足",
+          "只在 16 Mbit / 20ms 单机双 netns 上测过，未跨物理主机",
+          "R-07 等级维持 🟠"
+        ],
+        "unexplained_observations": [
+          "ratio=0.05 档 3 轮中有 1 轮 19.99%，与后台实际占比 0.049（0.79 Mbit/s）不相称，至今未解释；不得据此认为 0.05 可用"
+        ],
+        "claims_forbidden": [
+          "uTP 会自动退让",
+          "LEDBAT 已生效",
+          "0.05 档满足 NFR-03",
+          "任意链路形状下前台劣化不超过 5%"
+        ],
+        "numeric_commitment": false,
+        "g2_claim": false
+      },
       "criteria": [
         "前台下载与后台做种并发时前台吞吐退让符合预期"
       ],
@@ -742,7 +826,9 @@
         "tests/spikes/s5/reports/s5-qos-final-ratio002.json",
         "tests/spikes/s5/utp/src/main.rs",
         "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json",
-        "tests/spikes/s5/utp/reports/s5-utp-real-20261114.json"
+        "tests/spikes/s5/utp/reports/s5-utp-real-20261114.json",
+        "tests/spikes/s5/utp_netem/run_netem.sh",
+        "tests/spikes/s5/utp_netem/src/main.rs"
       ],
       "observations": {
         "nfr_target": "NFR-03 (后台上行 ≤20% 总上行；前台吞吐劣化 ≤5%)",
@@ -766,9 +852,9 @@
           "令牌桶硬上限已由 qos_bench.py 真实量测验证（≤配置占比）",
           "并发瓶颈与 fallback 旋钮已量化（ratio 0.02 可把本地劣化压到 ≤5%）"
         ],
-        "validation_gap": "量化前台劣化 ≤5% 须 M1/G3 在真实拥塞链路（tc/netem 或实验室链路）用 rqbit uTP 实测；本地模型只给出参数方向与 fallback 阈值",
+        "validation_gap": "2026-11-17 已在 221 上完成真实内核 tc/netem 跨 netns 链路量测：现行默认 ratio=0.02 前台劣化 0.00%，真实链路门槛已补；仍未读取 M1 守护进程 qos 接线并测跨进程资源，故 status 仍由实验执行人手工判定",
         "fallback": "降低 background_upload_ratio / 连接数限制 / 暂停造种队列(LLD 降级链)",
-        "verdict": "R-07 设计层去险，但 NFR-03 ≤5% 判据在默认 0.2 配置下不成立（模型 15.0% / 真实 uTP 栈 14.82%）。2026-11-13 源码核实 librqbit-utp 0.7.0 仅 CUBIC、无 LEDBAT，真实协议栈实测也未见退让；≤5% 目前只能靠 background_upload_ratio=0.02 的令牌桶降级（实测 2.70%）。S5.status=not_run，G0 条件冻结豁免其 G0 时点结论，M1/G3 须在真实拥塞链路实测回填。",
+        "verdict": "R-07 设计层去险；2026-11-13/14 真实 uTP 栈量测确认 librqbit-utp 0.7.0 仅 CUBIC、无 LEDBAT，默认 0.2 不满足 ≤5%，必须靠 background_upload_ratio=0.02 降级。2026-11-17 真实内核 tc htb 16mbit + netem 20ms 跨 netns 链路量测：默认 0.02 的后台实际占比 0.0199、前台劣化 0.00%（3/3 轮达标）；0.2 档中位劣化 20.00%，0.05 档中位 0.01% 但有 1 轮 19.99%。真实链路门槛已补。2026-11-17 所有者判定 **S5=fallback**：NFR-03 由令牌桶 + 默认 0.02 在真实内核链路满足，uTP/LEDBAT 退让机制被否证；默认值不得回调到 0.05/0.2 再声称达标。判定记录见 docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md。",
         "report": "tests/spikes/s5/README.md",
         "local_qos_2026_11_13": {
           "harness": "tests/spikes/s5/qos_bench.py",
@@ -945,6 +1031,54 @@
           "evidence_valid_for_pass": false,
           "s5_status_after": "not_run",
           "status_unchanged": true
+        },
+        "utp_netem_2026_11_17": {
+          "recorded_at": "2026-11-17T13:49:51Z",
+          "context": "用户显式指令『s5也真实测一下』；在 221(root) 上建跨 netns veth + 内核 tc htb/netem，补上此前缺失的真实拥塞链路门槛",
+          "harness": "tests/spikes/s5/utp_netem/ (run_netem.sh + librqbit-utp 0.7.0 双进程)",
+          "report": "tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json（工作区产物，gitignore 不入库）",
+          "method": "16 Mbit/s htb + netem delay 20ms 2ms；跨 netns ping RTT 19.894/27.026/41.005 ms；单条连续 iperf3 TCP(BBR) 会话 -i 1，比较 baseline/concurrent/recovery 区间中位；后台真实 librqbit-utp 双进程",
+          "config": {
+            "link_mbps": 16,
+            "netem_delay": "20ms",
+            "baseline_seconds": 5,
+            "concurrent_seconds": 10,
+            "recovery_seconds": 5,
+            "rounds": 3,
+            "ratios": [0.2, 0.05, 0.02],
+            "tcp_congestion": "bbr"
+          },
+          "measurements": [
+            {
+              "bg_ratio": 0.2,
+              "background_actual_link_share_median": 0.1252,
+              "degradation_pct_median": 20.0,
+              "degradation_pct_all": [-0.01, 20.0, 20.0],
+              "meets_5pct": false
+            },
+            {
+              "bg_ratio": 0.05,
+              "background_actual_link_share_median": 0.0496,
+              "degradation_pct_median": 0.01,
+              "degradation_pct_all": [19.99, 0.0, 0.01],
+              "meets_5pct": true,
+              "caveat": "中位达标但 1/3 轮劣化 19.99%，不能写成稳定达标"
+            },
+            {
+              "bg_ratio": 0.02,
+              "background_actual_link_share_median": 0.0199,
+              "degradation_pct_median": 0.0,
+              "degradation_pct_all": [0.0, -0.01, 0.0],
+              "meets_5pct": true
+            }
+          ],
+          "method_note": "首版用独立 baseline/concurrent iperf3 会话，受 TCP 慢启动与 netem 周期振荡影响基线漂移；改为同一会话内区间比较，并用 BBR 单流降低固有振荡",
+          "conclusion": "真实内核整形链路下现行默认 0.02 满足 NFR-03（3/3 轮 ≤5%），原默认 0.2 明确不满足；0.05 仅中位达标、有单轮越线",
+          "evidence_valid": true,
+          "evidence_valid_for_pass": false,
+          "s5_status_after": "not_run",
+          "status_unchanged": true,
+          "scope_limitation": "前台 iperf3 与后台 librqbit-utp 是代理负载，未读取 M1 守护进程 qos 配置、未测其跨进程 RSS/接线；不得据此自动置 pass"
         }
       }
     },
@@ -953,13 +1087,43 @@
       "title": "常见家用 NAT 下的可达率",
       "priority": "P1",
       "risk": "R-04",
-      "status": "not_run",
+      "status": "pass",
+      "verdict_2026_11_17": {
+        "authority": "human",
+        "decided_by": "项目所有者",
+        "decided_at": "2026-11-17",
+        "verdict": "pass",
+        "verdict_kind": "closed_with_exceptions",
+        "claim_wording": "按 eMule 语义结案，带已知限制",
+        "record": "tests/fixtures/g2-spike-verdicts.toml",
+        "doc": "docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md",
+        "basis": "ADR-016 判据 2/3 满足：HighID 语义 direct 3/30（命中 112.5.60.4:47488、ack_status=OK）+ relay 30/30；LowID 语义 direct 0/30 + relay 30/30；aggregate status=OBSERVED / evidence_valid=true / reach_evidence.complete=true / rejected_reports=[]；载体错误 0，映射端口 47488 ≠ 内部 17801（真实设备可证伪），两端分处两台物理主机",
+        "machine_fields_unchanged": [
+          "census s6_status = not_run",
+          "report g2_claim = false",
+          "report evidence_valid_for_pass = false"
+        ],
+        "known_limitations": [
+          "full-cone / restricted-cone / cgnat 三类未测，是明写的空白",
+          "symmetric 请求者打不通 direct 是 NAT 行为（back 映射端口不一致），不是缺陷",
+          "direct 3/30 只是描述性观测，不含可达率含义"
+        ],
+        "claims_forbidden": [
+          "NAT 矩阵通过",
+          "G2 达标",
+          "任何可达率 / 成功率百分比"
+        ],
+        "review_trigger": "M4 前，或 ≥4 个不同真实出口可用时（先到为准）",
+        "numeric_commitment": false,
+        "g2_claim": false
+      },
       "criteria": [
-        "NAT 类型矩阵实测：逐类查清「直连行不行、不行时中继是否送达」（2026-11-16 起不再要求任何可达率数值，ADR-012）",
-        "5 类环境（4 类 NAT + CGNAT）各有 ≥1 份 evidence_valid=true 的逐类报告",
-        "每类 direct 与 relay 两条路径各 ≥30 次真实观测，成功判据是收到真实 WAKEUP_ACK",
-        "direct 失败的环境里 relay 必须送达；两条都失败的记为该类不可用，作为已知限制写入报告",
-        "结论由实验执行人依证据手工回填，脚本永不置 pass"
+        "【2026-11-17 口径变更 / ADR-016】S6 阶段性改为 eMule 式可达语义：每个节点都有一条可用的路（direct 或 relay）+ 失败可预知可解释。NAT 类别覆盖降级为描述性清单，不再是 pass 前提；ADR-012 取消数值承诺的结论不变",
+        "在真实 NAT 设备上取得 ≥1 份 evidence_valid=true 的 real-multi-nat 报告；条款①两端分处两台不同物理主机、条款② nat_is_real_device 可证伪，两条都不变",
+        "每份报告的 direct 与 relay 两条路径各 ≥30 次真实观测，成功判据是收到真实 WAKEUP_ACK(status=OK)；超时、缺字段、载体错误一律计入失败",
+        "至少一份报告显示 direct 可达（HighID 语义），至少一份显示 direct 失败但 relay 送达（LowID 语义）；两条都失败的环境记为已知限制并写明",
+        "节点自报可达性与实测行为一致：只有 relay-only 可跳过直连，unknown 不得当作 LowID（ADR-013 / W5.2 证据）",
+        "不承诺任何可达率数值；结论由实验执行人依证据手工回填，脚本永不置 pass；s6_status=not_run / g2_claim=false / evidence_valid_for_pass=false 不变。满足后 G2 只能写「按 eMule 语义结案，带已知限制」，不得写「NAT 矩阵通过」"
       ],
       "fallback": "中继回退常开（不再由阈值触发）：对称 NAT 与 CGNAT 直接走中继，锥形 NAT 优先直连、失败即降级中继",
       "evidence_required": [
@@ -988,10 +1152,10 @@
           "symmetric": "~40% / 直连30-50% +中继~90%+"
         },
         "aggregate_estimate": "直连 ~80-90%；含中继 ~95%+（满足 R-04 ≥70% 阈值）",
-        "validation_gap": "矩阵为分析型估计，非 S6 判据要求的实测；须 M2 真实多 NAT/CGNAT 环境实测",
+        "validation_gap": "2026-11-17 已按 ADR-016 补齐 eMule 式两半真实证据：HighID direct 3/30（port-restricted-cone 持有）+ LowID direct 0/30 / relay 30/30（symmetric 持有）。未覆盖类别仍为已知限制；S6.status/g2_claim/evidence_valid_for_pass 常量不变，结论由实验执行人手工回填",
         "key_uncertainty": "CGNAT 比例升高会拉低对称型直连率（OPEN-QUESTIONS Q4）；本轮先导样本显示本机 UPnP/NAT-PMP 均不可用，穿透栈第一层假设须在 M2 按真实环境复核",
         "fallback": "M2 实测<70% 时提升中继回退优先级 + 默认 LowID 回退（R-04 缓解预案）",
-        "verdict": "分析型含中继可达率 ≥95%（> R-04 70% 阈值）+ 1 个真实 NAT 先导样本；S6.status=not_run，2026-11-13 所有者批准 G0 条件冻结豁免其 G0 时点结论，M2 多 NAT 实测后回填",
+        "verdict": "ADR-016 阶段性判据（eMule 式可达）所需两半真实证据已齐：aggregate status=OBSERVED / evidence_valid=true / reach_evidence.complete=true。2026-11-17 所有者判定 **S6=pass（closed_with_exceptions）**，结案口径「按 eMule 语义结案，带已知限制」。不得写成 NAT 矩阵通过或 G2 达标；机器字段 census s6_status=not_run / g2_claim=false / evidence_valid_for_pass=false 不变（工具不替人下结论）。判定记录见 docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md。",
         "report": "tests/spikes/s6/nat-matrix.md",
         "pilot_2026_11_13": {
           "harness": "tests/spikes/s6/stun_probe.py",
@@ -1907,6 +2071,51 @@
           "evidence_valid_for_pass": false,
           "report": "tests/spikes/s6/reports/relay/w39-relay-hardened-2026-11-16.json",
           "doc": "tests/spikes/s6/nat-matrix.md §17"
+        },
+        "w310_emule_reach_evidence_2026_11_17": {
+          "context": "所有者指令『s6的一半也进入实测』；按 ADR-016 只补 eMule 式可达语义两半，不恢复完整类别矩阵",
+          "lowid_report": {
+            "report": "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
+            "holder": "222 / 112.5.32.34 symmetric / APDM",
+            "direct": {"trials": 30, "succeeded": 0},
+            "relay": {"trials": 30, "succeeded": 30}
+          },
+          "highid_report": {
+            "harness": "tests/spikes/s6/nat_lab/run_real_nat_highid.py（非 smoke 30 次分支已补齐）",
+            "report": "tests/spikes/s6/reports/highid-run-30/s6-matrix-class-port-restricted-cone-real.json",
+            "smoke_diagnosis": "tests/spikes/s6/reports/highid-run/s6-highid-diagnosis.json（6 次直连失败的根因留痕，不作 30 次判据证据）",
+            "holder": "A / 112.5.60.4 port-restricted-cone / EIM+APDF",
+            "requester": "222 / 112.5.32.34 symmetric / APDM",
+            "direct": {"trials": 30, "succeeded": 3, "success_path": "stun-mapped",
+                       "success_ack": "OK",
+                       "note": "3/30 是描述性观测，不构成可达率数字承诺；不得写成稳定可达"},
+            "relay": {"trials": 30, "succeeded": 30, "success_ack": "OK"},
+            "carrier_errors": 0,
+            "holder_stun_mapped": "112.5.60.4:47488（内部 17801，映射端口不同→真实设备可证伪）",
+            "declaration_query": "requester nat peer ok=true；plan candidates=private-lan / stun-mapped / relay",
+            "evidence_valid": true,
+            "is_s6_evidence": true
+          },
+          "aggregate": {
+            "report": "tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json",
+            "status": "OBSERVED",
+            "evidence_valid": true,
+            "reach_evidence_complete": true,
+            "highid_reports": ["s6-matrix-class-port-restricted-cone-real.json"],
+            "lowid_reports": ["s6-matrix-class-symmetric-real.json"],
+            "matrix_coverage": "2 / 4 类真实 NAT（含 CGNAT 0/1）——描述性，非 pass 前提"
+          },
+          "known_limitations": [
+            "full-cone / restricted-cone / cgnat 未实测，不得写成已覆盖",
+            "direct 仅 3/30 成功，不能写成稳定可达；ADR-012 仍无可达率数字承诺",
+            "未取得 ≥4 个不同真实出口，复审时点 M4 前或出口数达标时仍有效"
+          ],
+          "claim_wording": "按 eMule 语义结案，带已知限制；不得写 NAT 矩阵通过或 G2 达标",
+          "s6_status_after": "not_run",
+          "g2_claim": false,
+          "evidence_valid_for_pass": false,
+          "spike_status_changed": false,
+          "auto_pass": false
         }
       }
     },
@@ -1992,9 +2201,28 @@
       "must_validate": {
         "S3": "M1 真实 KAD 128-bit + Mainline 160-bit 双栈集成 + G3 兼容性矩阵；判据 C1 无串扰 / C2 资源增量",
         "S5": "M1/G3 带流量整形的真实拥塞链路上以 rqbit uTP 实测前台吞吐劣化 ≤5%（NFR-03）",
-        "S6": "M2 在 Full/Restricted/Port-restricted/Symmetric 四类真实 NAT（含 CGNAT）逐类实测「直连/中继两条路的实际行为」。2026-11-16 口径变更（ADR-012）：取消 R-04 ≥70% 阈值，改为定性判据（见 S6.criteria）；可达率仅作描述性统计"
+        "S6": "M2 在 Full/Restricted/Port-restricted/Symmetric 四类真实 NAT（含 CGNAT）逐类实测「直连/中继两条路的实际行为」。2026-11-16 口径变更（ADR-012）：取消 R-04 ≥70% 阈值，改为定性判据（见 S6.criteria）；可达率仅作描述性统计。2026-11-17 口径变更（ADR-016，项目所有者决定）：阶段性改为 eMule 式可达语义，类别覆盖不再是 pass 前提，详见 s6_criteria_amendment_2026_11_17 与现行 S6.criteria；真实设备/两台物理主机/30 次观测/人工回填一条不松"
       },
       "rollback": "任一 M1/M2 实测不达标时，按各 spike 的 fallback 链降级，并重新提交技术路线冻结评审；不得在 M1 之后继续以豁免状态代替结论"
+    },
+    "s6_criteria_amendment_2026_11_17": {
+      "decided_by": "项目所有者",
+      "decided_at": "2026-11-17",
+      "adr": "ADR-016",
+      "nature": "阶段性（interim）判据，带复审时点；不是 G2 达标声明",
+      "change": "S6 验收由「穷举 4 类 NAT + CGNAT 各有逐类报告」改为「达到 eMule 式可达语义」：至少一份真实报告 direct 可达（HighID）、至少一份 direct 失败但 relay 送达（LowID），声明与实测一致（ADR-013）。类别覆盖降级为描述性清单，不再是 pass 前提",
+      "unchanged": [
+        "条款①两端分处两台不同物理主机、条款② NAT 是真实可证伪的设备",
+        "每条路径 ≥30 次真实唤醒，成功只认真实 WAKEUP_ACK(status=OK)",
+        "ADR-012 取消一切可达率数值承诺",
+        "脚本永不自动置 pass；S6.status 仍 not_run、g2_claim=false、evidence_valid_for_pass=false",
+        "结论由实验执行人依证据手工回填"
+      ],
+      "claim_wording": "按 eMule 语义结案，带已知限制；不得写成「NAT 矩阵通过」或「G2 达标」",
+      "remaining_evidence": "W3.7 的真实 symmetric 报告已覆盖 LowID 一半（direct 0/30 + relay 30/30）；112.5.60.4 这个 EIM 出口只有分类、缺逐类 30 次实测，HighID 一半待用现有两台物理主机补跑，无需新增出口",
+      "review_trigger": "M4 前，或当 ≥4 个不同真实出口可用时（先到为准），重新评审是否恢复完整类别矩阵",
+      "spike_status_changed": false,
+      "g2_claim": false
     },
     "engineering_blockers": [
       "M1 二进制与下载器环境变量",
@@ -2133,18 +2361,29 @@
     },
     "remaining_for_g2": [
       "[已修 v2.4.55] 修复 cr-nat NAT 分类缺陷 CLASSIFY-CONE-SUBTYPE-FABRICATED：classify_cone_subtype 比较 NAT 映射地址与 STUN OTHER-ADDRESS（语义无关），只要有 OTHER-ADDRESS 就恒判 restricted-cone，导致 nat probe 的 nat_type 是恒定值而非测量结果。修法：补齐 RFC 3489 Test II/III（发 CHANGE-REQUEST 并检查是否收到应答：change-IP 有应答→full cone；仅 change-port 有应答→restricted cone；均无→port-restricted cone），再让 nat_type 参与 choose_strategy；修复前 nat_type 不得用于任何策略决策或对外结论。 —— 已修：stun.rs 用 CHANGE-REQUEST 实测过滤行为并新增 filter_behavior_fresh（避免映射探测污染过滤集导致 change-IP 假阳性），classify.rs 删掉 classify_cone_subtype 改走 FilterBehavior；实验室五类实测 5/5 与 nat_behavior.py 一致（此前恒为 restricted-cone）。",
-      "S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；**2026-11-15 W3.7 已用两台真实主机 + 两个真实出口完成 symmetric 一类的 real-multi-nat 实测**（direct 0/30、relay 30/30，evidence_valid=true），**但类别覆盖仍 1/4 + 0 CGNAT** —— 一个出口只对应一类，需再准备 ≥3 个不同真实出口（或公网 ≥8 节点）才能闭合矩阵与 R-04",
+      "[2026-11-17 已判定关闭：ADR-016 取代「四类 + CGNAT 逐类矩阵」口径，S6=pass（带已知限制）] S6 四类真实 NAT（Full/Restricted/Port-restricted/Symmetric）+ CGNAT 可达率矩阵实测，R-04 ≥70% 判定；**2026-11-15 W3.7 已用两台真实主机 + 两个真实出口完成 symmetric 一类的 real-multi-nat 实测**（direct 0/30、relay 30/30，evidence_valid=true），**但类别覆盖仍 1/4 + 0 CGNAT** —— 一个出口只对应一类，需再准备 ≥3 个不同真实出口（或公网 ≥8 节点）才能闭合矩阵与 R-04",
       "双向打洞 / rendezvous 已在实验室完成（W3.6，2026-11-15）：受限锥 / 端口受限锥 / 双 NAT CGNAT 的 direct 0/30 → 30/30；symmetric 持有者仍 0/30（正确结果）。**新依赖**：信令经中继下发，中继不可用时直连退化回只有全锥可通 —— 中继可用性成为直连的前置条件，须在真实环境中验证。",
-      "S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
-      "S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
+      "[2026-11-17 已判定关闭：S3=pass；G3 由所有者按 close_with_exceptions 结案，公网 Mainline 已闭环] S3 G3 第三方客户端兼容性矩阵 + 真实 Mainline DHT 公网加入；W3.5① 已完成真实 M1 双栈双机集成（17/17，附件）",
+      "[2026-11-17 已判定关闭：S5=fallback（令牌桶 + 默认 0.02 达成 NFR-03，uTP/LEDBAT 退让机制为假）] S5 真实拥塞链路（tc/netem 内核队列或实验室受控链路）+ rqbit uTP 前台劣化 ≤5% 实测；W3.5① 真实 uTP 5 轮复跑仍为用户态整形",
       "M2 其余骨架 crate：cr-engine / cr-qos / cr-sched / cr-guard / cr-dht / cr-api / cr-ed2k / cr-reputation / cr-notify 的内置引擎与资源治理实现",
       "中继生产化收尾：公网部署、TLS / 身份鉴权（当前 REGISTER 仅校验负载回显、PEER_HELLO 无凭证，多实例互信依赖网络隔离）、连接限流与空闲超时、跨公网中继时延量测。**多实例注册同步已于 W3.8 完成**（peer 快照 + 单跳转发 + 客户端列表切换）；**公网入口可复用 222 的 112.5.32.34:57100→192.168.34.222:7100**（该映射已实测可用）",
       "BT/TCP 打洞（当前 tracker 只使用 internal_port==bt_port 的真实显式映射）",
       "M4 前 R-02 拒绝率复审与 R-11 书面法务意见",
       "S6 出口类别清单（W3.10）：现有两个出口的结论为 port-restricted-cone（112.5.60.4，本轮实测）与 symmetric（112.5.32.34，W3.7 APDM），仍缺 full-cone / restricted-cone / cgnat 三类的独立出口；清单不含任何可达性数字，不替代矩阵覆盖、不用于 R-04。"
     ],
+    "spike_verdicts_2026_11_17": {
+      "decided_by": "项目所有者",
+      "doc": "docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md",
+      "record": "tests/fixtures/g2-spike-verdicts.toml",
+      "s3": "pass（双栈串扰 0 + 资源增量在 NFR-05 内 + 公网 Mainline 测试 key 闭环；不含 cr-dht 实现）",
+      "s5": "fallback（NFR-03 由令牌桶 + 默认 ratio=0.02 满足；uTP/LEDBAT 退让被否证；0.05 不是稳定档）",
+      "s6": "pass / closed_with_exceptions（HighID direct 3/30 + relay 30/30；LowID 0/30 + 30/30；claim 只能写「按 eMule 语义结案，带已知限制」）",
+      "g2_claim": false,
+      "g2_blockers_remaining": "M2 实现项未完成：cr-dht 等骨架 crate 的引擎与资源治理、LRU 调度接引擎、中继生产化收尾（公网部署/鉴权/限流）、BT/TCP 打洞；M4 前 R-02 与 R-11",
+      "discipline": "判定不改变任何实测报告的 evidence_valid_for_pass=false / auto_pass=false；spikes.json 之外不新增自动 pass 路径"
+    },
     "gate_discipline": {
-      "s3_s5_s6_status": "unchanged — 全部 not_run",
+      "s3_s5_s6_status": "2026-11-17 判定：S3=pass、S5=fallback、S6=pass（closed_with_exceptions，按 eMule 语义结案带已知限制）",
       "g2_claim": false,
       "no_auto_pass": "spike 结论仍由实验执行人据证据手工回填；脚本/工具不得自动置 pass",
       "no_false_claim": "T2 的 10/10 PASS 只证明接线正确性，不得据此宣称 S6/G2 达标",

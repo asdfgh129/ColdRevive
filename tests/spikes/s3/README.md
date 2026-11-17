@@ -1,6 +1,10 @@
 # S3 spike：KAD 128-bit 与 Mainline 160-bit 双栈资源可控
 
 > **状态（2026-11-13）：S3 已补真实 UDP 双栈 I/O 量测；G0 条件冻结已豁免其 G0 时点结论；`S3.status` 仍为 `not_run`（首轮结构性证据已产出，最终 pass 须结合 M1 真实双栈集成 + G3 兼容性矩阵由实验执行人判定）。**
+> **2026-11-17 判定（最新）：`S3.status = pass`（限定范围）。** 两条判据（无串扰 / 资源增量可接受）
+> 均有真实观测直接支撑；公网 Mainline 测试 key 与跨进程 RSS 已补齐。**不含 `cr-dht` 实现**——
+> 只表示「双栈资源可控」，不表示「双栈 DHT 已实现」。判定记录见
+> [G2-SPIKE-VERDICT-2026-11-17](../../../docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md)。
 > 本目录是 S3 的**结构化探针**，验证本地双索引数据结构与隔离性 + 资源增量上界估算；
 > **不做真实 KAD / Mainline DHT 网络加入**（那属于 M1 集成与 G3 兼容性矩阵）。
 
@@ -105,3 +109,41 @@ M1 出口必须回填，不达标则按 fallback（单栈 + 外部映射）降�
 
 **结论仍不变**：`evidence_valid=true` 但 `evidence_valid_for_pass=false`，按 README §6 第 3 条只是**附件**。
 仍缺 G3 第三方客户端兼容性矩阵、真实 Mainline DHT 公网加入与跨进程 RSS 增量；`S3.status` 保持 `not_run`。
+
+## 补充证据：公网 Mainline DHT 测试 key + 跨进程 RSS（2026-11-17 / 所有者授权）
+
+所有者显式授权「S3 可以向公网发 key 测试，未完成的 3 项都进入测试完成」后，
+`mainline_probe/` 用**已锁定的 `librqbit-dht 9.1.0`** 直接加入公网 Mainline DHT，
+只发布一个确定性 S3 测试 infohash（`coldrevive:s3:public-mainline:20261117`），不发布产品资源 Key。
+
+- 公网 bootstrap：router.bittorrent.com / router.utorrent.com / dht.transmissionbt.com /
+  dht.libtorrent.org / router.bitcomet.com / dht.aelitis.com；无私有节点、无伪造响应。
+- announce 进程：node id `2d725139…b790b`，监听 `0.0.0.0:18081`，宣告端口 18081，
+  路由表最终 82 个公网节点。
+- query 进程：另一个进程、另一个 node id `2d725139…dd1ad6844`，**不做宣告**，
+  只按同一 infohash `get_peers`，从公网 DHT 取回 `112.5.60.4:18081`，正是宣告方的公网地址与端口。
+- 结论：**公网宣告 + 独立查询取回链路闭合**；汇总报告
+  `mainline_probe/reports/s3-mainline-public-20261117.json`（工作区产物，按 `.gitignore` 不入库）。
+
+`sample_rss.sh` 另跑两个并发真实 probe 进程（announce + query），逐秒采样 Windows
+`WorkingSet64` / `PrivateMemorySize64`：
+
+| 进程 | 峰值 Working Set | 峰值 Private Bytes |
+| :--- | :--- | :--- |
+| announce | 12.38 MiB | 3.83 MiB |
+| query | 12.66 MiB | 4.13 MiB |
+| **合计峰值** | **25.04 MiB** | **7.96 MiB** |
+
+合计峰值 25.04 MiB，低于 SRS NFR-05 的 100 MB；报告
+`mainline_probe/reports/s3-cross-process-rss-20261117.json`（工作区产物，按 `.gitignore` 不入库）。
+
+**三个残余项的当前口径**：① 真实 Mainline DHT 公网加入 + 测试 key 宣告/取回：已完成；
+② 跨进程 RSS：已完成；③ G3：沿用 2026-11-16 所有者人工结论 `close_with_exceptions`
+（`tests/fixtures/g3-closeout.toml`），不是「全绿」；本轮公网 key 测试没有复审 BitComet LT Seed
+或 aMule KAD 索引那两条例外。
+
+**2026-11-17 判定：`S3.status = pass`（限定范围）** —— 串扰 0（结构层 / 线级 / 跨主机三层一致）、
+资源增量在 NFR-05 内（跨进程峰值合计 25.04 MiB）、公网 Mainline 测试 key 闭环，三条判据链闭合。
+边界：`cr-dht` 仍是骨架（M2 实现项），G3 是 `close_with_exceptions` 不是全绿；
+不得据此宣称「双栈 DHT 已实现」，也不得把 25.04 MiB 当成承诺值。
+判定记录：[G2-SPIKE-VERDICT-2026-11-17](../../../docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md)。

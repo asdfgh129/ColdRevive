@@ -1,9 +1,12 @@
 # S6 spike：常见家用 NAT 下的可达率
 
-> **状态（2026-11-13）：`not_run`（已取得 1 个真实先导样本；G0 条件冻结豁免其 G0 时点结论）。** 判据要求「NAT 类型矩阵**实测**给出可达率」，
-> 但「实测」需要多类真实家用 NAT / CGNAT 环境，无法在单机回环上复现。
-> 本目录给出**分析型 NAT 矩阵**（基于典型家用 NAT 分布与 ColdRevive 穿透栈能力），
-> 并明确 M2 真实多 NAT 实测的验证方案（见 OPEN-QUESTIONS Q4）。`pass` 须 M2 实测后由实验执行人回填。
+> **状态（2026-11-17）：`not_run`（G0 条件冻结豁免其 G0 时点结论）。**
+> **判据已于 2026-11-17 由项目所有者改为 [ADR-016](../../../docs/02-architecture/adr/ADR-016-s6-emule-like-reach.md) 的
+> 「eMule 式可达语义」：不再穷举 4 类 NAT + CGNAT，类别覆盖降级为描述性清单、不再是 pass 前提。**
+> 本目录下 §13 / §18 / §19 的「凑齐 4 类 + 1 CGNAT」表述是**当时的判据与历史论证，保留不改写**；
+> 现行判据、改动边界与复审时点以 **§23** 为准。`pass` 须由实验执行人依真实证据手工回填，
+> 脚本永不自动置 pass，`s6_status` 仍 `not_run`、`g2_claim=false`。
+> 下方 §1 的 2026-11-16 口径（ADR-012 取消数值承诺）**继续有效**。
 
 ## 1. 判据与风险
 
@@ -1251,3 +1254,109 @@ seeder 一个 peer 后才采信。这正是「拿假设当测量」那类坑的�
 
 这三行能证明的只有一件事：**我方标准 `.torrent` + 标准 BT tracker 可被零改造第三方客户端
 下载**。它不证明 eMule 互通（那需要 ed2k 链接与 KAD 共存取证），也不证明 NAT 可达性。
+
+## 23. 判据改为 eMule 式可达语义（2026-11-17，v2.4.76，ADR-016）
+
+### 23.1 所有者决定
+
+> 「改判据，目前只要达到 eMule 类似的可达就可以了」（2026-11-17）
+
+决策记录：[ADR-016](../../../docs/02-architecture/adr/ADR-016-s6-emule-like-reach.md)。
+性质是**阶段性（interim）判据，带复审时点**，不是「G2 达标」。
+
+此前 §13 论证过一条硬限制：**一个出口在任一时刻只对应一个真实 NAT 类别**，
+凑齐 4 类 + CGNAT 需要 ≥4 个不同真实出口；§18.1 又否证了「串行重测 / 配置变体 /
+合成 NAT 可以凑格子」。于是 G2 被卡在**环境采购**上，而不是工程能力上。
+ADR-012 已取消可达率数值承诺、ADR-013/W5.2 已把 eMule 的 LowID 自我声明落地
+（真实环境 21/21 连续 3 轮），「按类别抽样出数字」这条路本就失去了意义。
+
+### 23.2 现行判据（替代 §19.4 第 1 条）
+
+| # | 判据 | 是否变化 |
+| :-- | :-- | :-- |
+| 1 | 真实 NAT 设备上 ≥1 份 `evidence_valid=true` 的 `real-multi-nat` 报告；条款①两台不同物理主机、条款②真实设备 | **不变** |
+| 2 | 每条路径 `direct` / `relay` 各 ≥30 次真实唤醒，只认真实 `WAKEUP_ACK(status=OK)` | **不变** |
+| 3 | 至少一份报告 `direct` 可达（HighID），至少一份 `direct` 失败但 `relay` 送达（LowID）；两条都失败记为已知限制 | **改写** |
+| 4 | 节点自报可达性与实测一致：只有 `relay-only` 可跳过直连，`unknown` 不得当 LowID（ADR-013 / W5.2） | **新增** |
+| 5 | NAT 类别覆盖**不再是 pass 前提**；`--census` 清单为描述性材料，未覆盖类别写入已知限制 | **改写** |
+| 6 | 不承诺数值、人工回填、脚本永不置 pass；`s6_status=not_run` / `g2_claim=false` / `evidence_valid_for_pass=false` | **不变** |
+
+**声明口径**：满足后 G2 只能写「**按 eMule 语义结案，带已知限制**」，
+不得写「NAT 矩阵通过」或「G2 达标」。少测的类别是地图上标出来的空白，不是被划掉的格子。
+
+### 23.3 落地位置（都是可检查的）
+
+| 位置 | 改动 |
+| :-- | :-- |
+| [ADR-016](../../../docs/02-architecture/adr/ADR-016-s6-emule-like-reach.md) | 决策正文、取代范围、复审时点；按 ADR 索引 §4 **不改写 ADR-012 / ADR-013 正文** |
+| `nat_matrix_config.json` | `s6_reach_stance=emule-like-reach`、`class_coverage_required_for_pass=false`、重写 `s6_pass_criteria`、`required_classes` 标 `role=descriptive-inventory`、`additional_environment.required=false` |
+| `nat_matrix.py` | `--aggregate` 改按 HighID / LowID 两半汇总（`reach_evidence_state()`）；类别清单仍输出但 `matrix_complete_is_pass_condition=false`；`--self-test` **24/24** |
+| `cr-nat/src/lib.rs` | `S6_REACH_STANCE` / `S6_CLASS_COVERAGE_REQUIRED_FOR_PASS=false` / `S6_CLAIM_WORDING`，配套单测 |
+| `cr-nat/src/census.rs` + `coldrevive-nat` | 汇总 JSON 与 CLI 输出显式带上立场与「不是 pass 前提」，不再把清单长度写成判据要求 |
+| `spikes.json` | `S6.criteria` 改写、`g0_review.s6_criteria_amendment_2026_11_17` 留痕；**`S6.status` 仍 `not_run`** |
+
+`cargo test --workspace --offline` **168 passed / 0 failed**（原 166 + 2 条新单测）。
+
+### 23.4 用现有环境复核：两半都已补齐（2026-11-17）
+
+对 `tests/spikes/s6/reports` 跑 `--aggregate`（新判据）：
+
+```
+status=OBSERVED   evidence_valid=true   s6_status=not_run   g2_claim=false
+reach_evidence.usable_reports = 2
+  highid_reports = ['s6-matrix-class-port-restricted-cone-real.json']
+  lowid_reports  = ['s6-matrix-class-symmetric-real.json']
+  complete = true
+matrix_coverage = 2 / 4 类真实 NAT（含 CGNAT 环境 0/1） —— 描述性，非 pass 前提
+```
+
+补跑拓扑：A（`192.168.1.210` → `112.5.60.4`，EIM / port-restricted cone）作持有者，
+222（`192.168.34.222` → `112.5.32.34`，symmetric / APDM）作请求者，中继 221:7100 只做信令。
+
+- 先跑 `--smoke` 6 次：relay 路径成功、direct 0/6；tcpdump 只见请求者出站包，没有持有者回打包。
+  当时记为「symmetric 请求者 back 映射错配」的诊断（`reports/highid-run/s6-highid-diagnosis.json`），
+  **不是最终 30 次判据证据**。
+- 再把 harness 的非 smoke 分支补齐，跑满每路径 30 次真实 `WAKEUP_ACK`
+  （`reports/highid-run-30/s6-matrix-class-port-restricted-cone-real.json`）：
+  - direct（`stun-mapped`）：**3/30 成功**，成功样本 `path=stun-mapped`、`ack_status=OK`，
+    打到持有者公网地址 `112.5.60.4:47488`；
+  - relay：**30/30 成功**，`path=relay`、`ack_status=OK`；
+  - 载体错误 0；持有者 STUN 映射端口 47488 ≠ 内部 17801，满足真实设备可证伪条款；
+  - 唤醒前 `nat peer` / `nat plan` 已取到持有者声明候选（`private-lan` / `stun-mapped` / `relay`），
+    与 ADR-013「只有 relay-only 可跳过直连」一致。
+
+因此按 ADR-016 的行为判据，**HighID 一半与 LowID 一半都有真实 `real-multi-nat` 证据**。
+但 direct 只在 3/30 次成功，说明该组合仍高度依赖 NAT 映射时序；这不是数值承诺，
+也不把 3/30 写成「稳定可达」。未覆盖的 `full-cone` / `restricted-cone` / `cgnat`
+仍是已知限制，`S6.status` / `g2_claim` / `evidence_valid_for_pass` 三个常量不因补跑而改变。
+
+### 23.5 判定：`pass` / `closed_with_exceptions`（2026-11-17）
+
+所有者依上节证据判定 **`S6.status = pass`**，结案口径固定为
+「**按 eMule 语义结案，带已知限制**」，不得写成「NAT 矩阵通过」或「G2 达标」。
+
+| 项 | 值 |
+| :--- | :--- |
+| 判据 | ADR-016 §决策 1–6（两路各 ≥30 次真实 `WAKEUP_ACK`、HighID + LowID 两半、声明与实测一致） |
+| 证据 | `reports/s6-matrix-aggregate-20261117-highid.json`（`OBSERVED` / `complete=true` / `rejected=[]`） |
+| 机器常量 | `census s6_status=not_run`、`g2_claim=false`、`evidence_valid_for_pass=false` **不变** |
+| 已知限制 | `full-cone` / `restricted-cone` / `cgnat` 未测；direct 3/30 只是描述性观测 |
+| 记录 | [G2-SPIKE-VERDICT-2026-11-17](../../../docs/06-plan/G2-SPIKE-VERDICT-2026-11-17.md)、`tests/fixtures/g2-spike-verdicts.toml` |
+
+为什么机器常量仍写 `not_run`：那是**工具**字段，含义是「核验器没有替人下结论」；
+人工结论单独记在判定记录里。这与 G3 的 `g3_status` vs `g3_status_declared` 是同一套办法。
+
+### 23.6 没有因为改判据而发生的事
+
+- 真实设备 / 两台物理主机 / 30 次真实 `WAKEUP_ACK` / 不编数字 / 不自动 pass，一条没松；
+- 未覆盖的 `full-cone` / `restricted-cone` / `cgnat` 仍是**已知限制**，不是「测过了」；
+- `--census` 依旧 `matrix_coverage=none`、`r04_judgeable=false`（§18.3 常量），
+  清单不折算成覆盖、不用于 R-04；
+- §13.2 的三条路线与 §19 的历史论证保留原文，但**不再作为当前推进依据**。
+
+### 23.7 复审时点
+
+**M4 前**，或**当 ≥4 个不同真实出口可用时**（先到为准）重新评审是否恢复完整类别矩阵。
+若届时维持本判据，须在 ADR-016 追加复审记录并更新 `s6_stance_review_trigger`，
+不得默示延期。
+
