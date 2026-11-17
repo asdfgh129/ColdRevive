@@ -204,7 +204,7 @@ Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`�
    `complete=1 / incomplete=0`），单测 2 条覆盖（含二进制 hash 不能被当字符串处理）。
 
 **边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
-不含任何可达率数字，也不构成 G2/G3 新证据。公网入向见 §2.6、µTP 见 §2.7、公网 µTP 见 §2.8。
+不含任何可达率数字，也不构成 G2/G3 新证据。公网入向见 §2.6、µTP 见 §2.7、公网 µTP 见 §2.8、aMule 公网 KAD 见 §2.9、唤醒可达性决策见 §2.10。
 
 ### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 PASS）
 验证「外部主机能否越过互联网从 A 的引擎取片」。脚本 `tests/e2e/w51d/public_inbound.py`：
@@ -373,6 +373,91 @@ A        = 192.168.1.210（nat.bt_external/http_external + nat.utp=true，监听
 - 复位只发一条 delete 就重加，qB 会重新校验残留文件并**断点续传 48 KiB**，
   于是供片增量恰好少 49152 B。现在必须先证明文件不存在（`test -e` → `GONE`）再重加。
 
+
+
+### 2.9 W5.1g aMule 公网 KAD 索引面复核（2026-11-17 新增，PASS）
+
+G3 的 `g3.amule_kad_index` 例外原先是「aMule 能经 eD2k TCP 送文件，但 KAD PUBLISH 静默」。
+所有者补开 221 的公网入向 `UDP 4672` + `TCP 4662` 后，`tests/e2e/w51g/amule_wan_kad.py`
+用真实 0x43/0x33 帧复核。**先量网络，再量 aMule 自己的判定状态**：
+
+| # | 判据 | 观测 |
+| :--- | :--- | :--- |
+| ① | 公网 TCP 4662 可连，且 221 看到的源是 `112.5.32.34` | 从 222 连公网地址并保持连接；`ss` 对端地址核对（不是 LAN 捷径） |
+| ② | 公网 UDP 4672 双向可达 | 221 上 tcpdump 过滤 `udp port 4672 and host 112.5.32.34`：入向 `112.5.32.34.x > 192.168.1.221.4672` 与 aMule 回包同时出现 |
+| ③ | 公网侧 PUBLISH 被 ACK 且 SEARCH 取回本条 | `kad-mini wan-index-probe`；键贴着 `BOOTSTRAP_RES.self_id` 取（top32 距离 0），排除 `SEARCHTOLERANCE` 越界分支 |
+| ④ | LAN 对照同样成立 | 同一 aMule 的 LAN 地址 `192.168.1.221:4672` 跑 `lan-index-probe` |
+| ⑤ | 负对照 | 同一公网地址上未监听的 `4673` 跑同样帧，必须零回包 |
+| ⑥ | 命名空间不串味 | `lan-ns-dual` 在**一个 socket** 内写两个 16B 键、逐键读回全部标签：自己的标签在、对方的标签不在 |
+
+**2026-11-17 实测：PASS，20/20**（`run-20261117T091525Z`，公网 2 轮）：
+`verdict=wan_confirmed_publish_then_retrieve`（2/2）、键距离 0、LAN `confirmed_publish_then_retrieve`、
+`namespace_isolated`（两键写入 ACK、两次回查都有应答且 `other_label_present=false`）、
+未监听端口 `reachable=false`、抓包两轮均见公网源入向与对应回包。
+
+**关键观测，不是「加映射就好了」**：同一份 aMule 二进制、同一条路径，在**重启前**对 PUBLISH
+一律静默（LAN 与公网都静默），`BOOTSTRAP_RES` 却正常回；重启后同样的帧立即被接受。
+归因不是 NAT、不是 RC4 混淆、也不是键越界，而是进程内的「UDP 未被验证」状态未重判。
+所以验收显式提供 `--restart-amule`（运维动作），并把「端口通」与「aMule 愿意入库」分成两条判据。
+
+**量具坑（都已修）**：① tcpdump 按 `host:port` 冒号匹配，而实际输出是点分
+`192.168.1.221.4672` → 明明抓到 46 行仍判 FAIL；② 抓包进程没用 `setsid nohup`，
+ssh 退出会带走它，首轮 0 行；③ `-c 80` 被 aMule 自身的 KAD 流量填满，第二轮来不及抓我们的帧，
+现改为按 `host 112.5.32.34` 过滤；④ 六个独立 socket 做 2 写 4 读会被 aMule 的 UDP 节流打断
+（第 4 次查询稳定静默），且「按对方标签查本键」本就不是 KAD 语义——改为单 socket 双写、
+每键一次查询后本地核对标签。
+
+**边界**：单目标、经真实 NAT，但**不做公共 KAD 宣告、不扫网**；脚本输出
+`g3_verdict=not_run`、`evidence_valid_for_pass=false`，结论由实验执行人回填；不含速率数字（ADR-012）。
+
+
+### 2.10 W5.2 唤醒前查可达性（ADR-013 接线，2026-11-17 新增，PASS）
+
+原语（`cr-nat::reach`、帧 0x08–0x0B、`--lookup`）早已交付，但 `wake_with_plan` 仍按静态顺序
+先试直连、超时后才走中继。`tests/e2e/w52/reach_gated_wake.py` 用三台真实主机收口：
+
+```
+中继  192.168.1.221:7200（一次性实验 PSK；先升中继再升客户端）
+持有者 222（ens160 192.168.34.222 / WAN 112.5.32.34，真实 symmetric），node_id=A
+请求者 A（192.168.1.210 / WAN 112.5.60.4），node_id=B
+```
+
+判据必须两侧同时成立，且量具本身要有正对照：
+
+| # | 判据 | 观测手段 |
+| :--- | :--- | :--- |
+| ① | 对端真是 symmetric | 222 上 `nat probe`：`nat_type=symmetric`，映射 `112.5.32.34:2062`（端口≠内部、来自公网出口） |
+| ①b | 声明已传播且不污染抓包窗口 | `nat reach`（只查、不发包）轮询到 `declared=true` / `class=relay-only` 后才开抓包 |
+| ② | 中继里确有声明 | `nat wake` 返回 `reach_lookup.declared=true`、`class=relay-only`、`skip_direct=true` |
+| ③ | 决策真的改了候选 | `attempts` 只有 `kind=relay`，`path=relay`，拿到 `WAKEUP_ACK` |
+| ④ | 零直连包 | 222 的 ens160 抓包 `udp and host 112.5.60.4`，主窗口 0 条 |
+| ⑤ | 量具没有失灵 | 另起窗口 `only_kind=stun-mapped` 强制直连，同一抓包必须 >0 条且 `notes` 明说旁路 |
+
+**2026-11-17 实测：PASS，21/21，连续 3 轮**（`run-20261117T100246Z/100339Z/100415Z`）。
+`reach_lookup` RTT 13 / 22 / 16 ms、TTL 3600000 ms、`declared_at_ms` 为当轮真实探测时刻；
+主窗口抓包 0 条，对照组抓到 2 条真实 UDP 报文（第 1 轮因请求侧自映射 STUN 抖动用了
+3 次对照唤醒，后两轮各 1 次；每次结果都留在报告的 `control_attempts` 里）。
+`only_kind` 旁路只在验收里出现，生产默认调用没有这个开关。
+
+**这轮先抓到一个真产品缺陷，不是量具缺陷**：修复前 `nat reach` 明明查到 `relay-only`，
+紧接着 `nat wake` 的查询却有 2/3 概率变回 `unknown`、把注定失败的直连又试一遍。
+222 的 `holder.log` 显示订阅连接每 500 ms 读超时就 `订阅中断` → 1 s 后重连：
+`recv_frame()` 把 `WouldBlock/TimedOut` 和真断链压成同一类字符串错误，订阅线程误判断链；
+服务端在旧连接退出时 `forget_local` 删声明，于是中继在「1 秒空窗」里如实回答「不知道」。
+修复两处：① `RelayConn::recv_frame_optional` 保留超时类型，订阅空闲超时时**不断链**、只在
+声明真的变化时补发 `REGISTER_DECLARED`；② 服务端退出清理只在旧连接仍是当前注册表项时
+才 `forget_local`，避免重连竞态抹掉新声明。修复后同一份 222 日志只有一次 `已订阅` +
+一次 `可达性声明更新: relay-only`，无周期性重连。两条各有一条单测守着。
+
+**边界**：`s6_status=not_run`、`is_s6_evidence=false`、`g3_verdict=not_run`，不写 G2/G3 结论，
+不含速率/可达率数字（ADR-012）。本轮只证明「查到 relay-only 就不打洞」这一半；
+「A 作为对端时查到 direct 并直连成功」仍由既有 W3.6/W5.1 系列证据覆盖，不在本脚本内重跑。
+
+**harness 坑（已修）**：`pkill -f '<含 --listen>'` 会匹配到自己的 ssh 命令行把 shell 杀掉
+→ 改用按实际进程名（Linux 截断到 15 字符 `coldrevive-rela`）的 `pkill -x`；
+中继绑具体地址后 `127.0.0.1:7200` 必然拒绝，检查要连 `192.168.1.221`；
+221 的原 Cargo.lock 不含本机新加的 `bytes`，整仓覆盖会触发 221 缺 `pkg-config` 的
+`openssl-sys` 编译失败 → 只覆盖协议面相关源文件并 `touch` 强制重编。
 
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。

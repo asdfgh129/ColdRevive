@@ -1393,6 +1393,534 @@ fn run_lan_index_probe(args: &LanIndexArgs) -> Result<J, String> {
     ]))
 }
 
+// ------------------------------------- lan namespace dual probe (W3.17/G3) --
+
+#[derive(Default)]
+struct LanNsDualArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    rate: f64,
+    key_a: Option<String>,
+    key_b: Option<String>,
+    label_a: Option<String>,
+    label_b: Option<String>,
+}
+
+/// 一个 socket 内写两个互不相干的键，再四次交叉回查。
+///
+/// 为什么不能像早期 harness 那样每个读/写都新开一个进程：aMule 会把短时间内来自
+/// 同一 IP 的连续 UDP 探测当作噪声，后面的 BOOTSTRAP 直接不回（现象是 `unreachable`，
+/// 不是 `publish_silent`）。六个独立 socket 会把命名空间这条本来与 NAT 无关的判据
+/// 变成「aMule 还愿不愿意理我们」的抽签。这里只做一次 BOOTSTRAP、复用一个
+/// 已建立的方向，再发 2 次 PUBLISH + 4 次 SEARCH，且保留逐帧原始记录。
+fn run_lan_ns_dual(args: &LanNsDualArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <RFC1918 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if !is_private_ipv4(ip) {
+        return Err(format!("拒绝非私有地址 {ip}：lan-ns-dual 只允许 RFC1918 / 127.0.0.0/8"));
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 { return Err("--port 必须 > 0".into()); }
+    let dest = SocketAddr::from((ip, port));
+    let rate = if args.rate > 0.0 && args.rate <= 1.0 { args.rate } else { 0.2 };
+
+    let key_a = kad_from_hex(&args.key_a.clone().ok_or("缺少 --key-a 32HEX")?)
+        .ok_or("--key-a 必须是 32 位十六进制")?;
+    let key_b = kad_from_hex(&args.key_b.clone().ok_or("缺少 --key-b 32HEX")?)
+        .ok_or("--key-b 必须是 32 位十六进制")?;
+    if key_a == key_b { return Err("--key-a 与 --key-b 不能相同".into()); }
+    let label_a = args.label_a.clone().ok_or("缺少 --label-a")?;
+    let label_b = args.label_b.clone().ok_or("缺少 --label-b")?;
+
+    let mut client = Client::bind_any("lan-ns-dual", node_id(&format!("lan-ns-dual-{label_a}")))
+        .map_err(|e| format!("bind lan socket: {e}"))?;
+    let mut limiter = Limiter::new(rate);
+    let ms = unix_ms();
+    let logical_a = format!("{label_a}:{ms}");
+    let logical_b = format!("{label_b}:{ms}");
+    let local_port = client.addr().port();
+
+    let boot = client.exchange(
+        dest,
+        &bootstrap_req(),
+        op::BOOTSTRAP_RES,
+        "ns-dual: BOOTSTRAP_REQ",
+        "ns-dual: BOOTSTRAP_RES",
+        &mut limiter,
+        None,
+    );
+    let reachable = boot.is_ok();
+    let boot_contacts = boot.as_ref().ok()
+        .and_then(|(p, _)| parse_bootstrap_res(p).ok())
+        .map(|r| r.contacts.len()).unwrap_or(0);
+    let boot_err = boot.as_ref().err().map(|e| e.to_string()).unwrap_or_default();
+    if !reachable {
+        return Ok(obj(vec![
+            ("schema", s("coldrevive.m0.s2-kad-lan-ns-dual/v1")),
+            ("mode", s("lan-ns-dual")),
+            ("target", s(dest.to_string())),
+            ("reachable", b(false)),
+            ("verdict", s("unreachable")),
+            ("bootstrap_error", s(&boot_err)),
+            ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ]));
+    }
+
+    let mut writes: Vec<J> = Vec::new();
+    let mut all_written = true;
+    for (name, key, label, logical) in [
+        ("A", key_a, &label_a, &logical_a),
+        ("B", key_b, &label_b, &logical_b),
+    ] {
+        let entry = IndexEntry {
+            source_id: node_id(&format!("ns-dual-{name}-{ms}")),
+            tags: descriptor_tags(logical, label, local_port),
+        };
+        let frame = publish_key_req(&key, &[entry]);
+        let r = client.exchange(dest, &frame, op::PUBLISH_RES,
+                                &format!("ns-dual: PUBLISH_KEY_REQ {name}"),
+                                &format!("ns-dual: PUBLISH_RES {name}"),
+                                &mut limiter, None);
+        let (acked, detail) = match r {
+            Ok((p, rtt)) => (
+                parse_publish_res(&p).is_ok(),
+                format!("ack rtt={rtt:.1}ms"),
+            ),
+            Err(e) => (false, e.to_string()),
+        };
+        all_written &= acked;
+        writes.push(obj(vec![
+            ("slot", s(name)),
+            ("key", s(&id_hex(&key))),
+            ("label", s(label)),
+            ("acked", b(acked)),
+            ("detail", s(&detail)),
+        ]));
+    }
+
+    let mut reads: Vec<J> = Vec::new();
+    let mut all_answered = true;
+    let mut isolated = true;
+    // 每个键只查一次，直接看**应答里带了哪些标签**：自己的标签在、对方的标签不在。
+    // 早期版本做 4 次查询（含两次「按对方标签查本键」），aMule 对第 4 次稳定静默；
+    // 而「按标签查」本来就不是 KAD 的语义——SEARCH_KEY_REQ 只带 key。改成读回全部
+    // 标签后本地判定，既少两帧，也不会把 aMule 的节流误写成命名空间串味。
+    for (slot, key, own_label, other_label) in [
+        ("A", key_a, &label_a, &label_b),
+        ("B", key_b, &label_b, &label_a),
+    ] {
+        thread::sleep(Duration::from_millis(1500));
+        let mut r = client.exchange(dest, &search_key_req(&key), op::SEARCH_RES,
+                                    &format!("ns-dual: SEARCH_KEY_REQ slot={slot}"),
+                                    &format!("ns-dual: SEARCH_RES slot={slot}"),
+                                    &mut limiter, None);
+        if r.is_err() {
+            thread::sleep(Duration::from_millis(1500));
+            r = client.exchange(dest, &search_key_req(&key), op::SEARCH_RES,
+                                &format!("ns-dual: SEARCH_KEY_REQ retry slot={slot}"),
+                                &format!("ns-dual: SEARCH_RES retry slot={slot}"),
+                                &mut limiter, None);
+        }
+        let (answered, answer_count, own_present, alias_present, labels, detail) = match r {
+            Ok((p, rtt)) => match parse_search_res(&p) {
+                Ok(res) => {
+                    let labels: Vec<String> = res.answers.iter()
+                        .flat_map(|a| a.tags.iter())
+                        .filter_map(|t| match &t.value {
+                            TagValue::Str(v) if v.contains("ColdRevive") => Some(v.clone()),
+                            _ => None,
+                        })
+                        .collect();
+                    let own = labels.iter().any(|v| v.contains(own_label));
+                    let alias = labels.iter().any(|v| v.contains(other_label));
+                    (true, res.answers.len(), own, alias, labels, format!("rtt={rtt:.1}ms"))
+                }
+                Err(e) => (true, 0, false, false, Vec::new(), format!("parse: {e}")),
+            },
+            Err(e) => (false, 0, false, false, Vec::new(), e.to_string()),
+        };
+        let clean = answered && own_present && !alias_present;
+        all_answered &= answered;
+        if !clean { isolated = false; }
+        reads.push(obj(vec![
+            ("slot", s(slot)),
+            ("key", s(&id_hex(&key))),
+            ("answered", b(answered)),
+            ("answers", n(answer_count as f64)),
+            ("own_label_present", b(own_present)),
+            ("other_label_present", b(alias_present)),
+            ("labels", J::Arr(labels.iter().map(|v| s(v)).collect())),
+            ("clean", b(clean)),
+            ("detail", s(&detail)),
+        ]));
+    }
+
+    let verdict = if !all_written {
+        "namespace_write_silent"
+    } else if !all_answered {
+        "namespace_read_silent"
+    } else if !isolated {
+        "namespace_alias_detected"
+    } else {
+        "namespace_isolated"
+    };
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-lan-ns-dual/v1")),
+        ("mode", s("lan-ns-dual")),
+        ("target", s(dest.to_string())),
+        ("target_is_private", b(true)),
+        ("public_kad_contacted", b(false)),
+        ("evidence_valid_for_pass", b(false)),
+        ("s2_status", s("not_run")),
+        ("reachable", b(true)),
+        ("bootstrap_contacts", n(boot_contacts as f64)),
+        ("local_kad_id", s(&id_hex(&client.id))),
+        ("key_a", s(&id_hex(&key_a))),
+        ("key_b", s(&id_hex(&key_b))),
+        ("label_a", s(&label_a)),
+        ("label_b", s(&label_b)),
+        ("writes", J::Arr(writes)),
+        ("reads", J::Arr(reads)),
+        ("all_written", b(all_written)),
+        ("all_answered", b(all_answered)),
+        ("isolated", b(isolated)),
+        ("verdict", s(verdict)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+    ]))
+}
+
+// --------------------------------------------------- wan index probe (G3) --
+
+#[derive(Default)]
+struct WanIndexArgs {
+    ip: Option<String>,
+    port: Option<u16>,
+    rate: f64,
+    label: Option<String>,
+    /// `--attest-inbound-probe`: this round sends real KAD frames to a *public*
+    /// address. Required, because every other probe in this binary refuses that.
+    attest: bool,
+    /// `--obfuscate`: wrap HELLO / PUBLISH / SEARCH in the RC4 envelope keyed by
+    /// the peer's KadID. aMule answers plaintext BOOTSTRAP but was silent on
+    /// everything else, on the LAN as well as through the WAN, so "NAT" was
+    /// never the differentiator. Obfuscation is the other candidate and has to
+    /// be switchable to stay separable from the firewalled gate.
+    obfuscate: bool,
+    /// `--allow-private`: run the same sequence against an RFC1918 target. Only
+    /// for the LAN control arm; recorded in the report as such.
+    allow_private: bool,
+}
+
+/// G3 `g3.amule_kad_index` recheck: real KAD frames from a **public egress** to
+/// one real aMule's KAD port.
+///
+/// Why a separate mode instead of a flag on `lan-index-probe`. Two properties
+/// must hold at once and neither is optional:
+///
+/// 1. The target has to be a **globally routable** address. The whole point is
+///    whether aMule still drops PUBLISH *after* its inbound became reachable.
+///    Probing from the LAN would be answered through `IsLanIP(ip)`, which
+///    bypasses both gates below — i.e. it would measure the one path that has
+///    never been in doubt.
+/// 2. The index key must sit **next to the peer's KadID**. aMule's
+///    `Process2PublishKeyRequest` silently returns on two independent
+///    conditions: `CUDPFirewallTester::IsFirewalledUDP(true)`, and
+///    `distance.Get32BitChunk(0) > SEARCHTOLERANCE` (2^24, receiver's KadID vs
+///    key). A key derived from a fresh label lands inside that tolerance with
+///    probability 1/256, so a silent PUBLISH could not be attributed to either
+///    cause — which is exactly where W3.16 had to stop. Taking the key from the
+///    HELLO_RES KadID (top 32 bits identical, low byte flipped so key != id)
+///    removes the tolerance branch by construction; what is left silent can
+///    only be the firewalled gate.
+///
+/// Scope discipline: this reaches **one host we own** over the WAN, it is not a
+/// KAD-network sample, it never bootstraps from a public node list, and it keeps
+/// `evidence_valid_for_pass=false` / `s2_status=not_run`. It cannot move S2 or
+/// G3 by itself; a human reads the report.
+fn run_wan_index_probe(args: &WanIndexArgs) -> Result<J, String> {
+    let ip_text = args.ip.clone().ok_or("缺少 --ip <全局可路由 IPv4>")?;
+    let ip: Ipv4Addr = ip_text.parse().map_err(|_| format!("invalid ip: {ip_text}"))?;
+    if args.allow_private {
+        if !is_private_ipv4(ip) {
+            return Err(format!("--allow-private 只接受 RFC1918 / 127.0.0.0/8，收到 {ip}"));
+        }
+    } else if !is_global_ipv4(ip) {
+        return Err(format!(
+            "拒绝 {ip}：wan-index-probe 只接受全局可路由地址；LAN 对照请加 --allow-private"
+        ));
+    }
+    let target_is_private = is_private_ipv4(ip);
+    // The attestation exists for traffic that leaves the LAN. Sending to an
+    // RFC1918 target is the same risk class as every other probe here, so it is
+    // not demanded there -- and the report still records `attested` as false.
+    if !target_is_private && !args.attest {
+        return Err(
+            "wan-index-probe 会向公网地址发送真实 KAD 帧，必须显式加 --attest-inbound-probe".into(),
+        );
+    }
+    let port = args.port.ok_or("缺少 --port <UDP/KAD 端口>")?;
+    if port == 0 {
+        return Err("--port 必须 > 0".into());
+    }
+    let dest = SocketAddr::from((ip, port));
+    // Three frames to one real client, not a scan: hard ceiling of 0.2 pps.
+    let rate = if args.rate > 0.0 && args.rate <= 0.2 { args.rate } else { 0.2 };
+
+    let mut client = Client::bind_any("wan-index-probe", node_id("wan-index-probe"))
+        .map_err(|e| format!("bind wan socket: {e}"))?;
+    let local = client.addr().port();
+    let contact = Contact { id: client.id, ip: [0, 0, 0, 0], udp: local, tcp: 0, version: KAD_VERSION };
+    let mut limiter = Limiter::new(rate);
+
+    let ms = unix_ms();
+    let label = args.label.clone().unwrap_or_else(|| "wan-index-probe".to_string());
+    let logical = format!("{label}:{ms}");
+
+    // --- 0. BOOTSTRAP_REQ/RES: is the UDP path two-way through the real NAT? --
+    let boot = client.exchange(
+        dest,
+        &bootstrap_req(),
+        op::BOOTSTRAP_RES,
+        "wan-index: BOOTSTRAP_REQ",
+        "wan-index: BOOTSTRAP_RES",
+        &mut limiter,
+        None,
+    );
+    let (reachable, boot_contacts, boot_rtt, boot_err, boot_self_id) = match &boot {
+        Ok((p, rtt)) => match parse_bootstrap_res(p) {
+            Ok(r) => (true, r.contacts.len(), *rtt, String::new(), Some(r.self_id)),
+            Err(e) => (true, 0, *rtt, format!("BOOTSTRAP_RES parse: {e}"), None),
+        },
+        Err(e) => (false, 0, 0.0, e.to_string(), None),
+    };
+
+    // --- 1. HELLO_REQ/RES: diagnostic only --------------------------------
+    // `KADEMLIA2_BOOTSTRAP_RES` already carries the responder's own KadID as its
+    // first 16 bytes, so nothing downstream depends on HELLO. It is still sent
+    // because a silent HELLO while BOOTSTRAP answers is itself a finding: it
+    // means aMule is up and two-way but declining per-contact state, and that
+    // has to be visible in the report rather than inferred later.
+    let mut hello_id: Option<KadId> = None;
+    let mut hello_rtt = 0.0;
+    let mut hello_err = String::new();
+    let mut hello_version = 0u8;
+    let mut hello_udp: Option<u16> = None;
+    if reachable {
+        let hello_target = if args.obfuscate { boot_self_id.as_ref() } else { None };
+        match client.exchange(
+            dest,
+            &hello(op::HELLO_REQ, &contact, &[]),
+            op::HELLO_RES,
+            "wan-index: HELLO_REQ",
+            "wan-index: HELLO_RES",
+            &mut limiter,
+            hello_target,
+        ) {
+            Ok((p, rtt)) => match parse_hello(&p) {
+                Ok(h) => {
+                    hello_id = Some(h.id);
+                    hello_rtt = rtt;
+                    hello_version = h.version;
+                    hello_udp = h.udp_from_tag;
+                }
+                Err(e) => hello_err = format!("HELLO_RES parse: {e}"),
+            },
+            Err(e) => hello_err = e.to_string(),
+        }
+    }
+
+    // Bootstrap's self_id is authoritative for the key: it is the same value aMule
+    // compares against when deciding whether this key is inside SEARCHTOLERANCE.
+    let (peer_id, peer_id_source) = match (boot_self_id, hello_id) {
+        (Some(b), Some(h)) => (Some(b), if b == h { "bootstrap_res" } else { "bootstrap_res(hello_differs)" }),
+        (Some(b), None) => (Some(b), "bootstrap_res"),
+        (None, Some(h)) => (Some(h), "hello_res"),
+        (None, None) => (None, "unavailable"),
+    };
+    let hello_id_mismatch = matches!((boot_self_id, hello_id), (Some(b), Some(h)) if b != h);
+
+    // Key = peer KadID with its last byte flipped: top32 distance is 0, so the
+    // SEARCHTOLERANCE branch cannot fire, and the key is still distinct from the
+    // peer's own ID (an entry published at its exact ID would be untellable from
+    // a lookup of itself).
+    let (key, key_source, key_distance_top32) = match peer_id {
+        Some(id) => {
+            let mut k = id;
+            k[15] ^= 0x01;
+            (Some(k), "near_remote_id", top_chunk(&id, &k))
+        }
+        None => (None, "unavailable", 0),
+    };
+
+    let descriptor_id = node_id(&format!("wan-descriptor-{ms}-{label}"));
+    let mut publish_acked = false;
+    let mut publish_rtt = 0.0;
+    let mut publish_err = String::new();
+    let mut publish_load = 0i64;
+    let mut publish_frame_bytes = 0usize;
+    let mut publish_frame_hex = String::new();
+    if let Some(k) = key {
+        if reachable {
+            let entry = IndexEntry {
+                source_id: descriptor_id,
+                tags: descriptor_tags(&logical, &label, local),
+            };
+            let frame = publish_key_req(&k, &[entry]);
+            publish_frame_bytes = frame.len();
+            publish_frame_hex = sha1::hex(&frame);
+            match client.exchange(
+                dest,
+                &frame,
+                op::PUBLISH_RES,
+                "wan-index: PUBLISH_KEY_REQ",
+                "wan-index: PUBLISH_RES",
+                &mut limiter,
+                if args.obfuscate { peer_id.as_ref() } else { None },
+            ) {
+                Ok((p, rtt)) => match parse_publish_res(&p) {
+                    Ok(r) => {
+                        publish_acked = true;
+                        publish_load = r.load as i64;
+                        publish_rtt = rtt;
+                    }
+                    Err(e) => publish_err = format!("PUBLISH_RES parse: {e}"),
+                },
+                Err(e) => publish_err = e.to_string(),
+            }
+        }
+    }
+
+    // --- 2. SEARCH_KEY_REQ/RES: only an ack that is readable back counts ------
+    let mut search_res = false;
+    let mut search_answers = 0usize;
+    let mut our_entry_returned = false;
+    let mut namespace_tag_matches = false;
+    let mut label_present = false;
+    let mut search_rtt = 0.0;
+    let mut search_err = String::new();
+    let mut answers_detail: Vec<J> = Vec::new();
+    if publish_acked {
+        if let Some(k) = key {
+            // aMule answers a miss with silence by design, so one retry separates
+            // "lost datagram" from "not stored" at the cost of one packet.
+            for attempt in 0..2 {
+                if attempt > 0 {
+                    thread::sleep(Duration::from_millis(1200));
+                }
+                match client.exchange(
+                    dest,
+                    &search_key_req(&k),
+                    op::SEARCH_RES,
+                    "wan-index: SEARCH_KEY_REQ",
+                    "wan-index: SEARCH_RES",
+                    &mut limiter,
+                    if args.obfuscate { peer_id.as_ref() } else { None },
+                ) {
+                    Ok((p, rtt)) => match parse_search_res(&p) {
+                        Ok(r) => {
+                            search_res = true;
+                            search_rtt = rtt;
+                            search_answers = r.answers.len();
+                            let mine = r.answers.iter().find(|a| a.source_id == descriptor_id);
+                            our_entry_returned = r.target == k && mine.is_some();
+                            namespace_tag_matches = mine.is_some_and(|a| {
+                                a.tags.iter().any(|t| match (&t.name[..], &t.value) {
+                                    (b"ColdRevive_V1:namespace", TagValue::Str(v)) => v == NAMESPACE,
+                                    _ => false,
+                                })
+                            });
+                            label_present = r.answers.iter().any(|a| {
+                                a.tags.iter().any(|t| match &t.value {
+                                    TagValue::Str(v) => v.contains(&label),
+                                    _ => false,
+                                })
+                            });
+                            answers_detail = r.answers.iter().map(answer_json).collect();
+                            break;
+                        }
+                        Err(e) => search_err = format!("SEARCH_RES parse: {e}"),
+                    },
+                    Err(e) => search_err = e.to_string(),
+                }
+            }
+        }
+    }
+
+    let verdict = if !reachable {
+        "wan_unreachable"
+    } else if peer_id.is_none() {
+        "wan_hello_failed"
+    } else if !publish_acked {
+        "wan_publish_silent_in_zone"
+    } else if our_entry_returned && namespace_tag_matches {
+        "wan_confirmed_publish_then_retrieve"
+    } else if search_res {
+        "wan_publish_acked_search_answered_without_our_entry"
+    } else {
+        "wan_publish_acked_search_silent"
+    };
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.m0.s2-kad-wan-index-probe/v1")),
+        ("generated_at", s(utc_iso(ms))),
+        ("mode", s("wan-index-probe")),
+        ("target", s(dest.to_string())),
+        ("target_scope", s("single_host_through_wan")),
+        ("target_is_private", b(target_is_private)),
+        ("public_kad_contacted", b(!target_is_private)),
+        ("obfuscated", b(args.obfuscate)),
+        ("attested", b(args.attest)),
+        ("evidence_valid_for_pass", b(false)),
+        ("s2_status", s("not_run")),
+        ("rate_limit_pps", n(rate)),
+        ("label", s(&label)),
+        ("key_source", s(key_source)),
+        ("key_distance_top32", n(key_distance_top32 as f64)),
+        ("searchtolerance", n(SEARCHTOLERANCE as f64)),
+        ("key_in_tolerance", b(key_source == "near_remote_id" && key_distance_top32 <= SEARCHTOLERANCE)),
+        ("local_kad_id", s(id_hex(&client.id))),
+        ("peer_kad_id", s(peer_id.map(|p| id_hex(&p)).unwrap_or_default())),
+        ("peer_id_source", s(peer_id_source)),
+        ("bootstrap_self_id", s(boot_self_id.map(|p| id_hex(&p)).unwrap_or_default())),
+        ("hello_id", s(hello_id.map(|p| id_hex(&p)).unwrap_or_default())),
+        ("hello_id_mismatch", b(hello_id_mismatch)),
+        ("peer_kad_version", n(hello_version as f64)),
+        ("peer_udp_from_tag", n(hello_udp.unwrap_or(0) as f64)),
+        ("key_logical", s(&logical)),
+        ("key_id", s(key.map(|k| id_hex(&k)).unwrap_or_default())),
+        ("descriptor_id", s(id_hex(&descriptor_id))),
+        ("reachable", b(reachable)),
+        ("bootstrap_contacts", n(boot_contacts as f64)),
+        ("bootstrap_rtt_ms", n(boot_rtt)),
+        ("bootstrap_error", s(boot_err)),
+        ("hello_rtt_ms", n(hello_rtt)),
+        ("hello_error", s(hello_err)),
+        ("publish_sent", b(publish_frame_bytes > 0)),
+        ("publish_frame_bytes", n(publish_frame_bytes as f64)),
+        ("publish_frame_sha1", s(publish_frame_hex)),
+        ("publish_acked", b(publish_acked)),
+        ("publish_load", n(publish_load as f64)),
+        ("publish_rtt_ms", n(publish_rtt)),
+        ("publish_error", s(publish_err)),
+        ("search_responded", b(search_res)),
+        ("search_rtt_ms", n(search_rtt)),
+        ("search_answers", n(search_answers as f64)),
+        ("answers_detail", J::Arr(answers_detail)),
+        ("our_entry_returned", b(our_entry_returned)),
+        ("namespace_tag_matches", b(namespace_tag_matches)),
+        ("sel_label_present", b(label_present)),
+        ("search_error", s(search_err)),
+        ("verdict", s(verdict)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s(
+            "单目标、经真实 NAT/公网：BOOTSTRAP 证明 UDP 双向通，HELLO 取对端 KadID，\
+索引键贴着该 ID 取（top32 距离 0）以排除 SEARCHTOLERANCE 分支，再做 PUBLISH/SEARCH。\
+PUBLISH 静默时只剩 firewalled 一个解释；这是行为证据，不读 aMule 自报状态。\
+不是公共 KAD 网络样本，不构成 S2/G3 结论。"
+        )),
+    ]))
+}
+
 /// Render a KAD tag name for reports. Numeric tag names are single raw bytes
 /// like 0xFE (TAG_SOURCEIP), not printable text; `from_utf8_lossy` would turn
 /// them into U+FFFD and make the evidence unreadable.
@@ -2908,7 +3436,11 @@ fn print_usage() {
     println!("  kad-mini lan-index-probe --ip IP --port UDP   RFC1918-only PUBLISH/SEARCH roundtrip (PLAN §18.6 D)");
     println!("            [--key-hex 32HEX] [--label NAME] [--search-only]");
     println!("            --key-hex 固定 16B 索引键（W3.17 命名空间隔离测试）；--search-only 只读回不回写");
+    println!("  kad-mini lan-ns-dual --ip IP --port UDP --key-a 32HEX --key-b 32HEX \\");
+    println!("            --label-a NAME --label-b NAME   单 socket 双键写入 + 逐键回查标签（命名空间隔离）");
     println!("  kad-mini ed2k-dict-probe --ip IP --port UDP [--keyword TERM]   RFC1918-only eMule keyword dictionary (ADR-011 L1)");
+    println!("  kad-mini wan-index-probe --ip PUBLIC_IP --port UDP --attest-inbound-probe");
+    println!("            公网单目标 PUBLISH/SEARCH（G3 aMule 入向复核）；强制全局地址 + 显式声明");
     println!("  kad-mini l2-source-probe --ip IP --port UDP   RFC1918-only 0x43+0x44 / 0x33+0x34 dual-track (ADR-011 L2)");
     println!("  kad-mini split-probe --stage publish|search --bootstrap FILE --handoff FILE \\");
     println!("            --sample-size N --rate-limit R --attest-i-am-the-experiment-operator  (PLAN §21 A/B)");
@@ -2951,6 +3483,30 @@ fn main() {
                 search_only: argv.iter().any(|a| a == "--search-only"),
             };
             run_lan_index_probe(&args).map(|r| (r, "kad-lan-index-probe", 0))
+        }
+        "lan-ns-dual" => {
+            let args = LanNsDualArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+                key_a: arg_value(&argv, "--key-a"),
+                key_b: arg_value(&argv, "--key-b"),
+                label_a: arg_value(&argv, "--label-a"),
+                label_b: arg_value(&argv, "--label-b"),
+            };
+            run_lan_ns_dual(&args).map(|r| (r, "kad-lan-ns-dual", 0))
+        }
+        "wan-index-probe" => {
+            let args = WanIndexArgs {
+                ip: arg_value(&argv, "--ip"),
+                port: arg_value(&argv, "--port").and_then(|v| v.parse().ok()),
+                rate: arg_value(&argv, "--rate").and_then(|v| v.parse().ok()).unwrap_or(0.2),
+                label: arg_value(&argv, "--label"),
+                attest: argv.iter().any(|a| a == "--attest-inbound-probe"),
+                obfuscate: argv.iter().any(|a| a == "--obfuscate"),
+                allow_private: argv.iter().any(|a| a == "--allow-private"),
+            };
+            run_wan_index_probe(&args).map(|r| (r, "kad-wan-index-probe", 0))
         }
         "ed2k-dict-probe" => {
             let args = Ed2kDictArgs {

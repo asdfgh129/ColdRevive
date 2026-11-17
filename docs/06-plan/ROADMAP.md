@@ -473,6 +473,18 @@ ColdRevive
   **需要所有者开环境的 3 条**：公共 DHT 宣告放行、221 的 aMule 公网入向 UDP 4672 + TCP 4662。
   结案口径与判定表见 [TEST §3](../05-quality/TEST.md)；**不含任何可达率数字**（ADR-012）。
 
+- **W5.1g（2026-11-17）G3 例外「aMule KAD 索引面」重测条件到位并通过**：所有者补开 221 的
+  `UDP 4672` + `TCP 4662` 公网入向后，`tests/e2e/w51g/amule_wan_kad.py` 先独立验网络层
+  （222 → 公网地址，221 抓包源必须是 `112.5.32.34`），再从公网发真实 KAD 帧：
+  `wan-index-probe` 用 `BOOTSTRAP_RES.self_id` 贴键（top32 距离 0，排除 `SEARCHTOLERANCE`
+  越界分支），PUBLISH 被 ACK、SEARCH 取回本条；LAN 对照、未监听端口负对照同时成立。
+  **实测 20/20**（公网 2 轮）：`verdict=wan_confirmed_publish_then_retrieve`（2/2）、
+  `namespace_isolated`（单 socket 双键写入 + 逐键回查标签，自己的标签在、对方的标签不在）。
+  关键发现：**加映射本身不够**——aMule 进程内的「UDP 未被验证」状态在重启后才重判；
+  重启前同一份二进制对 PUBLISH 一律静默（LAN/公网都是），重启后同帧立即被接受。
+  脚本显式提供 `--restart-amule`（运维动作），并固定 `g3_verdict=not_run`，
+  结论由实验执行人回填；本次只关闭该例外所需的**取证缺口**，不改人工结案文件。
+
 - **W5.1（2026-11-16）BT 引擎落地：从「只解析种子」到「真的下载」**：按所有者「取消零依赖，
   按既定方案走」，[ADR-015](../02-architecture/adr/ADR-015-dependency-layering.md) 把依赖策略改为分层
   （协议面 15 个 crate 继续 std-only，`cr-engine` / `coldrevived` 用 librqbit 9.1.0 + tokio）。
@@ -564,6 +576,19 @@ ColdRevive
   同轮修掉三个 harness 缺陷（`POLL_END` 混进最后一块 JSON 导致 100% 被丢、`0.99x` 中断条件
   在 99.2% 提前 break、复位不彻底导致客户端续传 48 KiB 污染供片计数），**都是量具，不是产品**。
 
+- **W5.2（2026-11-17）ADR-013 唤醒路径接线完成：先查再打洞，21/21 连续 3 轮**：
+  `wake_with_plan` 在绑定 UDP socket / STUN / 打洞之前先经中继 `lookup_reach_any` 查对端声明；
+  **只有有效的 `relay-only`** 才跳过全部直连候选，`direct` / `unknown` / 查询失败一律保留直连。
+  `only_kind` 保留给验收量具显式旁路（S6 要分别量两条路径），生产默认调用没有这个旁路。
+  CLI 的 `nat wake` 新增 `reach_lookup` 字段（中继、类别、声明时刻、TTL、`skip_direct`、错误、RTT）。
+  `tests/e2e/w52/reach_gated_wake.py` 用真实 222（symmetric）/ A / 中继实测：
+  `class=relay-only`、`skip_direct=true`、`attempts` 只有 `relay`、拿到 `WAKEUP_ACK`，
+  222 侧抓包对 A 公网出口 **0 条 UDP**；另起窗口强制 `stun-mapped` 必须抓到 >0 条，
+  证明「0 包」不是量具失灵。`s6_status=not_run` / `is_s6_evidence=false` 不变。
+  首轮连跑暴露**真产品缺陷**：持有者订阅把 500 ms 读超时误判断链，1 s 重连窗口内服务端
+  `forget_local` 抹掉声明，查询随机变回 `unknown`；已改为超时保活 + 仅当旧连接仍是当前
+  注册项才清理声明（两条单测），修复后 21/21 连续 3 轮。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
   实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**（能自己下载），
@@ -572,8 +597,8 @@ ColdRevive
   不必再等回落。W5.1d 顺带暴露的「公网单连接吞吐远低于 LAN」仍未定位，
   且 µTP 档落在同一量级（W5.1f），登记为观察项——不再单独追这条线。
   可达性口径仍只在 S6 证据齐备时才谈数字。
-  ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
-  unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
+  ② ~~唤醒路径接入「先查再打洞」~~ **已于 W5.2 完成**（relay-only 跳过直连，
+  unknown 不许当低 ID 用；21/21 连续 3 轮）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
   ④ 公网入口 **7100→7100**（实测可用；`57100` 规则不存在）复跑时延/丢包/抖动；
   ⑤ BT/TCP 打洞；⑥ S3 / S5 继续 `not_run`，待 G3 矩阵与真实拥塞链路证据齐备后由人手工回填。
   **出口类别清单（原 W3.10 后续）移到 S6 证据阶段，不占当前路径**：它只服务于「能否宣称 G2」，

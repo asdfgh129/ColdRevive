@@ -1248,14 +1248,21 @@ fn serve_chan(
     }
 
     if let Some(id) = registered {
-        let mut reg = shared.registry.lock().unwrap();
-        if let Some(cur) = reg.get(&id) {
-            if Arc::ptr_eq(cur, &writer) {
+        // 只有「这条连接仍是该节点的当前注册项」时，它的退出才算节点掉线。
+        // 重连时新连接会覆盖注册表；若旧连接随后才关掉，旧代码照样 forget_local，
+        // 把新连接刚声明的 relay-only 抹成「不知道」，让 wake 随机走回直连。
+        let was_current = {
+            let mut reg = shared.registry.lock().unwrap();
+            if reg.get(&id).map(|cur| Arc::ptr_eq(cur, &writer)).unwrap_or(false) {
                 reg.remove(&id);
+                true
+            } else {
+                false
             }
+        };
+        if was_current {
+            shared.forget_local(&id);
         }
-        drop(reg);
-        shared.forget_local(&id);
         if !shared.peers.lock().unwrap().is_empty() {
             shared.broadcast_snapshot();
         }
@@ -1827,6 +1834,36 @@ mod tests {
             || handle.stats().declared_relay_only == 1,
             Duration::from_secs(2)
         ));
+        handle.stop();
+    }
+
+    /// 重连竞态：新连接刚 `REGISTER_DECLARED`，旧连接随后才关。
+    /// 旧连接的退出不能把新连接刚声明的 relay-only 抹掉，否则 wake 又随机走回直连。
+    #[test]
+    fn stale_close_does_not_erase_reconnected_declaration() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let addr = format!("127.0.0.1:{port}");
+
+        let mut old = RelayClient::plaintext(addr.clone())
+            .connect(Duration::from_secs(2)).unwrap();
+        old.register_declared(&id(b'R'), &decl_relay_only()).unwrap();
+        let mut new = RelayClient::plaintext(addr.clone())
+            .connect(Duration::from_secs(2)).unwrap();
+        new.register_declared(&id(b'R'), &decl_relay_only()).unwrap();
+        let mut asker = RelayClient::plaintext(addr)
+            .connect(Duration::from_secs(2)).unwrap();
+        asker.register(&id(b'Q')).unwrap();
+
+        drop(old);
+        thread::sleep(Duration::from_millis(300));
+        for _ in 0..5 {
+            let got = asker.lookup_reach(&id(b'R'), Duration::from_secs(2)).unwrap()
+                .expect("新连接仍在线，声明不能被旧连接的退出清掉");
+            assert_eq!(got.class, ReachClass::RelayOnly);
+            thread::sleep(Duration::from_millis(20));
+        }
         handle.stop();
     }
 

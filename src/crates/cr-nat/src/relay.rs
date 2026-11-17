@@ -34,7 +34,8 @@
 //! 只允许明文绑回环地址，公网部署必须配密钥（见 `coldrevive-relay --allow-insecure`）。
 
 use crate::relay_server::DEFAULT_MAX_FRAME;
-use std::io::{Read, Write};
+use crate::secure::RecvError;
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -50,6 +51,15 @@ pub const FRAME_HEADER_LEN: usize = 1 + NODE_ID_LEN + 4;
 /// 订阅连接抢占服务端注册表里 `HashMap<node_id, conn>` 的唯一表项。改用一次性会话 id 后：
 /// 请求侧注册的 id 唯一；服务端把该 id 作为 `DELIVERED.node`（来源）交给持有者，
 /// 持有者据此把真实 WAKEUP_ACK 准确回投到这次请求的 TCP 连接。
+/// 明文连接没有 secure 记录层，超时分类要在这里补齐，口径与 [`RecvError`] 一致。
+fn classify_plain_read(e: std::io::Error, what: &str) -> RecvError {
+    let msg = format!("{what}: {e}");
+    match e.kind() {
+        ErrorKind::TimedOut | ErrorKind::WouldBlock => RecvError::Timeout(msg),
+        _ => RecvError::Io(msg),
+    }
+}
+
 pub fn ephemeral_session_id(self_id: &[u8; NODE_ID_LEN]) -> [u8; NODE_ID_LEN] {
     static SEQ: AtomicU64 = AtomicU64::new(1);
     let nanos = SystemTime::now()
@@ -499,13 +509,36 @@ impl RelayConn {
         }
     }
 
+    /// 兼容旧调用方的「阻塞读到一帧或报错」接口。
+    /// 空闲超时在这里仍按错误处理；订阅线程要用 [`Self::recv_frame_optional`] 区分超时与断链。
     pub fn recv_frame(&mut self) -> Result<RelayFrame, String> {
+        match self.recv_frame_inner() {
+            Ok(Some(f)) => Ok(f),
+            Ok(None) => Err("空闲超时".into()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// 读到一帧返回 `Some`；**读超时返回 `Ok(None)`**，链路/协议错误才返回 `Err`。
+    ///
+    /// 订阅连接本来就是「长连接 + 本地短读超时轮询声明」，把超时压成字符串会让
+    /// `relay_sub` 每轮都误判断链、重连、被服务端 `forget_local` 清掉声明——
+    /// 对外表现就是 `LOOKUP_REACH` 在「声明已传播」之后又随机变回「不知道」。
+    pub fn recv_frame_optional(&mut self) -> Result<Option<RelayFrame>, String> {
+        match self.recv_frame_inner() {
+            Ok(v) => Ok(v),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    fn recv_frame_inner(&mut self) -> Result<Option<RelayFrame>, RecvError> {
         match &mut self.io {
             ConnIo::Plain { reader, .. } => {
                 let mut head = [0u8; FRAME_HEADER_LEN];
-                reader
-                    .read_exact(&mut head)
-                    .map_err(|e| format!("读帧头失败: {}", e))?;
+                if let Err(e) = reader.read_exact(&mut head) {
+                    let e = classify_plain_read(e, "读帧头失败");
+                    return if matches!(e, RecvError::Timeout(_)) { Ok(None) } else { Err(e) };
+                }
                 let len = u32::from_be_bytes([
                     head[1 + NODE_ID_LEN],
                     head[2 + NODE_ID_LEN],
@@ -513,21 +546,76 @@ impl RelayConn {
                     head[4 + NODE_ID_LEN],
                 ]) as usize;
                 if len > DEFAULT_MAX_FRAME {
-                    return Err(format!("帧体超限: {}", len));
+                    return Err(RecvError::Protocol(format!("帧体超限: {len}")));
                 }
                 let mut payload = vec![0u8; len];
                 if len > 0 {
-                    reader
-                        .read_exact(&mut payload)
-                        .map_err(|e| format!("读帧体失败: {}", e))?;
+                    if let Err(e) = reader.read_exact(&mut payload) {
+                        let e = classify_plain_read(e, "读帧体失败");
+                        return if matches!(e, RecvError::Timeout(_)) { Ok(None) } else { Err(e) };
+                    }
                 }
                 let mut raw = head.to_vec();
                 raw.extend_from_slice(&payload);
-                RelayFrame::decode(&raw).ok_or_else(|| "帧解析失败".into())
+                RelayFrame::decode(&raw)
+                    .map(Some)
+                    .ok_or_else(|| RecvError::Protocol("帧解析失败".into()))
             }
-            ConnIo::Secure { reader, .. } => reader.recv().map_err(|e| e.to_string()),
+            ConnIo::Secure { reader, .. } => match reader.recv() {
+                Ok(f) => Ok(Some(f)),
+                Err(e) if e.is_timeout() => Ok(None),
+                Err(e) => Err(e),
+            },
         }
     }
+}
+
+/// 按配置顺序向多个中继查询同一节点的可达性声明。
+///
+/// 与 [`RelayConn::lookup_reach`] 的关系：那里是一次 TCP 连接上的**一问一答**；
+/// 这里是唤醒路径要用的**决策入口**——任何一个中继给出仍然有效的 `RelayOnly`
+/// 就立刻返回（可以据此跳过注定失败的直连），否则返回第一个成功应答（可能是
+/// `direct`、过期的声明、或「中继不知道」）。全部连接/协议失败才返回 Err。
+///
+/// **`None` 与过期声明都必须按 unknown 处理**：调用方只能「不跳过直连」，
+/// 不能反过来把 unknown 当成低 ID 或据此拒绝服务。
+pub fn lookup_reach_any(
+    relays: &[String],
+    target: &[u8; NODE_ID_LEN],
+    timeout: Duration,
+) -> Result<(String, Option<crate::reach::ReachDeclaration>), String> {
+    if relays.is_empty() {
+        return Err("未配置任何中继端点".into());
+    }
+    let mut errs = Vec::new();
+    let mut fallback: Option<(String, Option<crate::reach::ReachDeclaration>)> = None;
+    for relay in relays {
+        let client = RelayClient::new(relay.clone());
+        let mut conn = match client.connect(timeout) {
+            Ok(c) => c,
+            Err(e) => { errs.push(format!("{}: connect: {}", relay, e)); continue; }
+        };
+        // 与 `relay_wake` 一样用一次性会话 id，避免抢占持有者侧稳定注册项。
+        let session = ephemeral_session_id(target);
+        if let Err(e) = conn.register(&session) {
+            errs.push(format!("{}: register: {}", relay, e));
+            continue;
+        }
+        match conn.lookup_reach(target, timeout) {
+            Ok(decl) => {
+                let live = decl.as_ref()
+                    .map(|d| d.effective_at(crate::reach::now_ms()));
+                if live == Some(crate::reach::ReachClass::RelayOnly) {
+                    return Ok((relay.clone(), decl));
+                }
+                if fallback.is_none() {
+                    fallback = Some((relay.clone(), decl));
+                }
+            }
+            Err(e) => errs.push(format!("{}: lookup: {}", relay, e)),
+        }
+    }
+    fallback.ok_or_else(|| format!("全部中继查询失败（{}）", errs.join("; ")))
 }
 
 #[cfg(test)]
@@ -608,6 +696,25 @@ mod tests {
         assert_eq!(dec.kind, FrameKind::Relay);
         assert_eq!(dec.node, [7u8; NODE_ID_LEN]);
         assert_eq!(dec.payload, b"hello");
+    }
+
+    /// 订阅连接的读超时必须和断链分开：连续多次超时之后，同一条 TCP 连接
+    /// 仍要能正常收发帧，否则服务端会把它当成掉线清掉可达性声明。
+    #[test]
+    fn idle_timeout_keeps_the_same_connection_usable() {
+        let port = spawn_mock_relay();
+        let client = RelayClient::plaintext(format!("127.0.0.1:{port}"));
+        let mut conn = client.connect(Duration::from_secs(2)).unwrap();
+        conn.register(&[1u8; NODE_ID_LEN]).unwrap();
+        conn.set_read_timeout(Some(Duration::from_millis(120))).unwrap();
+        for _ in 0..3 {
+            assert!(conn.recv_frame_optional().unwrap().is_none(),
+                    "空闲读超时应返回 Ok(None)，不能当成断链");
+        }
+        conn.send_relay(&[2u8; NODE_ID_LEN], b"after-timeout").unwrap();
+        let frame = conn.recv_frame_optional().unwrap().expect("同一连接还应能收帧");
+        assert_eq!(frame.kind, FrameKind::Delivered);
+        assert_eq!(&frame.payload, b"after-timeout");
     }
 
     #[test]

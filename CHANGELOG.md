@@ -2,6 +2,34 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.75] - 2026-11-17 — M2/W5.1g + W5.2：aMule 公网 KAD 复核、「先查再打洞」收口
+
+> W5.1g 把 G3 里「aMule KAD 索引面」的取证缺口关掉；W5.2 把 ADR-013 的可达性声明真正接进
+> 唤醒决策。连跑 W5.2 时又抓到一个**真产品缺陷**（订阅抖动机掉声明），已一并修掉。
+
+- **W5.1g（20/20，公网 2 轮）**：所有者开 221 的 `UDP 4672`/`TCP 4662` 入向后，
+  `tests/e2e/w51g/amule_wan_kad.py` 先从 222 验公网源 `112.5.32.34` 的双向可达，
+  再用 `kad-mini wan-index-probe` 从公网发真实 `0x43`/`0x33` 帧：贴 `BOOTSTRAP_RES.self_id`
+  取键（排除 tolerance 越界），PUBLISH 被 ACK、SEARCH 取回本条；LAN 正对照、未监听端口
+  负对照、单 socket 双键的 `lan-ns-dual` 命名空间隔离同时成立。关键发现：**加映射不够**，
+  aMule 进程内的「UDP 未验证」状态要重启才重判，故脚本显式提供 `--restart-amule`。
+  只关闭取证缺口，人工 G3 结案文件不动。
+- **W5.2（21/21 连续 3 轮）**：`wake_with_plan` 在绑 UDP socket / STUN / `NAT_PUNCH` 之前先
+  `lookup_reach_any`；**只有有效的 `relay-only`** 才跳过直连，`direct`/`unknown`/查询失败
+  照常两条路都试。`nat wake` 新增 `reach_lookup`，另加「只查不改」的 `nat reach` 供开抓包窗口前
+  确认声明已传播。`only_kind` 仍是验收量具专用旁路，生产默认没有。真实 222（symmetric）/
+  A / 中继实测：只走 relay、拿到 `WAKEUP_ACK`、对 A 公网出口 0 条 UDP；强制 `stun-mapped`
+  的对照窗口必须抓到真实包，证明量具没失灵。
+- **修掉订阅抖动机掉声明（真缺陷，不是 harness）**：修复前 `nat reach` 查到 `relay-only` 后，
+  `nat wake` 有 2/3 概率又查成 `unknown` 并把注定失败的直连重试一遍。222 日志证实持有者订阅
+  每 500 ms 把读超时误判断链、1 s 后重连，旧连接退出时服务端无条件 `forget_local` 删了新声明。
+  现在 `RelayConn::recv_frame_optional` 把 `Ok(None)` 留给超时、订阅超时保活；服务端退出只在
+  旧连接仍是当前注册表项时清理。各加一条单测（明文超时后同连接仍可用、旧连接退出不抹新声明）。
+- **回归**：`cargo test --workspace --offline` **166 passed / 0 failed**（原 163 + 3 条新单测）；
+  文档：ADR-013 W5.2 补充、TEST §2.9/§2.10、ROADMAP W5.1g/W5.2。
+  `g3_verdict=not_run`、`s6_status=not_run`、`evidence_valid_for_pass=false` 不变，
+  不含速率/可达率数字（ADR-012）。
+
 ## [2.4.74] - 2026-11-17 — M2/W5.1f：公网 µTP PASS（25/25 连续 3 轮，无代码改动）
 
 > W5.1d 证明了公网 **TCP** 入向、W5.1e 证明了 **LAN** µTP，两件事拼不起来：µTP 走 UDP，

@@ -152,21 +152,21 @@ fn serve(
     let mut buf = [0u8; 65535];
 
     loop {
-        let frame = match conn.recv_frame() {
-            Ok(f) => f,
-            Err(e) => {
-                // 读超时（SUB_POLL 到点）与真断链在这里是同一种错误。区分办法：
-                // 看声明槽位有没有更新——有就重声明并继续等，没有才按断链处理。
-                // 因此网络真断时（槽位不动）仍会如实走重连路径。
+        let frame = match conn.recv_frame_optional() {
+            Ok(Some(f)) => f,
+            Ok(None) => {
+                // 空闲读超时不等于断链：订阅本来就是「长连接 + 短读超时轮询」。
+                // 旧实现在这里 return Err → 每 500ms 断一次、重连一次，
+                // 服务端跟着 forget_local 删声明，查询随机落到「1 秒空窗」里变 unknown。
                 let cur = current_declaration();
                 if cur != last_sent {
                     eprintln!("[relay-sub] 可达性声明更新: {}", cur.class.label());
                     conn.register_declared(self_id, &cur)?;
                     last_sent = cur;
-                    continue;
                 }
-                return Err(format!("订阅读帧失败: {}", e));
+                continue;
             }
+            Err(e) => return Err(format!("订阅读帧失败: {}", e)),
         };
         if frame.kind != FrameKind::Delivered || frame.payload.is_empty() {
             continue;

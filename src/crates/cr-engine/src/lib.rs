@@ -512,8 +512,14 @@ mod tests {
     #[test]
     fn utp_off_leaves_udp_port_free() {
         let dir = tmp_dir("utp-off");
+        // 不能拿 `127.0.0.1:0` 随机出来的端口去做这个判据：Windows 的动态端口保留段
+        // 对 UDP bind 会回 WSAEACCES(10013)，看起来像「uTP 关了还占着端口」。
+        // 选一个 IANA 非保留段端口，且先确认 TCP 侧空闲。
+        let port = (38762..38780)
+            .find(|p| std::net::TcpListener::bind(("127.0.0.1", *p)).is_ok())
+            .expect("需要一个可绑定的测试端口");
         let mut opts = EngineOptions::new(&dir);
-        opts.listen = Some("127.0.0.1:0".parse().unwrap());
+        opts.listen = Some(format!("127.0.0.1:{port}").parse().unwrap());
         opts.enable_utp = false;
         let mut e = RqbitEngine::new(opts).expect("engine must start");
         let addr = e.listen_addr().expect("要监听端口");

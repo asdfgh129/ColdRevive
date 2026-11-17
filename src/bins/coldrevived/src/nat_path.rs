@@ -15,9 +15,10 @@ use crate::{http_get, NodeState, NODE_SECRET};
 use cr_core::{nonce_hex, unix_ts, Config, Json};
 use cr_nat::{
     build_plan, choose_strategy, classify_from_filter, classify_from_mappings, cgnat_suspected,
-    holepunch, is_public_ipv4, local_advertisement, needs_relay, node_id_16, stun::StunResult,
-    tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, NatType, PeerAdvertisement,
-    Strategy, Traversal, TraversalReport,
+    holepunch, is_public_ipv4, local_advertisement, needs_relay, node_id_16,
+    reach::{now_ms, ReachClass, ReachDeclaration},
+    stun::StunResult, tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, NatType,
+    PeerAdvertisement, Strategy, Traversal, TraversalReport,
 };
 use std::fs;
 use std::net::UdpSocket;
@@ -409,6 +410,16 @@ pub struct WakeOutcome {
     pub path: Option<String>,
     pub strategy: String,
     pub notes: Vec<String>,
+    /// ADR-013：唤醒前经中继查到的对端可达性决策记录。
+    /// `None` = 本轮没有查（nat 未启用 / 无中继 / 验收强制路径），不是「查到 unknown」。
+    pub reach_lookup: Option<Json>,
+}
+
+/// 只有**仍然有效的 relay-only 声明**才允许跳过直连。
+/// `unknown`（含 TTL 过期）必须两条路都试，绝不拿它当低 ID 的证明。
+fn reach_skips_direct(decl: Option<&ReachDeclaration>) -> bool {
+    decl.map(|d| d.effective_at(now_ms()) == ReachClass::RelayOnly)
+        .unwrap_or(false)
 }
 
 fn attempt_json(kind: &str, addr: &str, ok: bool, detail: &str, rtt_ms: u64) -> Json {
@@ -456,18 +467,9 @@ pub fn wake_with_plan(
         path: None,
         strategy: plan.strategy.label().to_string(),
         notes: plan.notes.clone(),
+        reach_lookup: None,
     };
 
-    // ------------------------------------------------------------------
-    // W3.6 双向打洞准备：整个唤醒只绑定**一个** socket
-    // ------------------------------------------------------------------
-    // 必须单 socket：`back` 里报给对端的是"本侧映射地址"，而映射端口随本地端口走。
-    // W3.3 的实现每个候选都新绑 `:0`，映射端口不可预知，因此报出去的 back 必然是
-    // 错地址 —— 对端照着打只会打到无人监听的口上。
-    let direct: Vec<&Endpoint> = plan.candidates.iter()
-        .filter(|e| e.kind != EndpointKind::Relay)
-        .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
-        .collect();
     // W3.8：中继列表优先用配置里的多端点（可在单点宕机时切换）；未配置则回落到
     // 端点计划里那唯一一个中继候选——两者都为空时后面会如实报「无中继候选」。
     let relays: Vec<String> = if !cfg.nat_relays.is_empty() {
@@ -478,6 +480,72 @@ pub fn wake_with_plan(
             .map(|e| e.addr())
             .collect()
     };
+
+    // ------------------------------------------------------------------
+    // ADR-013：唤醒前先问中继「对端自报哪一类」，再决定要不要打洞。
+    // 强制 only_kind 是 S6 量具专用的显式旁路（要分别量 direct / relay 两条路），
+    // 生产默认路径没有这个旁路。
+    // ------------------------------------------------------------------
+    let mut skip_direct = false;
+    if only_kind.is_some() {
+        out.notes.push("强制候选路径：跳过可达性决策（仅验收量具用）".into());
+    } else if !relays.is_empty() && !peer_label.is_empty() {
+        let started = std::time::Instant::now();
+        let lookup_timeout = timeout.min(Duration::from_millis(700));
+        match cr_nat::relay::lookup_reach_any(&relays, &peer_id, lookup_timeout) {
+            Ok((used, decl)) => {
+                let class = decl.as_ref().map(|d| d.effective_at(now_ms()));
+                skip_direct = reach_skips_direct(decl.as_ref());
+                out.reach_lookup = Some(Json::obj(vec![
+                    ("relay", Json::s(&used)),
+                    ("declared", Json::b(decl.is_some())),
+                    ("class", Json::s(class.map(|c| c.label()).unwrap_or("unknown"))),
+                    ("declared_at_ms", Json::n(
+                        decl.as_ref().map(|d| d.declared_at_ms).unwrap_or(0) as f64)),
+                    ("ttl_ms", Json::n(
+                        decl.as_ref().map(|d| d.ttl_ms).unwrap_or(0) as f64)),
+                    ("skip_direct", Json::b(skip_direct)),
+                    ("error", Json::Null),
+                    ("rtt_ms", Json::n(started.elapsed().as_millis() as f64)),
+                ]));
+                out.notes.push(format!(
+                    "可达性查询：{} 报告 peer={}（声明时刻 {}），{}",
+                    used,
+                    class.map(|c| c.label()).unwrap_or("unknown"),
+                    decl.as_ref().map(|d| d.declared_at_ms).unwrap_or(0),
+                    if skip_direct { "跳过全部直连候选与打洞准备" } else { "直连候选照常尝试" },
+                ));
+            }
+            Err(e) => {
+                out.reach_lookup = Some(Json::obj(vec![
+                    ("relay", Json::Null),
+                    ("declared", Json::b(false)),
+                    ("class", Json::s("unknown")),
+                    ("declared_at_ms", Json::n(0.0)),
+                    ("ttl_ms", Json::n(0.0)),
+                    ("skip_direct", Json::b(false)),
+                    ("error", Json::s(&e)),
+                    ("rtt_ms", Json::n(started.elapsed().as_millis() as f64)),
+                ]));
+                out.notes.push(format!("可达性查询失败（{}）：按 unknown 处理，不跳过直连", e));
+            }
+        }
+    }
+
+    let candidates: Vec<&Endpoint> = plan.candidates.iter()
+        .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
+        .filter(|e| !skip_direct || e.kind == EndpointKind::Relay)
+        .collect();
+
+    // ------------------------------------------------------------------
+    // W3.6 双向打洞准备：整个唤醒只绑定**一个** socket
+    // ------------------------------------------------------------------
+    // 必须单 socket：`back` 里报给对端的是"本侧映射地址"，而映射端口随本地端口走。
+    // W3.3 的实现每个候选都新绑 `:0`，映射端口不可预知，因此报出去的 back 必然是
+    // 错地址 —— 对端照着打只会打到无人监听的口上。
+    let direct: Vec<&Endpoint> = candidates.iter().copied()
+        .filter(|e| e.kind != EndpointKind::Relay)
+        .collect();
     let mut sock: Option<UdpSocket> = None;
     let mut back: Vec<String> = Vec::new();
     // 纯私网候选之间没有 NAT，不需要打洞准备（省一次 STUN 与一次中继往返）。
@@ -521,9 +589,7 @@ pub fn wake_with_plan(
         }
     }
 
-    for ep in plan.candidates.iter()
-        .filter(|e| only_kind.map(|k| e.kind == k).unwrap_or(true))
-    {
+    for ep in candidates.iter().copied() {
         if ep.kind == EndpointKind::Relay {
             match holepunch::relay_wake_any(&relays, &self_id, &peer_id, &wake, timeout) {
                 Ok((used, payload)) => match Json::parse(&String::from_utf8_lossy(&payload)) {
@@ -666,6 +732,9 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("rtt_ms", Json::n(rtt as f64)),
                 ("attempts", Json::arr(o.attempts)),
                 ("notes", Json::arr(o.notes.iter().map(|n| Json::s(n)).collect())),
+                ("reach_lookup", match o.reach_lookup {
+                    Some(v) => v, None => Json::Null,
+                }),
                 ("ack_status", Json::s(ack.get("status").and_then(Json::as_str).unwrap_or(""))),
                 ("s6_status", Json::s("not_run")),
                 ("evidence_valid_for_pass", Json::b(false)),
@@ -682,6 +751,52 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("peer_port", Json::n(target.map(|(_, p)| p as f64).unwrap_or(0.0))),
                 ("s6_status", Json::s("not_run")),
             ])
+        }
+        "reach" => {
+            // 只查不改：给验收/运维一个「中继已经知道对端是哪一类」的独立观察点。
+            // 不发包、不唤醒、不改状态，避免在量具准备阶段污染抓包窗口。
+            let (peer_label, relays) = {
+                let st = state.lock().unwrap();
+                let peer = st.nat.peer_adv.as_ref()
+                    .map(|a| a.node_id.clone()).unwrap_or_default();
+                let relays = if !cfg.nat_relays.is_empty() {
+                    cfg.nat_relays.clone()
+                } else {
+                    st.nat.relay.clone().into_iter().collect()
+                };
+                (peer, relays)
+            };
+            if peer_label.is_empty() || relays.is_empty() {
+                return Json::obj(vec![("error", Json::s(
+                    "先 nat peer 取到对端通告，并配置 nat.relay/nat.relays"))]);
+            }
+            let peer_id = node_id_16(&peer_label);
+            let started = std::time::Instant::now();
+            match cr_nat::relay::lookup_reach_any(&relays, &peer_id, Duration::from_millis(700)) {
+                Ok((relay, decl)) => {
+                    let class = decl.as_ref().map(|d| d.effective_at(now_ms()));
+                    Json::obj(vec![
+                        ("relay", Json::s(&relay)),
+                        ("declared", Json::b(decl.is_some())),
+                        ("class", Json::s(class.map(|c| c.label()).unwrap_or("unknown"))),
+                        ("declared_at_ms", Json::n(
+                            decl.as_ref().map(|d| d.declared_at_ms).unwrap_or(0) as f64)),
+                        ("ttl_ms", Json::n(
+                            decl.as_ref().map(|d| d.ttl_ms).unwrap_or(0) as f64)),
+                        ("error", Json::Null),
+                        ("rtt_ms", Json::n(started.elapsed().as_millis() as f64)),
+                        ("s6_status", Json::s("not_run")),
+                    ])
+                }
+                Err(e) => Json::obj(vec![
+                    ("relay", Json::Null),
+                    ("declared", Json::b(false)),
+                    ("class", Json::s("unknown")),
+                    ("error", Json::s(&e)),
+                    ("rtt_ms", Json::n(started.elapsed().as_millis() as f64)),
+                    ("s6_status", Json::s("not_run")),
+                ]),
+            }
         }
         "status" => {
             let st = state.lock().unwrap();
@@ -751,6 +866,26 @@ mod tests {
         assert!(r.mapped_address.is_none());
         assert_eq!(r.nat_type, NatType::Unknown);
         assert_eq!(choose_strategy(&r, true), Strategy::Relay);
+    }
+
+    #[test]
+    fn only_live_relay_only_declaration_skips_direct() {
+        let now = now_ms();
+        let relay_only = ReachDeclaration {
+            class: ReachClass::RelayOnly,
+            nat_class: NatType::Symmetric,
+            declared_at_ms: now,
+            ttl_ms: 60_000,
+        };
+        let direct = ReachDeclaration { class: ReachClass::Direct, ..relay_only.clone() };
+        let stale = ReachDeclaration {
+            declared_at_ms: now - 120_000,
+            ..relay_only.clone()
+        };
+        assert!(reach_skips_direct(Some(&relay_only)));
+        assert!(!reach_skips_direct(Some(&direct)));
+        assert!(!reach_skips_direct(Some(&stale)), "TTL 过期必须退回 unknown");
+        assert!(!reach_skips_direct(None), "中继没声明过 ≠ 对方连不上");
     }
 
     #[test]

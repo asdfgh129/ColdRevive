@@ -80,3 +80,31 @@ updated: 2026-11-16
 - 代价：中继多一张表、四类新帧、一套 gauge；订阅线程多了 500ms 轮询。
 - 边界：本轮只交付**原语 + 诊断消费**（`coldrevive-nat --lookup`）。唤醒路径**尚未**接入
   「先查再打洞」——那会改变信令流，须单独一轮做并实测。不宣称它已经生效。
+
+## W5.2 补充（2026-11-17）：唤醒路径已消费声明
+
+`wake_with_plan` 在构造任何直连候选、UDP socket、STUN `back` 或 `NAT_PUNCH` 之前，
+先经 `lookup_reach_any` 向配置的中继列表查询对端声明：
+
+- **只有**有效（未过 TTL）的 `relay-only` 才跳过全部直连候选，直接走中继；
+- `direct` / `unknown` / 查不到 / 查询失败一律保留直连候选——`unknown` 不是低 ID 的证据；
+- `ReachDeclaration::effective_at` 是唯一口径，过期声明降级 `unknown`；
+- `nat wake <hash> <infohash> [kind]` 的第三个参数仍是**验收量具**显式旁路：
+  强制 `private-lan` / `stun-mapped` 等单条路径时跳过该决策并在 `notes` 里明说。
+  生产默认调用（不带第三参数）没有这个旁路。
+
+返回值新增 `reach_lookup`（中继、类别、声明时刻、TTL、`skip_direct`、错误、RTT），
+可由 CLI 直接核对；另有**只查不改**的 `nat reach`，供运维/验收在开抓包窗口前确认声明已经传播，
+它不发包、不唤醒、不改状态。两者都不是新的 S6 证据，`s6_status=not_run` 不变。
+
+**声明的在线前提（W5.2 实测补）**：`LOOKUP_REACH` 只反映中继当前存了什么，订阅连接的存活性
+属于另一个层面。持有者订阅把本地 500 ms 读超时误判断链会每轮重连，而退出的旧连接无条件
+`forget_local`，就会在重连间隙把新声明抹掉——查询如实回答「不知道」，但 wake 会退化成
+先试直连。现在 `recv_frame_optional` 区分超时与断链（超时保活），服务端也只在旧连接仍是
+当前注册表项时才清声明。这是**让声明可用的前置条件**，不是新的分类判据：`unknown` 依旧
+不等于「连不上」。
+
+`tests/e2e/w52/reach_gated_wake.py` 用真实 222（symmetric）/ A（port-restricted）/ 中继实测：
+`class=relay-only`、`skip_direct=true`、候选只有 `relay`，222 侧抓包对 A 公网出口 **0 包**；
+另起窗口用 `only_kind=stun-mapped` 强制直连必须抓到真实 UDP 包，证明「0 包」不是量具失灵。
+详见 [TEST §2.10](../../05-quality/TEST.md)。

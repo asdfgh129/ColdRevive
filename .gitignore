@@ -71,6 +71,12 @@ tests/e2e/w51e/reports/*
 # W5.1f 公网 µTP 复核运行产物（本地证据，不入库）
 tests/e2e/w51f/reports/*
 
+# W5.1g aMule 公网 KAD 复核运行产物（本地证据，不入库）
+tests/e2e/w51g/reports/*
+
+# W5.2 唤醒可达性决策复核运行产物（本地证据，不入库）
+tests/e2e/w52/reports/*
+
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*
 !tests/spikes/reports/.gitkeep
