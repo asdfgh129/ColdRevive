@@ -73,30 +73,87 @@ def shquote(s: str) -> str:
 
 
 class Peer:
-    """对端（外部主机）。sshd 偶发 MaxStartups 拒绝，故每次连接都重试。"""
+    """对端（外部主机）的命令通道。
 
-    def __init__(self, host: str, key: str, tries: int = 4) -> None:
+    222 的 sshd 短时间内被大量短连接打过就会 `Exceeded MaxStartups`（默认 10:30:100），
+    之后新连接直接被掐。这跟「端口没映射」是完全不同的两件事 —— 用它去判 BLOCKED 会
+    得出错误结论，所以这里把「载体没起来」单独计数，并让调用方据此拒绝下结论。
+
+    曾试过 ControlMaster（只建一条 TCP 复用），但本机是 Windows + 沙箱：`ssh -f` 起的
+    常驻 master 会被回收，`-O check` 反复失败、每次回落成新连接反而更慢（实测 0.4s→21s
+    波动）。所以退回「单次连接 + 明确分类」，靠 `wait_ready()` 先把 sshd 等空。
+    """
+
+    #: 这些字符串说明「ssh 载体本身没起来」，命令根本没在对面执行过
+    CARRIER_ERRORS = ("Exceeded MaxStartups", "kex_exchange_identification",
+                      "ssh: connect to host", "Connection reset by peer",
+                      "Connection closed by", "Connection to ",
+                      "Broken pipe", "mux_client", "Timeout, server")
+
+    def __init__(self, host: str, key: str, tries: int = 5) -> None:
         self.host, self.key, self.tries = host, key, tries
+        self.carrier_failures = 0
+        self._last_connect = 0.0
+        # 222 的 sshd 对「短时间大量新连接」很敏感（MaxStartups），两次连接之间留个间隔，
+        # 比事后重试有效得多。
+        self.min_gap = 1.5
 
-    def __call__(self, cmd: str, timeout: float = 60.0) -> tuple[int, str]:
-        base = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+    def _base(self) -> list[str]:
+        return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
                 "-o", "StrictHostKeyChecking=no", "-o", "ServerAliveInterval=5",
                 "-i", self.key, f"root@{self.host}"]
+
+    def __call__(self, cmd: str, timeout: float = 60.0) -> tuple[int, str]:
         last = (1, "")
         for i in range(self.tries):
+            gap = self.min_gap - (time.time() - self._last_connect)
+            if gap > 0:
+                time.sleep(gap)
+            self._last_connect = time.time()
             try:
-                p = run(base + [cmd], timeout=timeout)
-                out = (p.stdout + p.stderr).decode("utf-8", "replace")
-                # MaxStartups 是 sshd 的瞬时拒绝，不是命令失败
-                if "Exceeded MaxStartups" in out or "kex_exchange_identification" in out:
-                    last = (1, out)
-                    time.sleep(3 + i * 2)
-                    continue
-                return p.returncode, out
+                p = run(self._base() + [cmd], timeout=timeout)
             except subprocess.TimeoutExpired:
                 last = (1, "ssh 超时")
                 time.sleep(2)
+                continue
+            out = (p.stdout + p.stderr).decode("utf-8", "replace")
+            if p.returncode != 0 and any(e in out for e in self.CARRIER_ERRORS):
+                self.carrier_failures += 1
+                last = (1, out)
+                time.sleep(3 + i * 3)
+                continue
+            return p.returncode, out
         return last
+
+    def wait_ready(self, budget: float = 150.0) -> bool:
+        """等 sshd 的 MaxStartups 退潮：直到能真的跑一条命令为止。"""
+        deadline = time.time() + budget
+        while time.time() < deadline:
+            rc, out = self("echo __ready__")
+            if rc == 0 and "__ready__" in out:
+                return True
+            time.sleep(5)
+        return False
+
+    def run_ok(self, cmd: str, ok, timeout: float = 60.0,
+               tries: int = 4, gap: float = 3.0) -> tuple[bool, str, list[str]]:
+        """跑一条远程命令，直到输出满足 ok() 为止；载体失败与结果不满足都重试。
+
+        判据必须区分「对面真的回了 X」和「对面根本没回话」。sshd 限流时输出是空串或
+        一句 ssh 报错，若直接交给 check() 就会把量具故障写进产品结论。
+        """
+        outs: list[str] = []
+        for i in range(tries):
+            rc, out = self(cmd, timeout=timeout)
+            outs.append(out.strip()[:200])
+            if ok(out):
+                return True, out, outs
+            if i < tries - 1:
+                time.sleep(gap)
+        return False, "", outs
+
+    def close(self) -> None:  # 无常驻资源，保留接口便于调用方对称使用
+        return
 
 
 def deterministic_sample(n: int) -> bytes:
@@ -286,11 +343,25 @@ def main() -> int:
     try:
         # ---------------- 0. 预检 ----------------
         print("== 0. 预检 ==")
-        rc, out = peer("echo ok; command -v transmission-daemon transmission-remote curl sha1sum")
-        if rc != 0 or "ok" not in out:
-            print(f"[BLOCKED] 无法登录外部主机 {args.peer}: {out[:300]}")
+        # sshd 的 MaxStartups 退潮需要时间（LoginGraceTime 级别的等待），先等空再开始，
+        # 否则后面每条命令都可能拿到「连接被掐」而不是真实结果。
+        # 222 在跑客户端时负载不低，登录这一步本身也会偶发被掐（kex_exchange_identification），
+        # 所以这里不是「等一次」，而是「一直重试到真的登录成功」为止。
+        pre_ok, pre_out = False, ""
+        deadline = time.time() + 180
+        while time.time() < deadline:
+            rc, pre_out = peer("echo __ok__; command -v transmission-daemon transmission-remote curl sha1sum")
+            if rc == 0 and "__ok__" in pre_out:
+                pre_ok = True
+                break
+            peer.wait_ready(budget=30)
+        if not pre_ok:
+            print(f"[BLOCKED] 无法登录外部主机 {args.peer}（载体失败 {peer.carrier_failures} 次）："
+                  f"{pre_out[:160]}")
             report["blocked_reason"] = "external host unreachable via ssh"
+            report["carrier_failures"] = peer.carrier_failures
             return finish("blocked", 2)
+        out = pre_out
         tools = {n: (n in out) for n in ("transmission-daemon", "transmission-remote")}
         report["peer_tools"] = tools
         peer_wan = ""
@@ -378,22 +449,41 @@ def main() -> int:
 
         # ---------------- 2. 外部端口映射探测（唯一的 BLOCKED 判据） ----------------
         print("== 2. 从外部主机探测公网端口 ==")
+        # 两个端口一次连完：每多一条 ssh 就多一次被 MaxStartups 掐掉的机会。
+        rc, out = peer(
+            "python3 - <<'PYEOF'\n"
+            "import socket\n"
+            f"for port in ({PUBLIC_HTTP}, {PUBLIC_BT}):\n"
+            "    s=socket.socket(); s.settimeout(6)\n"
+            "    try:\n"
+            f"        s.connect(('{wan}',port)); print('PORT',port,'OPEN')\n"
+            "    except Exception as e:\n"
+            "        print('PORT',port,'CLOSED',type(e).__name__,e)\n"
+            "    finally:\n"
+            "        s.close()\n"
+            "PYEOF")
         probe = {}
-        for name, port in (("http", PUBLIC_HTTP), ("bt", PUBLIC_BT)):
-            rc, out = peer(
-                "python3 - <<'PYEOF'\n"
-                "import socket\n"
-                f"s=socket.socket(); s.settimeout(6)\n"
-                "try:\n"
-                f"    s.connect(('{wan}',{port})); print('OPEN')\n"
-                "except Exception as e:\n"
-                "    print('CLOSED', type(e).__name__, e)\n"
-                "finally:\n"
-                "    s.close()\n"
-                "PYEOF")
-            probe[name] = out.strip()
-            print(f"  {wan}:{port} → {out.strip()}")
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 3 and parts[0] == "PORT":
+                probe["http" if parts[1] == str(PUBLIC_HTTP) else "bt"] = " ".join(parts[2:])
+        for k in ("http", "bt"):
+            probe.setdefault(k, "")
+            print(f"  {wan}:{PUBLIC_HTTP if k == 'http' else PUBLIC_BT} → {probe[k]}")
         report["phases"]["external_port_probe"] = probe
+
+        # 载体失败 ≠ 端口关闭。命令没在对面跑过就下「没映射」的结论属于用坏尺子量东西。
+        measured = {k: v for k, v in probe.items() if "OPEN" in v or "CLOSED" in v}
+        if len(measured) < 2:
+            bad = [k for k in probe if k not in measured]
+            report["blocked_reason"] = "peer ssh carrier failed (measurement invalid)"
+            report["carrier_failures"] = peer.carrier_failures
+            print(f"\n[BLOCKED] 对端命令通道没起来（{','.join(bad)}），这不是端口映射的结论。")
+            print("          输出里没有 OPEN/CLOSED 任何一项 —— 说明命令根本没在对面执行。")
+            print(f"          最近一次输出：{probe.get(bad[0], '')[:200]!r}")
+            print("          先修 sshd 限流（MaxStartups）或换稳定的外部主机，再重跑。")
+            return finish("blocked", 2)
+
         http_open = "OPEN" in probe.get("http", "")
         bt_open = "OPEN" in probe.get("bt", "")
         check("外部主机能连上公网 HTTP 端口", http_open, probe.get("http", "")[:80])
@@ -423,11 +513,12 @@ def main() -> int:
 
         # ---------------- 3. 外部取种子 + tracker 决策 ----------------
         print("== 3. 外部主机经公网取种子并 announce ==")
-        rc, hout = peer(f"curl -sS -m 8 -w ' %{{http_code}}' http://{wan}:{PUBLIC_HTTP}/health")
-        report["phases"]["public_health"] = hout.strip()
-        check("外部主机经公网访问 A 的 /health",
-              hout.strip().endswith("200") and '"ok"' in hout,
-              hout.strip()[:120])
+        okh, hout, htry = peer.run_ok(
+            f"curl -sS -m 8 -w ' %{{http_code}}' http://{wan}:{PUBLIC_HTTP}/health",
+            lambda s: s.strip().endswith("200") and '"ok"' in s, tries=4)
+        report["phases"]["public_health"] = hout.strip() or htry[-1]
+        check("外部主机经公网访问 A 的 /health", okh,
+              (hout.strip() or f"载体失败 x{len(htry)}")[:120])
 
         state = json.loads((work / "state-A.json").read_text(encoding="utf-8"))
         entry = next((e for e in (state.get("entries") or []) if e.get("infohash")), None)
@@ -437,14 +528,16 @@ def main() -> int:
         infohash, file_hash = entry["infohash"], entry.get("file_hash") or ""
         report["infohash"] = infohash
 
-        rc, out = peer(f"curl -sS -m 15 -o {REMOTE_ROOT}.torrent -w '%{{http_code}} %{{size_download}}' "
-                       f"http://{wan}:{PUBLIC_HTTP}/torrent/{infohash}; "
-                       f"mkdir -p {REMOTE_ROOT}")
+        okt, out, ttry = peer.run_ok(
+            f"curl -sS -m 15 -o {REMOTE_ROOT}.torrent -w '%{{http_code}} %{{size_download}}' "
+            f"http://{wan}:{PUBLIC_HTTP}/torrent/{infohash}; "
+            f"mkdir -p {REMOTE_ROOT}",
+            lambda s: len(s.split()) >= 2 and s.split()[0] == "200" and int(s.split()[1]) > 0,
+            tries=4)
         parts = out.split()
-        report["phases"]["public_torrent_fetch"] = out.strip()
+        report["phases"]["public_torrent_fetch"] = out.strip() or ttry[-1]
         check("外部主机经公网取回伴随种子（真实字节）",
-              bool(parts) and parts[0] == "200" and len(parts) > 1 and int(parts[1]) > 0,
-              out.strip())
+              okt, (out.strip() or f"载体失败 x{len(ttry)}")[:120])
 
         raw = b""
         rc, b64out = peer(f"base64 -w0 {REMOTE_ROOT}.torrent")
@@ -467,26 +560,53 @@ def main() -> int:
               lan_announce in text and pub_url in text,
               json.dumps(report["torrent_announces"], ensure_ascii=False))
 
-        # tracker 对公网请求方必须回公网端点
+        # tracker 对公网请求方必须回公网端点。
+        # 1) 二进制响应走**落盘 + base64**，不经 xxd/控制台（转一道就会被替换字符污染，
+        #    marker 找不到 → 读成假的「没有 peer」）。
+        # 2) 同时把 curl 的 http_code / size / 退出码带回来：空响应到底是超时、被重置，
+        #    还是真的回了空 peer 列表，这三种结论完全不同，不能都写成「没有 peer」。
         ih_param = urllib.parse.quote_from_bytes(bytes.fromhex(infohash))
         q = (f"info_hash={ih_param}"
              f"&peer_id={urllib.parse.quote_from_bytes(b'cr-w51d-probe-000000000')}"
              f"&port={TX_PEER_PORT}&uploaded=0&downloaded=0&left={SAMPLE_BYTES}"
              f"&compact=1&numwant=20")
-        rc, hexout = peer(f"curl -sS -m 8 'http://{wan}:{PUBLIC_HTTP}/announce?{q}' "
-                          f"| xxd -p | tr -d '\\n'")
-        raw_hex = re.sub(r"[^0-9a-f]", "", hexout)
-        peer_ip, peer_port = "", 0
-        marker = "353a7065657273363a"     # "5:peers6:"
-        idx = raw_hex.find(marker)
-        if idx >= 0:
-            blob = bytes.fromhex(raw_hex[idx + len(marker): idx + len(marker) + 12])
-            peer_ip = ".".join(str(b) for b in blob[:4])
-            peer_port = int.from_bytes(blob[4:], "big")
-        report["tracker"] = {"peer_ip": peer_ip, "peer_port": peer_port, "raw_prefix": raw_hex[:120]}
+        attempts = []
+        peer_ip, peer_port, ann = "", 0, b""
+        for attempt in range(3):
+            rc, out = peer(
+                f"curl -sS -m 10 -o /tmp/w51d-ann.bin "
+                f"-w 'HTTP=%{{http_code}} SIZE=%{{size_download}}' "
+                f"'http://{wan}:{PUBLIC_HTTP}/announce?{q}'; echo; echo \"rc=$?\"; "
+                f"base64 -w0 /tmp/w51d-ann.bin 2>/dev/null; echo")
+            m_hdr = re.search(r"HTTP=(\d+) SIZE=(\d+)", out)
+            m_rc = re.search(r"^rc=(\d+)$", out, re.M)
+            b64 = out.splitlines()[-1] if out.strip() else ""
+            try:
+                body = base64.b64decode(re.sub(r"[^A-Za-z0-9+/=]", "", b64))
+            except Exception:
+                body = b""
+            rec = {"http": int(m_hdr.group(1)) if m_hdr else None,
+                   "size": int(m_hdr.group(2)) if m_hdr else None,
+                   "rc": int(m_rc.group(1)) if m_rc else None,
+                   "bytes": len(body),
+                   "text": body[:200].decode("latin-1", "replace"),
+                   "stderr": out[:200] if not m_hdr else ""}
+            attempts.append(rec)
+            marker = b"5:peers6:"
+            idx = body.find(marker)
+            if idx >= 0 and len(body[idx + len(marker): idx + len(marker) + 6]) == 6:
+                blob = body[idx + len(marker): idx + len(marker) + 6]
+                peer_ip = ".".join(str(b) for b in blob[:4])
+                peer_port = int.from_bytes(blob[4:], "big")
+                ann = body
+                break
+            time.sleep(2)
+        report["tracker"] = {"peer_ip": peer_ip, "peer_port": peer_port,
+                             "attempts": attempts}
         check("tracker 对公网请求方通告公网 peer（不是 LAN 地址）",
               peer_ip == wan and peer_port == PUBLIC_BT,
-              f"{peer_ip}:{peer_port}（期望 {wan}:{PUBLIC_BT}）")
+              f"{peer_ip}:{peer_port}（期望 {wan}:{PUBLIC_BT}）"
+              f" 尝试={json.dumps(attempts[-1], ensure_ascii=False)}")
 
         # ---------------- 4. 客户端只需公网 announce 的变体 ----------------
         # 外部主机同时挂在 LAN 上，若种子保留 LAN 那条 announce，它可能直接走内网，
@@ -515,15 +635,25 @@ def main() -> int:
              }, indent=2) + "\nTXCFG\n")
         peer(f"setsid nohup transmission-daemon -g {tx_conf} >{REMOTE_ROOT}/tx.log 2>&1 & "
              f"sleep 3; transmission-remote 127.0.0.1:{TX_RPC_PORT} -l")
-        rc, out = peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} --add {REMOTE_ROOT}/peer.torrent")
-        report["phases"]["tx_add"] = out.strip()
+        okadd, addout, addtry = peer.run_ok(
+            f"transmission-remote 127.0.0.1:{TX_RPC_PORT} --add {REMOTE_ROOT}/peer.torrent",
+            lambda s: "success" in s.lower(), tries=4)
+        report["phases"]["tx_add"] = addout.strip() or addtry[-1]
+        if not okadd:
+            print(f"[BLOCKED] 对端客户端加种失败（RPC/载体）：{addtry[-1][:160]}")
+            report["blocked_reason"] = "peer transmission add failed"
+            return finish("blocked", 2)
         time.sleep(2)
-        rc, listing = peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l")
+        okl, listing, _ = peer.run_ok(
+            f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l",
+            lambda s: parse_tx_percent(s) >= 0, tries=4)
         report["phases"]["tx_cold_list"] = listing.strip()
 
         time.sleep(COLD_PROBE_SECONDS)
-        rc, listing = peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l")
-        cold_pct = parse_tx_percent(listing)
+        okl, listing, ltry = peer.run_ok(
+            f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l",
+            lambda s: parse_tx_percent(s) >= 0, tries=4)
+        cold_pct = parse_tx_percent(listing) if okl else -1
         cold_seed = (http_json(f"http://127.0.0.1:{PUBLIC_HTTP}/cli",
                                {"command": "seed", "args": []}) or {}).get("seed") or {}
         report["phases"]["cold"] = {"client_percent": cold_pct, "seed": cold_seed}
@@ -545,8 +675,27 @@ def main() -> int:
               hot.get("state") == "hot" and bool(hot.get("seeding_hot")),
               json.dumps(hot, ensure_ascii=False))
 
-        peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -t 1 -r 2>/dev/null; sleep 1; "
-             f"rm -rf {tx_dl}/* ; transmission-remote 127.0.0.1:{TX_RPC_PORT} --add {REMOTE_ROOT}/peer.torrent")
+        # 重新加种也必须确认真的加上了：否则「100%」可能来自上一次的残留任务。
+        # `-t all -r` 而不是 `-t 1 -r`：重试时 id 会变，按 id 删会删错或删不到。
+        okre, reout, retry = peer.run_ok(
+            f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -t all -r 2>/dev/null; sleep 1; "
+            f"rm -rf {tx_dl}/* ; transmission-remote 127.0.0.1:{TX_RPC_PORT} "
+            f"--add {REMOTE_ROOT}/peer.torrent",
+            lambda s: "success" in s.lower(), tries=4)
+        report["phases"]["tx_readd"] = reout.strip() or retry[-1]
+        if not okre:
+            print(f"[BLOCKED] 对端客户端重新加种失败：{retry[-1][:160]}")
+            report["blocked_reason"] = "peer transmission re-add failed"
+            return finish("blocked", 2)
+        # 复位后必须只剩一个任务，且处于 0%（防止把上一轮残留当成本轮进度）
+        ok_one, tlist, _ = peer.run_ok(
+            f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l",
+            lambda s: s.count("coldrevive-w51d-public-sample.bin") == 1, tries=4)
+        report["phases"]["tx_after_readd"] = tlist.strip()
+        if not ok_one:
+            print(f"[BLOCKED] 复位后任务数不为 1：{tlist.strip()[:160]}")
+            report["blocked_reason"] = "peer transmission state not reset"
+            return finish("blocked", 2)
         time.sleep(1.5)
 
         seen_peers: set[str] = set()
@@ -560,29 +709,66 @@ def main() -> int:
 
         th = threading.Thread(target=sampler, daemon=True)
         th.start()
-        deadline = time.time() + DOWNLOAD_TIMEOUT
-        pct, last = 0, ""
+        # 轮询放在**对面**做（一条 ssh 连接跑完整个等待），不要本机每秒开一条 ssh：
+        # 222 的 sshd 就是被这种高频短连接打到 MaxStartups 的。
+        remote_poll = ("for i in $(seq 1 " + str(int(DOWNLOAD_TIMEOUT)) + "); do "
+                       "l=$(transmission-remote 127.0.0.1:" + str(TX_RPC_PORT) + " -l 2>/dev/null); "
+                       'echo TICK; echo "$l"; '
+                       "echo \"$l\" | grep -qE '100(\\.0+)?%' && break; "
+                       "sleep 1; done; echo POLL_END")
+        poll_tries: list[str] = []
+        poll_out = ""
         try:
-            while time.time() < deadline:
-                rc, last = peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} -l")
-                pct = parse_tx_percent(last)
-                if pct >= 100:
+            for attempt in range(3):
+                # 轮询本身也要能扛住载体失败：一条输出都没有＝ssh 没跑成，不是「客户端没进度」。
+                peer.wait_ready(budget=60)
+                rc, out = peer(remote_poll, timeout=DOWNLOAD_TIMEOUT + 40)
+                poll_tries.append(f"tick={'TICK' in out} end={'POLL_END' in out} "
+                                  f"len={len(out)}")
+                if "TICK" in out:
+                    poll_out = out
                     break
-                time.sleep(1.0)
+                time.sleep(3)
         finally:
             stop.set()
             th.join(timeout=5)
+        blocks = re.split(r"^TICK$", poll_out, flags=re.M)
+        last = blocks[-1] if len(blocks) > 1 else ""
+        pct = parse_tx_percent(last)
+        # 逐秒百分比：只记形态（起步是否迟滞、中途是否停滞），不当速率承诺（ADR-012）。
+        progress = [parse_tx_percent(b) for b in blocks[1:]]
+        report["phases"]["poll_end_seen"] = "POLL_END" in poll_out
+        report["phases"]["poll_attempts"] = poll_tries
+        report["phases"]["poll_ticks"] = len(blocks) - 1
+        report["phases"]["progress_percent"] = progress
+        report["phases"]["first_progress_tick"] = next(
+            (i for i, p in enumerate(progress) if p > 0), None)
+        report["phases"]["seconds_to_complete"] = len(progress)
         seen_peers.update(established_peers(PUBLIC_BT))
         report["phases"]["final_percent"] = pct
         report["phases"]["final_list"] = last.strip()
         report["a_side_peers"] = sorted(seen_peers)
-        check("公网客户端报告下载完成 100%", pct >= 100, f"done={pct}%")
+        check("公网客户端报告下载完成 100%", pct >= 100,
+              f"done={pct}%" if len(blocks) > 1
+              else f"没拿到轮询数据（载体失败），attempts={poll_tries}")
 
-        rc, out = peer(f"sha1sum {tx_dl}/{sample_name} 2>/dev/null")
-        report["phases"]["peer_sha1"] = out.strip()
-        m = re.search(r"([0-9a-f]{40})", out)
-        got = m.group(1) if m else ""
-        check("外部主机落盘 SHA-1 与样本一致", got == sample_sha1, f"{got or '<缺失>'} vs {sample_sha1}")
+        # 「文件不在」和「命令没跑成」必须分开：ssh 被 MaxStartups 掐掉时输出里没有
+        # 任何 40 位 hash，若一律写成「落盘缺失」，就是用坏尺子判定产品失败。
+        got, sha_diag = "", []
+        for _ in range(4):
+            rc, out = peer(f"sha1sum {tx_dl}/{sample_name} 2>/dev/null || echo __NOFILE__")
+            m = re.search(r"([0-9a-f]{40})", out)
+            if m:
+                got = m.group(1)
+                break
+            sha_diag.append(out.strip()[:120])
+            if "__NOFILE__" in out:      # 命令真跑过、文件真不存在 → 不再重试
+                break
+            time.sleep(3)
+        report["phases"]["peer_sha1"] = got or sha_diag
+        check("外部主机落盘 SHA-1 与样本一致",
+              got == sample_sha1,
+              f"{got or ('<缺失> ' + json.dumps(sha_diag, ensure_ascii=False)[:160])} vs {sample_sha1}")
 
         end_seed = (http_json(f"http://127.0.0.1:{PUBLIC_HTTP}/cli",
                               {"command": "seed", "args": []}) or {}).get("seed") or {}
@@ -603,6 +789,7 @@ def main() -> int:
     finally:
         peer(f"transmission-remote 127.0.0.1:{TX_RPC_PORT} --exit 2>/dev/null; "
              f"pkill -f '[t]ransmission-daemon -g {REMOTE_ROOT}' 2>/dev/null; true")
+        peer.close()
         for p in procs:
             p.terminate()
         for lf in logs:

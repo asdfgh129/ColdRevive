@@ -205,8 +205,7 @@ Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`�
 **边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
 不含任何可达率数字，也不构成 G2/G3 新证据。公网入向（NAT 打洞 / 端口映射）与 µTP 仍未测。
 
-### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 BLOCKED）
-
+### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 PASS）
 验证「外部主机能否越过互联网从 A 的引擎取片」。脚本 `tests/e2e/w51d/public_inbound.py`：
 
 ```
@@ -230,7 +229,7 @@ A        = 192.168.1.210（公网 egress 112.5.60.4，做种监听须为 0.0.0.0
 脚本因此把种子换成**只有公网 announce** 的变体（同一个 info 字典换壳，InfoHash 不变，脚本内复核），
 再从 A 侧连接表确认对端不是 RFC1918。
 
-**2026-11-17 实测：BLOCKED**。外部主机对 `112.5.60.4:17800` 与 `112.5.60.4:17802` 均
+**2026-11-17 首次实测：BLOCKED（已解除）**。外部主机对 `112.5.60.4:17800` 与 `112.5.60.4:17802` 均
 `TimeoutError`（不是 RST——是网关直接丢弃，符合「无 DNAT 规则 + 有状态防火墙」）。
 本机核实过的旁路手段全不可用：默认网关 `192.168.1.254` 的 **UPnP / NAT-PMP / PCP 全部无响应**
 （首次探测误用了 `192.168.1.1`，按真实网关重测仍为 false），本机**无全局 IPv6**。
@@ -241,9 +240,40 @@ TCP 112.5.60.4:17800 -> 192.168.1.210:17800     # tracker / .torrent
 TCP 112.5.60.4:17802 -> 192.168.1.210:17802     # BT 数据面
 ```
 
-映射建好后重跑同一命令即可（`--probe-only` 只验端口，不拉客户端）。
+**2026-11-17 11:05 起（运维在 CPE 建好上述两条映射后）：PASS，17/17，累计 8 轮（最近连续 2 轮）**。
+外部主机（222，WAN `112.5.32.34`）完整跑通「公网取种 → announce → 唤醒 → 取片」：
+
+| 观测 | 值 |
+| :--- | :--- |
+| 端口探测 | `112.5.60.4:17800` / `:17802` 均 `OPEN` |
+| 公网 `/health` | `200`，`node=A` |
+| 伴随种子 | `200`，567 B；`announce-list` 两条（LAN + 公网），InfoHash `f59221cd…495fc206` 不变 |
+| tracker 对公网请求方 | `112.5.60.4:17802`（不是 192.168.x），响应 62 B |
+| COLD 负对照 | 客户端 `Done=0%`、`state=cold`、`served_bytes=0` |
+| 唤醒后 | `seeding_hot=true`；客户端 `100%`；落盘 SHA-1 `4f1b8617…d69` 与样本一致 |
+| 供片方计数 | `served_bytes` ≈ 4.19 MB（≥ 4 MiB 全量） |
+| **路径** | A 侧 `bt_port` 连接对端 = `['112.5.32.34']`，LAN 对端 `[]` —— 不是内网捷径 |
+
+`--probe-only` 只验端口、不拉客户端，用于映射刚建好时快速确认。
+
+**这条链路慢**：4 MiB 实测 155–235 s（含首包前约 8 s），同环境 LAN 档是秒级。形态是稳定而非停滞
+（逐秒百分比单调推进），但**不据此给出任何速率/可达率结论**（ADR-012）；成因未定位，登记为观察项。
+
 报告落 `tests/e2e/w51d/reports/`（本地证据，gitignore）；`evidence_scope=public-inbound-single-egress`、
 `is_s6_evidence=false`，**不含任何可达率数字**，不构成 S6/G2 证据。
+
+**非通过轮次的归因（写清楚，避免把量具故障记成产品失败）**：映射建成后共跑 13 轮，8 轮 17/17，
+另外 5 轮各有 1–3 项失败，逐条都能定位到 harness：`xxd -p` 过 Windows 控制台污染二进制（2 轮，
+表现为「tracker 没有 peer」）、222 的 sshd 掐连接（3 轮，分别表现为 `/health` 不 200、`sha1sum`
+拿不到 hash、轮询无输出）。修复后最近两轮均 17/17。
+
+**harness 自身的坑（已修，不是产品问题）**：① 222 的 sshd `MaxStartups` 会把「命令没跑成」
+伪装成业务失败——现在载体错误单独识别并重试（`Peer.run_ok`）、空响应带 `http_code/size/rc`
+三元组、`sha1sum` 先辨 `__NOFILE__` 再判失败、两次连接间隔 ≥1.5 s、两个端口一次连完；
+② 二进制 bencode 不再经 `xxd` 过控制台，改「远端落盘 + base64」；
+③ 本机 Windows 上 ControlMaster 不可用（`ssh -f` 起的常驻 master 会被回收，`-O check` 反复失败，
+反而 0.4 s→21 s 抖动），改用单次连接 + 分类重试，并把逐秒轮询塞进对端一条 ssh 里跑完；
+④ 复位用 `-t all -r`（按 id 删在重试时会删错），且复位后必须确认只剩 1 个任务。
 
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
