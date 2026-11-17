@@ -361,7 +361,15 @@ impl Engine for RqbitEngine {
     }
 
     fn activate(&mut self, task: TaskId) -> Result<(), String> {
-        // 冷态任务被唤醒：从暂停转运行。引擎不检查当前状态，重复 unpause 由 librqbit 自己幂等处理。
+        // 冷态任务被唤醒：从暂停转运行。
+        //
+        // **必须幂等**：librqbit 的 `unpause` 对已经 live 的任务会 `bail!("torrent is already live")`，
+        // 而重复唤醒是正常流量（T0-10 连发 30 次采样、客户端重试、用户重复点一下）。
+        // 若不在这里挡住，第二次唤醒就会返回 Err，调用方把「已就绪」翻成 false ——
+        // 门禁看到的是一个假的「唤醒后不供片」。
+        if self.state(task) == EngineState::Hot {
+            return Ok(());
+        }
         self.resume(task)
     }
 

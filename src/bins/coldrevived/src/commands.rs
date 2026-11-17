@@ -6,6 +6,7 @@
 
 use crate::{http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
+use cr_engine::Engine;
 use cr_hash::sha256_hex;
 use cr_kad::{find_frame, kad_id_128, keyword_key, publish_keys, socket_addr, udp_roundtrip, dht_id_160};
 use cr_store::FileEntry;
@@ -227,16 +228,41 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
     }
 }
 
-/// 内置标准 BT 种子端的真实上传计数（W5.1 对账用）。
+/// 做种侧的真实计数器（W5.2：数字全部来自 `cr-engine`，不再来自手写种子端）。
 ///
-/// 数字只在 `send_msg` 真正写出分片后自增；COLD 状态下不供片，所以这里是 0 也是真实观测。
+/// `served_bytes` 是引擎自己统计的上传字节；COLD（加入时暂停）状态下它必然为 0，
+/// 所以「唤醒前后这个数从 0 变成 ≥ 样本大小」本身就是按需做种的观测。
+/// 字段名沿用 W5.1（已有验收脚本在读），新增的都是**引擎真有的**字段，没有估算值。
 fn seed_stats(state: &Shared) -> Json {
     let st = state.lock().unwrap();
-    Json::obj(vec![("seed", Json::obj(vec![
+    let mut eg = st.engine.lock().unwrap();
+    let task = st.seed_task;
+    let progress = match (task, eg.as_mut()) {
+        (Some(t), Some(eng)) => eng.progress(t),
+        _ => None,
+    };
+    drop(eg);
+    let mut fields = vec![
         ("seeding_hot", Json::b(st.bt_seeding)),
-        ("served_bytes", Json::n(st.seeder_served_bytes as f64)),
-        ("piece_requests", Json::n(st.seeder_piece_requests as f64)),
-    ]))])
+        ("served_bytes", Json::n(progress.as_ref().map(|p| p.uploaded_bytes as f64).unwrap_or(0.0))),
+        ("engine_task", Json::n(task.map(|t| t as f64).unwrap_or(-1.0))),
+    ];
+    match progress {
+        Some(p) => {
+            fields.push(("state", Json::s(p.state.as_str())));
+            fields.push(("peers", Json::n(p.peers as f64)));
+            fields.push(("checked_bytes", Json::n(p.downloaded_bytes as f64)));
+            fields.push(("total_bytes", Json::n(p.total_bytes as f64)));
+            fields.push(("finished", Json::b(p.finished)));
+            if let Some(e) = p.error { fields.push(("error", Json::s(e))); }
+        }
+        None => {
+            // 不做种的节点（B）或引擎尚未创建：如实说没有，不拿 0 冒充「观测到 0 上传」。
+            fields.push(("state", Json::s("none")));
+            fields.push(("note", Json::s("本节点没有引擎做种任务")));
+        }
+    }
+    Json::obj(vec![("seed", Json::obj(fields))])
 }
 
 fn golden(cfg: &Config) -> Json {

@@ -2,15 +2,15 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.13
+version: 2.14
 status: 持续维护
 owner: 项目组
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.11 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-16
+> 编号 DOC-14 · 版本 2.14 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-17
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -485,10 +485,27 @@ ColdRevive
   **未做**：做种仍受 M1 的 `bt_seeding` 门闩控制；`engine.listen` 缺省关闭，公网做种未验证；
   把下载升级为「给旧客户端做种」是下一步。
 
+- **W5.1b（2026-11-17）做种也交给引擎：一条做种路径，第三方客户端下得通**：按所有者「按 A 进行」，
+  删掉 `bt.rs` 的手写 Peer Wire 种子端（握手 / bitfield / request→piece / 上传计数），
+  `bt.rs` 只剩本地 tracker 的 bencode 响应（仍 std-only）。A 启动即用引擎建会话并监听 `bt_port`，
+  伴随种子以 `paused: true` 加入（COLD：端口在听、不供片），`WAKEUP_REQ` 到达才 `activate`。
+  引擎侧 `enable_trackers=false` / `enable_dht=false`，持有者只等入站。
+  顺带修掉激活不幂等：librqbit 对已 live 的任务 `unpause` 会 bail，重复唤醒（T0-10 连发 30 次）
+  会把 `bt_seeding` 翻成 false，等于报一个假的「唤醒后不供片」。
+  验收 `tests/e2e/w51b/seed_to_thirdparty.py`（3 次复跑 9/9）：**COLD 时第三方 aria2 8 s 拿到 0 字节**，
+  唤醒后完整下完 1 MiB、SHA-256 一致、A 引擎 `served_bytes=1048576`，连发 3 次唤醒仍 hot。
+  T0 `--mode real` 21/21（T0-08 就是第三方 aria2 从引擎做种处取片），155 passed / 0 failed。
+  **注意口径**：W5.1 那条「手写服务端 ↔ librqbit 客户端」的独立互证失效，
+  同库两端只能证明协议自洽；标准互通改由第三方客户端（aria2 / T0-08）承担。
+  **未做**：公网 `listen`（仍只绑 `cfg.bind`）、LRU 调度器接引擎（仍走 M1 `bt_seeding` 门闩）、
+  LAN 上真实旧客户端（Transmission/qBittorrent）对这一路径的复核。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
-  实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**：生产守护进程
-  现在能自己下载，不再依赖 spike 二进制；下一段是把「能下载」推进到「能给旧客户端做种」。
+  实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**（能自己下载），
+  **做种也已切到引擎（W5.1b）**：回环下第三方 aria2 能完整取片。下一段是把这个「能」推到
+  **真实网络里的旧客户端**：LAN 上 Transmission/qBittorrent 复核 + 公网 `listen` 与可达性口径
+  （后者只在 S6 证据齐备时才谈数字）。
   ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
   unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
   ④ 公网入口 **7100→7100**（实测可用；`57100` 规则不存在）复跑时延/丢包/抖动；

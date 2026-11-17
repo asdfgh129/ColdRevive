@@ -2,15 +2,15 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.7
+version: 2.8
 status: 待评审
 owner: 测试组
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.5 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-16
+> 编号 DOC-12 · 版本 2.8 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-17
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
@@ -109,7 +109,7 @@ WSL / 第二台虚拟机被安全策略禁止，未做绕过。**设计缺口**�
 DHT 关闭、tracker 用 A 的内置 `/announce`，**不产生任何公网报文**：
 
 ```
-B --/cli wake--> A            A: COLD → HOT，内置标准 BT 种子端开始供片
+B --/cli wake--> A            A: COLD → HOT，引擎解除暂停开始供片（W5.1b 起）
 B --/jsonrpc aria2.addUri--> cr-engine ← 按 tracker 返回的 peer 直连 A 拉分片
 B 落盘文件 → SHA-256 与样本逐字节比对
 ```
@@ -120,13 +120,46 @@ B 落盘文件 → SHA-256 与样本逐字节比对
 | :--- | :--- | :--- |
 | ① | `status=complete` 且 `completedLength=1048576` | 引擎计数器（`/jsonrpc tellStatus`） |
 | ② | 落盘文件 SHA-256 == 样本 SHA-256 | 真实文件 |
-| ③ | A 的内置种子端 `served_bytes >= 1048576` | 第二个计数器（`/cli seed`） |
+| ③ | A 侧 `served_bytes >= 1048576` | 供片方计数器（`/cli seed`，W5.1b 起来自引擎） |
 
 **2026-11-16 实测（4 次复跑一致）**：8/8 断言 PASS，1 MiB / 4 片 / 64 次 request，
 `served_bytes=1048576`，样本与落盘 SHA-256 均为 `37be9cb3…79e17`；报告落
 `tests/e2e/w51/reports/engine-download-*.json`（本地证据，gitignore）。
 **边界**：单机回环、无第三方客户端参与、不构成 G3 或 S1 的新证据，也不产生任何可达率数字；
 它只回答一个问题——「生产守护进程能不能自己把种子下完并校验通过」，答案是能。
+**2026-11-17 口径收窄（W5.1b）**：做种侧也换成同一套库后，本条两端同库，只能证明「协议自洽」，
+**不再构成独立互证**；标准协议互通由 §2.4 与 T0-08 的第三方客户端承担。
+
+### 2.4 W5.1b 引擎做种 → 第三方客户端（2026-11-17 新增）
+
+做种从手写种子端换成 `cr-engine`（librqbit）后，**必须由一个不是我们写的客户端来验收**，
+否则只是「自己和自己互通」。脚本 `tests/e2e/w51b/seed_to_thirdparty.py`，仍全本机回环、
+DHT/PEX 关闭、tracker 用 A 的内置 `/announce`：
+
+```
+COLD: 第三方 aria2 → A 的 bt_port（端口在听，引擎停在 paused）→ 拿不到任何分片
+唤醒 : B --/cli wake--> A → 引擎 activate（幂等）→ state=hot
+HOT : 第三方 aria2 → 完整 1 MiB → SHA-256 与样本一致 → A 引擎 served_bytes=1048576
+```
+
+九条断言（缺一条即 fail）：
+
+| # | 断言 | 来源 |
+| :--- | :--- | :--- |
+| ① | A 日志有「做种引擎就绪」且无旧种子端 | 守护进程日志（身份检查，防跑旧二进制） |
+| ② | 伴随种子可取回 | `/torrent/<infohash>` 真实字节 |
+| ③ | COLD 时 `state=cold`、`served_bytes=0` | `/cli seed`（引擎计数器） |
+| ④ | COLD 时第三方客户端拿不完整 | aria2 8 s 内 `bytes_on_disk=0` 并超时 |
+| ⑤ | 唤醒后 `state=hot` 且 `seeding_hot=true` | `/cli seed` |
+| ⑥ | 第三方客户端下完且字节数正确 | aria2 退出码 0 + 落盘大小 |
+| ⑦ | 落盘 SHA-256 == 样本 | 真实文件 |
+| ⑧ | 供片方计数器覆盖全量 | `served_bytes >= 1048576` |
+| ⑨ | 连发 3 次唤醒后仍 hot | 激活幂等回归（librqbit 对 live 任务 unpause 会 bail） |
+
+**2026-11-17 实测（3 次复跑一致）**：9/9 PASS，样本与落盘 SHA-256 均为 `f8e3fa3a…670aa29`，
+报告落 `tests/e2e/w51b/reports/seed-to-thirdparty-*.json`（本地证据，gitignore）。
+同时 T0 `--mode real` 21/21，其中 **T0-08 就是第三方 aria2 从引擎做种处完成标准下载**。
+**边界**：回环、无公网报文、不含任何可达率数字；LAN/公网上的旧客户端复核仍未做。
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 〔**以上结句为 2026-11-13 时点口径；2026-11-14 已更正为 G1 通过**（T0 21/21 + T1 real 11/11，均

@@ -199,6 +199,13 @@ tokio 运行时**封在本 crate 内部**，对外全部同步方法，`coldrevi
 | `cr-engine` | librqbit / tokio / bytes | librqbit 9.1.0、tokio 1、bytes 1 |
 | `coldrevived` | 上述 + 自身 crate 依赖 | 同上（经 `cr-engine` 转依赖） |
 
+**2026-11-17 落地形态（W5.1b）**：**做种与下载走同一个引擎**，`coldrevived/src/bt.rs` 的手写
+Peer Wire 种子端已删除，只保留本地 tracker 的 bencode 响应（仍 std-only）。A 侧启动即
+`EngineOptions.listen = bind:bt_port`、伴随种子以 `paused` 加入（COLD 不供片），`WAKEUP_REQ`
+到达才 `activate`（幂等）。含义有二：① 同一份共享文件只有一条供片实现，不会出现两套行为漂移；
+② 「手写服务端 ↔ librqbit 客户端」的独立互证失效，标准互通改由第三方客户端验收
+（`tests/e2e/w51b/seed_to_thirdparty.py` 与 T0-08，均为 aria2 真实下载）。
+
 ## 相关文档
 
 - [DOC-03 ARCH 总体架构设计](ARCH.md)

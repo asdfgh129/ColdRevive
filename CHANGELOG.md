@@ -2,6 +2,50 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.69] - 2026-11-17 — M2/W5.1b：做种也交给引擎，给旧客户端做种成立
+
+> 所有者决策：**「按 A 进行」**（A = 把 M1 手写的 `bt.rs` 种子端换成引擎做种，只保留一条做种路径）。
+> B 方案（`bt.rs` 管门禁、引擎管生产）被否，理由不是工作量，而是**两套做种实现必然行为漂移**：
+> 同一份共享文件不该有两条供片路径。
+
+- **`bt.rs` 只剩本地 tracker**：手写 Peer Wire 种子端（握手 / bitfield / unchoke / request→piece /
+  上传计数）整段删除，`tracker_response` / `tracker_response_optional` 及其字节级断言原样保留
+  （仍 std-only）。模块文档写明删除原因与替代者，避免下一个人以为是漏了。
+- **A 启动即建引擎并做种**：`start_engine_seeder()` 用 `EngineOptions.listen = bind:bt_port` 建会话，
+  把伴随种子以 `paused: true` 加入（COLD 语义：端口在听、不供片），
+  `WAKEUP_REQ` 到达才 `activate` 解除暂停。三条约束都对应门禁：T0-07 的 `bt_port_listening` 是
+  真实 TCP `connect`（所以不能懒创建）；未唤醒不供片由 w51b 的负对照量化；
+  引擎侧 `enable_trackers=false` + `enable_dht=false`，持有者只等入站连接，不自己 announce 回环。
+- **启动失败不降级**：引擎建不起来 / 端口绑不上 / 种子加不进引擎 / 总长为 0，一律打印原因并
+  `exit 2`。静默降级成「能唤醒但没有数据面」在门禁里只会表现成下载超时，排查成本更高。
+- **`/cli seed` 改口径**：`served_bytes` 现在来自引擎自报的 `uploaded_bytes`，
+  新增 `state` / `peers` / `checked_bytes` / `total_bytes` / `finished` / `engine_task`；
+  删掉 `piece_requests`（引擎没有这个计数器，留着只能编）。不做种的节点报 `state=none` + `note`，
+  不拿 `0` 冒充「观测到 0 上传」。
+- **修掉一个真 bug（激活幂等）**：librqbit 的 `unpause` 对已 live 的任务会
+  `bail!("torrent is already live")`，而重复唤醒是正常流量（T0-10 连发 30 次采样、客户端重试）。
+  原实现会让第二次唤醒返回 Err，调用方把 `bt_seeding` 翻成 false —— 门禁看到的是**假的**
+  「唤醒后不供片」。`Engine::activate` 现在先看状态，Hot 直接 `Ok`，并加进 w51b 回归。
+
+**验收（`tests/e2e/w51b/seed_to_thirdparty.py`，3 次复跑全绿，9/9 断言）**——全本机回环：
+
+| # | 断言 | 实测 |
+| :--- | :--- | :--- |
+| ① | A 的做种由引擎承担（日志有「做种引擎就绪」，无旧种子端） | `engine_ready=True, legacy_seeder=False` |
+| ② | COLD 对照：未唤醒时 `state=cold`、`served_bytes=0` | 引擎已核对 1048576/1048576 B 但未上传 |
+| ③ | COLD 对照：第三方 aria2 拿不完整 | 8 s 内 `bytes_on_disk=0`，超时退出 |
+| ④ | 唤醒后转 `hot` | `state=hot, seeding_hot=true` |
+| ⑤ | 第三方 aria2 完整下载 | `exit=0`，1 MiB |
+| ⑥ | 落盘 SHA-256 == 样本 | `f8e3fa3a…670aa29` 两侧一致 |
+| ⑦ | 供片方计数器覆盖全量 | `served_bytes=1048576` |
+| ⑧ | 连发 3 次唤醒后仍 hot | 激活幂等回归 |
+
+- **回归**：`cargo test --workspace --offline` 155 passed / 0 failed；**T0 `--mode real` 21/21**
+  （T0-07 `bt_port_listening` 真实连接；**T0-08 就是第三方 aria2 从引擎做种处下载**）；
+  W5.1 `engine_download.py` 8/8（引擎↔引擎，降级为「协议自洽」证据，不再是独立互证）。
+- **边界不变**：全部回环、DHT 关闭、无公网报文；S3/S5/S6 仍 `not_run`、`g2_claim=false`；
+  不产生任何可达率数字（[ADR-012](docs/02-architecture/adr/ADR-012-r04-best-effort.md)）。
+
 ## [2.4.68] - 2026-11-16 — M2/W5.1：取消零依赖，生产守护进程有了自己的数据面
 
 > 所有者决策：**「取消零依赖，按既定方案走」**。零依赖从来不是架构目标，是 M1 的临时脚手架

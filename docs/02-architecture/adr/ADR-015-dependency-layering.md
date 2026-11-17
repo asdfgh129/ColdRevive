@@ -71,6 +71,12 @@ updated: 2026-11-16
   `aria2.addUri` 把种子交给 `cr-engine`，从 A 的内置种子端拉完 1 MiB（4 片、64 次 request），
   落盘文件 SHA-256 与样本一致，A 侧 `served_bytes = 1048576`（第二个计数器对上）。
   报告 `tests/e2e/w51/reports/engine-download-*.json`，`cargo test --workspace --offline` 全绿。
+- **W5.1b 补充（2026-11-17）**：做种侧也切到引擎，`bt.rs` 里那套手写 Peer Wire 种子端
+  （握手 / bitfield / request-piece）已删除，只保留本地 tracker 的 bencode 响应（仍 std-only）。
+  理由是「两套做种实现必然行为漂移」——同一份共享文件不应该有两条供片路径。代价是 W5.1
+  那条「手写服务端 ↔ librqbit 客户端」的独立互证失效（同库两端只能证明能互通，不能证明标准互通），
+  因此新增 `tests/e2e/w51b/seed_to_thirdparty.py`：**我们的引擎做种，第三方 aria2 下载**，
+  并带 COLD 负对照（唤醒前拿不到数据）。T0-08 同样是第三方 aria2 从引擎取片。
 - **负面**：构建时间与二进制体积上升（librqbit 带 rustls/reqwest 依赖树）；`--offline` 的前提是
   本地/CI 缓存完整，换机器首次构建仍需一次联网拉取。
 - **不变量**：`engine` 段缺省时引擎**根本不创建**（首次 `addUri` 才惰性建立，且默认不监听入站），

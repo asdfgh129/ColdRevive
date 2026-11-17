@@ -3,7 +3,11 @@
 //! 真实链路（T0 / G1）：
 //!   A: 共享样本 → SHA-256 → 伴随 .torrent → COLD 影子索引 → 本地 KAD 命名空间发布
 //!   B: KAD 关键词发现 → UDP WAKEUP_REQ(PROTO v1) → A 校验 Challenge/时间窗/nonce
-//!      → COLD/WAKING/HOT → WAKEUP_ACK(magnet + torrent_url) → 第三方 aria2 标准 BT 下载
+//!      → COLD/WAKING/HOT → WAKEUP_ACK(magnet + torrent_url) → 标准 BT 数据面
+//!
+//! 数据面归属（ADR-015）：W5.1 起 B 侧下载走 `cr-engine`（librqbit），W5.1b 起 A 侧做种也走它，
+//! 手写 Peer Wire 种子端已删除，`bt.rs` 只剩本地 tracker 的 bencode 响应。
+//! 第三方 aria2 仍参与验收（T0-08 / `tests/e2e/w51b`）——它是「外部客户端能不能收」的那一票。
 //!
 //! 红线：只监听 127.0.0.1；不向公共 KAD 发包；所有观测取自真实文件 / 真实网络 / 真实进程，
 //! 绝不返回「看起来像通过」的合成常量。
@@ -24,7 +28,7 @@ use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, UdpSocket};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
@@ -106,12 +110,11 @@ pub struct NodeState {
     pub nat: nat_path::NatContext,
     pub hub: UdpHub,
     pub rpc_tasks: Vec<RpcTask>,
-    /// W5.1：惰性 BT 引擎（`/jsonrpc` 收到可解析种子时才创建）。
+    /// BT 引擎。B 侧惰性创建（`/jsonrpc` 收到可解析种子时）；A 侧**启动即创建**，
+    /// 因为持有者要监听 `bt_port` 做种，而 T0-07 的 `bt_port_listening` 是真实 TCP 连接探测。
     pub engine: SharedEngine,
-    /// W5.1 对账用：内置标准 BT 种子端**真实发出**的分片字节与请求数。
-    /// 下载方（引擎）报的 completedLength 是单方面说法，两边计数器对上才算证据。
-    pub seeder_served_bytes: u64,
-    pub seeder_piece_requests: u64,
+    /// A 侧做种任务在引擎里的编号（W5.2）。`None` = 本节点不做种。
+    pub seed_task: Option<cr_engine::TaskId>,
 }
 
 fn main() {
@@ -186,8 +189,7 @@ fn main() {
         hub: hub.clone(),
         rpc_tasks: Vec::new(),
         engine: Arc::new(Mutex::new(None)),
-        seeder_served_bytes: 0,
-        seeder_piece_requests: 0,
+        seed_task: None,
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -201,11 +203,14 @@ fn main() {
             eprintln!("A 节点初始化失败: {}", e);
             std::process::exit(2);
         }
-        let torrent = st.torrent.clone().unwrap();
-        let sample = st.sample.clone().unwrap();
-        let infohash = torrent.info_hash.clone();
+        // W5.2：做种交给 BT 引擎。绑定失败/种子加不进引擎一律**启动即失败**，
+        // 不静默降级成「能唤醒但没有数据面」——那种状态在门禁里会表现成下载超时，
+        // 排查成本远高于现在报错退出。
+        if let Err(e) = start_engine_seeder(&mut st) {
+            eprintln!("[{}] 做种引擎启动失败: {}", cfg.node_id, e);
+            std::process::exit(2);
+        }
         let shared = Arc::new(Mutex::new(st));
-        bt::spawn_seeder(cfg.clone(), infohash, sample, torrent.piece_size, shared.clone());
         spawn_udp(hub.clone(), cfg.clone(), shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
@@ -242,10 +247,65 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
     Ok(())
 }
 
+/// W5.2：用 BT 引擎做种（ADR-015 之后，生产只有这一条做种路径）。
+///
+/// 三条约束，都是门禁直接看到的：
+/// - **启动即监听** `bt_port`：T0-07 的 `bt_port_listening` 是真实 TCP `connect`，
+///   不能等到被唤醒才开端口；
+/// - **加入时暂停**（COLD 语义）：端口在听，但没唤醒就不传任何分片，
+///   `WAKEUP_REQ` 到达才 `activate` 解除暂停；
+/// - **关闭 tracker / DHT**：持有者只等入站连接。本地 tracker 由 `bt::tracker_response`
+///   回答别人，引擎自己不去 announce——否则会把自己当 peer 连回来。
+fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
+    let cfg = st.cfg.clone();
+    let torrent = st.torrent.clone().ok_or("bootstrap 未生成伴随种子")?;
+    let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
+    let bytes = fs::read(&torrent_path)
+        .map_err(|e| format!("读取伴随种子 {} 失败: {e}", torrent_path.display()))?;
+    let share_dir = cfg.sample_path.parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| cfg.workdir.clone());
+    let bt_port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
+    let listen: SocketAddr = format!("{}:{}", cfg.bind, bt_port)
+        .parse().map_err(|e| format!("bt 监听地址非法: {e}"))?;
+
+    let mut engine = RqbitEngine::new(EngineOptions {
+        download_dir: share_dir.clone(),
+        listen: Some(listen),
+        enable_dht: false,
+        enable_trackers: false,
+        ipv4_only: true,
+        upload_bps: None,
+        download_bps: None,
+        init_timeout: Duration::from_secs(60),
+    })?;
+    let spec = TorrentSpec {
+        name: &torrent.name,
+        bytes: &bytes,
+        output_dir: Some(share_dir),
+        initial_peers: Vec::new(),
+        paused: true,
+        overwrite: true,
+        disable_trackers: true,
+    };
+    let task = engine.add_torrent(&spec)?;
+    let p = engine.progress(task).ok_or("任务加入引擎后立刻查不到状态")?;
+    if p.total_bytes == 0 {
+        return Err("引擎报种子总长为 0，拒绝以空任务做种".into());
+    }
+    println!(
+        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 #{}, 已核对 {}/{} B, finished={}, state={}",
+        cfg.node_id, listen, engine.listen_addr(), task,
+        p.downloaded_bytes, p.total_bytes, p.finished, p.state
+    );
+    st.seed_task = Some(task);
+    st.engine = Arc::new(Mutex::new(Some(engine)));
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // HTTP（最小 std-only 实现；axum / RPC / WS 属 M3）
 // ---------------------------------------------------------------------------
-
 fn spawn_http(cfg: Config, port: u16, state: Arc<Mutex<NodeState>>) {
     thread::spawn(move || {
         let listener = match TcpListener::bind(format!("{}:{}", cfg.bind, port)) {
@@ -925,7 +985,23 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>, frame: &Json) -
             st.index.get_mut(&file_hash).unwrap().transition(cr_store::FileState::Waking);
             st.index.get_mut(&file_hash).unwrap().transition(cr_store::FileState::Hot);
         }
-        st.bt_seeding = true;
+        // W5.2：COLD→HOT 的实际动作是「解除引擎暂停」。只有真的激活成功才置 `bt_seeding`，
+        // 否则门禁会看到「已就绪」而引擎还在暂停——那种状态在第三方客户端侧表现成一直空转，
+        // 比直接报失败难查得多。
+        let mut eg = st.engine.lock().unwrap();
+        let activated = match (st.seed_task, eg.as_mut()) {
+            (Some(task), Some(eng)) => match eng.activate(task) {
+                Ok(()) => true,
+                Err(e) => { eprintln!("[{}] 做种任务激活失败: {}", cfg.node_id, e); false }
+            },
+            (None, _) => false,
+            (Some(_), None) => {
+                eprintln!("[{}] 收到唤醒但引擎尚未创建，无法供片", cfg.node_id);
+                false
+            }
+        };
+        drop(eg);
+        st.bt_seeding = activated;
         let _ = st.index.save();
         let me = cfg.me().ok()?;
         let url = format!("http://{}:{}/torrent/{}", cfg.host(&cfg.node_id),
