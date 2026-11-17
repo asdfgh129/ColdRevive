@@ -2,6 +2,36 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.70] - 2026-11-17 — M2/W5.1c：LAN 跨主机复核，两个第三方客户端越过真实网卡取片
+
+> 前一版（W5.1b）的「第三方客户端能收片」只在 `127.0.0.1` 上成立。回环不经过网卡、
+> 不经过操作系统的入向栈，所以**绑定地址写错、入向被拦、tracker 把回环地址当 peer 通告**
+> 这三类问题在回环上全部看不见。本轮把下载方搬到 192.168.1.221。
+
+- **拓扑**：A = 192.168.1.210（本机，引擎 `listen=0.0.0.0:18782`，HTTP 亦绑 `0.0.0.0`）；
+  B = 127.0.0.1（只负责发 `WAKEUP_REQ`）；下载方 = 192.168.1.221（真实网卡）。
+  `nodes.A.host` 写成 LAN 地址——它同时决定种子里的 `announce` 与 tracker 通告的 peer。
+- **两条真问题（都不是为了让测试好过而改测试）**：
+  1. **µTP 互操作缺口**：Transmission 默认优先 µTP（UDP），对端只做 TCP 时回落很慢。
+     抓包证据：`192.168.1.221.19501 > 192.168.1.210.18782 UDP length 30`，同一时段
+     **没有发往 18782 的 SYN**；资源侧 `peers=0`、`served_bytes=0`。关掉 µTP 后立刻 ESTAB
+     并完整下载。librqbit 不支持 µTP，故客户端侧显式 `utp-enabled=false`，报告与文档都如实写明
+     ——**这是已登记的互操作缺口**（默认配置的 Transmission 首连会明显变慢），不是我们修好了。
+  2. **`/scrape` 一直 404**：标准客户端加种子后会 scrape，404 让它持续
+     「Scrape error: 404」并退避，日志看起来像 tracker 坏了。已在 `bt.rs` 实现标准 scrape 响应
+     （std-only，按 query 里的**二进制** info_hash 回 `complete=1 / incomplete=0`；
+     percent-decode 必须还原成 20 字节，不能按字符串处理——与当初 tracker 那个坑同源）。
+- **验收 `tests/e2e/w51c/lan_thirdparty.py`（3 次连续复跑 18/18）**：221 越过网卡取 `/health`
+  与 `.torrent`；tracker 通告的 peer 是 `192.168.1.210:18782`；`/scrape` 200；
+  **COLD 负对照**（唤醒前客户端 Done=0% 且 `served_bytes=0`）；唤醒后 `state=hot`；
+  Transmission 100% + SHA-1 `66c5db8d…330c2` 与样本一致 + `served_bytes=4194304`；
+  qBittorrent 同样 100% + SHA-1 一致 + 供片增量 `4194304`（累计 8388608，两方对账）。
+- **回归**：`cargo test --workspace --offline` **157 passed / 0 failed**（新增 2 条 scrape 单测）；
+  T0 `--mode real` **21/21 PASS**；W5.1 / W5.1b 均未回退。
+- **口径**：`evidence_scope=lan-cross-host`、`is_s6_evidence=false`、`contains_success_rate=false`。
+  LAN 同一二层网段、无公网报文，**不构成 G2/G3 新证据，不含任何可达率数字**；
+  公网入向（NAT 打洞 / 端口映射）与 µTP 仍未测。
+
 ## [2.4.69] - 2026-11-17 — M2/W5.1b：做种也交给引擎，给旧客户端做种成立
 
 > 所有者决策：**「按 A 进行」**（A = 把 M1 手写的 `bt.rs` 种子端换成引擎做种，只保留一条做种路径）。

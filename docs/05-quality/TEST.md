@@ -2,7 +2,7 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.8
+version: 2.9
 status: 待评审
 owner: 测试组
 updated: 2026-11-17
@@ -10,7 +10,7 @@ updated: 2026-11-17
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.8 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-17
+> 编号 DOC-12 · 版本 2.9 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-17
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
@@ -160,6 +160,51 @@ HOT : 第三方 aria2 → 完整 1 MiB → SHA-256 与样本一致 → A 引擎 
 报告落 `tests/e2e/w51b/reports/seed-to-thirdparty-*.json`（本地证据，gitignore）。
 同时 T0 `--mode real` 21/21，其中 **T0-08 就是第三方 aria2 从引擎做种处完成标准下载**。
 **边界**：回环、无公网报文、不含任何可达率数字；LAN/公网上的旧客户端复核仍未做。
+
+### 2.5 W5.1c LAN 跨主机复核（2026-11-17 新增）
+
+回环测不出三类问题：**绑定地址写错**（只听 127.0.0.1）、**入向被拦**、**tracker 把回环地址
+当 peer 通告出去**。所以下载方必须搬出本机。脚本 `tests/e2e/w51c/lan_thirdparty.py`：
+
+```
+A = 192.168.1.210（Windows，本机，引擎监听 0.0.0.0:18782）
+B = 127.0.0.1（只负责发 WAKEUP_REQ）
+下载方 = 192.168.1.221（Ubuntu，Transmission 3.00 与 qBittorrent 4.5.1，均真实网卡）
+样本 4 MiB = 16 片；DHT/PEX/LSD 关闭；tracker 为 A 的 /announce
+```
+
+十八条断言（缺一条即 fail），关键几条：
+
+| # | 断言 | 来源 |
+| :--- | :--- | :--- |
+| ① | **221 越过网卡**访问 A 的 `/health` 返回 200 | 在 221 上执行 curl |
+| ② | 引擎实际监听 `0.0.0.0:<bt_port>` | 守护进程日志 |
+| ③ | 种子 `announce` 指向 A 的 **LAN** 地址 | 221 上取回的 .torrent 字节 |
+| ④ | tracker 对 221 通告的 peer 就是 A 的 LAN 端点 | 从 221 发标准 announce 后解析 compact peer |
+| ⑤ | `/scrape` 返回 200 | 221 上 curl |
+| ⑥ | **COLD 负对照**：唤醒前客户端 Done=0% 且 `served_bytes=0` | 客户端计数器 + 供片方计数器 |
+| ⑦ | 唤醒后 `state=hot` | `/cli seed` |
+| ⑧ | 客户端报告 100% 且落盘 SHA-1 与样本一致 | 客户端 RPC + `sha1sum` |
+| ⑨ | 供片方 `served_bytes` 覆盖全量（qB 阶段按增量算） | `/cli seed` |
+
+**2026-11-17 实测（3 次连续复跑，18/18 一致）**：样本/落盘 SHA-1 均为 `66c5db8d…330c2`；
+Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`（累计 8388608）。
+报告落 `tests/e2e/w51c/reports/`（本地证据，gitignore）。
+
+**本节抓到的两个真问题（都已处理）**：
+
+1. **µTP 互操作缺口**：Transmission 默认优先用 µTP（UDP），对端只做 TCP 时它**先 U 后 T**、
+   回落很慢，现场表现是「TCP 连上了但没有字节流动」。抓包证据：`18:xx:xx 221.19501 > 210.18782
+   UDP length 30`，全程没有发往 18782 的 SYN；关掉 µTP 后立刻 ESTAB 并下载完成。
+   **librqbit 不支持 µTP**，故客户端侧显式置 `utp-enabled=false`（报告里如实记录，不是为了让测试好过）。
+   这是**已登记的互操作缺口**：真实用户若用默认配置的 Transmission，首连会明显变慢。
+2. **`/scrape` 返回 404**：标准客户端加种子后会 scrape，404 会让它持续报
+   「Scrape error: 404」并退避。已实现标准 scrape 响应（std-only、按 query 里的二进制 info_hash 回
+   `complete=1 / incomplete=0`），单测 2 条覆盖（含二进制 hash 不能被当字符串处理）。
+
+**边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
+不含任何可达率数字，也不构成 G2/G3 新证据。公网入向（NAT 打洞 / 端口映射）与 µTP 仍未测。
+
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 〔**以上结句为 2026-11-13 时点口径；2026-11-14 已更正为 G1 通过**（T0 21/21 + T1 real 11/11，均

@@ -2,7 +2,7 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.14
+version: 2.15
 status: 持续维护
 owner: 项目组
 updated: 2026-11-17
@@ -10,7 +10,7 @@ updated: 2026-11-17
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.14 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-17
+> 编号 DOC-14 · 版本 2.15 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-17
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -497,15 +497,26 @@ ColdRevive
   T0 `--mode real` 21/21（T0-08 就是第三方 aria2 从引擎做种处取片），155 passed / 0 failed。
   **注意口径**：W5.1 那条「手写服务端 ↔ librqbit 客户端」的独立互证失效，
   同库两端只能证明协议自洽；标准互通改由第三方客户端（aria2 / T0-08）承担。
-  **未做**：公网 `listen`（仍只绑 `cfg.bind`）、LRU 调度器接引擎（仍走 M1 `bt_seeding` 门闩）、
-  LAN 上真实旧客户端（Transmission/qBittorrent）对这一路径的复核。
+  **未做**：公网 `listen`（仍只绑 `cfg.bind`）、LRU 调度器接引擎（仍走 M1 `bt_seeding` 门闩）。
+
+- **W5.1c（2026-11-17）LAN 跨主机复核：把下载方搬出回环**：回环测不出「绑定地址写错 /
+  入向被拦 / tracker 通告了回环地址」这三类问题。A 绑 `0.0.0.0`（引擎监听 `0.0.0.0:18782`），
+  `nodes.A.host` 写 LAN 地址（它同时决定种子 `announce` 与 tracker 通告的 peer），
+  下载方换成 192.168.1.221 上真实的 **Transmission 3.00 与 qBittorrent 4.5.1**。
+  验收 `tests/e2e/w51c/lan_thirdparty.py`（3 次复跑 18/18）：221 越过网卡取种子、tracker 通告
+  `192.168.1.210:18782`、COLD 负对照 0 字节、唤醒后两个客户端各下完 4 MiB 且 SHA-1 一致、
+  供片方计数器两阶段各 4194304 B。顺手补了两个真缺口：**`/scrape` 从 404 改为标准响应**；
+  **µTP 互操作缺口登记在案**（Transmission 默认优先 µTP，抓包见 `UDP 19501→18782` 而无 SYN；
+  librqbit 只做 TCP，客户端需回落，测试中显式 `utp-enabled=false`）。
+  `evidence_scope=lan-cross-host`、`is_s6_evidence=false`，LAN 同二层网段、无公网报文。
 
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
   实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**（能自己下载），
-  **做种也已切到引擎（W5.1b）**：回环下第三方 aria2 能完整取片。下一段是把这个「能」推到
-  **真实网络里的旧客户端**：LAN 上 Transmission/qBittorrent 复核 + 公网 `listen` 与可达性口径
-  （后者只在 S6 证据齐备时才谈数字）。
+  **做种已切到引擎（W5.1b）**，**LAN 上的真实旧客户端也已复核（W5.1c）**：Transmission 3.00 与
+  qBittorrent 4.5.1 越过真实网卡完整取片。下一段把「能」推到公网：`listen` 绑公网 / 端口映射，
+  以及 µTP 缺口的取舍（要不要为「默认配置的 Transmission」补 µTP，或明确要求回落 TCP）。
+  可达性口径仍只在 S6 证据齐备时才谈数字。
   ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
   unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；
   ④ 公网入口 **7100→7100**（实测可用；`57100` 规则不存在）复跑时延/丢包/抖动；

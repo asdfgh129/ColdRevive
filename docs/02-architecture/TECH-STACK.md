@@ -206,6 +206,13 @@ Peer Wire 种子端已删除，只保留本地 tracker 的 bencode 响应（仍 
 ② 「手写服务端 ↔ librqbit 客户端」的独立互证失效，标准互通改由第三方客户端验收
 （`tests/e2e/w51b/seed_to_thirdparty.py` 与 T0-08，均为 aria2 真实下载）。
 
+**2026-11-17 LAN 复核后的已知缺口（W5.1c）**：librqbit **只做 TCP，不支持 µTP**。
+Transmission 默认优先 µTP，对端不支持时它回落很慢——抓包形态是
+`client:19501 > seeder:bt_port UDP`，同一时段没有发往 `bt_port` 的 SYN，资源侧 `peers=0`，
+现场看起来像「连上了但不传数据」。LAN 复核脚本因此显式置 `utp-enabled=false`
+（`Session\BTProtocol=0` 给 qBittorrent），并在报告里记为互操作缺口而非修好的能力。
+是否补 µTP（自研或换引擎）待定：多数客户端最终会回落 TCP，但首连体验会差。
+
 ## 相关文档
 
 - [DOC-03 ARCH 总体架构设计](ARCH.md)

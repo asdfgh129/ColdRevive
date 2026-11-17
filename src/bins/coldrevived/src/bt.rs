@@ -43,6 +43,47 @@ pub fn tracker_response_optional(query: &str, peer: Option<(&str, u16)>) -> Vec<
     out
 }
 
+/// 标准 `/scrape` 响应：按 query 里的 info_hash 回 `files` 字典。
+///
+/// 只报 `complete=1 / incomplete=0`——本节点以**完整文件**做种，这是事实而不是估算；
+/// `downloaded` 恒 0 表示「本 tracker 不统计完成次数」，不编造数字。
+/// query 里没有可解析的 info_hash 就返回空 `files`（合法 bencode，客户端会当作无数据）。
+pub fn scrape_response(query: &str) -> Vec<u8> {
+    let mut out = b"d5:filesd".to_vec();
+    for kv in query.split('&') {
+        let Some(raw) = kv.strip_prefix("info_hash=") else { continue };
+        let Some(ih) = percent_decode(raw) else { continue };
+        if ih.len() != 20 { continue; }
+        out.extend_from_slice(b"20:");
+        out.extend_from_slice(&ih);
+        // 键必须按字典序：complete < downloaded < incomplete
+        out.extend_from_slice(b"d8:completei1e10:downloadedi0e10:incompletei0ee");
+    }
+    out.extend_from_slice(b"ee");
+    out
+}
+
+/// 字节级 percent-decode。info_hash 是**二进制**，必须先还原成 20 字节再回写，
+/// 不能按字符串处理（这正是当初 tracker 那个「用 urlsplit 解不出 info_hash」的同一个坑）。
+fn percent_decode(s: &str) -> Option<Vec<u8>> {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'%' if i + 2 < b.len() => {
+                let hi = (b[i + 1] as char).to_digit(16)?;
+                let lo = (b[i + 2] as char).to_digit(16)?;
+                out.push((hi * 16 + lo) as u8);
+                i += 3;
+            }
+            b'+' => { out.push(b' '); i += 1; }
+            c => { out.push(c); i += 1; }
+        }
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -73,5 +114,25 @@ mod tests {
         let r = tracker_response("compact=0", "127.0.0.1", 16802);
         let s = String::from_utf8_lossy(&r);
         assert!(s.contains("ld2:ip9:127.0.0.14:porti16802eee"));
+    }
+
+    #[test]
+    fn scrape_echoes_binary_info_hash() {
+        // %01%02… 必须还原成 20 个原始字节，而不是保留百分号字面量
+        let hash: Vec<u8> = (0u8..20).collect();
+        let enc: String = hash.iter().map(|b| format!("%{b:02x}")).collect();
+        let r = scrape_response(&format!("info_hash={enc}&peer_id=abcdefghij0123456789"));
+        let s = String::from_utf8_lossy(&r);
+        assert!(s.starts_with("d5:filesd20:"));
+        assert!(s.contains("d8:completei1e10:downloadedi0e10:incompletei0ee"));
+        assert!(s.ends_with("ee"));
+        // 原始 20 字节确实在响应里
+        assert!(r.windows(20).any(|w| w == hash.as_slice()));
+    }
+
+    #[test]
+    fn scrape_without_info_hash_is_empty_files_dict() {
+        assert_eq!(scrape_response("peer_id=x"), b"d5:filesdee".to_vec());
+        assert_eq!(scrape_response("info_hash=short"), b"d5:filesdee".to_vec());
     }
 }

@@ -383,6 +383,12 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
             bt::tracker_response(query, cfg.host("A"), port)
         };
         ("200 OK".into(), body, "application/x-bittorrent")
+    } else if path.starts_with("/scrape") {
+        // 标准客户端加种子后会同时发 announce 和 scrape。以前这里落到 404，
+        // Transmission 会一直报 "Scrape error: 404" 并退避——虽然不影响下载
+        // （announce 单独走），但在日志里是持续的假故障，排查时极易误导。
+        let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+        ("200 OK".into(), bt::scrape_response(query), "application/x-bittorrent")
     } else if path == "/jsonrpc" && method == "POST" {
         cors = true;
         let out = handle_jsonrpc(&state, &body);
