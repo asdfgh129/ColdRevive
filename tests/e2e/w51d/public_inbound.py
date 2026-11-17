@@ -624,6 +624,8 @@ def main() -> int:
                        f"mkdir -p {tx_conf} {tx_dl}")
         peer("cat > " + f"{tx_conf}/settings.json <<'TXCFG'\n"
              + json.dumps({
+                 # 只验 TCP 公网入向：端口映射是 TCP 的，让客户端只走 TCP 才能把结论
+                 # 归到那两条规则上。µTP 走 UDP、需要另一条 UDP 映射，见 W5.1e。
                  "utp-enabled": False, "dht-enabled": False, "pex-enabled": False,
                  "lpd-enabled": False, "port-forwarding-enabled": False, "encryption": 0,
                  "rpc-enabled": True, "rpc-port": TX_RPC_PORT,

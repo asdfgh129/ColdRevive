@@ -115,6 +115,12 @@ pub struct EngineOptions {
     pub enable_dht: bool,
     /// 默认 `true`：用种子内嵌的 tracker。
     pub enable_trackers: bool,
+    /// 默认 `true`：监听时**同时**开 TCP 与 uTP（BEP 29，UDP 同端口）。
+    ///
+    /// librqbit 9.x 自带 `librqbit-utp`，但 `ListenerOptions` 默认是 `TcpOnly`——
+    /// 不显式改成 `TcpAndUtp` 就只剩 TCP。曾把「默认关」误读成「库不支持」，
+    /// 结果让默认配置的 Transmission 在首连时干等 µTP，看起来像「连上了却没数据」。
+    pub enable_utp: bool,
     pub ipv4_only: bool,
     pub upload_bps: Option<u32>,
     pub download_bps: Option<u32>,
@@ -129,6 +135,7 @@ impl EngineOptions {
             listen: None,
             enable_dht: false,
             enable_trackers: true,
+            enable_utp: true,
             ipv4_only: true,
             upload_bps: None,
             download_bps: None,
@@ -166,6 +173,11 @@ pub struct RqbitEngine {
     tasks: Mutex<HashMap<TaskId, Task>>,
     next_id: AtomicU64,
     download_dir: PathBuf,
+    /// 调用方是否要求了 µTP（配置意图，不代表端口真的绑上）。
+    utp_requested: bool,
+    /// 建会话后对同端口做一次 UDP 绑定探测的结果：`true` = 端口被占用。
+    /// 语义是「UDP 端口被占」，不是「本引擎占着」——归属要看系统连接表里的 PID。
+    utp_port_occupied: bool,
 }
 
 impl RqbitEngine {
@@ -195,7 +207,12 @@ impl RqbitEngine {
         };
         if let Some(addr) = opts.listen {
             so.listen = Some(ListenerOptions {
-                mode: ListenerMode::TcpOnly,
+                // µTP 走 UDP，与 `listen_addr` 同端口；TCP 仍照旧。
+                mode: if opts.enable_utp {
+                    ListenerMode::TcpAndUtp
+                } else {
+                    ListenerMode::TcpOnly
+                },
                 listen_addr: addr,
                 enable_upnp_port_forwarding: false,
                 ipv4_only: opts.ipv4_only,
@@ -216,12 +233,25 @@ impl RqbitEngine {
         let session = rt
             .block_on(async { Session::new_with_opts(dir, so).await })
             .map_err(|e| format!("创建 BT 会话失败: {e}"))?;
+        // uTP 没绑上时 librqbit 只打一条日志（TCP 照旧），属于**静默降级**。
+        // 这里对同端口做一次 UDP 绑定探测：绑不上 = 端口被占（引擎已经拿走）；
+        // 绑得上 = uTP 实际没监听。只报事实，不替引擎下「uTP 可用」的结论。
+        let utp_requested = opts.enable_utp && opts.listen.is_some();
+        let utp_port_occupied = if utp_requested {
+            session.listen_addr()
+                .map(|a| std::net::UdpSocket::bind(a).is_err())
+                .unwrap_or(false)
+        } else {
+            false
+        };
         Ok(Self {
             rt,
             session,
             tasks: Mutex::new(HashMap::new()),
             next_id: AtomicU64::new(1),
             download_dir: opts.download_dir,
+            utp_requested,
+            utp_port_occupied,
         })
     }
 
@@ -232,6 +262,18 @@ impl RqbitEngine {
     /// 本会话实际监听地址；`None` 表示没有入站端口。
     pub fn listen_addr(&self) -> Option<SocketAddr> {
         self.session.listen_addr()
+    }
+
+    /// 是否请求了 µTP（配置意图，不代表端口真绑上）。
+    pub fn utp_requested(&self) -> bool {
+        self.utp_requested
+    }
+
+    /// 建会话后探测到的「UDP 同端口已被占用」。
+    /// `utp_requested()` 为真而这里为假，说明 uTP 监听没起来（librqbit 对此只打日志）。
+    /// 反过来不成立：占用也可能来自别的进程，归属要看系统连接表里的 PID。
+    pub fn utp_port_occupied(&self) -> bool {
+        self.utp_port_occupied
     }
 
     pub fn info_hash(&self, task: TaskId) -> Option<String> {
@@ -446,6 +488,40 @@ mod tests {
         let mut e = RqbitEngine::new(EngineOptions::new(&dir)).expect("engine must start");
         assert!(RqbitEngine::pause(&e, 42).is_err());
         assert!(RqbitEngine::resume(&e, 42).is_err());
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// µTP 默认开启：监听时同端口必须有 UDP——否则「本节点支持 µTP」只是配置幻觉。
+    #[test]
+    fn utp_listens_on_udp_by_default() {
+        let dir = tmp_dir("utp-on");
+        let mut opts = EngineOptions::new(&dir);
+        opts.listen = Some("127.0.0.1:0".parse().unwrap());
+        assert!(opts.enable_utp, "EngineOptions 默认必须请求 µTP");
+        let mut e = RqbitEngine::new(opts).expect("engine must start");
+        let addr = e.listen_addr().expect("要监听端口");
+        assert_ne!(addr.port(), 0, "端口必须真的绑上");
+        assert!(e.utp_requested());
+        assert!(e.utp_port_occupied(), "同端口 UDP 应已被引擎占用（{addr}）");
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 关掉 µTP 之后，同端口 UDP 必须**空着**——这是「真的没开」的可证伪判据。
+    #[test]
+    fn utp_off_leaves_udp_port_free() {
+        let dir = tmp_dir("utp-off");
+        let mut opts = EngineOptions::new(&dir);
+        opts.listen = Some("127.0.0.1:0".parse().unwrap());
+        opts.enable_utp = false;
+        let mut e = RqbitEngine::new(opts).expect("engine must start");
+        let addr = e.listen_addr().expect("要监听端口");
+        assert!(!e.utp_requested());
+        assert!(!e.utp_port_occupied(), "关掉 µTP 时不得占用同端口 UDP");
+        let probe = std::net::UdpSocket::bind(addr)
+            .unwrap_or_else(|e| panic!("uTP 关闭后 UDP {addr} 仍被占用: {e}"));
+        drop(probe);
         e.shutdown();
         let _ = std::fs::remove_dir_all(&dir);
     }

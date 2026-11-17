@@ -2,6 +2,35 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.73] - 2026-11-17 — M2/W5.1e：补上 µTP（BEP 29），并纠正「librqbit 不支持 µTP」的错判
+
+> 上一轮把「默认配置的 Transmission 首连很慢」记成「引擎只做 TCP」的能力缺口。
+> 查依赖才发现 `librqbit` 9.1.0 本来就带 `librqbit-utp`，只是 `ListenerOptions.mode`
+> 默认 `TcpOnly`——**默认关 ≠ 不支持**。本轮把它打开，并用两个真实客户端证明走的是 UDP。
+
+- **修正（先说结论再谈实现）**：`EngineOptions.enable_utp` 默认 `true`，监听时
+  `ListenerMode::TcpAndUtp`，µTP 与 BT 端口同号（UDP）；`nat.utp=false` 可显式退回纯 TCP。
+  ADR-015 增加「W5.1e 更正」段：把库的默认值当能力边界，与「拿假设当测量」同族。
+- **静默降级要能被看见**：librqbit 的 UDP 绑定失败只打日志、TCP 照旧。引擎在会话建立后
+  对同端口做一次 UDP 绑定探测，`/cli seed` 与启动日志报 `utp_requested` / `utp_udp_port_occupied`；
+  `/nat/public` 报配置态。**真正的判据是系统连接表里该 UDP 端口的 PID**，不看自报。
+- **验收 `tests/e2e/w51e/utp_thirdparty.py`（20/20，连续 4 轮）**：
+  - Transmission 3.00（`utp-enabled=true`，默认行为）：`100%`，`peers[].isUTP=true`；
+  - qBittorrent 4.5.1（`Session\BTProtocol=2` 仅 uTP）：`100%`，`connection=μTP`（50 条采样）；
+  - 两侧同时成立：**A 侧 `bt_port` 全程没有来自 221 的 TCP 连接**（逐秒采样 0 命中）；
+  - 落盘 SHA-1 `8d5d0dea…309d72` 一致；供片方 `4194304 + 4194304 = 8388608`；
+  - COLD 负对照仍为 0 字节（µTP 打开没有让「不唤醒也能取片」漏出来）。
+  `evidence_scope=lan-utp-interop`、`is_s6_evidence=false`，不含速率数字。
+- **顺手修掉两个「量具」问题**：qB 的 peer 列表只在连接存在时才有内容，4 MiB 一秒级就下完，
+  「一次一条 ssh」的采样会整段错过窗口（第一次就是这么把「走了 µTP」读成「没走」），
+  改为远端 0.1 s 采样进程 + 事后取文件；`Session\BTProtocol` 是位掩码（1=TCP、2=uTP、3=两者），
+  w51c 里原先写的 `0`（= 都不选）已改为 `1`。
+- **回归**：`cargo test --workspace --offline` **163 passed / 0 failed**（新增 2 条：µTP 默认开时
+  同端口 UDP 被占用；关掉后该端口必须空着）；W5.1c **18/18**、W5.1d **17/17**、
+  W5.1b **9/9**、W5.1 **8/8**、T0 `--mode real` **21/21**（`evidence_valid=true`）。
+- **仍未验**：公网 µTP（CPE 只有两条 TCP 映射，缺 `UDP 112.5.60.4:17802` 一条）；
+  没有它外部客户端回落 TCP，不影响 W5.1d 的结论。
+
 ## [2.4.72] - 2026-11-17 — M2/W5.1d 收口：CPE 映射建成后公网入向 PASS（17/17 累计 8 轮，最近连续 2 轮）
 
 > 上一条（2.4.71）测出「代码就绪、卡在路由器」。本轮运维在 CPE 建好两条 TCP 映射后重测，

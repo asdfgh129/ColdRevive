@@ -87,11 +87,24 @@ updated: 2026-11-16
 ## W5.1c 补充（2026-11-17）：LAN 复核暴露的引擎能力边界
 
 把下载方搬出回环（192.168.1.221 的 Transmission 3.00 / qBittorrent 4.5.1）后，暴露一条
-**引擎选型带来的能力边界**：librqbit 只实现 TCP，不做 µTP。Transmission 默认优先 µTP，
-于是首连落在「TCP 已建立但无字节流动」的状态（抓包：`221.19501 > 210.18782 UDP`，无 SYN）。
-这不是本 ADR 的分层策略有问题，而是**所选引擎的能力边界必须显式登记**：
-换依赖不等于拿到全部协议特性。处理方式是把客户端降到 TCP 并在文档/报告中写明，
+**引擎行为差异**：Transmission 默认优先 µTP，于是首连落在「TCP 已建立但无字节流动」的状态
+（抓包：`221.19501 > 210.18782 UDP`，无 SYN）。处理方式是把客户端降到 TCP 并在文档/报告中写明，
 **不修改验收标准去迁就实现**。
+
+## W5.1e 更正（2026-11-17）：这不是能力边界，是默认值
+
+上一条当时写的是「librqbit 只实现 TCP，不做 µTP」——**这个归因是错的**。
+librqbit 9.x 的依赖里就有 `librqbit-utp`（BEP 29 的独立实现），`SessionOptions.listen` 走
+`ListenerOptions`，而 `ListenerMode` 的默认值是 `TcpOnly`。**默认关 ≠ 不支持。**
+
+教训与「拿假设当测量」同族：看到「客户端发的 UDP 包没人应答」就推断「库不支持 UDP」，
+跳过了读一眼依赖清单和默认值。代价是把一个开关写成了「要自己实现 µTP」的结论。
+
+现在的形态：`EngineOptions.enable_utp` 默认 `true` → `ListenerMode::TcpAndUtp`（UDP 与 BT 端口同号），
+`nat.utp=false` 显式退回纯 TCP。分层策略不变：这个开关只存在于 `cr-engine`，
+业务 crate 仍不 `use librqbit`；uTP 的失败形态是「只打日志、TCP 照旧」的静默降级，
+因此引擎在会话建立后做一次同端口 UDP 绑定探测，并由验收脚本用**系统连接表里的 PID**
+判定「到底谁占着那个 UDP 端口」（见 [TEST §2.7](../../05-quality/TEST.md)）。
 
 ## 复核时点
 

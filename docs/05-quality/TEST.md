@@ -193,17 +193,18 @@ Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`�
 
 **本节抓到的两个真问题（都已处理）**：
 
-1. **µTP 互操作缺口**：Transmission 默认优先用 µTP（UDP），对端只做 TCP 时它**先 U 后 T**、
-   回落很慢，现场表现是「TCP 连上了但没有字节流动」。抓包证据：`18:xx:xx 221.19501 > 210.18782
+1. **µTP 首连问题**：Transmission 默认优先用 µTP（UDP），当时服务端只开了 TCP，它**先 U 后 T**、
+   回落很慢，现场表现是「TCP 连上了但没有字节流动」。抓包证据：`221.19501 > 210.18782
    UDP length 30`，全程没有发往 18782 的 SYN；关掉 µTP 后立刻 ESTAB 并下载完成。
-   **librqbit 不支持 µTP**，故客户端侧显式置 `utp-enabled=false`（报告里如实记录，不是为了让测试好过）。
-   这是**已登记的互操作缺口**：真实用户若用默认配置的 Transmission，首连会明显变慢。
+   本节当时记的「librqbit 不支持 µTP」**是错判**——库自带 `librqbit-utp`，只是
+   `ListenerOptions` 默认 `TcpOnly`，我们没打开。**W5.1e 已修正并补验**（见 §2.7），
+   本节的客户端仍显式降到 TCP，用于单独验 TCP 路径。
 2. **`/scrape` 返回 404**：标准客户端加种子后会 scrape，404 会让它持续报
    「Scrape error: 404」并退避。已实现标准 scrape 响应（std-only、按 query 里的二进制 info_hash 回
    `complete=1 / incomplete=0`），单测 2 条覆盖（含二进制 hash 不能被当字符串处理）。
 
 **边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
-不含任何可达率数字，也不构成 G2/G3 新证据。公网入向（NAT 打洞 / 端口映射）与 µTP 仍未测。
+不含任何可达率数字，也不构成 G2/G3 新证据。公网入向见 §2.6、µTP 见 §2.7。
 
 ### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 PASS）
 验证「外部主机能否越过互联网从 A 的引擎取片」。脚本 `tests/e2e/w51d/public_inbound.py`：
@@ -274,6 +275,53 @@ TCP 112.5.60.4:17802 -> 192.168.1.210:17802     # BT 数据面
 ③ 本机 Windows 上 ControlMaster 不可用（`ssh -f` 起的常驻 master 会被回收，`-O check` 反复失败，
 反而 0.4 s→21 s 抖动），改用单次连接 + 分类重试，并把逐秒轮询塞进对端一条 ssh 里跑完；
 ④ 复位用 `-t all -r`（按 id 删在重试时会删错），且复位后必须确认只剩 1 个任务。
+
+### 2.7 W5.1e µTP（BEP 29）互操作复核（2026-11-17 新增，PASS）
+
+验证「默认配置的标准客户端能否直接走 µTP 取片」——也就是 §2.5 里那条被登记成「缺口」的行为。
+脚本 `tests/e2e/w51e/utp_thirdparty.py`：
+
+```
+A        = 192.168.1.210（nat.utp 默认开；引擎 TCP + uTP 同端口监听）
+下载方   = 192.168.1.221：Transmission 3.00（utp-enabled=true，默认行为）
+                          qBittorrent 4.5.1（Session\BTProtocol=2，仅 uTP）
+样本 4 MiB；`--clients transmission|qbittorrent` 可单跑，`--keep` 保留现场
+```
+
+判据**必须两侧同时成立**，任何一侧单独都不算：
+
+| # | 判据 | 观测手段 |
+| :--- | :--- | :--- |
+| ① | 引擎请求了 µTP **且** UDP 端口真的被占 | 启动日志 `utp_requested` / `utp_udp_port_occupied` |
+| ② | **UDP 端口的属主就是这个守护进程** | `netstat -ano -p UDP` 的 PID 与进程 PID 比对（不看自报） |
+| ③ | 客户端**自报** peer 走 µTP | Transmission `peers[].isUTP`；qB `torrentPeers.connection` |
+| ④ | 传输全程 A 侧**没有**来自 221 的 TCP 连接 | `Get-NetTCPConnection` 按 bt_port + 对端 IP 逐秒采样 |
+| ⑤ | COLD 负对照仍成立 | 唤醒前客户端 0%、`state=cold`、`served_bytes=0` |
+| ⑥ | 落盘 SHA-1 一致 + 供片方计数覆盖全量 | 客户端 `sha1sum` / `/cli seed` |
+
+**2026-11-17 实测：PASS，20/20，连续 4 轮**：
+
+| 观测 | Transmission 3.00 | qBittorrent 4.5.1 |
+| :--- | :--- | :--- |
+| 客户端自报传输层 | `utp=1, tcp=0`（`isUTP=true`） | `connection=μTP`（50 条采样里恒为 uTP） |
+| 下载 | `100%`，6 tick | `100%`，2 tick |
+| 落盘 SHA-1 | `8d5d0dea…309d72`（与样本一致） | 同 |
+| 供片方增量 | `4194304` | `4194304`（累计 `8388608`） |
+| A 侧 TCP 连接 | 8 次采样、0 次命中 | 同 |
+
+**边界**：LAN（同一二层网段）、无公网报文；`evidence_scope=lan-utp-interop`、`is_s6_evidence=false`；
+不含任何速率/可达率数字（ADR-012）。**公网 µTP 未验**：CPE 上目前只有两条 **TCP** 映射，
+µTP 入向还需要一条 `UDP 112.5.60.4:17802 → 192.168.1.210:17802`；没有它外部客户端会回落 TCP
+（§2.6 的路径不受影响）。
+
+**这一轮纠的是一年前的判断，不是代码**：`librqbit` 9.x 自带 `librqbit-utp`，
+`ListenerOptions.mode` 默认 `TcpOnly`。把「默认关」读成「不支持」，才会得出「要自己写 µTP」的结论。
+
+**harness 的坑（已修）**：qB 的 peer 列表只在连接存在时才有内容，4 MiB 在本环境 1–2 秒就下完，
+「一次一条 ssh」的采样（自己 ~0.4 s/次）会整段错过传输窗口，读出来是「没有 peer」——
+第一次就是这么把「走了 µTP」误判成「没走」的。改成在 221 本地起一个 0.1 s 间隔的采样进程、
+事后取文件，才拿到 50 条样本。同类问题还有：`Session\BTProtocol` 是位掩码
+（1=TCP、2=uTP、3=两者），之前 w51c 里写的 `0` 并不等于「仅 TCP」。
 
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。

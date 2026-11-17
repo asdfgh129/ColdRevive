@@ -506,8 +506,10 @@ ColdRevive
   验收 `tests/e2e/w51c/lan_thirdparty.py`（3 次复跑 18/18）：221 越过网卡取种子、tracker 通告
   `192.168.1.210:18782`、COLD 负对照 0 字节、唤醒后两个客户端各下完 4 MiB 且 SHA-1 一致、
   供片方计数器两阶段各 4194304 B。顺手补了两个真缺口：**`/scrape` 从 404 改为标准响应**；
-  **µTP 互操作缺口登记在案**（Transmission 默认优先 µTP，抓包见 `UDP 19501→18782` 而无 SYN；
-  librqbit 只做 TCP，客户端需回落，测试中显式 `utp-enabled=false`）。
+  **µTP 相关现象登记在案**（Transmission 默认优先 µTP，抓包见 `UDP 19501→18782` 而无 SYN；
+  当时服务端只开了 TCP）。本节写的「librqbit 只做 TCP」**已被 W5.1e 更正**：库自带
+  `librqbit-utp`，默认 `ListenerMode::TcpOnly` 只是没打开。本脚本仍显式 `utp-enabled=false`，
+  用于单独验 TCP 路径。
   `evidence_scope=lan-cross-host`、`is_s6_evidence=false`，LAN 同二层网段、无公网报文。
 
 - **W5.1d（2026-11-17）公网入向：已通过（PASS，17/17 累计 8 轮）**：
@@ -529,12 +531,27 @@ ColdRevive
   **已登记的观察项**：公网这条 4 MiB 155–235 s（LAN 档秒级），形态稳定不停滞，成因未定位；
   按 ADR-012 不折算成任何速率结论。
 
+- **W5.1e（2026-11-17）µTP 互操作：已通过（PASS，20/20 连续 4 轮）**：
+  **先纠正归因**——W5.1c 记录的「librqbit 只做 TCP」是错判：库自带 `librqbit-utp`（BEP 29），
+  只是 `ListenerOptions.mode` 默认 `TcpOnly`，我们没打开开关。把「默认关」当成「不支持」，
+  才会得出去自研 µTP 的结论。
+  落地：`EngineOptions.enable_utp` 默认 `true`，监听时 `TcpAndUtp`（UDP 与 BT 端口同号），
+  `nat.utp=false` 可退回纯 TCP；uTP 绑定失败在 librqbit 里只打日志（静默降级），
+  故引擎建会话后对同端口做一次 UDP 绑定探测，并在 `/cli seed` 报 `utp_requested` /
+  `utp_udp_port_occupied`——**真正的判据是系统连接表里该 UDP 端口的 PID**。
+  验收 `tests/e2e/w51e/utp_thirdparty.py`：Transmission 3.00（默认 `utp-enabled`）与
+  qBittorrent 4.5.1（`BTProtocol=2` 仅 uTP）各拉满 4 MiB，**两侧同时成立**才算过：
+  客户端自报 `isUTP=true` / `connection=μTP`，且 A 侧 `bt_port` 全程没有来自 221 的 TCP 连接。
+  实测：两条客户端各 `100%`、落盘 SHA-1 `8d5d0dea…309d72`、供片方计数 4 MiB + 4 MiB。
+  `evidence_scope=lan-utp-interop`、`is_s6_evidence=false`，不含速率数字。
+  **公网 µTP 仍缺一条 UDP 映射**（CPE 目前只有两条 TCP 规则）；没有它外部客户端回落 TCP，
+  不影响 W5.1d 的结论。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
   实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**（能自己下载），
-  **做种已切到引擎（W5.1b）**，**LAN 上的真实旧客户端也已复核（W5.1c）**，**公网入向已通过（W5.1d）**：
-  Transmission 3.00 经 WAN 从 A 的引擎完整取片，A 侧连接对端只有公网 IP。
-  未定的仍是 µTP 缺口（要不要为「默认配置的 Transmission」补 µTP，或明确要求回落 TCP）；
+  **做种已切到引擎（W5.1b）**，**LAN 上的真实旧客户端也已复核（W5.1c）**，**公网入向已通过（W5.1d）**，
+  **µTP 已补上并通过（W5.1e）**：默认配置的 Transmission 不必再等回落。
   W5.1d 顺带暴露的「公网单连接吞吐远低于 LAN」也未定位，登记为观察项。
   可达性口径仍只在 S6 证据齐备时才谈数字。
   ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，

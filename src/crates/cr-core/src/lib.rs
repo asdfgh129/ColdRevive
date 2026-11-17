@@ -325,6 +325,10 @@ pub struct Config {
     /// 配置后伴随种子里会写入 `announce-list`（BEP 12）：LAN 一条 + 这条公网一条，
     /// 同一份种子同时服务两类客户端；tracker 仍按请求方 IP 决定回私网还是公网 peer。
     pub nat_http_external: Option<(String, u16)>,
+    /// BT 监听端口上是否同时开 µTP（BEP 29，UDP 同端口）。**默认 `true`**：
+    /// 标准客户端默认优先 µTP（Transmission 尤甚），只做 TCP 时要等它回落，首连体验差。
+    /// 关掉只影响监听侧的 UDP 绑定，不改任何帧格式。
+    pub nat_utp: bool,
     /// M2/W5.1 BT 引擎下载目录。`engine` 段缺省时落到 `<workdir>/downloads`。
     pub engine_dir: PathBuf,
     /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
@@ -388,6 +392,12 @@ impl Config {
             let port: u16 = p.parse().ok()?;
             if ip.is_empty() { None } else { Some((ip.to_string(), port)) }
         });
+        // µTP 默认开：标准客户端默认先试 µTP，只做 TCP 会让它们先干等一段。
+        // `nat.utp=false` 可显式关掉（只留 TCP），不影响任何帧格式。
+        let nat_utp = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "utp"))
+            .and_then(|(_, v)| v.as_bool())
+            .unwrap_or(true);
         // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
         // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
         let nat_relays: Vec<String> = nat_get("relay")
@@ -444,6 +454,7 @@ impl Config {
             nat_relays,
             nat_bt_external,
             nat_http_external,
+            nat_utp,
             engine_dir,
             engine_listen,
         })
@@ -529,6 +540,7 @@ mod tests {
         assert!(cfg.nat_relay.is_none());
         assert!(cfg.nat_bt_external.is_none());
         assert!(cfg.nat_http_external.is_none());
+        assert!(cfg.nat_utp, "µTP 默认必须开启：标准客户端默认先试 µTP");
 
         let with_nat = r#"{
             "bind": "127.0.0.1",
@@ -544,7 +556,8 @@ mod tests {
                 "gateway": "192.168.1.254",
                 "relay": "127.0.0.1:7000",
                 "bt_external": "203.0.113.9:17802",
-                "http_external": "203.0.113.9:17800"
+                "http_external": "203.0.113.9:17800",
+                "utp": false
             }
         }"#;
         let p2 = std::env::temp_dir().join("cr_core_nat_enabled.json");
@@ -555,6 +568,7 @@ mod tests {
         assert_eq!(cfg2.nat_stun_servers[0], ("127.0.0.1".into(), 3478));
         assert_eq!(cfg2.nat_bt_external, Some(("203.0.113.9".into(), 17802)));
         assert_eq!(cfg2.nat_http_external, Some(("203.0.113.9".into(), 17800)));
+        assert!(!cfg2.nat_utp, "显式 utp=false 必须被采纳");
         assert_eq!(cfg2.nat_relay.as_deref(), Some("127.0.0.1:7000"));
         let _ = fs::remove_file(&p);
         let _ = fs::remove_file(&p2);

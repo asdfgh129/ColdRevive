@@ -301,6 +301,10 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         listen: Some(listen),
         enable_dht: false,
         enable_trackers: false,
+        // W5.1e：µTP 默认开。librqbit 只把它当成一个 `ListenerMode` 开关，
+        // 默认是 `TcpOnly`——不显式打开就只剩 TCP，默认配置的 Transmission
+        // 会先试 µTP、干等一段才回落，现场看着像「连上了却没数据」。
+        enable_utp: cfg.nat_utp,
         ipv4_only: true,
         upload_bps: None,
         download_bps: None,
@@ -321,9 +325,11 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         return Err("引擎报种子总长为 0，拒绝以空任务做种".into());
     }
     println!(
-        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 #{}, 已核对 {}/{} B, finished={}, state={}",
+        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 #{}, 已核对 {}/{} B, finished={}, state={}, \
+         utp_requested={}, utp_udp_port_occupied={}",
         cfg.node_id, listen, engine.listen_addr(), task,
-        p.downloaded_bytes, p.total_bytes, p.finished, p.state
+        p.downloaded_bytes, p.total_bytes, p.finished, p.state,
+        engine.utp_requested(), engine.utp_port_occupied()
     );
     st.seed_task = Some(task);
     st.engine = Arc::new(Mutex::new(Some(engine)));

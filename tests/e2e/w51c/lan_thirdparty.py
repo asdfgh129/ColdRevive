@@ -386,10 +386,12 @@ def main() -> int:
             check("tracker /scrape 返回 200（不再是 404）", code_out.strip() == "200",
                   f"http={code_out.strip() or '<无响应>'}")
 
-            # 关 µTP：**这不是为了让测试好过**，而是抓包抓出来的事实——
-            # Transmission 默认优先用 µTP（UDP），对端只做 TCP 时它要等很久才回落，
-            # 现场表现就是「连上了但没数据」。librqbit 目前不支持 µTP，
-            # 所以这里显式把客户端降到 TCP，并在报告里记下这条互操作缺口。
+            # 本轮显式把客户端降到 TCP，**只验 TCP 路径**——不是为了让测试好过。
+            # 当时的理由是抓包看到 Transmission 先试 µTP（UDP 19501→18782）而没发 SYN，
+            # 干等很久才回落，现场像「连上了但没数据」；而当时的引擎确实只开了 TCP
+            # （librqbit 的 `ListenerOptions` 默认 `TcpOnly`）。
+            # **2026-11-17 W5.1e 更正**：不是「librqbit 不支持 µTP」，是我们没打开开关。
+            # µTP 路径见 tests/e2e/w51e/utp_thirdparty.py；本脚本保留 TCP-only 姿态。
             ssh("cat > " + f"{tx_conf}/settings.json <<'TXCFG'\n"
                 + json.dumps({
                     "utp-enabled": False,
@@ -403,7 +405,7 @@ def main() -> int:
                     "download-dir": tx_dl,
                 }, indent=2) + "\nTXCFG")
             report["client_settings"] = {"utp_enabled": False,
-                                         "reason": "cr-engine 只做 TCP，不支持 µTP"}
+                                         "reason": "本脚本只验 TCP 路径；µTP 由 W5.1e 单独验"}
             ssh_bg(f"transmission-daemon -g {tx_conf} -f >{tx_conf}/daemon.log 2>&1")
             rc, out = "", ""
             for _ in range(40):
@@ -502,7 +504,7 @@ def main() -> int:
             key = hashlib.pbkdf2_hmac("sha512", b"adminadmin", salt, 100000)
             pw = base64.b64encode(salt).decode() + ":" + base64.b64encode(key).decode()
             conf = (f"[BitTorrent]\n"
-                    f"Session\\BTProtocol=0\n"          # 0 = 仅 TCP（引擎不做 µTP）
+                    f"Session\\BTProtocol=1\n"          # 1 = 仅 TCP（2=仅 uTP, 3=两者）
                     f"Session\\DHTEnabled=false\n"
                     f"Session\\PeXEnabled=false\n"
                     f"Session\\LSDEnabled=false\n"

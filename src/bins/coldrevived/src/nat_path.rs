@@ -271,6 +271,9 @@ pub fn public_status(cfg: &Config) -> Json {
         ("http_external", fmt_ep(&cfg.nat_http_external)),
         ("engine_listen", listen),
         ("announce", Json::arr(announce)),
+        ("utp_requested", Json::b(cfg.nat_utp)),
+        ("utp_note", Json::s(
+            "µTP 与 BT 端口同号（UDP）；是否真的绑上要看系统连接表（netstat -ano -p UDP）的 PID")),
         ("inbound_verified", Json::b(false)),
         ("inbound_evidence", Json::s(
             "未由外部主机实测；本机绑定/配置正确不代表入向可达（需端口映射 + 外部验证）")),

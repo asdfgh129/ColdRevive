@@ -237,6 +237,8 @@ fn seed_stats(state: &Shared) -> Json {
     let st = state.lock().unwrap();
     let mut eg = st.engine.lock().unwrap();
     let task = st.seed_task;
+    // µTP 是**配置+端口占用**两层事实：请求了不代表真的绑上了（librqbit 绑 UDP 失败只打日志）。
+    let utp = eg.as_ref().map(|e| (e.utp_requested(), e.utp_port_occupied()));
     let progress = match (task, eg.as_mut()) {
         (Some(t), Some(eng)) => eng.progress(t),
         _ => None,
@@ -247,6 +249,10 @@ fn seed_stats(state: &Shared) -> Json {
         ("served_bytes", Json::n(progress.as_ref().map(|p| p.uploaded_bytes as f64).unwrap_or(0.0))),
         ("engine_task", Json::n(task.map(|t| t as f64).unwrap_or(-1.0))),
     ];
+    if let Some((req, occ)) = utp {
+        fields.push(("utp_requested", Json::b(req)));
+        fields.push(("utp_udp_port_occupied", Json::b(occ)));
+    }
     match progress {
         Some(p) => {
             fields.push(("state", Json::s(p.state.as_str())));

@@ -206,12 +206,20 @@ Peer Wire 种子端已删除，只保留本地 tracker 的 bencode 响应（仍 
 ② 「手写服务端 ↔ librqbit 客户端」的独立互证失效，标准互通改由第三方客户端验收
 （`tests/e2e/w51b/seed_to_thirdparty.py` 与 T0-08，均为 aria2 真实下载）。
 
-**2026-11-17 LAN 复核后的已知缺口（W5.1c）**：librqbit **只做 TCP，不支持 µTP**。
-Transmission 默认优先 µTP，对端不支持时它回落很慢——抓包形态是
-`client:19501 > seeder:bt_port UDP`，同一时段没有发往 `bt_port` 的 SYN，资源侧 `peers=0`，
-现场看起来像「连上了但不传数据」。LAN 复核脚本因此显式置 `utp-enabled=false`
-（`Session\BTProtocol=0` 给 qBittorrent），并在报告里记为互操作缺口而非修好的能力。
-是否补 µTP（自研或换引擎）待定：多数客户端最终会回落 TCP，但首连体验会差。
+**2026-11-17 LAN 复核后的「µTP 缺口」（W5.1c 记录，W5.1e 更正）**：当时观察到 Transmission
+先试 µTP（UDP `client:19501 > seeder:bt_port`，同一时段没有发往 `bt_port` 的 SYN）、资源侧
+`peers=0`，看起来像「连上了但不传数据」；于是 LAN 复核脚本显式把客户端降到 TCP，并把这写成
+「librqbit 只做 TCP」的互操作缺口。
+
+**这个归因是错的**：librqbit 9.x 自带 `librqbit-utp`（BEP 29），`ListenerOptions.mode` 默认是
+`TcpOnly`——**默认关，不等于不支持**。当时把库的默认值当成了能力边界，于是客户端的默认首选
+传输层（µTP）在服务端根本没有监听端口，Transmission 只能干等回落。
+
+**W5.1e 起的形态**：`EngineOptions.enable_utp` 默认 `true`，监听时用 `ListenerMode::TcpAndUtp`，
+UDP 与 BT 端口同号；`nat.utp=false` 可退回纯 TCP。uTP 的绑定失败在 librqbit 里只打日志
+（TCP 照旧），属于静默降级，因此引擎在建会话后对同端口做一次 UDP 绑定探测并报
+`utp_udp_port_occupied`，而**真正的判据是系统连接表里该 UDP 端口的 PID**——见
+[TEST §2.7](../05-quality/TEST.md)。
 
 **2026-11-17 公网入向（W5.1d）的边界**：引擎能做「监听 + 接收入向」，但**能不能被外面连上
 不是代码决定的**——取决于 CPE 上有没有真实端口映射。本轮把可声明、可验证的部分做齐
