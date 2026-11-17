@@ -86,6 +86,26 @@ cors_allowlist = []
 | security | `wake_rate_per_ip` / `max_wake_concurrency` | 5 / 8 | 唤醒限流 |
 | security | `cors_allowlist` | 空 | 显式白名单，不做通配放行 |
 
+### 2.1 运行时 JSON 段（M2 已接线，与上表并行）
+
+`coldrevived --config` 实际读取的是 **JSON**（上表是 TOML 目标形态）。以下两段在 JSON 里，
+缺省即关闭——`nat` / `engine` 段不出现时，T0/T1 行为逐字节不变。
+
+| 段 | 参数 | 默认 | 约束 / 说明 |
+| :--- | :--- | :--- | :--- |
+| nat | `enabled` | false | 关闭时唤醒走 M1 单播、tracker 一律通告 `nodes.<id>.host` |
+| nat | `stun_servers` | 空 | `"host:port"` 列表；空时用内置列表 |
+| nat | `gateway` / `upnp_location` | 空 | 映射协议探测目标；留空则用默认发现 |
+| nat | `relay` / `relay_key` | 空 | 中继地址（逗号分隔可多端点）/ PSK（64 位 hex 或 `file:<路径>`） |
+| nat | `bt_external` | 空 | 运维在 CPE 上**真实建好**的 TCP 映射 `公网IP:端口` → 本机 `bt_port`。只有配置了它，tracker 才会向公网请求方通告 peer；未配置即返回空 peer 列表（绝不发 RFC1918） |
+| nat | `http_external` | 空 | 同上，对应 HTTP/tracker 端口。配置后伴随种子写 BEP 12 `announce-list`（LAN + 公网两条，InfoHash 不变），唤醒 ACK 里给公网请求者的取种 URL 也换成这条 |
+| engine | `dir` | `<workdir>/downloads` | 引擎下载目录 |
+| engine | `listen` | 空 | `ip:port`。留空且声明了任一 `*_external` 时，做种监听落 `0.0.0.0:bt_port`；否则绑 `bind` |
+
+**这两项只是声明，不是证据**：守护进程无法自证映射存在。入向是否真的可用，
+只能由外部主机实测（[`tests/e2e/w51d/public_inbound.py`](../../tests/e2e/w51d/public_inbound.py)）；
+`/nat/public` 返回的 `inbound_verified` 恒为 `false`，`s6_status` 恒为 `not_run`。
+
 ## 3. 校验规则
 
 启动时校验，失败则拒绝启动并给出明确错误：

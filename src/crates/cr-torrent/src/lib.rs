@@ -23,6 +23,20 @@ fn bint(n: usize) -> Vec<u8> { format!("i{}e", n).into_bytes() }
 
 /// 按 BT 规范生成单文件种子。字典键必须按字典序排列（announce < info）。
 pub fn generate(data: &[u8], name: &str, piece_size: usize, announce: &str) -> Torrent {
+    generate_with_announce_list(data, name, piece_size, &[vec![announce.to_string()]])
+}
+
+/// BEP 12 `announce-list`：同一份内容同时服务 LAN 与公网客户端。
+///
+/// 关键约束：**info 字典逐字节不变**，所以多写一条通告地址不会改变 InfoHash——
+/// 否则 LAN 侧已经入库的条目、已完成的分片校验会全部对不上。
+/// 只有一个 URL 时不写 `announce-list`，输出与 [`generate`] 逐字节一致（旧证据不受影响）。
+pub fn generate_with_announce_list(
+    data: &[u8],
+    name: &str,
+    piece_size: usize,
+    tiers: &[Vec<String>],
+) -> Torrent {
     assert!(piece_size > 0, "piece_size 必须 > 0");
     let pieces: Vec<[u8; 20]> = data.chunks(piece_size).map(sha1).collect();
 
@@ -41,11 +55,28 @@ pub fn generate(data: &[u8], name: &str, piece_size: usize, announce: &str) -> T
     info.extend_from_slice(&bstr(&pieces_blob));
     info.push(b'e');
 
+    let urls: Vec<&String> = tiers.iter().flatten().filter(|u| !u.is_empty()).collect();
+    let announce = urls.first().map(|s| s.as_str()).unwrap_or("");
+
     let info_hash = sha1_hex(&info);
     let mut raw = Vec::new();
     raw.push(b'd');
     raw.extend_from_slice(&bstr(b"announce"));
     raw.extend_from_slice(&bstr(announce.as_bytes()));
+    if urls.len() > 1 {
+        raw.extend_from_slice(&bstr(b"announce-list"));
+        raw.push(b'l');
+        for tier in tiers {
+            let keep: Vec<&String> = tier.iter().filter(|u| !u.is_empty()).collect();
+            if keep.is_empty() { continue; }
+            raw.push(b'l');
+            for u in keep {
+                raw.extend_from_slice(&bstr(u.as_bytes()));
+            }
+            raw.push(b'e');
+        }
+        raw.push(b'e');
+    }
     raw.extend_from_slice(&bstr(b"info"));
     raw.extend_from_slice(&info);
     raw.push(b'e');
@@ -199,5 +230,44 @@ mod tests {
         assert_eq!(p.piece_size, 256);
         assert_eq!(p.pieces.len(), 4);
         assert_eq!(p.name, "coldrevive-t0-sample.bin");
+    }
+
+    /// BEP 12：加一条公网 announce 不能改变 InfoHash——否则已入库的条目、
+    /// 已校验的分片会全部对不上（同一份内容变成两个种子）。
+    #[test]
+    fn announce_list_keeps_infohash_and_order() {
+        let data = vec![9u8; 512];
+        let single = generate(&data, "s.bin", 128, "http://192.168.1.210:17800/announce");
+        let multi = generate_with_announce_list(&data, "s.bin", 128, &[
+            vec!["http://192.168.1.210:17800/announce".to_string()],
+            vec!["http://112.5.60.4:17800/announce".to_string()],
+        ]);
+        assert_eq!(single.info_hash, multi.info_hash,
+                   "加 announce-list 不得改变 InfoHash");
+        // pieces 是二进制，不能整体当 UTF-8 读；按字节定位键序。
+        let find = |needle: &[u8]| -> usize {
+            multi.raw.windows(needle.len()).position(|w| w == needle)
+                .unwrap_or_else(|| panic!("bencode 里找不到 {:?}", String::from_utf8_lossy(needle)))
+        };
+        // 键序必须是 announce < announce-list < info（字典序）
+        let (a, l, i) = (find(b"8:announce"), find(b"13:announce-list"), find(b"4:info"));
+        assert!(a < l && l < i, "bencode 字典必须键有序");
+        assert!(find(b"http://192.168.1.210:17800/announce") > 0);
+        assert!(find(b"http://112.5.60.4:17800/announce") > 0);
+        // 两个 tier 各是一个 list
+        assert_eq!(find(b"13:announce-listl") , l, "announce-list 后必须直接是 list");
+        assert!(verify_pieces(&multi.raw, &data));
+        assert_eq!(parse(&multi.raw).unwrap().info_hash, multi.info_hash);
+    }
+
+    /// 只有一个 URL 时，带列表的构造必须与 `generate` 逐字节一致（旧证据不受影响）。
+    #[test]
+    fn single_tier_is_byte_identical_to_generate() {
+        let data = b"coldrevive-single-tier";
+        let a = generate(data, "s.bin", 8, "http://127.0.0.1:16800/announce");
+        let b = generate_with_announce_list(data, "s.bin", 8,
+            &[vec!["http://127.0.0.1:16800/announce".to_string()]]);
+        assert_eq!(a.raw, b.raw);
+        assert!(!String::from_utf8_lossy(&b.raw).contains("announce-list"));
     }
 }

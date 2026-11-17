@@ -244,6 +244,41 @@ pub fn active_plan(state: &Shared) -> Option<EndpointPlan> {
     if plan.candidates.is_empty() { None } else { Some(plan) }
 }
 
+/// 公网入向的**配置态**（W5.1d）。
+///
+/// 这里只回答「我们打算让别人从哪儿进来」，不回答「别人真的进得来」——
+/// 后者只能由外部主机实测，本机永远无法自证（绑定成功 ≠ 入向可达）。
+pub fn public_status(cfg: &Config) -> Json {
+    let bt_port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
+    let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
+    let fmt_ep = |e: &Option<(String, u16)>| match e {
+        Some((ip, p)) => Json::s(format!("{}:{}", ip, p)),
+        None => Json::Null,
+    };
+    let mut announce = vec![Json::s(format!(
+        "http://{}:{}/announce", cfg.host(&cfg.node_id), http_port))];
+    if let Some((ip, p)) = &cfg.nat_http_external {
+        announce.push(Json::s(format!("http://{}:{}/announce", ip, p)));
+    }
+    let listen = match cfg.engine_listen {
+        Some(a) => Json::s(a.to_string()),
+        None if cfg.nat_bt_external.is_some() || cfg.nat_http_external.is_some() =>
+            Json::s(format!("0.0.0.0:{}", bt_port)),
+        None => Json::s(format!("{}:{}", cfg.bind, bt_port)),
+    };
+    Json::obj(vec![
+        ("bt_external", fmt_ep(&cfg.nat_bt_external)),
+        ("http_external", fmt_ep(&cfg.nat_http_external)),
+        ("engine_listen", listen),
+        ("announce", Json::arr(announce)),
+        ("inbound_verified", Json::b(false)),
+        ("inbound_evidence", Json::s(
+            "未由外部主机实测；本机绑定/配置正确不代表入向可达（需端口映射 + 外部验证）")),
+        ("s6_status", Json::s("not_run")),
+        ("evidence_valid_for_pass", Json::b(false)),
+    ])
+}
+
 /// `/announce` 的 peer 地址决策（私网/公网分流 + 无公网映射时返回 None → 空 peer 列表）。
 pub fn tracker_target(state: &Shared, cfg: &Config, requester_ip: &str) -> Option<(String, u16)> {
     if !state.lock().unwrap().nat.enabled {
@@ -566,6 +601,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             probe(state, cfg, mode, timeout)
         }
         "advertise" => advertisement_json(&self_advertisement(state, cfg)),
+        "public" => public_status(cfg),
         "peer" => {
             let source = p.first().cloned().unwrap_or_default();
             if source.is_empty() {
@@ -723,5 +759,49 @@ mod tests {
         assert_eq!(j.get("s6_status").and_then(Json::as_str), Some("not_run"));
         assert_eq!(j.get("evidence_valid_for_pass").and_then(Json::as_bool), Some(false));
         assert_eq!(j.get("candidates").and_then(Json::as_arr).unwrap().len(), 1);
+    }
+
+    /// W5.1d：配了公网映射就必须 ① 监听 0.0.0.0 ② 种子带两条 announce
+    /// ③ 仍然不许自称「入向已验证」。
+    #[test]
+    fn public_status_ties_config_to_listen_and_announce() {
+        let dir = std::env::temp_dir().join(format!("cr_pub_status_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mk = |bind: &str, nat: &str| -> Config {
+            let text = format!(r#"{{
+                "bind": "{}",
+                "nodes": {{
+                    "A": {{"http_port": 17800, "wake_udp_port": 17801,
+                           "bt_port": 17802, "host": "192.168.1.210"}},
+                    "B": {{"http_port": 17900, "wake_udp_port": 17901, "bt_port": 17902}}
+                }},
+                "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+                "golden_req": "r.json", "golden_ack": "a.json"{}
+            }}"#, bind, nat);
+            let p = dir.join("c.json");
+            std::fs::write(&p, text).unwrap();
+            let mut c = Config::load(&p).unwrap();
+            c.node_id = "A".into();
+            c
+        };
+
+        let off = public_status(&mk("127.0.0.1", ""));
+        assert_eq!(off.get("engine_listen").and_then(Json::as_str),
+                   Some("127.0.0.1:17802"));
+        assert_eq!(off.get("announce").and_then(Json::as_arr).unwrap().len(), 1);
+        assert_eq!(off.get("inbound_verified").and_then(Json::as_bool), Some(false));
+
+        let on = public_status(&mk("192.168.1.210",
+            r#", "nat": {"enabled": true, "bt_external": "112.5.60.4:17802",
+                          "http_external": "112.5.60.4:17800"}"#));
+        assert_eq!(on.get("engine_listen").and_then(Json::as_str),
+                   Some("0.0.0.0:17802"),
+                   "有公网映射时必须监听所有接口，否则外部包进不来而本机全绿");
+        assert_eq!(on.get("announce").and_then(Json::as_arr).unwrap().len(), 2);
+        assert_eq!(on.get("bt_external").and_then(Json::as_str), Some("112.5.60.4:17802"));
+        // 配置正确 ≠ 入向可用：这一条永远不能变成 true。
+        assert_eq!(on.get("inbound_verified").and_then(Json::as_bool), Some(false));
+        assert_eq!(on.get("s6_status").and_then(Json::as_str), Some("not_run"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

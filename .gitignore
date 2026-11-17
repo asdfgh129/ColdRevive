@@ -62,6 +62,9 @@ tests/e2e/w51b/reports/*
 # W5.1c LAN 跨主机复核运行产物（本地证据，不入库）
 tests/e2e/w51c/reports/*
 
+# W5.1d 公网入向复核运行产物（本地证据，不入库）
+tests/e2e/w51d/reports/*
+
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*
 !tests/spikes/reports/.gitkeep

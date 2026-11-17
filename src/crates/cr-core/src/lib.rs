@@ -321,6 +321,10 @@ pub struct Config {
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
+    /// 运维侧真实创建的 HTTP/tracker 端口映射（外部 IP:端口）。
+    /// 配置后伴随种子里会写入 `announce-list`（BEP 12）：LAN 一条 + 这条公网一条，
+    /// 同一份种子同时服务两类客户端；tracker 仍按请求方 IP 决定回私网还是公网 peer。
+    pub nat_http_external: Option<(String, u16)>,
     /// M2/W5.1 BT 引擎下载目录。`engine` 段缺省时落到 `<workdir>/downloads`。
     pub engine_dir: PathBuf,
     /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
@@ -377,6 +381,13 @@ impl Config {
             let port: u16 = p.parse().ok()?;
             Some((ip.to_string(), port))
         });
+        // 公网 HTTP/tracker 端点。非法值按「未配置」处理——宁可让公网客户端
+        // 拿不到 announce-list，也不要把一个 `11:announce` 里写错的地址发出去。
+        let nat_http_external = nat_get("http_external").and_then(|s| {
+            let (ip, p) = s.rsplit_once(':')?;
+            let port: u16 = p.parse().ok()?;
+            if ip.is_empty() { None } else { Some((ip.to_string(), port)) }
+        });
         // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
         // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
         let nat_relays: Vec<String> = nat_get("relay")
@@ -432,6 +443,7 @@ impl Config {
             nat_relay_key: nat_get("relay_key"),
             nat_relays,
             nat_bt_external,
+            nat_http_external,
             engine_dir,
             engine_listen,
         })
@@ -516,6 +528,7 @@ mod tests {
         assert!(cfg.nat_stun_servers.is_empty());
         assert!(cfg.nat_relay.is_none());
         assert!(cfg.nat_bt_external.is_none());
+        assert!(cfg.nat_http_external.is_none());
 
         let with_nat = r#"{
             "bind": "127.0.0.1",
@@ -530,7 +543,8 @@ mod tests {
                 "stun_servers": ["127.0.0.1:3478", "stun.example:19302", "bad"],
                 "gateway": "192.168.1.254",
                 "relay": "127.0.0.1:7000",
-                "bt_external": "203.0.113.9:17802"
+                "bt_external": "203.0.113.9:17802",
+                "http_external": "203.0.113.9:17800"
             }
         }"#;
         let p2 = std::env::temp_dir().join("cr_core_nat_enabled.json");
@@ -540,6 +554,7 @@ mod tests {
         assert_eq!(cfg2.nat_stun_servers.len(), 2);
         assert_eq!(cfg2.nat_stun_servers[0], ("127.0.0.1".into(), 3478));
         assert_eq!(cfg2.nat_bt_external, Some(("203.0.113.9".into(), 17802)));
+        assert_eq!(cfg2.nat_http_external, Some(("203.0.113.9".into(), 17800)));
         assert_eq!(cfg2.nat_relay.as_deref(), Some("127.0.0.1:7000"));
         let _ = fs::remove_file(&p);
         let _ = fs::remove_file(&p2);

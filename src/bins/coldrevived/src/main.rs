@@ -210,6 +210,10 @@ fn main() {
             eprintln!("[{}] 做种引擎启动失败: {}", cfg.node_id, e);
             std::process::exit(2);
         }
+        if cfg.nat_bt_external.is_some() || cfg.nat_http_external.is_some() {
+            println!("[{}] 公网入向配置（未经外部实测）: {}",
+                     cfg.node_id, nat_path::public_status(&cfg).dump());
+        }
         let shared = Arc::new(Mutex::new(st));
         spawn_udp(hub.clone(), cfg.clone(), shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
@@ -224,9 +228,23 @@ fn main() {
 
 fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
     let facts = inspect_file(&cfg.sample_path)?;
-    let announce = format!("http://{}:{}/announce", cfg.host(&cfg.node_id),
-                           cfg.node_http(&cfg.node_id).unwrap_or(0));
-    let torrent = cr_torrent::generate(&facts.data, &facts.name, PIECE_SIZE, &announce);
+    let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
+    let lan_announce = format!("http://{}:{}/announce", cfg.host(&cfg.node_id), http_port);
+    // 公网入向（W5.1d）：配了 `nat.http_external` 就写 BEP 12 `announce-list`——
+    // 同一份种子同时服务 LAN 与公网客户端（tracker 再按请求方 IP 决定回哪个 peer）。
+    // 没有配置时只有一条，输出与旧版逐字节一致。
+    let tiers = match &cfg.nat_http_external {
+        Some((ip, port)) => vec![
+            vec![lan_announce.clone()],
+            vec![format!("http://{}:{}/announce", ip, port)],
+        ],
+        None => vec![vec![lan_announce.clone()]],
+    };
+    let torrent = cr_torrent::generate_with_announce_list(
+        &facts.data, &facts.name, PIECE_SIZE, &tiers);
+    println!("[{}] 伴随种子 announce{}: {}", cfg.node_id,
+             if tiers.len() > 1 { "-list" } else { "" },
+             tiers.iter().flatten().cloned().collect::<Vec<_>>().join(" , "));
     let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
     torrent.write_to(&torrent_path)?;
 
@@ -266,8 +284,17 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| cfg.workdir.clone());
     let bt_port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
-    let listen: SocketAddr = format!("{}:{}", cfg.bind, bt_port)
-        .parse().map_err(|e| format!("bt 监听地址非法: {e}"))?;
+    // 公网入向（W5.1d）：一旦声明了任意外部映射，监听必须落在 **所有接口** 上——
+    // 路由器 DNAT 会把目的地址改成内网 IP，但若这里绑的是回环（或缺省 127.0.0.1），
+    // 外部包永远进不来，而本机自测仍然全绿。这属于「本地测不出来」的坑，故显式写死。
+    let listen: SocketAddr = match cfg.engine_listen {
+        Some(a) => a,
+        None if cfg.nat_bt_external.is_some() || cfg.nat_http_external.is_some() =>
+            format!("0.0.0.0:{bt_port}").parse()
+                .map_err(|e| format!("bt 监听地址非法: {e}"))?,
+        None => format!("{}:{}", cfg.bind, bt_port).parse()
+            .map_err(|e| format!("bt 监听地址非法: {e}"))?,
+    };
 
     let mut engine = RqbitEngine::new(EngineOptions {
         download_dir: share_dir.clone(),
@@ -369,6 +396,11 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         ("200 OK".into(),
          nat_path::advertisement_json(&nat_path::self_advertisement(&state, &cfg))
              .dump().into_bytes(), "application/json")
+    } else if path == "/nat/public" && method == "GET" {
+        // W5.1d：公网入向的**配置态**。`inbound_verified` 恒 false——本机无法自证入向，
+        // 只有外部主机的实测（tests/e2e/w51d）能改这个结论。
+        ("200 OK".into(), nat_path::public_status(&cfg).dump().into_bytes(),
+         "application/json")
     } else if path.starts_with("/announce") {
         let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
         // M1 口径（nat 关闭）：仍走原 tracker_response，字节级不变。
@@ -936,14 +968,28 @@ fn spawn_udp(hub: UdpHub, cfg: Config, state: Arc<Mutex<NodeState>>) {
                     &cr_nat::holepunch::punch_ack(&cfg.node_id, token), src);
                 continue;
             }
-            if let Some(r) = handle_udp_frame(&cfg, &state, &frame) {
+            if let Some(r) = handle_udp_frame(&cfg, &state, &frame, src) {
                 let _ = sock.send_to(r.dump().as_bytes(), src);
             }
         }
     });
 }
 
-fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>, frame: &Json) -> Option<Json> {
+/// 唤醒应答里的取种 URL（W5.1d）。
+///
+/// 公网请求者必须拿到公网端点——ACK 里给一个 RFC1918 地址，对方会「唤醒成功但取不到种子」，
+/// 而且在持有者本地日志里看不出任何异常。私网/回环请求者维持 M1 口径不变。
+fn ack_torrent_url(cfg: &Config, infohash: &str, requester_ip: &str) -> String {
+    let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
+    match (cr_nat::is_public_ipv4(requester_ip), &cfg.nat_http_external) {
+        (true, Some((ip, port))) => format!("http://{}:{}/torrent/{}", ip, port, infohash),
+        _ => format!("http://{}:{}/torrent/{}",
+                     cfg.host(&cfg.node_id), http_port, infohash),
+    }
+}
+
+fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
+                    frame: &Json, src: SocketAddr) -> Option<Json> {
     let t = frame.get("t").and_then(Json::as_str).unwrap_or("");
     if t == "KAD_FIND" {
         let key = frame.get("key").and_then(Json::as_str).unwrap_or("");
@@ -1010,8 +1056,7 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>, frame: &Json) -
         st.bt_seeding = activated;
         let _ = st.index.save();
         let me = cfg.me().ok()?;
-        let url = format!("http://{}:{}/torrent/{}", cfg.host(&cfg.node_id),
-                          me.http_port, entry.infohash);
+        let url = ack_torrent_url(cfg, &entry.infohash, &src.ip().to_string());
         return Some(build_ack(&trace, &entry.infohash, &url, entry.size,
                               entry.piece_size, me.bt_port));
     }
@@ -1094,5 +1139,42 @@ mod rpc_tests {
         let err = http_fetch(&format!("http://127.0.0.1:{}/missing.torrent", addr.port()), Duration::from_secs(3))
             .expect_err("404 必须报错");
         assert!(err.contains("404"), "错误信息要带上状态行: {err}");
+    }
+
+    /// W5.1d：ACK 里的取种 URL 必须按请求者来源选择端点。
+    /// 公网请求者拿到 RFC1918 地址 = 「唤醒成功但取不到种子」，本地日志毫无异常。
+    #[test]
+    fn ack_url_follows_requester_network() {
+        let dir = std::env::temp_dir().join(format!("cr_ackurl_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "0.0.0.0",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801,
+                       "bt_port": 17802, "host": "192.168.1.210"},
+                "B": {"http_port": 17900, "wake_udp_port": 17901, "bt_port": 17902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {"enabled": true, "bt_external": "112.5.60.4:17802",
+                    "http_external": "112.5.60.4:17800"}
+        }"#;
+        let p = dir.join("c.json");
+        std::fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+
+        assert_eq!(ack_torrent_url(&cfg, "IH", "112.5.32.34"),
+                   "http://112.5.60.4:17800/torrent/IH");
+        assert_eq!(ack_torrent_url(&cfg, "IH", "192.168.1.221"),
+                   "http://192.168.1.210:17800/torrent/IH");
+        assert_eq!(ack_torrent_url(&cfg, "IH", "127.0.0.1"),
+                   "http://192.168.1.210:17800/torrent/IH");
+
+        // 没配公网 HTTP 映射时，公网请求者也只能拿到原地址（如实，不编造）
+        cfg.nat_http_external = None;
+        assert_eq!(ack_torrent_url(&cfg, "IH", "112.5.32.34"),
+                   "http://192.168.1.210:17800/torrent/IH");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

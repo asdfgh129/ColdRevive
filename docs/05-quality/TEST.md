@@ -205,6 +205,46 @@ Transmission 阶段 `served_bytes=4194304`，qBittorrent 阶段增量 `4194304`�
 **边界**：LAN（同一二层网段）、无公网报文、**`evidence_scope=lan-cross-host`、`is_s6_evidence=false`**；
 不含任何可达率数字，也不构成 G2/G3 新证据。公网入向（NAT 打洞 / 端口映射）与 µTP 仍未测。
 
+### 2.6 W5.1d 公网入向复核（2026-11-17 新增，当前 BLOCKED）
+
+验证「外部主机能否越过互联网从 A 的引擎取片」。脚本 `tests/e2e/w51d/public_inbound.py`：
+
+```
+A        = 192.168.1.210（公网 egress 112.5.60.4，做种监听须为 0.0.0.0:17802）
+外部主机 = 192.168.1.222（WAN 112.5.32.34，Transmission 3.00；它同时挂在 LAN 上）
+样本 4 MiB；nat.bt_external / nat.http_external 由运维在 CPE 上真实建好后才可填
+```
+
+判据分两段，**第一段过不了就直接 BLOCKED，不进入客户端阶段**：
+
+| 阶段 | 判据 |
+| :--- | :--- |
+| 映射探测 | 外部主机 `connect <A 公网IP>:17800` 与 `:17802` 均成功 |
+| 配置自洽 | `/nat/public` 报 `engine_listen=0.0.0.0:*`、announce 两条、`inbound_verified=false` |
+| 发现面 | 外部主机经公网取回种子（200 + 真实字节）；种子带 `announce-list`（LAN + 公网） |
+| tracker | 外部主机 announce 后，返回的 compact peer 是 **公网端点**（不是 192.168.x） |
+| 路径 | **A 侧 `bt_port` 上已建立连接的对端是公网 IP**（用系统连接表读，不看引擎自报） |
+| 数据 | COLD 负对照 0 字节；唤醒后 100%、落盘 SHA-1 一致、供片方计数覆盖全量 |
+
+**「两侧证据同时成立」是这条的关键**：222 同时挂在 LAN 上，只看「下载成功」会被内网捷径骗过。
+脚本因此把种子换成**只有公网 announce** 的变体（同一个 info 字典换壳，InfoHash 不变，脚本内复核），
+再从 A 侧连接表确认对端不是 RFC1918。
+
+**2026-11-17 实测：BLOCKED**。外部主机对 `112.5.60.4:17800` 与 `112.5.60.4:17802` 均
+`TimeoutError`（不是 RST——是网关直接丢弃，符合「无 DNAT 规则 + 有状态防火墙」）。
+本机核实过的旁路手段全不可用：默认网关 `192.168.1.254` 的 **UPnP / NAT-PMP / PCP 全部无响应**
+（首次探测误用了 `192.168.1.1`，按真实网关重测仍为 false），本机**无全局 IPv6**。
+因此 `status=blocked`，报告里列出需要的两条规则：
+
+```
+TCP 112.5.60.4:17800 -> 192.168.1.210:17800     # tracker / .torrent
+TCP 112.5.60.4:17802 -> 192.168.1.210:17802     # BT 数据面
+```
+
+映射建好后重跑同一命令即可（`--probe-only` 只验端口，不拉客户端）。
+报告落 `tests/e2e/w51d/reports/`（本地证据，gitignore）；`evidence_scope=public-inbound-single-egress`、
+`is_s6_evidence=false`，**不含任何可达率数字**，不构成 S6/G2 证据。
+
 
 **M0 前置**：[tests/spikes/](../../tests/spikes/README.md) 是 G0 的 Spike 实验包（S1–S8 判据、状态登记、结论回填规则），`m0_preflight.py` 只检查实验条件是否齐备，不产出任何 Spike 结论。截至 2026-11-13：S1 / S2 / S4 / S7 为 `pass`、S8 由项目所有者豁免登记为 `pass`（无书面意见）、S3 / S5 / S6 为 `not_run`；G0 已由所有者批准条件冻结，详见 [G0-REVIEW](../06-plan/G0-REVIEW.md)；`cargo` 已可用、S2 实网实验已获人工批准，最小 eMule KAD 客户端的真实 `0xE4` wire 本地回环与 LAN 真实客户端互操作探测均已跑通（均不构成 S2 结论），G0 参数与 bootstrap 清单已确认、判据口径已回写，**S2 已于 2026-11-10 判 `pass`**（`PUBLISH_RES load=1` + `SEARCH_RES` 命中，并由两进程 A/B 独立取回，详见 [PLAN.md §20–§21](../../tests/spikes/s2/PLAN.md)）；早期 0 响应系 IP 字节序（v2.4.14）与 Kad tag 帧头（v2.4.26）两处编码缺陷，非网络过滤；v2.4.7 已补齐 P4 前置实现（`0xE5` 解包、tolerance 收敛、跳过 HELLO、bootstrap 公网校验）；**v2.4.38 起第三方 BT 客户端（Motrix Next / aria2 1.36.0）、M1 二进制与 `CliAdapter.wired=True` 均已就绪，T0 `--mode real` 已实跑 21/21 PASS**。S3 / S5 / S6 仍为 `not_run`（G0 条件冻结豁免），T1 真实验收仍 `BLOCKED`，故 G1 未通过。
 〔**以上结句为 2026-11-13 时点口径；2026-11-14 已更正为 G1 通过**（T0 21/21 + T1 real 11/11，均

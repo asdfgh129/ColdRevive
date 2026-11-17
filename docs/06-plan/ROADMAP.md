@@ -510,12 +510,31 @@ ColdRevive
   librqbit 只做 TCP，客户端需回落，测试中显式 `utp-enabled=false`）。
   `evidence_scope=lan-cross-host`、`is_s6_evidence=false`，LAN 同二层网段、无公网报文。
 
+- **W5.1d（2026-11-17）公网入向：把「能」推到 WAN 侧（当前阻塞在路由器映射）**：
+  **能力已接线**——声明 `nat.bt_external` / `nat.http_external` 之后：① 做种监听落 `0.0.0.0:bt_port`
+  （绑回环/私网时外部包永远进不来，而本机自测仍然全绿）；② 伴随种子写 BEP 12 `announce-list`
+  （LAN + 公网两条，**InfoHash 逐字节不变**，`cr-torrent` 单测锁死「加一条通告不得换种子身份」）；
+  ③ tracker 对公网请求方回公网 peer、对私网回私网 peer；④ 唤醒 ACK 里的取种 URL 按请求方来源切换
+  （公网请求者拿到 RFC1918 地址＝「唤醒成功但取不到种子」，本地日志毫无异常）；⑤ `/nat/public`
+  暴露配置态，`inbound_verified` **恒 false**（本机无法自证入向）。
+  验收 `tests/e2e/w51d/public_inbound.py`：先让外部主机（222，WAN `112.5.32.34`）直接 connect
+  `<A 公网IP>:17800` 与 `:17802`——连不上就 BLOCKED 并打印缺哪两条 CPE 规则；连通后再跑
+  「公网 announce → tracker 回公网 peer → 客户端取片 → A 侧连接对端必须是公网 IP」的闭环，
+  **两侧证据同时成立才算走公网**（222 同时挂在 LAN 上，只看「下载成功」会被 LAN 捷径骗过）。
+  **实测结论**：`112.5.60.4:17800` / `:17802` 从公网均**超时**；A 所在 CPE（默认网关 `192.168.1.254`）
+  **UPnP / NAT-PMP / PCP 三者皆不可用**，本机无全局 IPv6（此前把网关当成 `192.168.1.1` 探过一次，
+  已按真实网关重测）。故公网入向 **not_run**：代码、判据、失败诊断已就绪，
+  缺的只是运维在 CPE 上真实建两条 TCP 映射。`evidence_scope=public-inbound-single-egress`、
+  `is_s6_evidence=false`，不含任何可达率数字。
+
 - **下一步计划（W3.13 起，按所有者 2026-11-16 重排）**：**先把标准协议互通做扎实，再谈补种**。
   ① **标准协议互通**：S1（第三方 aria2/Motrix 作 seeder，128/128 片校验）与 S2（eD2k/KAD 双栈
   实网）是基础，G3 矩阵已按「带例外结案」（W3.18）收口。**数据面已由 W5.1 补上**（能自己下载），
   **做种已切到引擎（W5.1b）**，**LAN 上的真实旧客户端也已复核（W5.1c）**：Transmission 3.00 与
-  qBittorrent 4.5.1 越过真实网卡完整取片。下一段把「能」推到公网：`listen` 绑公网 / 端口映射，
-  以及 µTP 缺口的取舍（要不要为「默认配置的 Transmission」补 µTP，或明确要求回落 TCP）。
+  qBittorrent 4.5.1 越过真实网卡完整取片。**公网入向（W5.1d）代码与判据就绪但 `not_run`**：
+  实测 A 的 `:17800`/`:17802` 从公网不可达，且该 CPE 不支持 UPnP/NAT-PMP/PCP、本机无全局 IPv6，
+  **只能由运维在 CPE 上手工建两条 TCP 映射**后重跑 `tests/e2e/w51d/public_inbound.py`。
+  另有一段取舍未定：µTP 缺口（要不要为「默认配置的 Transmission」补 µTP，或明确要求回落 TCP）。
   可达性口径仍只在 S6 证据齐备时才谈数字。
   ② 唤醒路径接入「先查再打洞」（relay-only 跳过直连，
   unknown 不许当低 ID 用）；③ 按 IP 的连接/注册限速与黑名单、注册表分片；

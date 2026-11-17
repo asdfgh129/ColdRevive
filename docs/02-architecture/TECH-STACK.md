@@ -213,6 +213,12 @@ Transmission 默认优先 µTP，对端不支持时它回落很慢——抓包�
 （`Session\BTProtocol=0` 给 qBittorrent），并在报告里记为互操作缺口而非修好的能力。
 是否补 µTP（自研或换引擎）待定：多数客户端最终会回落 TCP，但首连体验会差。
 
+**2026-11-17 公网入向（W5.1d）的边界**：引擎能做「监听 + 接收入向」，但**能不能被外面连上
+不是代码决定的**——取决于 CPE 上有没有真实端口映射。本轮把可声明、可验证的部分做齐
+（`nat.bt_external` / `nat.http_external` → 监听 `0.0.0.0`、BEP 12 `announce-list`、tracker 按请求方
+IP 分流、ACK URL 按来源切换、`/nat/public` 只报配置态），并把「入向是否可用」交给外部主机实测。
+实测结论见 [TEST §2.6](../05-quality/TEST.md)：本机所在 CPE 不支持 UPnP/NAT-PMP/PCP，只能人工建规则。
+
 ## 相关文档
 
 - [DOC-03 ARCH 总体架构设计](ARCH.md)
