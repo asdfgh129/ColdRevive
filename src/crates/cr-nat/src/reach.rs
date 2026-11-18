@@ -152,6 +152,10 @@ impl ReachDeclaration {
                 NatType::PortRestrictedCone => {
                     (ReachClass::Direct, NatType::PortRestrictedCone)
                 }
+                // 端口过滤已实测不存在、地址轴未测：打洞只依赖「映射可预测 + 不禁异端口」，
+                // 地址是否受限不改变「可预测直连」这个决策，故与 cone 同判 Direct。
+                // 类型名仍保留问号（ConeUndetermined），不升级成 full-cone。
+                NatType::ConeUndetermined => (ReachClass::Direct, NatType::ConeUndetermined),
                 NatType::Cgnat => (ReachClass::Unknown, NatType::Cgnat),
                 NatType::Unknown => (ReachClass::Unknown, NatType::Unknown),
             }

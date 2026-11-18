@@ -208,6 +208,117 @@ fn main() {
         println!("[coldrevive-relay] 密钥指纹 {}（两端必须一致）", secure::fingerprint(k));
     }
 
+    // ---- 可选：UDP 承载（W3.14）----
+    //
+    // 存在的理由不是「多一种传输」，而是有些云边缘对**非 22 的入向 TCP** 在建连后
+    // 注入伪造 RST（2026-11-18 腾讯云轻量实测：TTL 随机化、比 SYN-ACK 晚 270 µs，
+    // 停掉云镜后依然存在），而同一台机器的入向 UDP 完全可用。TCP 被掐时，UDP 是
+    // 唯一还能拿到原生数据的路。
+    let udp_stats_file = opt("--udp-stats-file").map(PathBuf::from);
+    let mut udp_handle = None;
+    if let Some(addr) = opt("--udp-listen").filter(|s| !s.trim().is_empty()) {
+        let udp_loopback = is_loopback_listen(&addr);
+        if psk.is_none() && !udp_loopback && !allow_insecure {
+            eprintln!("拒绝启动 UDP 承载：{} 是非回环地址，但没有配置 PSK。", addr);
+            eprintln!("  UDP 没有握手，无认证的开放中继可被当作反射/放大跳板（虽然本实现");
+            eprintln!("  要求逐报文 HMAC、回程不大于来程）。请配 --auth-key，或加 --allow-insecure。");
+            std::process::exit(2);
+        }
+        let mut ulim = cr_nat::relay_udp::UdpLimits::default();
+        if let Some(v) = opt("--udp-max-sessions").and_then(|s| s.parse::<usize>().ok()) {
+            ulim.max_sessions = v.max(1);
+        }
+        if let Some(v) = opt("--udp-max-per-ip").and_then(|s| s.parse::<usize>().ok()) {
+            ulim.max_per_ip = v.max(1);
+        }
+        if let Some(v) = opt("--udp-idle-timeout").and_then(|s| s.parse::<u64>().ok()) {
+            ulim.idle_timeout = Duration::from_secs(v.max(1));
+        }
+        if let Some(v) = opt("--udp-rate").and_then(|s| s.parse::<u32>().ok()) {
+            ulim.rate_pps = v.max(1);
+        }
+        let srv = match cr_nat::relay_udp::UdpRelayServer::bind(&addr) {
+            Ok(s) => s.with_psk(psk).with_limits(ulim),
+            Err(e) => {
+                eprintln!("UDP 承载启动失败: {}", e);
+                std::process::exit(2);
+            }
+        };
+        let a = match srv.local_addr() {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("读取 UDP 监听地址失败: {}", e);
+                std::process::exit(2);
+            }
+        };
+        let h = srv.spawn();
+        println!("RELAY_UDP_LISTEN={}", a);
+        println!(
+            "RELAY_UDP_LIMITS=max_sessions:{},max_per_ip:{},idle:{}s,rate:{}/s",
+            ulim.max_sessions, ulim.max_per_ip, ulim.idle_timeout.as_secs(), ulim.rate_pps
+        );
+        println!(
+            "[coldrevive-relay] UDP 承载监听 {}（每报文 HMAC，最大负载 {} 字节）",
+            a,
+            ulim.max_payload
+        );
+        udp_handle = Some(h);
+    } else {
+        println!("RELAY_UDP_LISTEN=");
+    }
+
+    if let (Some(path), Some(h)) = (udp_stats_file, udp_handle.as_ref()) {
+        // UDP 计数单独一份文件：TCP 的 --stats-file 是既有 schema，往里加字段会让
+        // 别的读者把「多出来的键」当成协议变更。两份文件、各自演进。
+        let addr = h.local_addr().to_string();
+        let auth = auth_label.to_string();
+        let fp_udp = fp.clone();
+        let counters = h.stats_handle();
+        thread::spawn(move || loop {
+            let stats = counters.snapshot();
+            let body = format!(
+                "{{\"udp_listen\":\"{}\",\"auth\":\"{}\",\"key_fp\":\"{}\",\
+                 \"datagrams\":{},\"bytes_in\":{},\"bytes_out\":{},\"hello\":{},\"hello_ack\":{},\
+                 \"rebound\":{},\"data_in\":{},\"deliver_out\":{},\"status_out\":{},\"pong_out\":{},\
+                 \"reject_out\":{},\"bye\":{},\"mac_fail\":{},\"bad_format\":{},\"magic_mismatch\":{},\
+                 \"too_big\":{},\"replay\":{},\"rate_limited\":{},\"not_registered\":{},\
+                 \"target_absent\":{},\"sessions_rejected\":{},\"sessions_active\":{},\
+                 \"sessions_expired\":{}}}",
+                addr,
+                auth,
+                fp_udp,
+                stats.datagrams,
+                stats.bytes_in,
+                stats.bytes_out,
+                stats.hello,
+                stats.hello_ack,
+                stats.rebound,
+                stats.data_in,
+                stats.deliver_out,
+                stats.status_out,
+                stats.pong_out,
+                stats.reject_out,
+                stats.bye,
+                stats.mac_fail,
+                stats.bad_format,
+                stats.magic_mismatch,
+                stats.too_big,
+                stats.replay,
+                stats.rate_limited,
+                stats.not_registered,
+                stats.target_absent,
+                stats.sessions_rejected,
+                stats.sessions_active,
+                stats.sessions_expired
+            );
+            if let Some(parent) = path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&path, body);
+            thread::sleep(Duration::from_millis(200));
+        });
+    }
+
     if let Some(path) = stats_file {
         let listen_label = actual.clone();
         let inst = instance_label.clone();
@@ -306,6 +417,7 @@ fn print_usage() {
     println!("                        [--rate <帧/秒>] [--burst <帧>] [--idle-timeout <秒>] \\");
     println!("                        [--max-conns <n>] [--max-nodes <n>] [--handshake-timeout <秒>] \\");
     println!("                        [--data-rate <字节/秒>] [--data-burst <字节>]");
+    println!("                        [--udp-listen <ip:port>] [--udp-stats-file <path>]");
     println!();
     println!("  --listen              监听地址，默认 127.0.0.1:7000；端口 0 由内核分配并在首行回显");
     println!("  --auth-key            PSK：64 位十六进制，或 file:<路径>（文件内同样格式）");
@@ -322,6 +434,12 @@ fn print_usage() {
     println!("  --max-nodes           本实例注册表上限（默认 8192）");
     println!("  --data-rate           全局数据字节预算（默认 524288 B/s ≈ 4 Mbps），按机器带宽调");
     println!("  --data-burst          数据字节突发容量（默认 2097152 B）；≤4096 B 的信令帧不计费");
+    println!("  --udp-listen          **额外**开一个 UDP 承载（W3.14），如 0.0.0.0:7100。");
+    println!("                        不写就不开；与 TCP 同时可用，两者共用同一把 PSK 与注册语义。");
+    println!("                        存在理由：有的云边缘会掐非 22 的入向 TCP，但 UDP 可用。");
+    println!("  --udp-stats-file      UDP 计数单独落盘（200ms 一次），与 --stats-file 的 schema 分开");
+    println!("  --udp-max-sessions / --udp-max-per-ip / --udp-idle-timeout / --udp-rate");
+    println!("                        UDP 护栏：会话表上限、单 IP 会话数、空闲回收秒数、每会话报文/秒");
     println!();
     println!("帧协议（大端）：1B kind + 16B node id + 4B 长度 + 负载，可整体跑在 PSK 记录层里");
     println!("  0x01 REGISTER(负载=16B node id) -> ACK(0x04)");

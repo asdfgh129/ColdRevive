@@ -34,6 +34,13 @@ fn main() {
     let mut tcp_punch: Option<(String, Vec<String>)> = None;
     let mut echo = false;
     let mut echo_responder = false;
+    let mut serve_stun: Option<String> = None;
+    let mut stun_alt: Option<String> = None;
+    let mut serve_secs: u64 = 0;
+    let mut vantage: Option<String> = None;
+    let mut vantage_alt: Option<u16> = None;
+    let mut classify: Option<String> = None;
+    let mut classify_alt: Option<u16> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -115,6 +122,58 @@ fn main() {
             }
             "--echo" => echo = true,
             "--echo-responder" => echo_responder = true,
+            "--serve-stun" => {
+                serve_stun = args.get(i + 1).cloned();
+                if serve_stun.is_none() {
+                    fail("--serve-stun 需要 <ip:port>");
+                }
+                i += 1;
+            }
+            "--stun-alt" => {
+                stun_alt = args.get(i + 1).cloned();
+                if stun_alt.is_none() {
+                    fail("--stun-alt 需要 <ip:port>");
+                }
+                i += 1;
+            }
+            "--serve-secs" => {
+                let v = args.get(i + 1).cloned().unwrap_or_default();
+                match v.parse::<u64>() {
+                    Ok(n) => serve_secs = n,
+                    Err(_) => fail(&format!("非法 --serve-secs 值: {}", v)),
+                }
+                i += 1;
+            }
+            "--vantage" => {
+                vantage = args.get(i + 1).cloned();
+                if vantage.is_none() {
+                    fail("--vantage 需要 <ip:port>（对外部 STUN 观测点发起双对照探测）");
+                }
+                i += 1;
+            }
+            "--classify" => {
+                classify = args.get(i + 1).cloned();
+                if classify.is_none() {
+                    fail("--classify 需要 <ip:port>（对同一观测点按映射+过滤两轴定性）");
+                }
+                i += 1;
+            }
+            "--classify-alt" => {
+                let v = args.get(i + 1).cloned().unwrap_or_default();
+                match v.parse::<u16>() {
+                    Ok(n) => classify_alt = Some(n),
+                    Err(_) => fail(&format!("非法 --classify-alt 端口: {}", v)),
+                }
+                i += 1;
+            }
+            "--vantage-alt" => {
+                let v = args.get(i + 1).cloned().unwrap_or_default();
+                match v.parse::<u16>() {
+                    Ok(n) => vantage_alt = Some(n),
+                    Err(_) => fail(&format!("非法 --vantage-alt 端口: {}", v)),
+                }
+                i += 1;
+            }
             "--help" | "-h" => {
                 print_help();
                 return;
@@ -122,6 +181,215 @@ fn main() {
             other => fail(&format!("未知参数: {}", other)),
         }
         i += 1;
+    }
+
+    // ---- RFC 5780 观测点（服务端）----
+    // 为什么要自建：公共 STUN 全部忽略 CHANGE-REQUEST，"没回包"因此无法区分
+    // "NAT 拦了" 与 "服务器没换源口"。只有自己控制回包源地址，过滤行为才有证据。
+    if let Some(bind_text) = serve_stun.as_deref() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let primary = match cr_nat::stun_server::parse_v4(bind_text) {
+            Some(a) => a,
+            None => fail(&format!("--serve-stun 需要 IPv4 的 ip:port，收到: {}", bind_text)),
+        };
+        let alt = match stun_alt.as_deref() {
+            Some(t) => match cr_nat::stun_server::parse_v4(t) {
+                Some(a) => Some(a),
+                None => fail(&format!("--stun-alt 需要 IPv4 的 ip:port，收到: {}", t)),
+            },
+            None => Some(cr_nat::stun_server::adjacent(primary)),
+        };
+        let srv = match cr_nat::stun_server::StunServer::bind(primary, alt) {
+            Ok(s) => Arc::new(s),
+            Err(e) => fail(&format!("绑定失败: {}", e)),
+        };
+        let got_p = srv.primary_addr().map(|a| a.to_string()).unwrap_or_default();
+        let got_a = srv.alt_addr().map(|a| a.to_string()).unwrap_or_default();
+        println!("STUN_SERVER=bound primary={} alt={}", got_p, got_a);
+        println!("STUN_NOTE=单公网 IP 只能测端口轴；CHANGE-IP 将回 420（能力缺失，不是 NAT 拦截）");
+        use std::io::Write;
+        let stop = Arc::new(AtomicBool::new(false));
+        if serve_secs > 0 {
+            let st = stop.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(serve_secs));
+                st.store(true, Ordering::Relaxed);
+            });
+        }
+        let log = Arc::new(std::sync::Mutex::new(std::io::stdout()));
+        let quiet = as_json;
+        srv.serve_until(stop.clone(), move |d, peer| {
+            if quiet {
+                return;
+            }
+            let w = format!("STUN_REQ peer={} decision={:?}\n", peer, d);
+            if let Ok(mut out) = log.lock() {
+                let _ = out.write_all(w.as_bytes());
+                let _ = out.flush();
+            }
+        });
+        let st = &srv.stats;
+        let line = format!(
+            "STUN_STATS requests={} answered_here={} answered_from_peer_socket={} change_ip_rejected={} malformed={}",
+            st.requests.load(Ordering::Relaxed),
+            st.answered_here.load(Ordering::Relaxed),
+            st.answered_from_peer_socket.load(Ordering::Relaxed),
+            st.change_ip_rejected.load(Ordering::Relaxed),
+            st.malformed.load(Ordering::Relaxed)
+        );
+        println!("{}", line);
+        return;
+    }
+
+    // ---- 两轴定性：映射轴 + 过滤轴，且拒绝把「对称映射的副作用」读成端口过滤 ----
+    //
+    // 存在的理由（实测踩到）：222 出口是 symmetric，过滤探测照样会回
+    // `outcome=port-filtered` —— 因为 NAT 为目的端口 3479 另开了一个映射，
+    // 回包落在客户端从未用过的映射上，于是「收不到」。那是映射的副作用，不是过滤策略。
+    // 若把这条读成 port-restricted-cone，就会和同一台机器的 symmetric 结论互相矛盾。
+    // 所以先测映射轴；映射已随目的变化时，过滤轴**不参与定性**。
+    if let Some(v) = classify.as_deref() {
+        let (host, port) = match parse_host_port(v) {
+            Some(hp) => hp,
+            None => fail(&format!("--classify 需要 host[:port]，收到: {}", v)),
+        };
+        let alt_port = classify_alt.unwrap_or(port.saturating_add(1));
+        let timeout = Duration::from_millis(timeout_ms.max(800));
+        let sock = match std::net::UdpSocket::bind("0.0.0.0:0") {
+            Ok(s) => s,
+            Err(e) => fail(&format!("本地 UDP socket 绑定失败: {}", e)),
+        };
+        let session = cr_nat::stun::StunSession::new(vec![
+            (host.clone(), port),
+            (host.clone(), alt_port),
+        ]);
+        let results = session.probe(&sock, timeout);
+        let pairs: Vec<(String, String)> = results
+            .iter()
+            .filter(|r| r.ok)
+            .filter_map(|r| r.mapped.clone().map(|m| (r.server.clone(), m)))
+            .collect();
+        let axis = cr_nat::mapping_axis(&pairs);
+        // 映射轴已随目的变化时，**不跑**过滤探测：跑了也会得到「收不到」，
+        // 那是映射副作用。判定规则在 cr_nat::classify_two_axis 里，有单测守着。
+        let mut filter_axis = "not-applicable";
+        let mut probe_json = String::from("null");
+        let filter_obs = if axis == cr_nat::MappingAxis::EndpointIndependent {
+            let probe = cr_nat::probe_port_filtering(&host, port, alt_port, timeout);
+            filter_axis = probe.outcome.label();
+            probe_json = format!(
+                "{{\"control_primary\":{},\"control_alt\":{},\"change_port_answered\":{},\"change_port_source\":{},\"source_matches_alt\":{},\"change_ip_error\":{}}}",
+                probe.control_primary,
+                probe.control_alt,
+                probe.change_port_answered,
+                jopt(&probe.change_port_source),
+                probe.source_matches_alt,
+                probe.change_ip_error.map(|c| c.to_string()).unwrap_or_else(|| "null".into())
+            );
+            Some(cr_nat::classify_from_probe(&probe))
+        } else {
+            None
+        };
+        let (nat, fb, why) = cr_nat::classify_two_axis(&pairs, filter_obs);
+        let reason = match why {
+            cr_nat::classify::WHY_TWO_AXIS => match fb {
+                cr_nat::FilterBehavior::PortRestrictedCone => "映射与目的无关 + 入向只放行已建立的映射 → 端口受限",
+                cr_nat::FilterBehavior::PortOpenUntestedAddress => "映射与目的无关 + 入向不禁异端口；地址轴缺第二个公网 IP，未测",
+                _ => "对照不足，过滤轴未测出结果",
+            },
+            cr_nat::classify::WHY_SYMMETRIC_FILTER_UNUSED => "映射随目的端口变化 → symmetric；过滤轴不参与定性（回包落到未用过的映射，属映射副作用）",
+            cr_nat::classify::WHY_FILTER_MISSING => "只有映射轴样本，缺过滤轴观测",
+            _ => "映射样本不足（<2 个目的端口有应答），不定性",
+        };
+        let pair_json: Vec<String> = pairs
+            .iter()
+            .map(|(s, m)| format!("{{\"server\": {}, \"mapped\": {}}}", jstr(s), jstr(m)))
+            .collect();
+        if as_json {
+            println!(
+                "{{\"mode\":\"classify\",\"vantage\":\"{}\",\"alt_port\":{},\"mapping_pairs\":[{}],\"mapping_axis\":\"{}\",\"filter_axis\":\"{}\",\"filter_probe\":{},\"filtering_behavior\":\"{}\",\"nat_type\":\"{}\",\"reason\":\"{}\",\"s6_status\":\"not_run\"}}",
+                format!("{}:{}", host, port),
+                alt_port,
+                pair_json.join(", "),
+                axis.label(),
+                filter_axis,
+                probe_json,
+                fb.label(),
+                nat.label(),
+                reason
+            );
+        } else {
+            println!("VANTAGE={}:{} alt_port={}", host, port, alt_port);
+            for (sr, mm) in &pairs {
+                println!("  MAPPING {} -> {}", sr, mm);
+            }
+            println!("AXIS mapping={}  filter={}", axis.label(), filter_axis);
+            println!("NAT_TYPE={}  filtering={}", nat.label(), fb.label());
+            println!("REASON={}", reason);
+            if axis == cr_nat::MappingAxis::AddressOrPortDependent {
+                println!("NOTE=过滤轴刻意未采用：对称映射下「change-port 收不到」是映射副作用，不是过滤策略");
+            }
+        }
+        return;
+    }
+
+    // ---- 对外部观测点的双对照探测（客户端）----
+    if let Some(v) = vantage.as_deref() {
+        let (host, port) = match parse_host_port(v) {
+            Some(hp) => hp,
+            None => fail(&format!("--vantage 需要 host[:port]，收到: {}", v)),
+        };
+        let alt_port = vantage_alt.unwrap_or(port.saturating_add(1));
+        let probe = cr_nat::probe_port_filtering(
+            &host,
+            port,
+            alt_port,
+            Duration::from_millis(timeout_ms.max(500)),
+        );
+        let fb = cr_nat::classify_from_probe(&probe);
+        let nat = cr_nat::classify_from_filter(fb);
+        if as_json {
+            println!(
+                "{{\"mode\":\"vantage-probe\",\"vantage\":\"{}\",\"alt_port\":{},\"control_primary\":{},\"control_alt\":{},\"change_port_answered\":{},\"change_port_source\":{},\"source_matches_alt\":{},\"change_ip_error\":{},\"outcome\":\"{}\",\"filtering_behavior\":\"{}\",\"nat_type\":\"{}\",\"s6_status\":\"not_run\"}}",
+                probe.vantage,
+                alt_port,
+                probe.control_primary,
+                probe.control_alt,
+                probe.change_port_answered,
+                jopt(&probe.change_port_source),
+                probe.source_matches_alt,
+                probe.change_ip_error.map(|c| c.to_string()).unwrap_or_else(|| "null".into()),
+                probe.outcome.label(),
+                fb.label(),
+                nat.label()
+            );
+        } else {
+            println!("VANTAGE={} alt_port={}", probe.vantage, alt_port);
+            println!(
+                "CONTROL primary={} alt={}   <- 两项必须都为 yes，否则下面的结论不成立",
+                yn(probe.control_primary),
+                yn(probe.control_alt)
+            );
+            println!(
+                "CHANGE_PORT answered={} source={} matches_alt={}",
+                yn(probe.change_port_answered),
+                probe.change_port_source.as_deref().unwrap_or("-"),
+                yn(probe.source_matches_alt)
+            );
+            println!(
+                "CHANGE_IP error={}",
+                probe
+                    .change_ip_error
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "无应答".into())
+            );
+            println!("OUTCOME={}  filtering={}  nat_type={}", probe.outcome.label(), fb.label(), nat.label());
+            if probe.outcome == cr_nat::FilterOutcome::PortNotFiltered {
+                println!("NOTE=端口轴已实测（入向不禁异端口）；地址轴缺第二个公网 IP，未测，故不称 full-cone");
+            }
+        }
+        return;
     }
 
     // TCP 同时打开打洞：真实 SYN、真实握手，结果只报内核告诉我们的事实。
@@ -460,6 +728,14 @@ fn to_json(r: &cr_nat::TraversalReport) -> String {
         "needs_relay",
         if needs_relay(r) { "true" } else { "false" }.to_string(),
     );
+    // 原始观测（服务器 → 映射地址）。放在 JSON 里是为了让分类结论可回溯到具体报文：
+    // 只给一个 `distinct_mappings` 计数，读的人无法复核「到底是哪两台报了不同的口」。
+    let pairs: Vec<String> = r
+        .observations
+        .iter()
+        .map(|(s, mm)| format!("{{\"server\": {}, \"mapped\": {}}}", jstr(s), jstr(mm)))
+        .collect();
+    m.insert("observation_pairs", format!("[{}]", pairs.join(", ")));
     // S6 门禁声明
     m.insert("s6_status", jstr("not_run"));
 
@@ -539,6 +815,9 @@ fn print_help() {
 \n\
   # 3) 只看已有样本的汇总（不探测）\n\
   coldrevive-nat --report <census.jsonl> [--json]\n\
+  coldrevive-nat --serve-stun <ip:port> [--stun-alt <ip:port>] [--serve-secs <秒>]\n\
+  coldrevive-nat --vantage <ip:port> [--vantage-alt <端口>] [--json]\n\
+  coldrevive-nat --classify <ip:port> [--classify-alt <端口>] [--json]\n\
 \n\
   # 4) 问中继「某节点自报的可达性类别」（不发探测包）\n\
   coldrevive-nat --lookup <中继地址> <节点id-hex（32位）> [--json]\n\

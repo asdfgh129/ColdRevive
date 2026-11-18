@@ -36,8 +36,11 @@ updated: 2026-11-17
 
 | [ADR-017](ADR-017-active-seed-pool.md) | 谁能同时供片 | 由 `cr-sched` 唯一决策；`Engine::activate` 只能经 `wake_seed`，满载逐出最久未用 | ✅ 已接受（2026-11-18） | 接入多任务做种时复核 |
 | [ADR-018](ADR-018-tcp-hole-punch.md) | TCP 打洞怎么做、算不算完成 | 最小 FFI + `poll`/`SO_ERROR` 判据；**原语完成、BT 数据面未接线** | ✅ 已接受（2026-11-18） | 引擎支持外部 socket 或换接入方式时 |
+| [ADR-019](ADR-019-public-vantage-nat-classification.md) | NAT 分类能不能信、单公网 IP 能测到哪 | 自建 RFC 5780 观测点（CHANGE-PORT 真换源口、CHANGE-IP 回 420）+ 三 socket 双对照；新增 `cone-undetermined`，**不得升级成 full-cone** | ✅ 已接受（2026-11-18） | 拿到第二块公网 IP 时补地址轴 |
 
-**统计**：18 项决策，17 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
+| [ADR-020](ADR-020-relay-udp-transport.md) | 入向 TCP 被边缘掐断后，中继走哪条路 | 换承载层：独立 UDP 线缆格式（`CRU1`，64 B 头 + 1200 B 负载，逐报文 HMAC，回程不大于来程，seq 滑窗抗重放）；**不做重传**，`forwarded` ≠ 对端收到 | ✅ 已接受（2026-11-18） | 引入拥塞控制或与 TCP 注册表合并时 |
+
+**统计**：19 项决策，18 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 
 > **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
 > RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、

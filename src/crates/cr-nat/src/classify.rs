@@ -9,6 +9,13 @@ pub enum NatType {
     PortRestrictedCone,
     Symmetric,
     Cgnat,
+    /// 已确认「映射与端口无关」，但**缺第二个公网 IP**，无法区分全锥与地址受限。
+    ///
+    /// 单 IP 观测点（如自建 RFC 5780 服务端）只能测端口这一根轴：change-port 有应答
+    /// 说明入向不限端口，但「是否限地址」根本没法测。以前这种情形会被折成
+    /// `FullCone`（乐观）或 `RestrictedCone`（悲观），两者都是编的。
+    /// 打洞决策上它等价于 cone（可预测），但**类型名必须保留问号**。
+    ConeUndetermined,
     Unknown,
 }
 
@@ -20,8 +27,20 @@ impl NatType {
             NatType::PortRestrictedCone => "port-restricted-cone",
             NatType::Symmetric => "symmetric",
             NatType::Cgnat => "cgnat",
+            NatType::ConeUndetermined => "cone-undetermined",
             NatType::Unknown => "unknown",
         }
+    }
+
+    /// 是否属于「可预测映射」一族（打洞可尝试直连，不必直接落中继）。
+    pub fn is_cone_like(&self) -> bool {
+        matches!(
+            self,
+            NatType::FullCone
+                | NatType::RestrictedCone
+                | NatType::PortRestrictedCone
+                | NatType::ConeUndetermined
+        )
     }
 }
 
@@ -83,6 +102,12 @@ pub enum FilterBehavior {
     RestrictedCone,
     /// 两种 change 都无应答：只放行已有映射（端口受限）。
     PortRestrictedCone,
+    /// **端口过滤已实测不存在**，但观测点只有一个公网 IP，地址轴没测。
+    ///
+    /// 它不等于 `FullCone`：full-cone 要求「异 IP 也能进」，这里没测过；
+    /// 也不等于 `RestrictedCone`：地址受限同样没测过。
+    /// 由 `stun_server` + `stun::probe_port_filtering` 的双对照实测产生。
+    PortOpenUntestedAddress,
     /// 连正对照都没通 —— STUN 不可达，不能据此推断任何过滤行为。
     Unknown,
 }
@@ -93,18 +118,37 @@ impl FilterBehavior {
             FilterBehavior::FullCone => "unfiltered",
             FilterBehavior::RestrictedCone => "address-restricted",
             FilterBehavior::PortRestrictedCone => "port-restricted",
+            FilterBehavior::PortOpenUntestedAddress => "port-open-address-untested",
             FilterBehavior::Unknown => "unknown",
         }
     }
 }
 
 /// 把实测的过滤行为映射为 NAT 类型。
+///
+/// `PortOpenUntestedAddress` 只映射到 `ConeUndetermined`：它证明了两件事
+/// （映射与目的端口无关、入向不禁异端口），但**没有**证明「异 IP 可进」，
+/// 因此不能升级成 `FullCone`。
 pub fn classify_from_filter(f: FilterBehavior) -> NatType {
     match f {
         FilterBehavior::FullCone => NatType::FullCone,
         FilterBehavior::RestrictedCone => NatType::RestrictedCone,
         FilterBehavior::PortRestrictedCone => NatType::PortRestrictedCone,
+        FilterBehavior::PortOpenUntestedAddress => NatType::ConeUndetermined,
         FilterBehavior::Unknown => NatType::Unknown,
+    }
+}
+
+/// 由一次双对照探测（`stun::FilterProbe`）得到过滤行为。
+///
+/// 判据集中在 `FilterOutcome` 里，这里只做映射，不再引入第二套判断，
+/// 避免「同一个观测得出两个结论」。
+pub fn classify_from_probe(p: &crate::stun::FilterProbe) -> FilterBehavior {
+    use crate::stun::FilterOutcome;
+    match p.outcome {
+        FilterOutcome::PortFiltered => FilterBehavior::PortRestrictedCone,
+        FilterOutcome::PortNotFiltered => FilterBehavior::PortOpenUntestedAddress,
+        FilterOutcome::Untested => FilterBehavior::Unknown,
     }
 }
 
@@ -132,6 +176,78 @@ fn is_private(ip: &str) -> bool {
                 || (o[0] == 169 && o[1] == 254)
         }
         Err(_) => false,
+    }
+}
+
+
+/// 映射轴（与过滤轴正交）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MappingAxis {
+    /// 有应答的目的地址少于 2 个：分不清 EIM 与按目的分配。
+    Insufficient,
+    /// 同一本地 socket 对不同目的得到同一映射地址。
+    EndpointIndependent,
+    /// 映射地址随目的变化（端口不同或 IP 不同）→ 对称。
+    AddressOrPortDependent,
+}
+
+impl MappingAxis {
+    pub fn label(&self) -> &'static str {
+        match self {
+            MappingAxis::Insufficient => "insufficient",
+            MappingAxis::EndpointIndependent => "endpoint-independent",
+            MappingAxis::AddressOrPortDependent => "address-port-dependent",
+        }
+    }
+}
+
+/// 纯函数：由 `(服务器, 映射地址)` 观测集判断映射轴。
+pub fn mapping_axis(observations: &[(String, String)]) -> MappingAxis {
+    if observations.len() < 2 {
+        return MappingAxis::Insufficient;
+    }
+    let mut uniq: Vec<&str> = Vec::new();
+    for (_, m) in observations {
+        if !uniq.contains(&m.as_str()) {
+            uniq.push(m.as_str());
+        }
+    }
+    if uniq.len() >= 2 {
+        MappingAxis::AddressOrPortDependent
+    } else {
+        MappingAxis::EndpointIndependent
+    }
+}
+
+/// 两轴定性的理由码（写进报告，避免只给结论不给依据）。
+pub const WHY_INSUFFICIENT: &str = "mapping-samples<2";
+pub const WHY_SYMMETRIC_FILTER_UNUSED: &str = "mapping-dependent-filter-axis-not-used";
+pub const WHY_TWO_AXIS: &str = "two-axis";
+pub const WHY_FILTER_MISSING: &str = "filter-axis-missing";
+
+/// **两轴定性**：映射轴优先，过滤轴只在必要时参与。
+///
+/// 这条规则来自一次实测踩坑：222 出口是对称 NAT，过滤探测照样回 `port-filtered`
+/// —— 因为 NAT 为目的端口另开了映射，回包落在客户端从未用过的映射上，
+/// 于是「收不到」。它不是过滤策略，是映射的副作用。
+/// 若把它读成 `port-restricted-cone`，同一台机器就会有两个互相矛盾的类型。
+///
+/// 所以：映射一旦随目的变化，过滤轴的观测**一律不用**，返回 `Symmetric` + `Unknown`。
+pub fn classify_two_axis(
+    observations: &[(String, String)],
+    filter: Option<FilterBehavior>,
+) -> (NatType, FilterBehavior, &'static str) {
+    match mapping_axis(observations) {
+        MappingAxis::Insufficient => (NatType::Unknown, FilterBehavior::Unknown, WHY_INSUFFICIENT),
+        MappingAxis::AddressOrPortDependent => (
+            NatType::Symmetric,
+            FilterBehavior::Unknown,
+            WHY_SYMMETRIC_FILTER_UNUSED,
+        ),
+        MappingAxis::EndpointIndependent => match filter {
+            Some(f) => (classify_from_filter(f), f, WHY_TWO_AXIS),
+            None => (NatType::Unknown, FilterBehavior::Unknown, WHY_FILTER_MISSING),
+        },
     }
 }
 
@@ -196,6 +312,53 @@ mod tests {
             classify_from_filter(FilterBehavior::PortRestrictedCone),
             NatType::PortRestrictedCone
         );
+    }
+
+
+    #[test]
+    fn symmetric_mapping_makes_filter_axis_inadmissible() {
+        // 回归用例（222 实测）：映射 2050/2051，过滤探测回 port-filtered。
+        // 若按过滤轴定性就会得到 port-restricted-cone，与 symmetric 直接矛盾。
+        let obs = vec![
+            ("v:3478".to_string(), "112.5.32.34:2050".to_string()),
+            ("v:3479".to_string(), "112.5.32.34:2051".to_string()),
+        ];
+        let (nat, fb, why) = classify_two_axis(&obs, Some(FilterBehavior::PortRestrictedCone));
+        assert_eq!(nat, NatType::Symmetric);
+        assert_eq!(fb, FilterBehavior::Unknown, "过滤轴必须被丢掉，不能留着误导");
+        assert_eq!(why, WHY_SYMMETRIC_FILTER_UNUSED);
+    }
+
+    #[test]
+    fn endpoint_independent_plus_port_filtered_is_a_strong_conclusion() {
+        let obs = vec![
+            ("v:3478".to_string(), "112.5.60.4:1951".to_string()),
+            ("v:3479".to_string(), "112.5.60.4:1951".to_string()),
+        ];
+        let (nat, fb, why) = classify_two_axis(&obs, Some(FilterBehavior::PortRestrictedCone));
+        assert_eq!(nat, NatType::PortRestrictedCone);
+        assert_eq!(fb, FilterBehavior::PortRestrictedCone);
+        assert_eq!(why, WHY_TWO_AXIS);
+    }
+
+    #[test]
+    fn endpoint_independent_without_filter_sample_is_not_a_type() {
+        let obs = vec![
+            ("v:3478".to_string(), "1.2.3.4:5000".to_string()),
+            ("v:3479".to_string(), "1.2.3.4:5000".to_string()),
+        ];
+        let (nat, _, why) = classify_two_axis(&obs, None);
+        assert_eq!(nat, NatType::Unknown);
+        assert_eq!(why, WHY_FILTER_MISSING);
+    }
+
+    #[test]
+    fn one_sample_never_yields_a_type() {
+        let obs = vec![("v:3478".to_string(), "1.2.3.4:5000".to_string())];
+        let (nat, _, why) = classify_two_axis(&obs, Some(FilterBehavior::FullCone));
+        assert_eq!(nat, NatType::Unknown);
+        assert_eq!(why, WHY_INSUFFICIENT);
+        assert_eq!(mapping_axis(&obs), MappingAxis::Insufficient);
     }
 
     #[test]

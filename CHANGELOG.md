@@ -2,6 +2,131 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.84] - 2026-11-18 — 中继的 UDP 承载（W3.14）：在被掐 TCP 的边缘上第一次拿到原生公网路径
+
+> 所有者选择「走 UDP」而不是再换一台机器（[ADR-020](docs/02-architecture/adr/ADR-020-relay-udp-transport.md)）。
+> **`g2_claim=false`、`s6_status=not_run` 不变**；TCP 侧 BLOCKED 结论不变——本版是**绕开**，不是修复。
+
+- **新模块 `cr-nat::relay_udp`**（9 条单测，全绿）：独立线缆格式 `CRU1`（64 B 头 + ≤1200 B 负载 = 1264 B，
+  留在 IPv6 最小 MTU 内）；`HELLO/HELLO_ACK/DATA/DELIVER/PING/PONG/STATUS/BYE/REJECT` 独立编号；
+  **逐报文 HMAC-SHA256**（MAC 校验失败静默丢弃并计 `mac_fail`）、**回程不大于来程**（不构成放大器）、
+  64 位滑窗抗重放（接受乱序，只丢真重复）、会话空闲回收、单 IP 会话上限。
+  拒绝**必须带原因**，`STATUS` 区分 `forwarded` / `target_absent` / `rate_limited` / `too_big` / `not_registered`。
+- **部署入口**：`coldrevive-relay --udp-listen 0.0.0.0:6881 [--udp-stats-file ...]`
+  （与 TCP 同时可用，共用同一把 PSK；未配 PSK 仍只允许绑回环）；
+  `coldrevive-relaybench --udp`（全链往返 + 中继 `STATUS` 分类计数）、
+  `--udp-echo / --udp-remote-echo`（两端分别跑在**两台机器**上，避免「同机两 socket」冒充两方）。
+- **端口事实先测清楚**：`7101/UDP` 从 A 发 `HELLO`，服务器 `tcpdump -ni eth0 -U "udp port 7101"` 得到
+  **`0 packets captured`**，而同一时刻 A→`3478/UDP` 的 STUN 正常（`public_udp_egress_ok=true`）
+  → 云防火墙对 UDP 同样是**按端口放行**。本轮因此复用已放行的 `6881/UDP`（DHT 临时下线 ~15 分钟，测完放回）。
+- **实测（全部 0 丢包）**：同机双 socket 50 轮 p50 `49.39 ms`、200 轮 p50 `52.93 ms`（p99 `54.55`、抖动 `0.021 ms`）、
+  100 轮 1100 B p50 `49.63 ms`；**跨主机**（A=`210`、B=`221`）200 轮 **200/200、0 丢、p50 `42.68 ms` / p99 `43.62 ms`**。
+  同路径 ICMP 25–26 ms（往返）→ 一次中继往返 = 4 段单程 ≈ 50 ms，与实测吻合（差额含两次用户态转发）。
+- **三方对账无缺口**：A 侧 `received=200/lost=0/status_forwarded=200`；B 侧（独立进程）`delivered_in=200/echoed_out=200/bytes_in=40000`（=200×200 B）；
+  中继增量 `datagrams +403`（2 HELLO + 400 DATA + 1 BYE）、`data_in +400`、`deliver_out +400`、`mac_fail 0`、`replay 0`、`target_absent 0`。
+- **照写边界**：UDP 无重传（`forwarded` ≠ 对端应用收到）；未做拥塞控制（UDP 侧只有粗粒度 pps）；
+  A/B 同出口 `112.5.60.4`，属「两台主机、一个 NAT」，**不是两个不同 NAT**（该场景仍未测）。
+- `cargo test --workspace --offline` **254 passed / 0 failed**。
+- 记录：`docs/06-plan/M2-VANTAGE-2026-11-18.md` §3.3 / §4 / §5，[ADR-020](docs/02-architecture/adr/ADR-020-relay-udp-transport.md)。
+
+## [2.4.83] - 2026-11-18 — 8443 复测：把「7100 不可用」修正为「所有非 22 的入向 TCP 被注入 RST」；补一组标注清楚的隧道内 WAN 往返
+
+> 所有者放行 TCP `8443` 后的复测。**无代码改动**，只改结论范围。
+> **`g2_claim=false`、`s6_status=not_run` 不变。**
+
+- **判据修正**：上一轮只验到 `7100` 被拆，因此只写「此端口不可用」。`8443` 表现完全一致
+  → 结论升级为「此机器上除 `22` 外的入向 TCP 一律在数据阶段被拆」。
+- **伪造 RST 的直接证据**：`tcpdump -vv` 显示真实客户端报文 TTL 恒为 `116`，
+  而那条 `[R.]` 的 **TTL 是 215** 且 `ack` 与服务端 ISN 无关；它到达服务端仅比 SYN-ACK 晚 **669 µs**。
+  TTL 只能单调递减 → 该包不可能是客户端发的，注入点在服务器侧边缘。
+  这是本项目第一次用**单条报文属性**（而非多机对照）证伪「这是对端行为」。
+- **排除项逐条实测**（不留「可能」）：换端口 / 换协议（纯 echo、HTTP、SSH banner、真 TLS ClientHello、64 B 随机串）
+  / 客户端本机（唯一 AV 为 Defender、专用公用防火墙均关、WinHTTP 直连）/ 机内 netfilter·tc /
+  **停掉云镜做对照**（`YDService`/`YDLive` 压制到 `pgrep -c -x` = 0/0 全程，8443 仍被拆）/
+  「空闲也拆」（只建连不发数据存活 8 s）/ 云防火墙未生效（SYN 到达、主机 46 µs 回 SYN-ACK）/ 服务器自身（回环 EIP 直连正常）。
+- **伪造者还在 TTL 随机化**：四次抓包的伪造 RST，TTL 分别是 **215 / 65 / 169**，而同一客户端真实报文永远是 **116**。
+  随机 TTL 是刻意规避固定指纹的手法——这本身比「TTL 不一致」更说明问题。
+- **操作备注**：压制云镜期间 `YJ-FIREWALL-INPUT` 的 234 条 SSH 黑名单被清空，恢复后已重新挂链并逐步重灌（实测 6 条并在增长）；
+  本次只用 `kill -9`，未执行会清链的 `stopYDCore.sh`，但服务退出时链仍被清，属该组件的正常行为，需知悉。
+- **补一组 WAN 数字，但明确不算原生指标**：经 `ssh -L` 把中继（只绑回环）暴露到本机，
+  200 轮 **200/200、0 % 丢包、p50 44.27 ms / p99 47.33 ms**，同路径 ICMP 25 ms。
+  这证明中继的帧路由与 PSK 握手在真实 WAN 上功能正确，**不**证明原生端口可用；端口判据仍为 BLOCKED。
+- 记录：`docs/06-plan/M2-VANTAGE-2026-11-18.md` §3.1 / §3.2 / §5（新增复现命令）。
+
+## [2.4.82] - 2026-11-18 — 公网观测点实测：两个出口定性完成；DHT 首次有「可达邻居」；中继 7100 判 BLOCKED
+
+> 所有者放行端口后（UDP 3478-3479 / 17800-17801 / 6881、TCP 7100）的首轮真实测量。
+> **`g2_claim=false`、`s6_status=not_run` 不变**；下面每条都带可复核的原始观测。
+
+- **出口 A（家宽 `112.5.60.4`）= `port-restricted-cone`，这次是可证伪的结论。**
+  证据链三件：① 服务器侧日志逐条留痕
+  `peer=112.5.60.4:1928 AnsweredHere`（主口对照）、`:1929 AnsweredHere`（**备口对照，独立 socket**）、
+  `:1930 AnsweredFromPeerSocket`（服务端确实从 3479 回包）、`:1931 ChangeIpRejected`（420 已送达客户端）；
+  ② 客户端 `change_port_answered=false` —— 服务端发了、客户端没收到；
+  ③ 对照 B 已证明「备口入向可达」，所以「没收到」只能是 NAT 丢弃。
+  映射轴同 socket 对 3478/3479 得到同一 `112.5.60.4:1951` → EIM。
+  **这条推翻的不是数字，是依据**：上一版拿 Google/Cloudflare 的沉默判出的 `port-restricted`
+  是不可证伪的（它们忽略 CHANGE-REQUEST），这次才有正对照。
+- **出口 222（`112.5.32.34`）= `symmetric`。** 同 socket 两个目的端口得到
+  `2050` / `2051` 两个不同映射 → APDM；与 v2.4.56 的手工报文实验结论一致，
+  区别是这次是**工具化、外部观测、可重跑**。
+- **方法学修正（本轮真正的收获）：对称映射下「过滤轴」的观测是伪影，必须丢弃。**
+  222 的过滤探测同样回 `outcome=port-filtered` —— 因为 NAT 为目的端口另开了映射，
+  回包落在客户端从未用过的映射上。若据此定性就会得到 `port-restricted-cone`，
+  和同一台机器的 `symmetric` 直接矛盾。新增纯函数 `classify_two_axis`
+  （映射轴优先，映射已随目的变化则过滤轴不参与）+ **4 条单测**守住，包括
+  `symmetric_mapping_makes_filter_axis_inadmissible`。CLI 新增 `--classify`（两轴一次出结果）。
+- **公网 DHT：首次拥有可达邻居。** 在观测机起 `coldrevive-dht --serve 0.0.0.0:6881`
+  （node id `04e9c1f9…5f64`）：A 与 222 **两个不同网络**分别 `--ping` 成功且 `remote_id` 一致；
+  `--get-peers` 返回 8 字节 token + 2 nodes；`--walk` 4 次查询 / 1 次存活 / 3 个联系人。
+  **边界**：announce 仍未授权（未执行），这解决的是「邻居不可达」，不是「公网 announce 已验证」。
+- **公网中继：BLOCKED（不记任何 WAN RTT）。** 现象与证据：
+  ① 221 与 222（两台 Linux）连 `7100` **2–3 ms 内** `EHOSTUNREACH`，而同一台 `22` 端口 20 ms 正常；
+  ② A 能完成 TCP 握手，但服务端 SYN-ACK 后 **150 µs** 出现一个 `ack` 号与本次连接不符的 RST；
+  ③ 把中继换成**纯 Python echo**，症状完全一样：服务端读到 `hello-from-A` 后自己报
+  `Connection reset by peer` —— 双向 RST，与我们的协议无关；
+  ④ 观测机上腾讯云镜（`YDService`/`YDLive`）已把我们的二进制与测试脚本标记
+  `Malware:113 report`（脚本 `mod 9`）。**结论只到这里：7100 这条 TCP 路径被中间设备重置。**
+  换端口是否可行未测，故不写「中继可用/不可用」，只写「此端口不可用」。
+- `coldrevive-relaybench` 新增 `--auth-key`（公网中继强制 PSK，没有它只能在回环量，没意义）。
+- `cargo test --workspace --offline` **245 passed / 0 failed**（较 v2.4.81 +4）。
+
+## [2.4.81] - 2026-11-18 — 公网观测点接入；NAT 分类从「公共 STUN 的沉默」改为「自控回包源」
+
+> 所有者提供一台腾讯云轻量实例（广州，`119.29.150.254`，2C2G/4Mbps，内网 `10.1.0.2`，1:1 EIP），
+> 指令：「看能不能增加 NAT 分类？如果能用，接下来的测试就可以添加进这一台」。
+> **`g2_claim=false`、`s6_status=not_run` 不变**。
+
+- **先纠正一个既有结论：`port-restricted-cone` 是不可证伪的。**
+  前置机出口实测基线 `mapped=112.5.60.4:1239`（两台服务器映射一致 → 映射与目的无关），
+  但 `filtering_behavior=port-restricted` 的唯一样本是 Google / Cloudflare —— 这两家
+  **忽略 CHANGE-REQUEST**，永远从原地址回包。于是「没有回包」既可能是 NAT 拦了，
+  也可能是服务器压根没换源口。旧代码在模糊情形下返回 `PortRestrictedCone`，
+  等于把「没测到」写成「测到了」。新实现下该结论降级为 `unknown`。
+- **新增 `cr-nat::stun_server`（RFC 5389 Binding 服务端 + RFC 5780 单 IP 变体）**：
+  CHANGE-PORT **真的从另一个套接字回包**（源口确实变），CHANGE-IP 回
+  `420 + UNKNOWN-ATTRIBUTES(0x0003)`（单公网 IP 做不到就明说，不沉默——沉默会被读成 NAT 拦截）。
+- **新增 `stun::probe_port_filtering` 三 socket 双对照**：主口对照、**备口对照（独立 socket）**、
+  被测 socket（只与主口通信）。任一对照失败或回包源被改写 → `untested`，不给结论。
+  对照 B 换 socket 是必须的：复用被测 socket 会先把备口地址写进网关过滤集，
+  端口受限 NAT 会被测成「不限端口」。
+- **分类分层，禁止跨层升级**：新增 `FilterBehavior::PortOpenUntestedAddress` 与
+  `NatType::ConeUndetermined`。change-port 有应答只证明「入向不禁异端口」，
+  **不能**推出 full-cone（异 IP 未测）或 restricted-cone（地址受限未测）。
+  打洞决策上与 cone 同判 `Direct`，但类型名保留问号。见
+  [ADR-019](docs/02-architecture/adr/ADR-019-public-vantage-nat-classification.md)。
+- **CLI**：`coldrevive-nat --serve-stun <ip:port> [--stun-alt ...] [--serve-secs N]`（观测点）、
+  `--vantage <ip:port> [--vantage-alt <端口>]`（对外部观测点做双对照探测，`--json` 可脚本化）。
+- **实测（本机回环，端到端）**：`primary=127.0.0.1:13478 / alt=13479`，
+  `control_primary=YES control_alt=YES`，`change_port source=13479 matches_alt=YES`，
+  `change_ip=420` → `outcome=port-not-filtered`、`nat_type=cone-undetermined`。
+- **轻量机云防火墙实测（BLOCKED 的原因）**：从家宽向 `3478/17800/17801/40001` 各发 3 个 UDP 包
+  （共 12 个），服务器 `tcpdump -ni eth0` 过滤同组端口 → **0 packets captured**；
+  同刻回环自测包正常收到（排除监听器问题）；TCP `80`/`443` 也超时（Caddy 在 `:80` 监听）
+  → 整段默认拒绝；机内 `ufw` inactive、`iptables` 只有云镜 SSH 防爆破黑名单 → **不是本机防火墙**。
+  **公网侧 NAT 分类实测：BLOCKED（待控制台防火墙放行）**，本文不记任何公网分类结论。
+- `cargo test --workspace --offline` **241 passed / 0 failed**（新增 9 条：观测点 6 条 + 双对照探测 3 条）。
+
 ## [2.4.80] - 2026-11-18 — M2 第二轮：补 Unix 证据 / 真引擎逐出 / 中继实测 / 公网 DHT 只读探测
 
 > 所有者指令：「按建议推进」（上一轮末尾的四条建议）。

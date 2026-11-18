@@ -33,12 +33,22 @@ fn main() {
         eprintln!(
             "用法:\n  \
              coldrevive-relaybench --relay <host:port> [--rounds 50] [--payload 64] \\\n\
-             \x20                     [--timeout-ms 1000] [--flood 0] [--json]\n\
+             \x20                     [--timeout-ms 1000] [--flood 0] [--auth-key <64hex|file:path>] \\\n\
+             \x20                     [--udp] [--udp-remote-echo] [--udp-echo [--secs 30]] [--json]\n\
              \n\
              --relay     中继地址（服务端 coldrevive-relay 的监听地址）\n\
+             --udp        走 UDP 承载（对应服务端 --udp-listen）。测的是 A→中继→B→中继→A 全链，\n\
+             \x20           同时单独统计中继回的 STATUS（forwarded / target_absent / rate_limited），\n\
+             \x20           用来区分「路径丢包」与「中继没转」。\n\
+             --udp-remote-echo  对端在另一台机器上（与下面那条配合），本进程只跑 A 侧\n\
+             --udp-echo   只做回声端：注册固定 id，把 DELIVER 原样回给来源，跑 --secs 秒后退出。\n\
+             \x20           用途是证明「两台各自在 NAT 后的主机能同时经中继互达」——同机两个\n\
+             \x20           socket 共用同一个出口，证明不了这件事。\n\
              --rounds    往返测量条数（默认 50）\n\
              --payload   每条消息负载字节（默认 64，最小 1）\n\
              --flood     并发连接数，0 = 不做单 IP 上限测试（默认 0）\n\
+             --auth-key  中继 PSK（64 位十六进制或 file:<路径>）。公网中继必须配，\n\
+             \x20           否则服务端拒绝在非回环地址上跑明文。\n\
              \n\
              说明: 只测量，不评估。丢包 = 在 timeout 内没收到回声的条数，如实计入。"
         );
@@ -55,8 +65,346 @@ fn main() {
     let flood: usize = opt("--flood").and_then(|s| s.parse().ok()).unwrap_or(0).min(4096);
     let as_json = flag("--json");
 
+    // 公网中继一律要求 PSK（服务端绑非回环且无密钥直接拒绝启动），
+    // 所以这个工具必须能带密钥，否则「真实网络往返」只能在回环上量——那没有意义。
+    if let Some(spec) = opt("--auth-key") {
+        if let Err(e) = cr_nat::relay::set_psk_from_spec(Some(&spec)) {
+            fail(&format!("--auth-key 无效: {}", e));
+        }
+    }
+
+    if flag("--udp") {
+        if let Err(e) = run_udp(
+            &relay,
+            rounds,
+            payload_len,
+            timeout_ms,
+            as_json,
+            !flag("--udp-remote-echo"),
+        ) {
+            fail(&e);
+        }
+        return;
+    }
+
+    if flag("--udp-echo") {
+        let secs: u64 = opt("--secs").and_then(|s| s.parse().ok()).unwrap_or(30).clamp(1, 3600);
+        if let Err(e) = run_udp_echo(&relay, secs, as_json) {
+            fail(&e);
+        }
+        return;
+    }
+
     if let Err(e) = run(&relay, rounds, payload_len, timeout_ms, flood, as_json) {
         fail(&e);
+    }
+}
+
+/// 单独的回声端：注册固定 id，把收到的每个 `DELIVER` 原样回给来源。
+///
+/// 存在的理由：`--udp` 默认在同一台机器上起 A、B 两个 socket，测到的「两跳公网」
+/// 是真的，但**同一个 NAT 后面的两个 socket 不能冒充「两个不同 NAT」**。要证明
+/// 「两台各自在 NAT 后的主机能同时经中继互达」，必须真的在两台机器上跑两端，
+/// 所以需要一个只需要 `--relay` 就能跑的回声端。id 与 `--udp` 里的 B 相同。
+fn run_udp_echo(relay: &str, secs: u64, as_json: bool) -> Result<(), String> {
+    use cr_nat::relay_udp::{UdpKind, UdpRelayClient};
+
+    let id_b = node_id(b'B', 2);
+    let mut b = UdpRelayClient::connect(relay, Duration::from_millis(1000))?;
+    b.hello(id_b, Duration::from_millis(1500))
+        .map_err(|e| format!("回声端注册失败: {e}"))?;
+    let local = b
+        .local_addr()
+        .map(|x| x.to_string())
+        .unwrap_or_else(|_| "?".into());
+    if !as_json {
+        println!("UDP_ECHO_READY relay={relay} local={local} secs={secs}");
+    }
+    let started = Instant::now();
+    let mut got = 0u64;
+    let mut sent = 0u64;
+    let mut bytes = 0u64;
+    while started.elapsed() < Duration::from_secs(secs) {
+        match b.recv_frame(Duration::from_millis(200)) {
+            Ok(Some(f)) if f.kind == UdpKind::Deliver => {
+                got += 1;
+                bytes += f.payload.len() as u64;
+                if b.send_data(&f.from, &f.payload).is_ok() {
+                    sent += 1;
+                }
+            }
+            Ok(_) => continue,
+            Err(e) => return Err(format!("回声端收包失败: {e}")),
+        }
+    }
+    let _ = b.bye();
+    let pairs = vec![
+        ("ok", "true".to_string()),
+        ("mode", q("relay-udp-echo")),
+        ("relay", q(relay)),
+        ("local_addr", q(&local)),
+        ("secs", secs.to_string()),
+        ("delivered_in", got.to_string()),
+        ("echoed_out", sent.to_string()),
+        ("bytes_in", bytes.to_string()),
+    ];
+    if as_json {
+        println!("{}", json(&pairs));
+    } else {
+        println!(
+            "UDP_ECHO relay={} local={} delivered_in={} echoed_out={} bytes_in={}",
+            relay, local, got, sent, bytes
+        );
+    }
+    Ok(())
+}
+
+/// UDP 承载下的往返测量（W3.14）。
+///
+/// 与 TCP 版的区别只有传输层：A 发 `DATA`，中继转给 B，B 原样回给 A，A 用**同一个
+/// 单调时钟**量 A→中继→B→中继→A 的全链往返。同时单独统计中继回的 `STATUS`：
+/// `forwarded` = 中继确实转出去了，`target_absent` = 对端没注册。**这三者不能混**：
+/// 「没收到回声」可能是路径丢包、可能是中继没转、也可能是对端根本没在。
+fn run_udp(
+    relay: &str,
+    rounds: usize,
+    payload_len: usize,
+    timeout_ms: u64,
+    as_json: bool,
+    local_echo: bool,
+) -> Result<(), String> {
+    use cr_nat::relay_udp::{UdpKind, UdpRelayClient, UdpStatus};
+
+    let started = Instant::now();
+    let id_a = node_id(b'A', 1);
+    let id_b = node_id(b'B', 2);
+    let timeout = Duration::from_millis(timeout_ms);
+
+    let mut a = UdpRelayClient::connect(relay, timeout)
+        .and_then(|c| {
+            let mut c = c;
+            c.hello(id_a, timeout)?;
+            Ok(c)
+        })
+        .map_err(|e| format!("A 注册失败: {e}"))?;
+    let local_a = a
+        .local_addr()
+        .map(|x| x.to_string())
+        .unwrap_or_else(|_| "?".into());
+    let server = a.server_addr().to_string();
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let echoed = Arc::new(AtomicU64::new(0));
+    let bad_echo = Arc::new(AtomicU64::new(0));
+    // `local_echo = false` 时对端在**另一台机器**上（`--udp-echo`），本进程不起回声端。
+    // 这条分支不是可选项的糖：同机两个 socket 共用同一个 NAT 出口，证明不了
+    // 「两台各自在 NAT 后的主机能同时经中继互达」。
+    let mut echo_handle = if local_echo {
+        let mut b = UdpRelayClient::connect(relay, timeout)
+            .and_then(|c| {
+                let mut c = c;
+                c.hello(id_b, timeout)?;
+                Ok(c)
+            })
+            .map_err(|e| format!("B 注册失败: {e}"))?;
+        let echo_stop = stop.clone();
+        let echo_count = echoed.clone();
+        let bad = bad_echo.clone();
+        Some(std::thread::spawn(move || -> Result<(), String> {
+            loop {
+                if echo_stop.load(Ordering::Relaxed) {
+                    return Ok(());
+                }
+                match b.recv_frame(Duration::from_millis(200)) {
+                    Ok(Some(f)) if f.kind == UdpKind::Deliver => {
+                        match b.send_data(&f.from, &f.payload) {
+                            Ok(_) => {
+                                echo_count.fetch_add(1, Ordering::Relaxed);
+                            }
+                            Err(_) => {
+                                bad.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                    Ok(Some(_)) => continue,
+                    Ok(None) => continue,
+                    Err(e) => return Err(format!("B 收包失败: {e}")),
+                }
+            }
+        }))
+    } else {
+        None
+    };
+    // 出错路径也要先停线程再返回，否则 `Err` 会掩盖回声线程里的真实原因。
+    macro_rules! bail {
+        ($msg:expr) => {{
+            stop.store(true, Ordering::Relaxed);
+            if let Some(h) = echo_handle.take() {
+                let _ = h.join();
+            }
+            return Err($msg);
+        }};
+    }
+
+    let payload = vec![0x5Au8; payload_len];
+    let mut rtts: Vec<u128> = Vec::with_capacity(rounds);
+    let mut lost = 0usize;
+    let mut st_forwarded = 0usize;
+    let mut st_absent = 0usize;
+    let mut st_limited = 0usize;
+    let mut st_other = 0usize;
+
+    for seq in 0..rounds {
+        let mut msg = payload.clone();
+        let head = 8.min(msg.len());
+        msg[..head].copy_from_slice(&(seq as u64).to_be_bytes()[..head]);
+        let t0 = Instant::now();
+        if let Err(e) = a.send_data(&id_b, &msg) {
+            bail!(format!("A 发第 {seq} 条失败: {e}"));
+        }
+        // 等到「带本条序号」的回声为止；期间出现的 STATUS 只计数，不当成回声。
+        let deadline = t0 + timeout;
+        let mut got = false;
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            match a.recv_frame(left) {
+                Ok(Some(f)) => match f.kind {
+                    UdpKind::Deliver => {
+                        if f.payload.len() == msg.len()
+                            && f.payload[..head] == msg[..head]
+                            && f.from == id_b
+                        {
+                            rtts.push(t0.elapsed().as_micros());
+                            got = true;
+                            break;
+                        }
+                        // 长度不符/来源不符：不静默吞掉，说明协议被改坏了。
+                        bail!(format!(
+                            "第 {seq} 条回声不符: len={} from={:?}",
+                            f.payload.len(),
+                            f.from[0]
+                        ));
+                    }
+                    UdpKind::Status => match f.payload.first().and_then(|c| UdpStatus::from_code(*c)) {
+                        Some(UdpStatus::Forwarded) => st_forwarded += 1,
+                        Some(UdpStatus::TargetAbsent) => st_absent += 1,
+                        Some(UdpStatus::RateLimited) => st_limited += 1,
+                        _ => st_other += 1,
+                    },
+                    UdpKind::Reject => {
+                        bail!(format!(
+                            "中继拒绝: {}",
+                            String::from_utf8_lossy(&f.payload)
+                        ));
+                    }
+                    _ => continue,
+                },
+                Ok(None) => continue,
+                Err(e) => {
+                    bail!(format!("A 收包失败: {e}"));
+                }
+            }
+        }
+        if !got {
+            lost += 1;
+        }
+    }
+
+    stop.store(true, Ordering::Relaxed);
+    if let Some(h) = echo_handle.take() {
+        h.join().map_err(|_| "回声线程 panic".to_string())??;
+    }
+    let _ = a.bye();
+
+    rtts.sort_unstable();
+    let pct = |p: f64| -> u128 {
+        if rtts.is_empty() {
+            return 0;
+        }
+        let idx = ((rtts.len() - 1) as f64 * p).round() as usize;
+        rtts[idx.min(rtts.len() - 1)]
+    };
+    let mean = if rtts.is_empty() {
+        0.0
+    } else {
+        rtts.iter().map(|v| *v as f64).sum::<f64>() / rtts.len() as f64
+    };
+    let jitter = if rtts.len() < 2 {
+        0.0
+    } else {
+        let mut d = Vec::with_capacity(rtts.len() - 1);
+        for w in rtts.windows(2) {
+            d.push((w[1] as f64 - w[0] as f64).abs());
+        }
+        d.iter().sum::<f64>() / d.len() as f64
+    };
+
+    let total_ms = started.elapsed().as_millis();
+    let ok = lost * 2 < rounds.max(1);
+    let us = |v: u128| format!("{:.3}", v as f64 / 1000.0);
+    let pairs: Vec<(&str, String)> = vec![
+        ("ok", if ok { "true".into() } else { "false".into() }),
+        ("mode", q("relay-bench-udp")),
+        ("relay", q(relay)),
+        ("relay_server", q(&server)),
+        ("local_addr", q(&local_a)),
+        ("rounds", rounds.to_string()),
+        ("payload_bytes", payload_len.to_string()),
+        ("timeout_ms", timeout_ms.to_string()),
+        ("echoed", echoed.load(Ordering::Relaxed).to_string()),
+        ("echo_fail", bad_echo.load(Ordering::Relaxed).to_string()),
+        ("received", rtts.len().to_string()),
+        ("lost", lost.to_string()),
+        ("loss_pct", format!("{:.2}", lost as f64 * 100.0 / rounds as f64)),
+        ("rtt_ms_min", us(rtts.first().copied().unwrap_or(0))),
+        ("rtt_ms_p50", us(pct(0.50))),
+        ("rtt_ms_p90", us(pct(0.90))),
+        ("rtt_ms_p99", us(pct(0.99))),
+        ("rtt_ms_max", us(rtts.last().copied().unwrap_or(0))),
+        ("rtt_ms_mean", format!("{:.3}", mean / 1000.0)),
+        ("jitter_ms_mean_abs", format!("{:.3}", jitter / 1000.0)),
+        ("status_forwarded", st_forwarded.to_string()),
+        ("status_target_absent", st_absent.to_string()),
+        ("status_rate_limited", st_limited.to_string()),
+        ("status_other", st_other.to_string()),
+        ("total_ms", total_ms.to_string()),
+        ("evidence_scope", q("real-network-roundtrip-udp-relay")),
+    ];
+
+    if as_json {
+        println!("{}", json(&pairs));
+    } else {
+        println!(
+            "RELAY_BENCH_UDP relay={} rounds={} recv={} lost={} loss={:.2}% \
+             rtt_ms(min/p50/p90/p99/max)={}/{}/{}/{}/{} mean={:.3} jitter={:.3} \
+             status(fwd/absent/limited/other)={}/{}/{}/{} total_ms={}",
+            relay,
+            rounds,
+            rtts.len(),
+            lost,
+            lost as f64 * 100.0 / rounds as f64,
+            us(rtts.first().copied().unwrap_or(0)),
+            us(pct(0.50)),
+            us(pct(0.90)),
+            us(pct(0.99)),
+            us(rtts.last().copied().unwrap_or(0)),
+            mean / 1000.0,
+            jitter / 1000.0,
+            st_forwarded,
+            st_absent,
+            st_limited,
+            st_other,
+            total_ms
+        );
+    }
+
+    if ok {
+        Ok(())
+    } else {
+        Err(format!("丢包率过高：{lost}/{rounds}"))
     }
 }
 

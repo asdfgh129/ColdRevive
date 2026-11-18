@@ -80,7 +80,7 @@ impl MappingBehavior {
             NatType::Symmetric => MappingBehavior::AddressDependent,
             NatType::Unknown => MappingBehavior::Unknown,
             NatType::FullCone | NatType::RestrictedCone | NatType::PortRestrictedCone
-            | NatType::Cgnat => MappingBehavior::EndpointIndependent,
+            | NatType::ConeUndetermined | NatType::Cgnat => MappingBehavior::EndpointIndependent,
         }
     }
 }

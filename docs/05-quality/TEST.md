@@ -22,7 +22,9 @@ updated: 2026-11-17
 > `s6_status=not_run`、`g2_claim=false`，**不构成 S6 / G2 证据**。
 > **S3 / S5 / S6 状态：2026-11-17 已由所有者依证据判定**（S3 `pass` / S5 `fallback` /
 > S6 `pass`（`closed_with_exceptions`），见 §2.11 与[判定记录](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)）；
-> **G2 仍未达标、未宣称**（`g2_claim=false`）；`cargo test --workspace --offline` **232/232**（2026-11-18，v2.4.80；Windows 与 Linux 两端各自全绿）。
+> **G2 仍未达标、未宣称**（`g2_claim=false`）；`cargo test --workspace --offline` **254/254**（2026-11-18，v2.4.84；Windows 与 Linux 两端各自全绿）。
+> 本轮新增 `cr-nat::relay_udp` 的 9 条单测（MAC 篡改不回声、重放丢包、未注册带原因拒绝、目标缺席回 `target_absent`、
+> 会话配额拒绝、超限报文丢弃、两客户端转发、HELLO/PING 往返），全部为**回环真实 UDP**，无 mock。
 > M2 实现项进度：`cr-dht` 与 LRU 接引擎已落地、中继生产化已收尾、TCP 打洞**只到原语**（见 [ADR-018](../02-architecture/adr/ADR-018-tcp-hole-punch.md)）。
 > 详见 [G0-REVIEW §11](../06-plan/G0-REVIEW.md) 与 [ROADMAP §6](../06-plan/ROADMAP.md)。
 

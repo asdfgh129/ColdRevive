@@ -386,6 +386,207 @@ pub fn filter_behavior(
     })
 }
 
+/// 解析 BINDING **错误**响应（0x0111），返回 `(错误码, UNKNOWN-ATTRIBUTES 列表)`。
+///
+/// 存在的理由：单公网 IP 的 STUN 服务端对 CHANGE-IP 只能回 420。客户端必须能把这件事
+/// 读成「服务器不具备该能力」，而不是「NAT 把包拦了」——两者在旧判据里长得一模一样。
+pub fn parse_error(data: &[u8], tid: &[u8; 12]) -> Option<(u16, Vec<u16>)> {
+    if data.len() < 20
+        || u16::from_be_bytes([data[0], data[1]]) != 0x0111
+        || u32::from_be_bytes([data[4], data[5], data[6], data[7]]) != MAGIC
+        || &data[8..20] != tid
+    {
+        return None;
+    }
+    let mut pos = 20usize;
+    let mut code = None;
+    let mut unknown = Vec::new();
+    while pos + 4 <= data.len() {
+        let atype = u16::from_be_bytes([data[pos], data[pos + 1]]);
+        let alen = u16::from_be_bytes([data[pos + 2], data[pos + 3]]) as usize;
+        pos += 4;
+        if pos + alen > data.len() {
+            break;
+        }
+        let val = &data[pos..pos + alen];
+        match atype {
+            0x0009 if alen >= 4 => {
+                let class = val[2] as u16;
+                let num = val[3] as u16;
+                code = Some(class * 100 + num);
+            }
+            0x000A => {
+                let mut i = 0;
+                while i + 2 <= alen {
+                    unknown.push(u16::from_be_bytes([val[i], val[i + 1]]));
+                    i += 2;
+                }
+            }
+            _ => {}
+        }
+        pos += alen + (4 - alen % 4) % 4;
+    }
+    code.map(|c| (c, unknown))
+}
+
+/// 端口过滤轴的实测结论。**只有三种值**，没有第四种「大概」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterOutcome {
+    /// 双对照都过、change-port 确实无应答 → 入向只放行已建立的 (IP,port)。
+    PortFiltered,
+    /// 双对照都过、change-port 有应答且源确实是对端备口 → 端口过滤不存在。
+    PortNotFiltered,
+    /// 任一对照失败 / 源地址被改写 / 服务器忽略请求 → 什么都没测出来。
+    Untested,
+}
+
+impl FilterOutcome {
+    pub fn label(&self) -> &'static str {
+        match self {
+            FilterOutcome::PortFiltered => "port-filtered",
+            FilterOutcome::PortNotFiltered => "port-not-filtered",
+            FilterOutcome::Untested => "untested",
+        }
+    }
+}
+
+/// 一次「对外部观测点」的端口过滤实测，含**全部原始证据**。
+///
+/// 三个字段构成可复核的最小集合：两个正对照（主口可达、备口可达）说明观测点本身是通的，
+/// 缺任一对照，负面结论就不可信；`source_matches_alt` 说明回包源口确实变了，
+/// 否则「服务器忽略请求」会被误读成「NAT 过滤」——公共 STUN 就是这个坑。
+#[derive(Debug, Clone)]
+pub struct FilterProbe {
+    pub vantage: String,
+    pub control_primary: bool,
+    pub control_alt: bool,
+    pub change_port_answered: bool,
+    pub change_port_source: Option<String>,
+    pub source_matches_alt: bool,
+    pub change_ip_error: Option<u16>,
+    pub outcome: FilterOutcome,
+}
+
+fn resolve_v4(host: &str, port: u16) -> Option<std::net::SocketAddr> {
+    use std::net::ToSocketAddrs;
+    let it = (host, port).to_socket_addrs().ok()?;
+    let mut fallback = None;
+    for a in it {
+        if a.is_ipv4() {
+            return Some(a);
+        }
+        fallback.get_or_insert(a);
+    }
+    fallback
+}
+
+fn send_recv(
+    sock: &UdpSocket,
+    to: std::net::SocketAddr,
+    flags: u32,
+    timeout: Duration,
+) -> Option<(Vec<u8>, std::net::SocketAddr)> {
+    let tid = rand_tid();
+    sock.send_to(&binding_request_with(&tid, flags), to).ok()?;
+    let deadline = std::time::Instant::now() + timeout;
+    let mut buf = [0u8; 2048];
+    loop {
+        let remain = deadline.saturating_duration_since(std::time::Instant::now());
+        if remain.is_zero() {
+            return None;
+        }
+        let _ = sock.set_read_timeout(Some(remain));
+        match sock.recv_from(&mut buf) {
+            Ok((n, src)) => {
+                let data = buf[..n].to_vec();
+                if parse_response(&data, &tid).is_some() || parse_error(&data, &tid).is_some() {
+                    return Some((data, src));
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+}
+
+/// 用**自建 RFC 5780 观测点**实测端口过滤行为（这是唯一能撑住结论的路径）。
+///
+/// 三个 socket 的分工不能合并，否则互相污染：
+///   1. 对照 A（主口直连）：证明观测点主口入向可达；
+///   2. 对照 B（备口直连，**另一个 socket**）：证明备口入向也可达。绝不能复用第 3 步的
+///      socket —— 一旦该 socket 向备口发过包，网关过滤集里就有备口地址，
+///      「端口受限」会被测成「不限端口」，这是过滤测试最经典的假阳性；
+///   3. 被测 socket：只与主口通信，再请求 CHANGE-PORT。
+pub fn probe_port_filtering(
+    host: &str,
+    port: u16,
+    alt_port: u16,
+    timeout: Duration,
+) -> FilterProbe {
+    let mut p = FilterProbe {
+        vantage: format!("{}:{}", host, port),
+        control_primary: false,
+        control_alt: false,
+        change_port_answered: false,
+        change_port_source: None,
+        source_matches_alt: false,
+        change_ip_error: None,
+        outcome: FilterOutcome::Untested,
+    };
+    let primary = match resolve_v4(host, port) {
+        Some(a) => a,
+        None => return p,
+    };
+    let alt = std::net::SocketAddr::new(primary.ip(), alt_port);
+
+    // 对照 A
+    if let Ok(s1) = UdpSocket::bind("0.0.0.0:0") {
+        p.control_primary = matches!(send_recv(&s1, primary, 0, timeout), Some((_, src)) if src == primary);
+    }
+    if !p.control_primary {
+        return p;
+    }
+    // 对照 B（独立 socket，避免污染被测 socket 的过滤集）
+    if let Ok(s2) = UdpSocket::bind("0.0.0.0:0") {
+        p.control_alt = matches!(send_recv(&s2, alt, 0, timeout), Some((_, src)) if src == alt);
+    }
+    if !p.control_alt {
+        return p; // 备口不可达时，change-port 的「无应答」不构成任何证据
+    }
+    // 被测：只跟主口说过话的 socket
+    let tested = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(s) => s,
+        Err(_) => return p,
+    };
+    if let Some((_, src)) = send_recv(&tested, primary, CHANGE_PORT, timeout) {
+        p.change_port_answered = true;
+        p.change_port_source = Some(src.to_string());
+        p.source_matches_alt = src == alt;
+    }
+    // CHANGE-IP 能力询问（单 IP 观测点会回 420）
+    if let Ok(s4) = UdpSocket::bind("0.0.0.0:0") {
+        let tid = rand_tid();
+        if s4.send_to(&binding_request_with(&tid, CHANGE_IP), primary).is_ok() {
+            let _ = s4.set_read_timeout(Some(timeout));
+            let mut buf = [0u8; 2048];
+            if let Ok((n, _)) = s4.recv_from(&mut buf) {
+                if let Some((code, _)) = parse_error(&buf[..n], &tid) {
+                    p.change_ip_error = Some(code);
+                }
+            }
+        }
+    }
+
+    p.outcome = if !p.change_port_answered {
+        FilterOutcome::PortFiltered
+    } else if p.source_matches_alt {
+        FilterOutcome::PortNotFiltered
+    } else {
+        // 有回包但源没变：服务器忽略了 CHANGE-PORT，与公共 STUN 同样无从判断。
+        FilterOutcome::Untested
+    };
+    p
+}
+
 pub fn rand_tid() -> [u8; 12] {    let mut tid = [0u8; 12];
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -610,5 +811,88 @@ mod tests {
         data.extend_from_slice(&MAGIC.to_be_bytes());
         data.extend_from_slice(&[0u8; 12]); // wrong tid
         assert!(parse_response(&data, &[1u8; 12]).is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // 外部观测点（自建 RFC 5780 服务端）的双对照探测
+    // ------------------------------------------------------------------
+
+    fn spawn_vantage(with_alt: bool) -> (std::sync::Arc<crate::stun_server::StunServer>, u16, Option<u16>, std::sync::Arc<std::sync::atomic::AtomicBool>) {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        let srv = Arc::new(
+            crate::stun_server::StunServer::bind(
+                "127.0.0.1:0".parse().unwrap(),
+                if with_alt { Some("127.0.0.1:0".parse().unwrap()) } else { None },
+            )
+            .unwrap(),
+        );
+        let p = srv.primary_addr().unwrap().port();
+        let a = srv.alt_addr().map(|x| x.port());
+        let stop = Arc::new(AtomicBool::new(false));
+        let s2 = srv.clone();
+        let st = stop.clone();
+        thread::spawn(move || s2.serve_until(st, |_, _| {}));
+        (srv, p, a, stop)
+    }
+
+    #[test]
+    fn probe_against_real_vantage_reports_port_open() {
+        let (_s, p, a, stop) = spawn_vantage(true);
+        let a = a.expect("应有备口");
+        let probe = probe_port_filtering("127.0.0.1", p, a, Duration::from_millis(500));
+        assert!(probe.control_primary, "主口对照必须通");
+        assert!(probe.control_alt, "备口对照必须通");
+        assert_eq!(probe.outcome, FilterOutcome::PortNotFiltered);
+        assert!(probe.source_matches_alt, "回包源必须真的是备口");
+        assert_eq!(probe.change_ip_error, Some(420), "单 IP 观测点应明说做不到 change-IP");
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn probe_without_alt_socket_is_untested_not_port_filtered() {
+        // 单套接字观测点：备口对照必然失败。此时「change-port 无应答」不是证据，
+        // 只能说 untested —— 这正是拿公共 STUN 判过滤行为时会犯的错。
+        let (_s, p, a, stop) = spawn_vantage(false);
+        assert!(a.is_none());
+        let probe = probe_port_filtering("127.0.0.1", p, p + 1, Duration::from_millis(400));
+        assert!(probe.control_primary);
+        assert!(!probe.control_alt);
+        assert_eq!(probe.outcome, FilterOutcome::Untested);
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn ignored_change_port_is_untested_not_port_filtered() {
+        // 模拟公共 STUN：主备口都能直连应答，但**忽略** CHANGE-PORT，永远从主口回包。
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let main = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let alt = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let (mp, ap) = (main.local_addr().unwrap().port(), alt.local_addr().unwrap().port());
+        let stop_cell = Arc::new(AtomicBool::new(false));
+        for sock in [main, alt] {
+            let st = stop_cell.clone();
+            thread::spawn(move || {
+                let mut buf = [0u8; 2048];
+                let _ = sock.set_read_timeout(Some(Duration::from_millis(150)));
+                while !st.load(Ordering::Relaxed) {
+                    if let Ok((n, peer)) = sock.recv_from(&mut buf) {
+                        if n >= 20 {
+                            let tid: [u8; 12] = buf[8..20].try_into().unwrap();
+                            let resp = build_response(&tid, &build_xor_mapped(peer));
+                            // 关键：不管请求带什么 flags，都从**收到请求的那个口**回
+                            let _ = sock.send_to(&resp, peer);
+                        }
+                    }
+                }
+            });
+        }
+        let probe = probe_port_filtering("127.0.0.1", mp, ap, Duration::from_millis(400));
+        assert!(probe.control_primary && probe.control_alt);
+        assert!(probe.change_port_answered, "确实收到了回包");
+        assert!(!probe.source_matches_alt, "但源没变");
+        assert_eq!(probe.outcome, FilterOutcome::Untested);
+        stop_cell.store(true, Ordering::Relaxed);
     }
 }

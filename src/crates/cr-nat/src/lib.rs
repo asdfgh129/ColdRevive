@@ -15,9 +15,11 @@ pub mod natpmp;
 pub mod pcp;
 pub mod reach;
 pub mod relay;
+pub mod relay_udp;
 pub mod secure;
 pub mod relay_server;
 pub mod stun;
+pub mod stun_server;
 pub mod tcp_punch;
 pub mod upnp;
 
@@ -26,14 +28,20 @@ pub use census::{
 };
 
 pub use classify::{
-    classify_from_filter, classify_from_mappings, cgnat_suspected, FilterBehavior, NatType,
+    classify_from_filter, classify_from_mappings, classify_from_probe, classify_two_axis,
+    cgnat_suspected, mapping_axis, FilterBehavior, MappingAxis, NatType,
 };
+pub use stun::{probe_port_filtering, FilterOutcome, FilterProbe};
 pub use endpoint::{
     build_plan, is_public_ipv4, local_advertisement, node_id_16, split_mapped,
     tracker_endpoint_for, Endpoint, EndpointKind, EndpointPlan, PeerAdvertisement,
 };
 pub use relay_server::{
     read_frame, write_frame, RelayHandle, RelayServer, RelayStats, DEFAULT_MAX_FRAME, HEADER_LEN,
+};
+pub use relay_udp::{
+    encode_datagram, parse_datagram, UdpFrame, UdpKind, UdpLimits, UdpParseError, UdpRelayClient,
+    UdpRelayHandle, UdpRelayServer, UdpRelayStats, UdpStatus, UDP_MAX_PAYLOAD, UDP_MIN_DGRAM,
 };
 
 /// NAT 类别清单（四类 + CGNAT），**描述性用途**。
