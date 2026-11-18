@@ -649,6 +649,26 @@ ColdRevive
     在可用邻居前提下做一次受控 announce 并独立查询验证；③ 多任务守护进程（多样本入库）
     落地后复跑逐出；④ 公网中继（VPS）时延/丢包。
 
+- **2026-11-18 M2 第四轮（v2.4.90）：打洞优先 / 中继兜底（两阶段裁决）**
+  - **做了什么**：`cr-nat::punch_route`（纯状态机）+ `cr-nat::punch_wire`（线格式与收发）；
+    两阶段裁决 `Local → Commit`，只有「本端 ok ∧ 对端 Local ok ∧ 对端 Commit ok」才 `Direct`，
+    否则**两端共同** `Relay`。裁决走既有 `RELAY`/`DELIVERED` 帧，**不新增帧类型、
+    不改 `cr-wake` 协议**。决策见 [ADR-022](../02-architecture/adr/ADR-022-punch-first-relay-fallback.md)。
+  - **opt-in**：`cr-core` 新增 `nat.punch_route`（缺省 `false`）；关闭时 `proxy_url` 保持 `None`，
+    既有部署与 T0/T1/G1 逐字节不变。`/health` 暴露 `attempts/direct/relay/failed` 与
+    常驻 `relay_data_plane="not_implemented"`。
+  - **证据**：状态机 12 例；**真 `RelayServer` 双端 5 例**（双方 ok → 两端 `Direct`；
+    A ok/B 不 ok → 两端 `Relay`；都不 ok → `Relay`；带来源前缀负载被拒）；
+    真引擎 e2e 双路径（Direct `served_registered=1`、Relay `served_registered=0`，
+    均 1 MiB 逐字节一致）。证据 `tests/e2e/w55/reports/{direct,relay}.json`。
+  - **实施期踩到的真坑**：`DELIVERED` 的 `frame.node` 已是来源、`payload` 是原样裁决，
+    再拼一份来源 id 会让 `side/nonce/stage` 全错位，而错位后 `observe()` 以
+    `NonceMismatch` **静默回落**——表现成「对端不支持」，极难查。
+  - **仍未闭环**：① 中继**没有 BT 数据面**，`Route::Relay` ≠ 取片走中继；
+    ② `wake_with_plan` 仍未创建/登记 punched socket（本轮只到可调用控制面 + 计数 + 配置）；
+    ③ 公网双侧打洞仍 `BLOCKED`；④ 两个不同 NAT 经中继互达仍待跑。
+    `g2_claim=false`、`s6_status=not_run` 不变；全量回归 **288 passed / 0 failed**。
+
 - **2026-11-18 M2 第三轮（v2.4.87–88）：P3 桥接层 + P0 多样本 + 222 公网数据面**
   - **上一轮「下一步」③ 已落地**：`Config.samples` → `seed_tasks: infohash → TaskId`，
     每个样本 paused 入库、按请求的 infohash 精确激活（映射非空但查不到就返回 `None`，

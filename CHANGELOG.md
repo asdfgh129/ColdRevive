@@ -2,6 +2,30 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.90] - 2026-11-18 — 打洞优先 / 中继兜底（两阶段裁决，反双向黑洞）
+
+> `g2_claim=false`、`s6_status=not_run` 不变。本版把「能打洞就打洞、打不了就中继」
+> 落成**两端一致的判据**；不是公网可达证据，也不代表中继已有 BT 数据面。
+
+- **`cr-nat::punch_route`（状态机，std-only）**：两阶段裁决 `Local → Commit`。
+  `Direct` 需「本端握手成功 ∧ 对端 Local ok ∧ 对端 Commit ok」三条件同时成立，
+  任一端不成立则两端共同 `Relay`——杜绝「一端直连一端中继」的双向黑洞。
+- **`cr-nat::punch_wire`（线格式 + 收发）**：裁决用既有 `RELAY`/`DELIVERED` 帧承载，
+  不新增帧类型、不改 `cr-wake` 协议（字段集合与 golden 未动）。
+  `DELIVERED` 的来源在 `frame.node`，`payload` 是原样裁决——**不得**在负载里再拼来源 id。
+- **`cr-core`：`nat.punch_route`（缺省 `false`）**。关闭时 `proxy_url` 保持 `None`，
+  既有部署与 T0/T1/G1 逐字节不变。
+- **`coldrevived`：`PunchRouteState` 进 `/health`**（`attempts/direct/relay/failed`），
+  常驻 `relay_data_plane="not_implemented"`；新增 opt-in CLI `nat punch-route` /
+  `nat punch-route-answer`。
+- **验证**：状态机 12 例；**真 `RelayServer` 双端 5 例**（双方 ok→两端 Direct、
+  A ok/B 不 ok→两端 Relay、都不 ok→Relay、带前缀负载被拒）；真引擎 e2e 双路径
+  （Direct `served_registered=1`、Relay `served_registered=0`，均 1 MiB 逐字节一致）。
+  证据：`tests/e2e/w55/reports/{direct,relay}.json`。
+- **仍不成立**：中继无 BT 数据面（`Route::Relay` ≠ 取片走中继）；`wake_with_plan`
+  仍未创建/登记 punched socket；公网双侧打洞仍 `BLOCKED`。
+- 全量回归 **288 passed / 0 failed**。文档同步：新增 ADR-022、ADR 索引、M2-PROGRESS §9。
+
 ## [2.4.89] - 2026-11-18 — cr-bridge 真引擎端到端（回环 handoff）
 
 > `g2_claim=false`、`s6_status=not_run` 不变。本版补上 ADR-021 的验收证据，

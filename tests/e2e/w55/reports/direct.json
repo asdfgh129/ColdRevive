@@ -1,0 +1,17 @@
+{
+  "schema": "coldrevive.route-e2e/v1",
+  "generated_at_unix": 1795022619,
+  "case": "direct",
+  "route_a": "punched-direct",
+  "route_b": "punched-direct",
+  "served_registered": 1,
+  "downloaded_bytes": 1048576,
+  "finished": true,
+  "byte_equal": true,
+  "handshake_both_sides": true,
+  "scope": "loopback; real librqbit; in-memory verdict channel; not NAT evidence",
+  "relay_data_plane": "not_implemented",
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}

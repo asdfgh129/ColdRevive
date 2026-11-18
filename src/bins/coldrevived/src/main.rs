@@ -15,6 +15,7 @@
 mod bt;
 mod commands;
 mod nat_path;
+mod punch_route;
 mod relay_sub;
 mod sched;
 
@@ -124,6 +125,8 @@ pub struct NodeState {
     /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
     /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
     pub sched: LruScheduler,
+    /// ADR-022：打洞优先 / 中继兜底的协商观测（默认关闭，仅诊断，不进门禁）。
+    pub punch_route: punch_route::PunchRouteState,
 }
 
 fn main() {
@@ -204,6 +207,7 @@ fn main() {
         sched: LruScheduler::new(
             cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
         ),
+        punch_route: punch_route::PunchRouteState::from_config(&cfg),
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -489,6 +493,9 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              // 冷/热与真实供片量：`seed_active < seed_tasks` 就是「有任务但没供片」。
              ("seed_active", Json::n(seed_active as f64)),
              ("served_bytes", Json::n(served_bytes as f64)),
+             // ADR-022：协商观测。relay_data_plane=not_implemented 明确写在这里，
+             // 防止把「决策回落到中继」读成「BT 取片已走中继」。
+             ("punch_route", state.lock().unwrap().punch_route.json()),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {

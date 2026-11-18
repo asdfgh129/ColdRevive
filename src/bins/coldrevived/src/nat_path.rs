@@ -11,7 +11,7 @@
 //! PROTOCOL_VERSION=1 / golden 字段 / CLI v1 既有命令返回值均不变。
 //! **门禁不变**：`S6.status` 仍为 `not_run`，本地 mock STUN / mock 中继不构成四类 NAT 实测。
 
-use crate::{http_get, NodeState, NODE_SECRET};
+use crate::{http_get, punch_route, NodeState, NODE_SECRET};
 use cr_core::{nonce_hex, unix_ts, Config, Json};
 use cr_nat::{
     build_plan, choose_strategy, classify_from_filter, classify_from_mappings, cgnat_suspected,
@@ -21,7 +21,7 @@ use cr_nat::{
     PeerAdvertisement, Strategy, Traversal, TraversalReport,
 };
 use std::fs;
-use std::net::UdpSocket;
+use std::net::{SocketAddr, UdpSocket};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -762,6 +762,156 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("s6_status", Json::s("not_run")),
                 ("evidence_valid_for_pass", Json::b(false)),
                 ("error", match o.result { Err(e) => Json::s(e), Ok(_) => Json::Null }),
+            ])
+        }
+        "punch-route-answer" => {
+            // ADR-022 对端侧：在同一条中继连接上回两轮裁决，让 punch-route 能闭环。
+            // local_ok=false（本侧未握手/未打洞）时如实拒绝直连，双方回落 Relay。
+            if !cfg.nat_punch_route {
+                return Json::obj(vec![("error", Json::s("nat.punch_route 未启用"))]);
+            }
+            let local_ok = p.first().map(String::as_str) == Some("ok");
+            let relay_addr = cfg.nat_relays.first().cloned().or_else(|| cfg.nat_relay.clone());
+            let Some(relay_addr) = relay_addr else {
+                return Json::obj(vec![("error", Json::s("没有可用中继"))]);
+            };
+            let self_id = node_id_16(&cfg.node_id);
+            let timeout = Duration::from_millis(1500);
+            // 应答侧拿到的两轮是**发起方**的裁决；本端路由用它自己的 local_ok 复算，
+            // 这样健康检查能直接比对两端结论是否一致（不一致就是双向黑洞）。
+            let result = cr_nat::relay::RelayClient::new(relay_addr).connect(timeout)
+                .and_then(|mut conn| {
+                    cr_nat::punch_wire::answer_verdicts(&mut conn, &self_id, local_ok, timeout)
+                })
+                .and_then(|rounds| {
+                    cr_nat::punch_wire::negotiate_route(
+                        &self_id,
+                        &rounds.0.nonce,
+                        local_ok,
+                        rounds,
+                    )
+                });
+            match result {
+                Ok(route) => Json::obj(vec![
+                    ("ok", Json::b(true)),
+                    ("local_ok", Json::b(local_ok)),
+                    ("route", Json::s(route.label())),
+                    ("relay_data_plane", Json::s("not_implemented")),
+                    ("s6_status", Json::s("not_run")),
+                ]),
+                Err(e) => Json::obj(vec![
+                    ("ok", Json::b(false)),
+                    ("local_ok", Json::b(local_ok)),
+                    ("error", Json::s(e)),
+                    ("s6_status", Json::s("not_run")),
+                ]),
+            }
+        }
+        "punch-route" => {
+            // ADR-022：打洞优先/中继兜底的可调用控制面。opt-in，默认拒绝。
+            // 只做**判据与交接决策**：返回 Route 与两轮裁决，不声称 BT 数据已走桥或中继。
+            if !cfg.nat_punch_route {
+                return Json::obj(vec![
+                    ("error", Json::s("nat.punch_route 未启用（默认关闭）")),
+                    ("s6_status", Json::s("not_run")),
+                ]);
+            }
+            let peer_label = p.first().cloned().unwrap_or_default();
+            let bind_hint = p.get(1).cloned();
+            if peer_label.is_empty() {
+                return Json::obj(vec![("error", Json::s(
+                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port]"))]);
+            }
+            let relay_addr = cfg.nat_relays.first().cloned()
+                .or_else(|| cfg.nat_relay.clone());
+            let Some(relay_addr) = relay_addr else {
+                return Json::obj(vec![("error", Json::s("没有可用中继（nat.relay/relay 为空）"))]);
+            };
+            let self_id = node_id_16(&cfg.node_id);
+            let peer_id = node_id_16(&peer_label);
+            let nonce = punch_route::session_nonce();
+            let timeout = Duration::from_millis(1200);
+
+            // 1) 真实 TCP 打洞：没有外部 socket 就没有可判据的对象。
+            let local: SocketAddr = bind_hint
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_else(|| format!("{}:0", cfg.bind).parse().unwrap());
+            let target: SocketAddr = match state.lock().unwrap().nat.peer_adv.as_ref()
+                .and_then(|a| a.bt_external.as_ref())
+            {
+                Some(ep) => match ep.addr().parse() {
+                    Ok(a) => a,
+                    Err(_) => return Json::obj(vec![("error", Json::s("对端 BT 地址非法"))]),
+                },
+                None => return Json::obj(vec![("error", Json::s("对端无公网 BT 映射，先 nat peer"))]),
+            };
+            let punched = cr_nat::tcp_punch::punch_tcp(local, &[target], timeout);
+            let Some(mut stream) = punched.established.map(|p| p.stream) else {
+                state.lock().unwrap().punch_route.record(None);
+                return Json::obj(vec![
+                    ("ok", Json::b(false)),
+                    ("route", Json::s("relay-fallback")),
+                    ("reason", Json::s("TCP 打洞未建立（poll+SO_ERROR 判据）")),
+                    ("s6_status", Json::s("not_run")),
+                ]);
+            };
+            // 2) nonce 握手：连到的必须是这次会话的对端，不是任意监听者。
+            let peer = match punch_route::verify_peer(&mut stream, &self_id, &nonce, timeout) {
+                Ok(p) if p == peer_id => p,
+                Ok(p) => {
+                    state.lock().unwrap().punch_route.record(None);
+                    return Json::obj(vec![
+                        ("ok", Json::b(false)),
+                        ("reason", Json::s(format!("握手对端 id 不符: {:?}", p))),
+                        ("s6_status", Json::s("not_run")),
+                    ]);
+                }
+                Err(e) => {
+                    state.lock().unwrap().punch_route.record(None);
+                    return Json::obj(vec![
+                        ("ok", Json::b(false)), ("reason", Json::s(e)),
+                        ("s6_status", Json::s("not_run")),
+                    ]);
+                }
+            };
+            // 3) 经中继交换两轮裁决：双方都不接受就回落。
+            let relay = cr_nat::relay::RelayClient::new(relay_addr.clone())
+                .connect(timeout);
+            let route = match relay.and_then(|mut conn| {
+                punch_route::exchange_verdicts(
+                    &mut conn, &self_id, &peer, true, &nonce, timeout)
+            }) {
+                Ok(rounds) => match punch_route::negotiate_route(&self_id, &nonce, true, rounds) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        state.lock().unwrap().punch_route.record(None);
+                        return Json::obj(vec![
+                            ("ok", Json::b(false)), ("reason", Json::s(e)),
+                            ("route", Json::s("relay-fallback")),
+                            ("s6_status", Json::s("not_run")),
+                        ]);
+                    }
+                },
+                Err(e) => {
+                    state.lock().unwrap().punch_route.record(None);
+                    return Json::obj(vec![
+                        ("ok", Json::b(false)), ("reason", Json::s(e)),
+                        ("route", Json::s("relay-fallback")),
+                        ("s6_status", Json::s("not_run")),
+                    ]);
+                }
+            };
+            state.lock().unwrap().punch_route.record(Some(route));
+            Json::obj(vec![
+                ("ok", Json::b(route == cr_nat::Route::Direct)),
+                ("route", Json::s(route.label())),
+                ("peer", Json::s(&peer_label)),
+                ("tcp_punch_established", Json::b(true)),
+                ("relay_data_plane", Json::s("not_implemented")),
+                ("is_s6_evidence", Json::b(false)),
+                ("g2_claim", Json::b(false)),
+                ("s6_status", Json::s("not_run")),
             ])
         }
         "tracker" => {

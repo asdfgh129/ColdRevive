@@ -13,6 +13,8 @@ pub mod endpoint;
 pub mod holepunch;
 pub mod natpmp;
 pub mod pcp;
+pub mod punch_route;
+pub mod punch_wire;
 pub mod reach;
 pub mod relay;
 pub mod relay_udp;
@@ -30,6 +32,10 @@ pub use census::{
 pub use classify::{
     classify_from_filter, classify_from_mappings, classify_from_probe, classify_two_axis,
     cgnat_suspected, mapping_axis, FilterBehavior, MappingAxis, NatType,
+};
+pub use punch_route::{
+    handshake_frame, validate_handshake, NegotiateError, Route, RouteNegotiator, Stage, Verdict,
+    HANDSHAKE_LEN, VERDICT_LEN,
 };
 pub use stun::{probe_port_filtering, FilterOutcome, FilterProbe};
 pub use endpoint::{

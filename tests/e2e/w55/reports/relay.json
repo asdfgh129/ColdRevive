@@ -1,0 +1,17 @@
+{
+  "schema": "coldrevive.route-e2e/v1",
+  "generated_at_unix": 1795022619,
+  "case": "relay-fallback-decision",
+  "route_a": "relay-fallback",
+  "route_b": "relay-fallback",
+  "served_registered": 0,
+  "downloaded_bytes": 1048576,
+  "finished": true,
+  "byte_equal": true,
+  "fallback_path": "ordinary loopback dial (stand-in)",
+  "relay_data_plane": "not_implemented",
+  "scope": "loopback; real librqbit; decision gate only; not relay data evidence",
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}

@@ -346,6 +346,14 @@ pub struct Config {
     /// 标准客户端默认优先 µTP（Transmission 尤甚），只做 TCP 时要等它回落，首连体验差。
     /// 关掉只影响监听侧的 UDP 绑定，不改任何帧格式。
     pub nat_utp: bool,
+    /// ADR-022：打洞优先 / 中继兜底的**双端协商**是否启用。默认 `false`，
+    /// 老配置逐字节不变。启用后 BT 引擎的出向走本地 SOCKS5 桥，只有协商判定
+    /// `Direct` 且 nonce 握手双端通过才登记 punched socket；否则回落普通直连/中继
+    /// 控制面，**绝不把半打通的 socket 交给引擎**。
+    ///
+    /// 注意：本仓库的中继只传唤醒/控制帧，**没有 BT 数据面**；所以「双端都打不通」
+    /// 时不会凭空产生一条数据路径，这一点必须在诊断输出里如实呈现。
+    pub nat_punch_route: bool,
     /// M2/W5.1 BT 引擎下载目录。`engine` 段缺省时落到 `<workdir>/downloads`。
     pub engine_dir: PathBuf,
     /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
@@ -434,6 +442,12 @@ impl Config {
             .and_then(|o| o.iter().find(|(n, _)| n == "utp"))
             .and_then(|(_, v)| v.as_bool())
             .unwrap_or(true);
+        // ADR-022：默认关闭。非法/缺失一律 false——静默打开会把所有出站 BT
+        // 改道本地桥，而如果没有登记 socket，行为变化很难从日志里看出来。
+        let nat_punch_route = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "punch_route"))
+            .and_then(|(_, v)| v.as_bool())
+            .unwrap_or(false);
         // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
         // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
         let split_endpoints = |key: &str| -> Vec<String> {
@@ -532,6 +546,7 @@ impl Config {
             nat_bt_external,
             nat_http_external,
             nat_utp,
+            nat_punch_route,
             engine_dir,
             engine_listen,
             engine_max_active_seeds,
@@ -753,6 +768,40 @@ mod tests {
         assert_eq!(cfg.nat_relays, vec!["127.0.0.1:7100".to_string()]);
         assert!(cfg.nat_relay_udps.is_empty());
         let _ = fs::remove_file(&p);
+    }
+
+    /// ADR-022：punch_route 默认关闭，显式 true 才开；非布尔不得被当成 true。
+    #[test]
+    fn punch_route_is_opt_in_and_never_truthy_by_accident() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802},
+                "B": {"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let absent = std::env::temp_dir().join("cr_core_punch_route_absent.json");
+        fs::write(&absent, base).unwrap();
+        assert!(!Config::load(&absent).unwrap().nat_punch_route, "缺省必须关闭");
+        let _ = fs::remove_file(&absent);
+
+        for (tag, value, expected) in [
+            ("on", "true", true),
+            ("off", "false", false),
+            ("string", "\"true\"", false),
+            ("number", "1", false),
+        ] {
+            let p = std::env::temp_dir().join(format!("cr_core_punch_route_{tag}.json"));
+            let text = base.replace(
+                "\"golden_ack\": \"a.json\"",
+                &format!("\"golden_ack\": \"a.json\", \"nat\": {{\"punch_route\": {value}}}"),
+            );
+            fs::write(&p, text).unwrap();
+            assert_eq!(Config::load(&p).unwrap().nat_punch_route, expected, "tag={tag}");
+            let _ = fs::remove_file(&p);
+        }
     }
 
     #[test]

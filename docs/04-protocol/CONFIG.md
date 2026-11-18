@@ -101,6 +101,7 @@ cors_allowlist = []
 | nat | `bt_external` | 空 | 运维在 CPE 上**真实建好**的 TCP 映射 `公网IP:端口` → 本机 `bt_port`。只有配置了它，tracker 才会向公网请求方通告 peer；未配置即返回空 peer 列表（绝不发 RFC1918）。**µTP 开着时还需要一条同号的 UDP 规则**——TCP 映射对 UDP 无效，缺它外部客户端会先等 µTP 超时再回落 |
 | nat | `http_external` | 空 | 同上，对应 HTTP/tracker 端口。配置后伴随种子写 BEP 12 `announce-list`（LAN + 公网两条，InfoHash 不变），唤醒 ACK 里给公网请求者的取种 URL 也换成这条 |
 | nat | `utp` | `true` | BT 监听端口上是否同时开 µTP（BEP 29，UDP 同端口）。关掉只留 TCP；标准客户端默认先试 µTP，关了它们要先等回落。不影响任何帧格式。**公网入向另需 CPE 上的 UDP 映射**（与 `bt_external` 那条 TCP 规则并列）；是否真的绑上以 `netstat -ano -p UDP` 的 PID 为准 |
+| nat | `punch_route` | `false` | 启用「打洞优先 / 中继兜底」控制面（[ADR-022](../../02-architecture/adr/ADR-022-punch-first-relay-fallback.md)）。关闭时 `proxy_url` 保持 `None`、引擎行为不变；开启后可用 `nat punch-route <对端node_id> [ip:port]` 与 `nat punch-route-answer [ok]`。**注意**：`route=relay-fallback` 只表示不登记 punched socket，**不代表取片走中继**——中继目前没有 BT 数据面（`/health` 常驻 `relay_data_plane="not_implemented"`） |
 | engine | `dir` | `<workdir>/downloads` | 引擎下载目录 |
 | engine | `listen` | 空 | `ip:port`。留空且声明了任一 `*_external` 时，做种监听落 `0.0.0.0:bt_port`；否则绑 `bind` |
 | engine | `max_active_seeds` | 空（= `cr-sched::MAX_ACTIVE_SEEDS`，当前 8） | 做种活跃池上限（[ADR-017](../02-architecture/adr/ADR-017-active-seed-pool.md)）。超过上限时逐出**最久未用**的任务并暂停它；容量 0 在配置层直接报错，不静默夹到 1。`/health` 的 `seeding_active` / `seeding_cap` / `seeding_evictions` 是这三个事实的观测口径 |
