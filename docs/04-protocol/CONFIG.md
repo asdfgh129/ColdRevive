@@ -102,6 +102,7 @@ cors_allowlist = []
 | nat | `utp` | `true` | BT 监听端口上是否同时开 µTP（BEP 29，UDP 同端口）。关掉只留 TCP；标准客户端默认先试 µTP，关了它们要先等回落。不影响任何帧格式。**公网入向另需 CPE 上的 UDP 映射**（与 `bt_external` 那条 TCP 规则并列）；是否真的绑上以 `netstat -ano -p UDP` 的 PID 为准 |
 | engine | `dir` | `<workdir>/downloads` | 引擎下载目录 |
 | engine | `listen` | 空 | `ip:port`。留空且声明了任一 `*_external` 时，做种监听落 `0.0.0.0:bt_port`；否则绑 `bind` |
+| engine | `max_active_seeds` | 空（= `cr-sched::MAX_ACTIVE_SEEDS`，当前 8） | 做种活跃池上限（[ADR-017](../02-architecture/adr/ADR-017-active-seed-pool.md)）。超过上限时逐出**最久未用**的任务并暂停它；容量 0 在配置层直接报错，不静默夹到 1。`/health` 的 `seeding_active` / `seeding_cap` / `seeding_evictions` 是这三个事实的观测口径 |
 
 **这两项只是声明，不是证据**：守护进程无法自证映射存在。入向是否真的可用，
 只能由外部主机实测（[`tests/e2e/w51d/public_inbound.py`](../../tests/e2e/w51d/public_inbound.py)）；

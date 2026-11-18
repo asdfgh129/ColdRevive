@@ -95,6 +95,17 @@ pub struct Limits {
     pub data_byte_rate: u64,
     /// 数据字节令牌桶容量（允许的突发字节数）。
     pub data_burst_bytes: u64,
+    /// **单个来源 IP** 的并发连接上限。
+    ///
+    /// 与 `max_conns` 的区别：后者是整机的总量护栏，挡不住「一台机器占满所有名额」。
+    /// 取值必须留足 NAT 共享的余量——一个家庭/一间办公室通常只有一个出口 IP，
+    /// 几十台设备是正常形态；默认 64 只挡「单机开几百条」这种量级。
+    pub max_conns_per_ip: usize,
+    /// **单个来源 IP** 每分钟允许的注册次数（`REGISTER` 与 `REGISTER_DECLARED` 合计）。
+    ///
+    /// 注册会写全局注册表并触发同侪快照广播，是最贵的路径。正常客户端只在启动/
+    /// 重连时注册几次；用 240 留足重连抖动，同时把「狂刷注册把快照打爆」封住。
+    pub register_per_ip_per_min: u32,
 }
 
 impl Default for Limits {
@@ -109,7 +120,139 @@ impl Default for Limits {
             // 512 KiB/s ≈ 4 Mbps，给一台小 VPS 留出信令与系统余量；突发 4 秒。
             data_byte_rate: 512 * 1024,
             data_burst_bytes: 2 * 1024 * 1024,
+            max_conns_per_ip: 64,
+            register_per_ip_per_min: 240,
         }
+    }
+}
+
+/// 一个 IPv4 网段（`10.0.0.0/8`，或单个地址 `1.2.3.4`）。
+///
+/// 只做**黑名单**用途，所以只需要「给不给进」这一个判断，不实现合并/最长前缀匹配。
+/// IPv6 目前不支持：本项目的公网节点与实验环境都是 IPv4，静默接受一个 v6 规则却
+/// 永远匹配不上，比明确报错更糟。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpNet {
+    base: [u8; 4],
+    prefix: u8,
+}
+
+impl IpNet {
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let text = text.trim();
+        let (addr, prefix) = match text.split_once('/') {
+            Some((a, p)) => {
+                let n: u8 = p.parse().map_err(|e| format!("前缀 {p} 非法: {e}"))?;
+                (a, n)
+            }
+            None => (text, 32),
+        };
+        if prefix > 32 {
+            return Err(format!("IPv4 前缀长度 {prefix} 超过 32"));
+        }
+        let v4: std::net::Ipv4Addr = addr.parse()
+            .map_err(|e| format!("{addr} 不是 IPv4 地址（黑名单暂只支持 IPv4）: {e}"))?;
+        let raw = u32::from(v4);
+        let mask = if prefix == 0 { 0 } else { u32::MAX << (32 - prefix) };
+        Ok(Self { base: (raw & mask).to_be_bytes(), prefix })
+    }
+
+    /// 规范化文本（`base/prefix`）。用于运维核对，不用于再解析。
+    pub fn to_text(&self) -> String {
+        format!("{}.{}.{}.{}/{}", self.base[0], self.base[1], self.base[2], self.base[3], self.prefix)
+    }
+
+    /// 是否覆盖全部 IPv4（`0.0.0.0/0`）。这种配置会把中继变成「谁都不服务」，
+    /// 启动时值得显式提醒一句。
+    pub fn is_all_ipv4(&self) -> bool {
+        self.prefix == 0
+    }
+
+    pub fn contains(&self, ip: std::net::IpAddr) -> bool {
+        let std::net::IpAddr::V4(v4) = ip else { return false };
+        let raw = u32::from(v4);
+        let mask = if self.prefix == 0 { 0 } else { u32::MAX << (32 - self.prefix) };
+        (raw & mask).to_be_bytes() == self.base
+    }
+}
+
+/// 单个来源 IP 的连接与注册计数。
+#[derive(Debug, Clone, Copy)]
+struct IpEntry {
+    active: u32,
+    /// 注册统计窗口起点（unix 毫秒）。
+    window_start_ms: u64,
+    registrations: u32,
+}
+
+/// 注册表分片数。
+///
+/// 单把锁在 `max_nodes = 8192` 时会成为热点：每帧 RELAY 都要查一次目标，
+/// 每次注册都要写一次，而投递是高频路径。按节点 ID 首字节分 16 片后，
+/// 查询与写入的锁竞争降到 1/16，且**不改变任何可见语义**（同一 ID 永远落同一片）。
+const REGISTRY_SHARDS: usize = 16;
+
+/// 分片注册表：`node id → 写连接`。
+struct Registry {
+    shards: Vec<Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>>>,
+    /// 全局条目数。分片后无法便宜地跨片计数，用原子计数器维护；
+    /// 它在「替换已有 ID」时不变，在「新增/移除」时增减，因此可以作为 `max_nodes` 的准确判据。
+    len: AtomicU64,
+}
+
+impl Registry {
+    fn new() -> Self {
+        Self {
+            shards: (0..REGISTRY_SHARDS).map(|_| Mutex::new(HashMap::new())).collect(),
+            len: AtomicU64::new(0),
+        }
+    }
+
+    fn shard_of(&self, id: &[u8; NODE_ID_LEN]) -> &Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>> {
+        &self.shards[(id[0] as usize) % REGISTRY_SHARDS]
+    }
+
+    fn get(&self, id: &[u8; NODE_ID_LEN]) -> Option<Arc<Mutex<ChanWriter>>> {
+        self.shard_of(id).lock().unwrap().get(id).cloned()
+    }
+
+    fn contains(&self, id: &[u8; NODE_ID_LEN]) -> bool {
+        self.shard_of(id).lock().unwrap().contains_key(id)
+    }
+
+    /// 插入或替换。`max` 是全局上限：**替换已有条目**永远允许（否则重连会失败）。
+    fn insert(&self, id: [u8; NODE_ID_LEN], w: Arc<Mutex<ChanWriter>>, max: usize) -> bool {
+        let mut shard = self.shard_of(&id).lock().unwrap();
+        if !shard.contains_key(&id) && self.len.load(Ordering::SeqCst) as usize >= max {
+            return false;
+        }
+        if shard.insert(id, w).is_none() {
+            self.len.fetch_add(1, Ordering::SeqCst);
+        }
+        true
+    }
+
+    /// 仅当当前注册项仍是 `w` 时才移除（重连竞态的判据）。
+    fn remove_if_same(&self, id: &[u8; NODE_ID_LEN], w: &Arc<Mutex<ChanWriter>>) -> bool {
+        let mut shard = self.shard_of(id).lock().unwrap();
+        let same = shard.get(id).map(|cur| Arc::ptr_eq(cur, w)).unwrap_or(false);
+        if same {
+            shard.remove(id);
+            self.len.fetch_sub(1, Ordering::SeqCst);
+        }
+        same
+    }
+
+    fn len(&self) -> usize {
+        self.len.load(Ordering::SeqCst) as usize
+    }
+
+    fn keys(&self) -> Vec<[u8; NODE_ID_LEN]> {
+        let mut out = Vec::with_capacity(self.len());
+        for shard in &self.shards {
+            out.extend(shard.lock().unwrap().keys().copied());
+        }
+        out
     }
 }
 
@@ -301,13 +444,109 @@ pub struct RelayStats {
     pub bandwidth_limited: u64,
     /// 被字节预算拒绝的帧负载字节数（累计）。
     pub bandwidth_limited_bytes: u64,
+    /// 被黑名单（`--deny`）拒绝的连接数（握手前即断开）。
+    pub blacklisted: u64,
+    /// 因单 IP 并发连接上限被拒的连接数。
+    pub ip_cap_rejected: u64,
+    /// 因单 IP 注册频率上限被拒的注册次数（该连接随即断开）。
+    pub ip_rate_limited: u64,
+    /// 当前被跟踪的来源 IP 数（gauge，用于确认回收是否生效）。
+    pub ip_tracked: u64,
 }
 
 /// 所有连接线程共享的状态。
+
+impl Shared {
+    /// 来源 IP 是否在黑名单里。
+    fn ip_denied(&self, ip: std::net::IpAddr) -> bool {
+        self.deny.iter().any(|n| n.contains(ip))
+    }
+
+    /// 登记一条新连接；超过单 IP 上限返回 `false`。
+    fn ip_conn_open(&self, ip: std::net::IpAddr) -> bool {
+        let limit = self.limits.max_conns_per_ip;
+        let mut map = self.per_ip.lock().unwrap();
+        let entry = map.entry(ip).or_insert(IpEntry {
+            active: 0,
+            window_start_ms: 0,
+            registrations: 0,
+        });
+        if entry.active as usize >= limit {
+            return false;
+        }
+        entry.active += 1;
+        let tracked = map.len() as u64;
+        drop(map);
+        self.stat(|s| s.ip_tracked = tracked);
+        true
+    }
+
+    /// 连接结束：减计数，并在「无活动连接 + 注册窗口过期」时回收条目。
+    ///
+    /// 不回收就会随扫描流量单调增长（每个源 IP 一条），这正是「小状态大泄漏」的典型形态。
+    fn ip_conn_closed(&self, ip: std::net::IpAddr) {
+        let now = unix_ms();
+        let mut map = self.per_ip.lock().unwrap();
+        let mut drop_it = false;
+        if let Some(e) = map.get_mut(&ip) {
+            e.active = e.active.saturating_sub(1);
+            drop_it = e.active == 0 && now.saturating_sub(e.window_start_ms) >= REG_WINDOW_MS;
+        }
+        if drop_it {
+            map.remove(&ip);
+        }
+        let tracked = map.len() as u64;
+        drop(map);
+        self.stat(|s| s.ip_tracked = tracked);
+    }
+
+    /// 单 IP 注册预算：一分钟窗口内不超过 `register_per_ip_per_min` 次。
+    fn registration_allowed(&self, ip: Option<std::net::IpAddr>) -> bool {
+        let Some(ip) = ip else { return true }; // 同侪链路不受客户端配额限制
+        let limit = self.limits.register_per_ip_per_min;
+        let now = unix_ms();
+        let mut map = self.per_ip.lock().unwrap();
+        let entry = map.entry(ip).or_insert(IpEntry {
+            active: 0,
+            window_start_ms: now,
+            registrations: 0,
+        });
+        if now.saturating_sub(entry.window_start_ms) >= REG_WINDOW_MS {
+            entry.window_start_ms = now;
+            entry.registrations = 0;
+        }
+        if entry.registrations >= limit {
+            return false;
+        }
+        entry.registrations += 1;
+        true
+    }
+}
+
+/// 注册配额窗口。
+const REG_WINDOW_MS: u64 = 60_000;
+
+fn unix_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// 单 IP 连接计数的守卫：连接线程无论怎么退出（正常 break / 提前 return / panic 展开），
+/// 都必须把计数减回去，否则一次异常就会永久占掉一个名额。
+struct IpConnGuard {
+    shared: Arc<Shared>,
+    ip: std::net::IpAddr,
+}
+
+impl Drop for IpConnGuard {
+    fn drop(&mut self) {
+        self.shared.ip_conn_closed(self.ip);
+    }
+}
+
 struct Shared {
     instance: [u8; NODE_ID_LEN],
-    /// 本实例自己的注册表：node id → 该客户端的写连接
-    registry: Mutex<HashMap<[u8; NODE_ID_LEN], Arc<Mutex<ChanWriter>>>>,
+    /// 本实例自己的注册表：node id → 该客户端的写连接（按 ID 首字节分片）
+    registry: Registry,
     /// 从同侪快照学到的归属：node id → 拥有它的实例 id
     peer_registry: Mutex<HashMap<[u8; NODE_ID_LEN], [u8; NODE_ID_LEN]>>,
     /// 同侪实例 id → 链路写连接
@@ -327,6 +566,10 @@ struct Shared {
     active_conns: AtomicU64,
     /// 全实例共享的数据字节预算。信令帧不经过它。
     data_budget: Mutex<ByteBucket>,
+    /// 拒绝接入的 IP 段（`--deny`）。空 = 不启用。
+    deny: Vec<IpNet>,
+    /// 每来源 IP 的连接/注册计数。条目在连接归零且窗口过期后回收。
+    per_ip: Mutex<HashMap<std::net::IpAddr, IpEntry>>,
 }
 
 pub struct RelayServer {
@@ -337,6 +580,7 @@ pub struct RelayServer {
     psk: Option<[u8; PSK_LEN]>,
     allow_insecure: bool,
     limits: Limits,
+    deny: Vec<IpNet>,
 }
 
 /// `spawn()` 返回的句柄；持有者可读取真实计数并请求停止所有循环。
@@ -455,7 +699,7 @@ impl Shared {
     }
 
     fn local_nodes(&self) -> Vec<[u8; NODE_ID_LEN]> {
-        let mut v: Vec<_> = self.registry.lock().unwrap().keys().copied().collect();
+        let mut v = self.registry.keys();
         v.sort();
         v
     }
@@ -485,9 +729,9 @@ impl Shared {
                 }
             }
             // 已注册但从未声明的节点（老客户端、或只用 REGISTER 的探测连接）计入 unknown。
-            let reg = self.registry.lock().unwrap();
-            for id in reg.keys() {
-                if !decl.contains_key(id) {
+            // 分片后 keys() 会逐片取锁：这里不持全局锁，避免与注册路径互相等待。
+            for id in self.registry.keys() {
+                if !decl.contains_key(&id) {
                     u += 1;
                 }
             }
@@ -673,7 +917,7 @@ impl Shared {
         source: [u8; NODE_ID_LEN],
         message: Vec<u8>,
     ) -> bool {
-        let dest = self.registry.lock().unwrap().get(target).cloned();
+        let dest = self.registry.get(target);
         let Some(w) = dest else { return false };
         let frame = RelayFrame {
             kind: FrameKind::Delivered,
@@ -683,12 +927,7 @@ impl Shared {
         if send_frame(&w, &frame) {
             return true;
         }
-        let mut reg = self.registry.lock().unwrap();
-        if let Some(cur) = reg.get(target) {
-            if Arc::ptr_eq(cur, &w) {
-                reg.remove(target);
-            }
-        }
+        self.registry.remove_if_same(target, &w);
         false
     }
 
@@ -703,7 +942,7 @@ impl Shared {
             self.stat(|s| s.delivered += 1);
             return;
         }
-        if self.registry.lock().unwrap().contains_key(&target) {
+        if self.registry.contains(&target) {
             // 本地有登记但写失败（deliver 已摘除），不转给别人，避免双投。
             self.stat(|s| s.dropped += 1);
             return;
@@ -747,7 +986,14 @@ impl RelayServer {
             psk: None,
             allow_insecure: true,
             limits: Limits::default(),
+            deny: Vec::new(),
         })
+    }
+
+    /// 拒绝这些来源网段的接入（连接**在握手前**就被关掉，不浪费任何 CPU）。
+    pub fn with_deny(mut self, deny: Vec<IpNet>) -> Self {
+        self.deny = deny;
+        self
     }
 
     /// 要求所有连接（含同侪链路）先做 PSK 握手。
@@ -797,10 +1043,11 @@ impl RelayServer {
             psk,
             allow_insecure,
             limits,
+            deny,
         } = self;
         let shared = Arc::new(Shared {
             instance,
-            registry: Mutex::new(HashMap::new()),
+            registry: Registry::new(),
             peer_registry: Mutex::new(HashMap::new()),
             peers: Mutex::new(HashMap::new()),
             declared: Mutex::new(HashMap::new()),
@@ -812,6 +1059,8 @@ impl RelayServer {
             limits,
             active_conns: AtomicU64::new(0),
             data_budget: Mutex::new(ByteBucket::new(&limits)),
+            deny,
+            per_ip: Mutex::new(HashMap::new()),
         });
         let handle = RelayHandle {
             shared: shared.clone(),
@@ -851,15 +1100,27 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
     let _ = listener.set_nonblocking(true);
     while !shared.stop.load(Ordering::Relaxed) {
         match listener.accept() {
-            Ok((stream, _peer)) => {
+            Ok((stream, peer_addr)) => {
                 // Windows 下 accept 出来的 socket 可能继承非阻塞标志，显式复位。
                 let _ = stream.set_nonblocking(false);
                 let _ = stream.set_read_timeout(None);
                 let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
                 let _ = stream.set_nodelay(true);
                 shared.stat(|s| s.connections += 1);
+                // 黑名单与单 IP 上限都要在**起线程之前**判：让被拒的连接连握手都不做，
+                // 否则「拒绝」本身就成了 CPU/内存放大器。
+                if shared.ip_denied(peer_addr.ip()) {
+                    shared.stat(|s| s.blacklisted += 1);
+                    let _ = stream.shutdown(Shutdown::Both);
+                    continue;
+                }
+                if !shared.ip_conn_open(peer_addr.ip()) {
+                    shared.stat(|s| s.ip_cap_rejected += 1);
+                    let _ = stream.shutdown(Shutdown::Both);
+                    continue;
+                }
                 let sh = shared.clone();
-                thread::spawn(move || conn_loop(stream, sh, None, None));
+                thread::spawn(move || conn_loop(stream, sh, None, None, Some(peer_addr.ip())));
             }
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(20));
@@ -882,6 +1143,7 @@ fn conn_loop(
     shared: Arc<Shared>,
     registered: Option<[u8; NODE_ID_LEN]>,
     peer: Option<[u8; NODE_ID_LEN]>,
+    ip: Option<std::net::IpAddr>,
 ) {
     // 0) 并发连接上限：先占位再判，超出立刻关，避免 accept 风暴无限起线程。
     let active = shared.active_conns.fetch_add(1, Ordering::SeqCst) + 1;
@@ -892,6 +1154,8 @@ fn conn_loop(
         return;
     }
     let _guard = ConnGuard(shared.clone());
+    // `ip` 只对**入向**连接有值（accept 路径）；出向的同侪链路不占客户端配额。
+    let _ip_guard = ip.map(|ip| IpConnGuard { shared: shared.clone(), ip });
 
     // 1) 传输层：配了 PSK 就必须握手；没配只在 allow_insecure 时放行明文。
     let (reader, writer) = match shared.psk {
@@ -931,7 +1195,7 @@ fn conn_loop(
             )
         }
     };
-    serve_chan(reader, writer, shared, registered, peer);
+    serve_chan(reader, writer, shared, registered, peer, ip);
 }
 
 struct ConnGuard(Arc<Shared>);
@@ -952,6 +1216,7 @@ fn serve_chan(
     shared: Arc<Shared>,
     mut registered: Option<[u8; NODE_ID_LEN]>,
     mut peer: Option<[u8; NODE_ID_LEN]>,
+    ip: Option<std::net::IpAddr>,
 ) {
     let secure_chan = matches!(reader, ChanReader::Secure(_));
     let idle = shared.limits.idle;
@@ -1028,14 +1293,16 @@ fn serve_chan(
                         break;
                     }
                 }
-                {
-                    let mut reg = shared.registry.lock().unwrap();
-                    if !reg.contains_key(&id) && reg.len() >= shared.limits.max_nodes {
-                        drop(reg);
-                        shared.stat(|s| s.rejected += 1);
-                        break;
-                    }
-                    reg.insert(id, writer.clone());
+                // 单 IP 注册频率：注册会写注册表并触发快照广播，是最贵的路径。
+                // 超限即断开（不是「忽略这一帧」）：只忽略的话连接会一直挂着空转，
+                // 反而比断开更占资源。
+                if !shared.registration_allowed(ip) {
+                    shared.stat(|s| s.ip_rate_limited += 1);
+                    break;
+                }
+                if !shared.registry.insert(id, writer.clone(), shared.limits.max_nodes) {
+                    shared.stat(|s| s.rejected += 1);
+                    break;
                 }
                 registered = Some(id);
                 let ack = RelayFrame {
@@ -1078,14 +1345,16 @@ fn serve_chan(
                         break;
                     }
                 }
-                {
-                    let mut reg = shared.registry.lock().unwrap();
-                    if !reg.contains_key(&id) && reg.len() >= shared.limits.max_nodes {
-                        drop(reg);
-                        shared.stat(|s| s.rejected += 1);
-                        break;
-                    }
-                    reg.insert(id, writer.clone());
+                // 单 IP 注册频率：注册会写注册表并触发快照广播，是最贵的路径。
+                // 超限即断开（不是「忽略这一帧」）：只忽略的话连接会一直挂着空转，
+                // 反而比断开更占资源。
+                if !shared.registration_allowed(ip) {
+                    shared.stat(|s| s.ip_rate_limited += 1);
+                    break;
+                }
+                if !shared.registry.insert(id, writer.clone(), shared.limits.max_nodes) {
+                    shared.stat(|s| s.rejected += 1);
+                    break;
                 }
                 registered = Some(id);
                 shared.declare_local(id, class, at);
@@ -1251,15 +1520,7 @@ fn serve_chan(
         // 只有「这条连接仍是该节点的当前注册项」时，它的退出才算节点掉线。
         // 重连时新连接会覆盖注册表；若旧连接随后才关掉，旧代码照样 forget_local，
         // 把新连接刚声明的 relay-only 抹成「不知道」，让 wake 随机走回直连。
-        let was_current = {
-            let mut reg = shared.registry.lock().unwrap();
-            if reg.get(&id).map(|cur| Arc::ptr_eq(cur, &writer)).unwrap_or(false) {
-                reg.remove(&id);
-                true
-            } else {
-                false
-            }
-        };
+        let was_current = shared.registry.remove_if_same(&id, &writer);
         if was_current {
             shared.forget_local(&id);
         }
@@ -1296,7 +1557,8 @@ fn dial_loop(shared: Arc<Shared>, addr: String) {
                 }
                 shared.broadcast_snapshot();
                 // 拨号侧已经完成过握手，直接进入通道循环（不再走 conn_loop 的握手分支）。
-                serve_chan(reader, writer, shared.clone(), None, Some(peer_id));
+                // 出向同侪链路：`ip=None`，不占客户端配额、也不写每 IP 计数。
+                serve_chan(reader, writer, shared.clone(), None, Some(peer_id), None);
                 shared.drop_peer(&peer_id);
             }
             Err(e) => {
@@ -1431,7 +1693,8 @@ pub fn write_frame<W: Write>(writer: &mut W, frame: &RelayFrame) -> io::Result<(
 mod tests {
     use super::*;
     use crate::relay::RelayClient;
-    use std::io::Cursor;
+    use std::io::{Cursor, Read};
+    use std::net::TcpStream;
 
     fn id(label: u8) -> [u8; NODE_ID_LEN] {
         let mut v = [0u8; NODE_ID_LEN];
@@ -1549,6 +1812,127 @@ mod tests {
                 "标签仍含控制字符: {:?}", label);
         let named = parse_instance_id("relay-222").unwrap();
         assert_eq!(printable_instance(&named), "relay-222");
+    }
+
+
+    // ------------------------------------------------------------------
+    // 生产化收尾（W3.9 后续）：黑名单 / 单 IP 上限 / 注册频率 / 注册表分片
+    // ------------------------------------------------------------------
+
+    /// 读一个字节判断连接是否已被服务端关闭（`Ok(0)` = 对端 FIN）。
+    fn closed_by_peer(stream: &mut TcpStream) -> bool {
+        let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+        let mut b = [0u8; 1];
+        matches!(stream.read(&mut b), Ok(0))
+    }
+
+    #[test]
+    fn ipnet_parsing_and_matching() {
+        let net = IpNet::parse("112.5.60.0/24").unwrap();
+        assert!(net.contains("112.5.60.4".parse().unwrap()));
+        assert!(!net.contains("112.5.61.1".parse().unwrap()));
+        let single = IpNet::parse("112.5.60.4").unwrap();
+        assert!(single.contains("112.5.60.4".parse().unwrap()));
+        assert!(!single.contains("112.5.60.5".parse().unwrap()));
+        let all = IpNet::parse("0.0.0.0/0").unwrap();
+        assert!(all.contains("8.8.8.8".parse().unwrap()));
+        // 必须拒绝不成立的东西，而不是「宽松匹配」：写错的黑名单等于没黑名单。
+        assert!(IpNet::parse("112.5.60.0/33").is_err());
+        assert!(IpNet::parse("::1/128").is_err(), "IPv6 暂不支持，必须明确报错");
+        assert!(IpNet::parse("not-an-ip").is_err());
+    }
+
+    #[test]
+    fn denied_ip_is_closed_before_handshake() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap()
+            .with_deny(vec![IpNet::parse("127.0.0.0/8").unwrap()]);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        assert!(closed_by_peer(&mut s), "黑名单来源必须被立即断开");
+        assert!(wait_until(|| handle.stats().blacklisted >= 1, Duration::from_millis(800)),
+                "blacklisted 计数应为 1（当前 {:?}）", handle.stats().blacklisted);
+        assert_eq!(handle.stats().connections, 1);
+        handle.stop();
+    }
+
+    #[test]
+    fn per_ip_connection_cap_rejects_extra_connections() {
+        let limits = Limits { max_conns_per_ip: 1, ..Default::default() };
+        let server = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(limits);
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+
+        let _first = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        // 等第一条被 accept 记账，否则第二条可能抢在计数之前到达（那是测试的竞态，不是产品的）。
+        assert!(wait_until(|| handle.stats().connections >= 1, Duration::from_millis(800)));
+        let mut second = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        assert!(closed_by_peer(&mut second), "超过单 IP 上限的连接必须被断开");
+        assert!(wait_until(|| handle.stats().ip_cap_rejected >= 1, Duration::from_millis(800)),
+                "ip_cap_rejected 应为 1（当前 {:?}）", handle.stats().ip_cap_rejected);
+        handle.stop();
+    }
+
+    #[test]
+    fn registration_rate_limit_per_ip_closes_late_registrations() {
+        let limits = Limits { register_per_ip_per_min: 1, ..Default::default() };
+        let server = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(limits);
+        let addr = format!("127.0.0.1:{}", server.local_addr().unwrap().port());
+        let handle = server.spawn();
+
+        let mut a = RelayClient::new(addr.clone()).connect(Duration::from_secs(2)).unwrap();
+        a.register(&id(b'A')).expect("第一次注册必须在配额内");
+
+        let mut b = RelayClient::new(addr).connect(Duration::from_secs(2)).unwrap();
+        let err = b.register(&id(b'B')).expect_err("同 IP 第二次注册应被拒");
+        assert!(!err.is_empty());
+        assert!(wait_until(|| handle.stats().ip_rate_limited >= 1, Duration::from_millis(800)),
+                "ip_rate_limited 应为 1（当前 {:?}）", handle.stats().ip_rate_limited);
+        // 第一次注册仍然有效：配额只挡新注册，不清空已注册的节点。
+        assert!(wait_until(|| handle.stats().registered == 1, Duration::from_millis(500)));
+        handle.stop();
+    }
+
+    #[test]
+    fn ip_state_is_released_after_disconnect() {
+        let server = RelayServer::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let handle = server.spawn();
+        {
+            let _s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            assert!(wait_until(|| handle.stats().ip_tracked >= 1, Duration::from_millis(800)),
+                    "连接期间应跟踪到 1 个 IP");
+        }
+        // 断开后计数必须回落：条目只增不减就是「小状态大泄漏」。
+        assert!(wait_until(|| handle.stats().ip_tracked == 0, Duration::from_millis(1500)),
+                "断开后 ip_tracked 应回到 0（当前 {:?}）", handle.stats().ip_tracked);
+        handle.stop();
+    }
+
+    #[test]
+    fn registry_len_counts_replacements_once_and_registry_survives_sharding() {
+        // 分片不能改变可见语义：同一 ID 反复注册只占一个名额（否则重连会把自己的
+        // 名额越占越多，最终触发 max_nodes 把正常客户端挡在门外）。
+        let server = RelayServer::bind("127.0.0.1:0").unwrap()
+            .with_limits(Limits { max_nodes: 3, ..Default::default() });
+        let addr = format!("127.0.0.1:{}", server.local_addr().unwrap().port());
+        let handle = server.spawn();
+
+        let mut a = RelayClient::new(addr.clone()).connect(Duration::from_secs(2)).unwrap();
+        a.register(&id(b'A')).unwrap();
+        for _ in 0..3 {
+            a.register(&id(b'A')).expect("重复注册必须始终成功");
+        }
+        // 换一个跨片 ID 注册，仍应成功（len 记的是不同 ID 的数）。
+        let mut b = RelayClient::new(addr).connect(Duration::from_secs(2)).unwrap();
+        b.register(&id(b'\x80')).expect("第二个不同 ID 应能注册");
+
+        // 跨片投递仍然成立：分片只影响锁，不影响路由。
+        b.send_relay(&id(b'A'), b"ping").unwrap();
+        let got = a.recv_frame().expect("A 必须收到跨片投递");
+        assert_eq!(got.payload, b"ping");
+        assert!(wait_until(|| handle.stats().delivered == 1, Duration::from_millis(800)));
+        handle.stop();
     }
 
     #[test]

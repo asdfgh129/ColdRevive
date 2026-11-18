@@ -16,11 +16,13 @@ mod bt;
 mod commands;
 mod nat_path;
 mod relay_sub;
+mod sched;
 
 use cr_core::{Config, Json};
 use cr_engine::{Engine, EngineOptions, RqbitEngine, TorrentSpec};
 use cr_indexer::inspect as inspect_file;
 use cr_kad::{find_result, publish_keys};
+use cr_sched::LruScheduler;
 use cr_store::{FileEntry, ShadowIndex};
 use cr_torrent::Torrent;
 use cr_wake::{build_ack, reject, validate_req};
@@ -115,6 +117,9 @@ pub struct NodeState {
     pub engine: SharedEngine,
     /// A 侧做种任务在引擎里的编号（W5.2）。`None` = 本节点不做种。
     pub seed_task: Option<cr_engine::TaskId>,
+    /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
+    /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
+    pub sched: LruScheduler,
 }
 
 fn main() {
@@ -190,6 +195,10 @@ fn main() {
         rpc_tasks: Vec::new(),
         engine: Arc::new(Mutex::new(None)),
         seed_task: None,
+        // 容量来自 `engine.max_active_seeds`；缺省用 cr-sched 的工程默认值。
+        sched: LruScheduler::new(
+            cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
+        ),
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -1046,20 +1055,35 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
         // W5.2：COLD→HOT 的实际动作是「解除引擎暂停」。只有真的激活成功才置 `bt_seeding`，
         // 否则门禁会看到「已就绪」而引擎还在暂停——那种状态在第三方客户端侧表现成一直空转，
         // 比直接报失败难查得多。
-        let mut eg = st.engine.lock().unwrap();
-        let activated = match (st.seed_task, eg.as_mut()) {
-            (Some(task), Some(eng)) => match eng.activate(task) {
-                Ok(()) => true,
-                Err(e) => { eprintln!("[{}] 做种任务激活失败: {}", cfg.node_id, e); false }
-            },
-            (None, _) => false,
+        // 先取出引擎槽与任务号再上锁：`wake_seed` 需要同时改 `sched` 与引擎，
+        // 直接持有 `st.engine` 的借用会让 `&mut st.sched` 冲突（两个字段同属一个 guard）。
+        let seed_task = st.seed_task;
+        let engine_slot = st.engine.clone();
+        let mut eg = engine_slot.lock().unwrap();
+        let outcome = match (seed_task, eg.as_mut()) {
+            (Some(task), Some(eng)) => Some(sched::wake_seed(&mut st.sched, eng, task)),
+            (None, _) => {
+                // 没有做种任务却收到唤醒：如实记，不伪造供片。
+                eprintln!("[{}] 收到唤醒但本节点没有做种任务", cfg.node_id);
+                None
+            }
             (Some(_), None) => {
                 eprintln!("[{}] 收到唤醒但引擎尚未创建，无法供片", cfg.node_id);
-                false
+                None
             }
         };
         drop(eg);
-        st.bt_seeding = activated;
+        // 逐出/失败都要留痕：活跃池被挤满时的行为必须可观测，否则「偶尔供不上片」
+        // 会被误读成网络问题。
+        if let Some(o) = outcome.as_ref() {
+            if let Some(ev) = o.evicted {
+                println!("[{}] 活跃池已满，逐出任务 #{} 以服务本次唤醒", cfg.node_id, ev);
+            }
+            for e in &o.errors {
+                eprintln!("[{}] 活跃池: {}", cfg.node_id, e);
+            }
+        }
+        st.bt_seeding = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
         let _ = st.index.save();
         let me = cfg.me().ok()?;
         let url = ack_torrent_url(cfg, &entry.infohash, &src.ip().to_string());

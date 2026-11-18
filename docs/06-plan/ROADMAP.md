@@ -632,6 +632,26 @@ ColdRevive
   LRU 调度接引擎、中继生产化收尾、BT/TCP 打洞）。上一条「S3/S5/S6 全部 `not_run`」的表述作废，
   更早的历史记录不改写。
 
+- **2026-11-18 M2 实现项推进（v2.4.79，四项里三项落地到可用、一项只到原语）**：
+  按「还欠的四个实现项」逐条推进，**未宣称 G2 达标**（`g2_claim=false` 不变）。
+  - **`cr-dht`（W3.2）✅ 实现完成**：bencode / 160 位 ID 与 XOR 距离 / Kademlia 桶 /
+    四种 KRPC 查询 / token 校验，38 条单测（9 条真实 UDP 回环），新增 `coldrevive-dht`
+    自检与探测工具。**这不是 S3 证据**：S3 仍以公网 Mainline 闭环报告为准，本轮未向公网宣告。
+  - **LRU 接引擎（W4.3）✅ 接线完成**：`cr-sched` 活跃池 + `sched::wake_seed()` 作为唯一
+    `activate` 入口（逐出先暂停、失败释放名额），`engine.max_active_seeds` 可配，
+    `/health` 暴露 `seeding_active`/`seeding_cap`/`seeding_evictions`。见 [ADR-017](../02-architecture/adr/ADR-017-active-seed-pool.md)。
+    **已知限制**：守护进程当前只持有一个做种任务，逐出路径仅有单测证据。
+  - **中继生产化（W3.9 后续）✅ 收尾**：按来源 IP 的并发/注册频率上限、`--deny` 黑名单、
+    注册表 16 片分片、四个新计数并入 `--stats-file`。7 条新测试覆盖拒绝与回收路径。
+  - **BT/TCP 打洞（W3.9-⑤）🟡 原语完成、接线未完成**：`cr_nat::tcp_punch` 实现同时打开，
+    判据改为 `poll` + `SO_ERROR`（`peer_addr` 在 Windows 上会假阳性）；回环两独立进程
+    双侧建立 + 双向字节 PASS。**未完成**：BT 数据面未接（librqbit 不接受外部 socket）、
+    Unix 分支未在本机编译验证、公网双侧实测 `BLOCKED`（缺 TCP 端口映射）。
+    见 [ADR-018](../02-architecture/adr/ADR-018-tcp-hole-punch.md)。
+  - **下一步（按收益排序）**：① 在 221 上复跑 `cargo test -p cr-nat tcp_punch`（补 Unix 证据）；
+    ② 中继按 IP 限速在真实公网中继上跑一轮时延/丢包（7100 入口）；③ 多任务做种接入后
+    复跑逐出路径；④ `cr-dht` 接引导节点做一次受控公网 announce（需所有者授权，同 S3 口径）。
+
 ## 相关文档
 
 - [DOC-04 TECH-STACK Spike 清单](../02-architecture/TECH-STACK.md)

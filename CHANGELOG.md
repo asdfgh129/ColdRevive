@@ -2,6 +2,57 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.79] - 2026-11-18 — M2 实现项推进：cr-dht / LRU 接引擎 / 中继生产化 / TCP 打洞原语
+
+> 所有者指令：「M2 还缺 cr-dht 等骨架 crate、LRU 接引擎、中继生产化、BT/TCP 打洞。继续推进 M2」。
+> 本轮是**实现推进**，不是门禁放行：`g2_claim=false`、`S6.status=not_run` 不变，
+> 且四项里有两项只到「原语/单测」层（见各条边界），不得读成已完成。
+
+- **`cr-dht` 从骨架变成可运行的 Mainline DHT（BEP 5）**：`bencode`（严格规范形式 + 深度上限）、
+  160 位 `NodeId` / XOR 距离 / 紧凑节点编码、Kademlia 路由表（160 桶 × K=8）、
+  `ping` / `find_node` / `get_peers` / `announce_peer` 四种 KRPC 报文、按来源 IP 签发并校验 token。
+  38 条单测，其中 9 条走**真实 UDP 回环**（应答 id 一致、紧凑节点取回、token→announce→取回闭环、
+  伪造 token 被 203 拒、单 key peer 上限、超长包与垃圾包丢弃）。
+  新增 `coldrevive-dht` 工具（`--self-test` / `--serve` / `--ping` / `--get-peers`），
+  `--self-test` 输出 `evidence_scope=loopback` / `is_s6_evidence=false`。
+  **边界**：这不等于 S3 的证据（S3 仍以 `tests/spikes/s3/mainline_probe/` 的公网闭环为准），
+  本轮也没有向公网宣告。
+- **LRU 调度接引擎（W4.3）**：`cr-sched` 实现真实活跃池（逻辑时钟、容量、逐出、`set_cap`），
+  `coldrevived` 新增 `sched::wake_seed()` 作为**唯一**允许调 `Engine::activate` 的入口：
+  申请名额 → 逐出则先暂停 → 激活 → 如实返回（`serving` / `evicted` / `errors`）。
+  `AlreadyActive` 不重复激活（librqbit 对 live 任务 unpause 会 bail，W5.2 踩过）；
+  激活失败释放名额并放回被逐出者。新增 `engine.max_active_seeds`（缺省 8，0 直接报错），
+  `/health` 增加 `seeding_active` / `seeding_cap` / `seeding_evictions`。决策见 [ADR-017](docs/02-architecture/adr/ADR-017-active-seed-pool.md)。
+  **边界**：守护进程当前只持有一个做种任务，逐出路径由 6 条 `FakeOps` 单测覆盖，
+  真实运行中不会被触发——不得声称「多任务调度已在生产验证」。
+- **中继生产化收尾（W3.9 后续）**：按来源 IP 的**并发连接上限**（默认 64）与
+  **注册频率上限**（默认 240/分钟/ip）；`--deny <ip|cidr>` 黑名单（握手前断开，
+  IPv6 与非法前缀**明确报错**而不是静默不匹配）；注册表按节点 ID 首字节分 16 片
+  （查询/写入锁竞争降到 1/16，语义不变：同一 ID 恒落同一片、重复注册不占新名额）。
+  新增计数 `blacklisted` / `ip_cap_rejected` / `ip_rate_limited` / `ip_tracked`，
+  并入 `--stats-file`；`RELAY_LIMITS` / `RELAY_DENY` 启动行可核对生效值。
+  7 条新测试（黑名单、单 IP 上限、注册配额、断开后计数回收、跨片投递、重复注册）。
+  期间修掉一个自己写出来的坑：per-IP 计数必须用 `Drop` 守卫回收，否则一次异常永久占名额。
+- **TCP 同时打开打洞（W3.9-⑤，原语层）**：`cr_nat::tcp_punch` 用最小 FFI 做
+  `socket/bind(SO_REUSEADDR)/非阻塞 connect`，句柄交回 `TcpStream` 托管；
+  **完成判据是 `poll(POLLOUT)` + `SO_ERROR=0`**，不是 `peer_addr()`——实测 Windows 上
+  `getpeername` 在 SYN_SENT 阶段就会返回目标地址，对没有监听的端口也报「成功」（假阳性）。
+  `coldrevive-nat --tcp-punch <本地> <对端[,..]> [--echo|--echo-responder]` 可做双机验证。
+  回环**两独立进程**实测：`attempts=1`、`elapsed` 1–4 ms、`PING/PONG` 双向往返，
+  单测连续 5 轮双侧均建立。决策与边界见 [ADR-018](docs/02-architecture/adr/ADR-018-tcp-hole-punch.md)。
+  **边界**：① BT-over-punched-TCP **未接线**（librqbit 9.1.0 不接受外部 socket）；
+  ② Unix 分支（`poll` + `__errno_location`）本机无法编译验证，须在 221 上复跑；
+  ③ 公网 NAT 双侧实测 `BLOCKED`：A 侧 CPE 未为固定本地端口建 TCP 映射，
+  UDP 学到的映射端口不能用于 TCP。三项都不得写成「BT/TCP 打洞已完成」。
+- **顺带修掉的两个真实缺陷**：① TCP 打洞在 Windows 上首次调用 `socket()` 前未做
+  `WSAStartup`（std 会惰性初始化，独立二进制不会 → 10093）；② 全部候选都建连失败时
+  重试循环不退让，超时前空转两百多万轮。
+- **验证**：`cargo test --workspace --offline` **228 passed / 0 failed**（本轮新增 63 条）；
+  `coldrevive-dht --self-test` 回环 PASS；`coldrevive-nat --tcp-punch` 双进程回环 PASS；
+  `coldrevive-relay` 启动行与计数文件核对通过。
+- **文档**：ADR-017 / ADR-018、ADR 索引（18 项）、[CONFIG](docs/04-protocol/CONFIG.md)
+  增 `engine.max_active_seeds`、[ROADMAP](docs/06-plan/ROADMAP.md) M2 进度条目。
+
 ## [2.4.78] - 2026-11-17 — S3 / S5 / S6 判据判定（所有者依证据手工回填）
 
 > 所有者指令：「根据实验的结果，给 S3/s5/s6 下判据」。本轮是**判定**，不是新的测量：

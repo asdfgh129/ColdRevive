@@ -2,6 +2,6 @@
 name = "cr-sched"
 version.workspace = true
 edition.workspace = true
-description = "M2 (W4.3): LRU 冷热调度器（骨架）"
+description = "M2 (W4.3): LRU 冷热调度器——活跃池上限 / 逐出 / 顺序刷新（纯逻辑，无 I/O）"
 
 [dependencies]

@@ -25,7 +25,7 @@
 //! `RELAY_AUTH=<psk|none>` 与 `RELAY_KEY_FP=<指纹>` 供人工核对两端是否同一把钥匙。
 //! `--stats-file` 每 200 ms 落一份机读计数，供测试读取**真实**投递/丢弃/转发/拒绝次数。
 
-use cr_nat::relay_server::{parse_instance_id, printable_instance, Limits, RelayServer};
+use cr_nat::relay_server::{parse_instance_id, printable_instance, IpNet, Limits, RelayServer};
 use cr_nat::secure;
 use std::env;
 use std::fs;
@@ -131,13 +131,33 @@ fn main() {
     if let Some(v) = opt("--data-burst").and_then(|s| s.parse::<u64>().ok()) {
         limits.data_burst_bytes = v.max(1);
     }
+    // 单 IP 维度（W3.9 后续）：整机上限挡不住「一台机器占满所有名额」。
+    if let Some(v) = opt("--max-conns-per-ip").and_then(|s| s.parse::<usize>().ok()) {
+        limits.max_conns_per_ip = v.max(1);
+    }
+    if let Some(v) = opt("--register-per-ip-per-min").and_then(|s| s.parse::<u32>().ok()) {
+        limits.register_per_ip_per_min = v.max(1);
+    }
+    // 黑名单：可重复 `--deny 1.2.3.0/24`。解析失败直接退出——写错的黑名单
+    // 等于没有黑名单，而运维会以为已经屏蔽了。
+    let mut deny: Vec<IpNet> = Vec::new();
+    for text in opt_all("--deny") {
+        match IpNet::parse(&text) {
+            Ok(n) => deny.push(n),
+            Err(e) => {
+                eprintln!("--deny {} 非法: {}", text, e);
+                std::process::exit(2);
+            }
+        }
+    }
 
     let mut server = match RelayServer::bind(&listen) {
         Ok(s) => s
             .with_max_frame(max_frame)
             .with_psk(psk)
             .with_allow_insecure(allow_insecure || loopback)
-            .with_limits(limits),
+            .with_limits(limits)
+            .with_deny(deny.clone()),
         Err(e) => {
             eprintln!("中继服务启动失败: {}", e);
             std::process::exit(2);
@@ -168,9 +188,15 @@ fn main() {
     println!("RELAY_PEERS={}", peers.join(","));
     println!("RELAY_AUTH={}", auth_label);
     println!("RELAY_KEY_FP={}", fp);
-    println!("RELAY_LIMITS=rate:{}/s,burst:{},idle:{}s,max_conns:{},max_nodes:{},data_rate:{}/s,data_burst:{}",
+    println!("RELAY_LIMITS=rate:{}/s,burst:{},idle:{}s,max_conns:{},max_nodes:{},data_rate:{}/s,data_burst:{},max_conns_per_ip:{},register_per_ip_per_min:{}",
              limits.rate_per_sec, limits.burst, limits.idle.as_secs(),
-             limits.max_conns, limits.max_nodes, limits.data_byte_rate, limits.data_burst_bytes);
+             limits.max_conns, limits.max_nodes, limits.data_byte_rate, limits.data_burst_bytes,
+             limits.max_conns_per_ip, limits.register_per_ip_per_min);
+    if deny.iter().any(|n| n.is_all_ipv4()) {
+        eprintln!("[coldrevive-relay] 警告：--deny 0.0.0.0/0 会拒绝所有来源（等于不提供服务）。");
+    }
+    // 黑名单回显的是**解析后的网段**，让部署侧能核对「我屏蔽的到底是什么」。
+    println!("RELAY_DENY={}", deny.iter().map(|n| n.to_text()).collect::<Vec<_>>().join(","));
     println!(
         "[coldrevive-relay] 实例 {} 帧路由监听 {}，同侪 {} 个；认证={}；无业务解析、不合成应答",
         instance_label,
@@ -197,7 +223,8 @@ fn main() {
                  \"bad_tag\":{},\"rate_limited\":{},\"idle_closed\":{},\"conn_cap_rejected\":{},\
                  \"declared_updates\":{},\"declared_direct\":{},\"declared_relay_only\":{},\
                  \"declared_unknown\":{},\"reach_lookups\":{},\
-                 \"data_bytes_admitted\":{},\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{}}}",
+                 \"data_bytes_admitted\":{},\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},\
+                 \"blacklisted\":{},\"ip_cap_rejected\":{},\"ip_rate_limited\":{},\"ip_tracked\":{}}}",
                 listen_label,
                 inst,
                 auth,
@@ -224,7 +251,11 @@ fn main() {
                 s.reach_lookups,
                 s.data_bytes_admitted,
                 s.bandwidth_limited,
-                s.bandwidth_limited_bytes
+                s.bandwidth_limited_bytes,
+                s.blacklisted,
+                s.ip_cap_rejected,
+                s.ip_rate_limited,
+                s.ip_tracked
             );
             if let Some(parent) = path.parent() {
                 let _ = fs::create_dir_all(parent);

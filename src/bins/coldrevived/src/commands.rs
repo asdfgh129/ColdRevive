@@ -248,6 +248,11 @@ fn seed_stats(state: &Shared) -> Json {
         ("seeding_hot", Json::b(st.bt_seeding)),
         ("served_bytes", Json::n(progress.as_ref().map(|p| p.uploaded_bytes as f64).unwrap_or(0.0))),
         ("engine_task", Json::n(task.map(|t| t as f64).unwrap_or(-1.0))),
+        // W4.3 活跃池：`seeding_active` 是调度器记账的活跃数，`seeding_cap` 是上限，
+        // `seeding_evictions` 是累计逐出次数。三者一起看才能区分「没唤醒」与「被挤掉」。
+        ("seeding_active", Json::n(st.sched.len() as f64)),
+        ("seeding_cap", Json::n(st.sched.cap() as f64)),
+        ("seeding_evictions", Json::n(st.sched.evictions() as f64)),
     ];
     if let Some((req, occ)) = utp {
         fields.push(("utp_requested", Json::b(req)));

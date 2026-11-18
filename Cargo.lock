@@ -378,6 +378,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "coldrevive-dht"
+version = "0.1.0"
+dependencies = [
+ "cr-dht",
+]
+
+[[package]]
 name = "coldrevive-nat"
 version = "0.1.0"
 dependencies = [
@@ -402,6 +409,7 @@ dependencies = [
  "cr-indexer",
  "cr-kad",
  "cr-nat",
+ "cr-sched",
  "cr-store",
  "cr-torrent",
  "cr-wake",

@@ -2,7 +2,7 @@
 
 > **当前状态**：[G0 条件冻结](../docs/06-plan/G0-REVIEW.md) 于 2026-11-13 生效后，**M1 已按门禁开工**：
 > 根 `Cargo.toml` / `Cargo.lock` 与 17 个 crate + 4 个 bin 已建立，`cargo test --workspace --offline`
-> **55 个 Rust 单测全绿**（cr-nat 落地新增 24 个：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类 + 策略 + 矩阵口径）；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
+> **228 个 Rust 单测全绿**（2026-11-18）（cr-nat 落地新增 24 个：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类 + 策略 + 矩阵口径）；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
 > （`evidence_valid=true`，报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`）。
 > **2026-11-13 补记（T1 前置）**：`cr-core` 的 `NodeSpec` 增加可选 `host`（缺省回落 `bind`），
 > 新增 `Config::host / me_host / peer_host / url`；`coldrevived` 增加 `--self-host` / `--workdir` /
@@ -38,10 +38,10 @@ src/
 │   ├── cr-torrent/         M-03 伴随种子生成
 │   ├── cr-store/           M-04 影子索引库（SQLite）
 │   ├── cr-kad/             M-05 KAD 适配
-│   ├── cr-dht/             M-06 Mainline DHT 适配
+│   ├── cr-dht/             M-06 Mainline DHT 适配【已实现：bencode / 160 位 ID / Kademlia 桶 / 四种 KRPC / token；不等于 S3 证据】
 │   ├── cr-nat/             M-07 连通性【已落地：STUN + NAT-PMP + PCP + UPnP IGD + 中继回退 + 分类/策略，M2 合法前置；S6 仍 not_run】
 │   ├── cr-wake/            M-08 唤醒信令
-│   ├── cr-sched/           M-09 冷热调度
+│   ├── cr-sched/           M-09 冷热调度【已实现：活跃池 + LRU 逐出 + 逻辑时钟，纯逻辑无 I/O】
 │   ├── cr-guard/           M-10 握手拦截
 │   ├── cr-engine/          M-11 BT 引擎抽象（Engine Trait，屏蔽 rqbit / libtorrent 差异）
 │   ├── cr-ed2k/            M-12 跨协议补源（P2 / v2）
@@ -53,7 +53,9 @@ src/
 │   ├── coldrevived/        常驻守护进程（引擎 + 索引 + DHT + HTTP/WS/RPC）
 │   ├── coldrevive-agent/   托盘 / 浏览器捕获 / UPnP 续租 / 看护
 │   ├── coldrevive-cli/     CLI（M1 MVP 入口）
-│   └── coldrevive-nat/     NAT 穿透诊断（M2 合法前置；不触碰 T0/M1 流程）
+│   ├── coldrevive-nat/     NAT 穿透诊断（含 --tcp-punch 同时打开；不触碰 T0/M1 流程）
+│   ├── coldrevive-dht/     Mainline DHT 自检 / 探测（--self-test / --ping / --get-peers）
+│   └── coldrevive-relay/   生产中继服务端（PSK + 加密 + 按 IP 限额 + 黑名单）
 └── ui/                     Web UI 静态资源（编译期嵌入二进制）
 ```
 

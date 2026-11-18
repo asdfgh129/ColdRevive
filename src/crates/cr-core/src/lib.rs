@@ -333,6 +333,12 @@ pub struct Config {
     pub engine_dir: PathBuf,
     /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
     pub engine_listen: Option<SocketAddr>,
+    /// 做种活跃池上限（`engine.max_active_seeds`，W4.3）。`None` = 用 `cr-sched` 的默认值。
+    ///
+    /// 只有活跃池里的任务会 `activate`；超过上限时逐出最久未用者并暂停它。
+    /// 这里用 `Option` 而不是直接落默认值，是为了让「配置缺省」和「显式配 8」在
+    /// 诊断输出里可区分——默认值变更时不会悄悄改变已有部署的行为。
+    pub engine_max_active_seeds: Option<usize>,
 }
 
 impl Config {
@@ -431,6 +437,19 @@ impl Config {
                 Some(a)
             }
         };
+        // 活跃池上限：非法值直接报错。0 也报错——夹到 1 会让「配错了」看起来像「配好了」，
+        // 而这个数字决定节点能不能供片，不能让它在配置层被悄悄改写。
+        let engine_max_active_seeds = match engine_get("max_active_seeds") {
+            None => None,
+            Some(s) => {
+                let n = s.parse::<usize>()
+                    .map_err(|e| format!("engine.max_active_seeds 非法（需要正整数）: {s}: {e}"))?;
+                if n == 0 {
+                    return Err("engine.max_active_seeds 必须 ≥ 1".to_string());
+                }
+                Some(n)
+            }
+        };
         Ok(Config {
             node_id: String::new(),
             bind,
@@ -457,6 +476,7 @@ impl Config {
             nat_utp,
             engine_dir,
             engine_listen,
+            engine_max_active_seeds,
         })
     }
 

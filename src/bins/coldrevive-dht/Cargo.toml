@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-dht"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W3.2): Mainline DHT 探测/自检工具（--self-test / --serve / --ping / --get-peers）"
+
+[dependencies]
+cr-dht = { path = "../../crates/cr-dht" }

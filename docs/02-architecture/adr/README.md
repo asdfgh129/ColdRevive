@@ -34,7 +34,10 @@ updated: 2026-11-17
 | [ADR-015](ADR-015-dependency-layering.md) | 是否继续全局零第三方依赖 | 取消全局零依赖：协议层保持 std-only，`cr-engine`/`coldrevived` 可用 librqbit + tokio | ✅ 已接受（2026-11-16 所有者决策） | 升级 librqbit / 补种上线前复核体积与内存 |
 | [ADR-016](ADR-016-s6-emule-like-reach.md) | S6 是否仍须穷举 4 类 NAT + CGNAT | **阶段性改为 eMule 式可达语义**：类别覆盖降为描述性清单，不再是 pass 前提；真实设备 / 两台主机 / 30 次观测 / 不自动 pass 一条不松 | ✅ 已接受（2026-11-17 所有者决策） | **M4 前**，或当 ≥4 个不同真实出口可用时（先到为准） |
 
-**统计**：16 项决策，15 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
+| [ADR-017](ADR-017-active-seed-pool.md) | 谁能同时供片 | 由 `cr-sched` 唯一决策；`Engine::activate` 只能经 `wake_seed`，满载逐出最久未用 | ✅ 已接受（2026-11-18） | 接入多任务做种时复核 |
+| [ADR-018](ADR-018-tcp-hole-punch.md) | TCP 打洞怎么做、算不算完成 | 最小 FFI + `poll`/`SO_ERROR` 判据；**原语完成、BT 数据面未接线** | ✅ 已接受（2026-11-18） | 引擎支持外部 socket 或换接入方式时 |
+
+**统计**：18 项决策，17 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 
 > **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
 > RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、

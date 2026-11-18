@@ -18,6 +18,7 @@ pub mod relay;
 pub mod secure;
 pub mod relay_server;
 pub mod stun;
+pub mod tcp_punch;
 pub mod upnp;
 
 pub use census::{

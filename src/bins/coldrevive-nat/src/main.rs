@@ -31,6 +31,9 @@ fn main() {
     let mut census_path: Option<String> = None;
     let mut report_path: Option<String> = None;
     let mut tags: Vec<(String, String)> = Vec::new();
+    let mut tcp_punch: Option<(String, Vec<String>)> = None;
+    let mut echo = false;
+    let mut echo_responder = false;
 
     let mut i = 0;
     while i < args.len() {
@@ -96,6 +99,22 @@ fn main() {
                 }
                 i += 1;
             }
+            "--tcp-punch" => {
+                let local = args.get(i + 1).cloned().unwrap_or_default();
+                let peers_raw = args.get(i + 2).cloned().unwrap_or_default();
+                if local.is_empty() || peers_raw.is_empty() {
+                    fail("--tcp-punch 需要 <本地 ip:port> <对端 ip:port[,ip:port...]>");
+                }
+                let peers: Vec<String> = peers_raw
+                    .split(',')
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                tcp_punch = Some((local, peers));
+                i += 2;
+            }
+            "--echo" => echo = true,
+            "--echo-responder" => echo_responder = true,
             "--help" | "-h" => {
                 print_help();
                 return;
@@ -103,6 +122,76 @@ fn main() {
             other => fail(&format!("未知参数: {}", other)),
         }
         i += 1;
+    }
+
+    // TCP 同时打开打洞：真实 SYN、真实握手，结果只报内核告诉我们的事实。
+    if let Some((local_text, peers_text)) = tcp_punch {
+        let local = match local_text.parse::<std::net::SocketAddr>() {
+            Ok(a) => a,
+            Err(e) => fail(&format!("本地地址 {} 非法: {}", local_text, e)),
+        };
+        let mut peers = Vec::new();
+        for p in &peers_text {
+            match p.parse::<std::net::SocketAddr>() {
+                Ok(a) => peers.push(a),
+                Err(e) => fail(&format!("对端地址 {} 非法: {}", p, e)),
+            }
+        }
+        let report = cr_nat::tcp_punch::punch_tcp(
+            local,
+            &peers,
+            Duration::from_millis(timeout_ms.max(500)),
+        );
+        let mut bytes_ok: Option<bool> = None;
+        if let Some(mut p) = report.established {
+            // 双向字节验证：只有真的能在洞里收发，「打通」才算被验证过。
+            if echo || echo_responder {
+                let _ = p.stream.set_read_timeout(Some(Duration::from_millis(timeout_ms.max(500))));
+                bytes_ok = Some(if echo {
+                    use std::io::{Read, Write};
+                    let wrote = p.stream.write_all(b"PING").is_ok();
+                    let mut buf = [0u8; 4];
+                    wrote && p.stream.read_exact(&mut buf).is_ok() && &buf == b"PONG"
+                } else {
+                    use std::io::{Read, Write};
+                    let mut buf = [0u8; 4];
+                    p.stream.read_exact(&mut buf).is_ok()
+                        && &buf == b"PING"
+                        && p.stream.write_all(b"PONG").is_ok()
+                });
+            }
+            if as_json {
+                println!(
+                    "{{\"mode\":\"tcp-punch\",\"ok\":{},\"local\":\"{}\",\"peer\":\"{}\",\"attempts\":{},\"elapsed_ms\":{},\"bytes_roundtrip\":{}}}",
+                    bytes_ok.unwrap_or(true), p.local, p.peer, p.attempts,
+                    p.elapsed.as_millis(),
+                    bytes_ok.map(|b| b.to_string()).unwrap_or_else(|| "null".to_string())
+                );
+            } else {
+                println!("TCP_PUNCH=established local={} peer={} attempts={} elapsed_ms={} bytes_roundtrip={}",
+                    p.local, p.peer, p.attempts, p.elapsed.as_millis(),
+                    bytes_ok.map(|b| b.to_string()).unwrap_or_else(|| "not-tested".to_string()));
+            }
+            if bytes_ok == Some(false) {
+                exit(1);
+            }
+            return;
+        }
+        // 没打通：如实报，不合成结果。
+        let errs = if report.errors.is_empty() {
+            "no-error-reported(被静默丢弃)".to_string()
+        } else {
+            report.errors.join("; ")
+        };
+        if as_json {
+            println!(
+                "{{\"mode\":\"tcp-punch\",\"ok\":false,\"local\":\"{}\",\"peers\":\"{}\",\"attempts\":{},\"errors\":\"{}\"}}",
+                local_text, peers_text.join(","), report.attempts, errs.replace('"', "'")
+            );
+        } else {
+            eprintln!("TCP_PUNCH=failed attempts={} errors={}", report.attempts, errs);
+        }
+        exit(1);
     }
 
     // 汇总模式：只读文件，不探测。避免「想看一眼清单却顺手多打了几枪」。
@@ -454,6 +543,10 @@ fn print_help() {
   # 4) 问中继「某节点自报的可达性类别」（不发探测包）\n\
   coldrevive-nat --lookup <中继地址> <节点id-hex（32位）> [--json]\n\
 \n\
+  # 5) TCP 同时打开打洞（两侧须几乎同时启动）\n\
+  coldrevive-nat --tcp-punch <本地 ip:port> <对端 ip:port[,..]> \\\n\
+                [--echo | --echo-responder] [--timeout <毫秒>] [--json]\n\
+\n\
 选项:\n\
   --json            以 JSON 输出（字段顺序稳定，供脚本解析）\n\
   --timeout <毫秒>  每次探测超时（默认 3000）\n\
@@ -464,6 +557,9 @@ fn print_help() {
   --lookup <中继> <id>  查询某节点的可达性声明；查不到回 unknown（unknown ≠ 连不上）\n\
   --census <文件>   探测后追加一条样本到 JSONL（同 sample_id 自动去重）\n\
   --report <文件>   只汇总已有样本，不探测\n\
+  --tcp-punch <l> <p...>  TCP 同时打开：绑定本地端口，向对端公网映射端口并发 SYN\n\
+  --echo            打通后发 PING 并等 PONG（发起方）\n\
+  --echo-responder  打通后等 PING 并回 PONG（应答方）\n\
   --tag k=v         样本元信息，可多次；egress 必填\n\
   -h, --help        显示本帮助\n\
 \n\
