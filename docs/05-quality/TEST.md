@@ -22,9 +22,9 @@ updated: 2026-11-17
 > `s6_status=not_run`、`g2_claim=false`，**不构成 S6 / G2 证据**。
 > **S3 / S5 / S6 状态：2026-11-17 已由所有者依证据判定**（S3 `pass` / S5 `fallback` /
 > S6 `pass`（`closed_with_exceptions`），见 §2.11 与[判定记录](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)）；
-> **G2 仍未达标、未宣称**（`g2_claim=false`）；`cargo test --workspace --offline` **255/255**（2026-11-18，v2.4.85；
-> Windows 全仓 255/255；Linux 侧本轮在 221 的最小工作区跑 `-p cr-nat` **141/141**，含新增的
-> `max_datagram_fits_ipv6_min_mtu`）。
+> **G2 仍未达标、未宣称**（`g2_claim=false`）；`cargo test --workspace --offline` **260/260**（2026-11-18，v2.4.86；
+> Windows 全仓 260/260。跨主机验收 `tests/e2e/w53/udp_relay_wake.py` **23/23**，走的是真实公网中继
+> `119.29.150.254:7101` 与两台真实主机（`192.168.1.221` / `112.5.60.4` 出口），不是回环 mock）。
 > 本轮新增 `cr-nat::relay_udp` 的 9 条单测（MAC 篡改不回声、重放丢包、未注册带原因拒绝、目标缺席回 `target_absent`、
 > 会话配额拒绝、超限报文丢弃、两客户端转发、HELLO/PING 往返），全部为**回环真实 UDP**，无 mock。
 > M2 实现项进度：`cr-dht` 与 LRU 接引擎已落地、中继生产化已收尾、TCP 打洞**只到原语**（见 [ADR-018](../02-architecture/adr/ADR-018-tcp-hole-punch.md)）。

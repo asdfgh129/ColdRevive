@@ -946,6 +946,10 @@ impl UdpRelayClient {
     }
 
     /// 一次 PING/PONG，返回微秒级往返。RTT 只用本进程单调时钟，因此**不需要**两端对时。
+    ///
+    /// **订阅线程不要用它**：这里会一直读到 `PONG` 为止，中途收到的 `DELIVER`
+    /// 会被丢掉——那就是「悄悄丢了一次唤醒」。订阅侧用 [`Self::send_ping`] 只发不等，
+    /// 由自己的收包循环统一处理包括 `PONG` 在内的所有帧。
     pub fn ping(&mut self, timeout: Duration) -> Result<u128, String> {
         let token = self.seq.wrapping_add(1);
         let t0 = Instant::now();
@@ -977,6 +981,17 @@ impl UdpRelayClient {
 
     pub fn bye(&mut self) -> Result<(), String> {
         self.send(UdpKind::Bye, &[]).map(|_| ())
+    }
+
+    /// 只发 `PING`、**不等** `PONG`，返回本条 token（等于报文头里的 seq）。
+    ///
+    /// 用途只有一个：给服务端续命。中继按 `last_seen` 回收空闲会话（默认 60 s），
+    /// 订阅连接常年收不到业务帧，不续期就会在 60 s 后被静默删掉——表现为
+    /// 「明明在跑却叫不醒」，比连不上更难查。`PONG` 由调用方的收包循环当普通帧忽略。
+    pub fn send_ping(&mut self) -> Result<u64, String> {
+        let token = self.seq.wrapping_add(1);
+        self.send(UdpKind::Ping, &token.to_be_bytes())?;
+        Ok(token)
     }
 
     /// 收一帧；读超时返回 `Ok(None)`（与 TCP 侧 `recv_frame_optional` 同语义）。

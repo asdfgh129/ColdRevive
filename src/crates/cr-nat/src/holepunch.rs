@@ -395,11 +395,131 @@ pub fn relay_wake_any(
     Err(format!("全部中继失败（{}）", errs.join("; ")))
 }
 
+// ---------------------------------------------------------------------------
+// v2.4.86：同一条唤醒请求走中继的 **UDP 承载**
+//
+// 为什么需要另一条：`relay_wake` 走 TCP 连到中继并 `RELAY` 到对端的**TCP 会话**。
+// 如果中继所在机器的入向 TCP 在数据阶段被掐（本项目的腾讯云轻量就是），TCP 侧
+// 根本不可用，持有者也只可能通过 UDP 注册——这时请求侧的唤醒必须同样走 UDP，
+// 否则「持有者在 UDP 注册表里，请求者去 TCP 注册表里找」永远找不到。
+//
+// 语义与 TCP 版一一对应：一次性会话 id 注册 → `DATA(target=peer)` → 等 `DELIVER`。
+// 差别只有两处，都要如实写在调用方看得见的地方：
+//   1. **承载层不重传**。下面做的是**调用层**两连发（间隔 300 ms，命中即停），
+//      不是把 UDP 变成可靠传输——两次都丢就是失败，如实返回错误。
+//   2. 中继会回 `STATUS`。`target_absent` 意味着「对端没在 UDP 注册表里」，
+//      这时立刻失败更诚实，不要让调用方白等到超时还以为网络慢。
+// ---------------------------------------------------------------------------
+
+/// 调用层重发间隔（承载层不做重传，这一层最多发 [`WAKE_UDP_MAX_SENDS`] 次）。
+const WAKE_UDP_RESEND: Duration = Duration::from_millis(300);
+const WAKE_UDP_MAX_SENDS: usize = 2;
+
+/// 走 UDP 承载发一次唤醒，返回对端应答负载。
+///
+/// PSK 取自 `relay::default_psk()`（与 `coldrevive-relay`、`relaybench` 同一处配置），
+/// 需要显式指定时用 [`relay_wake_udp_with_psk`]。
+pub fn relay_wake_udp(
+    relay_udp: &str,
+    self_id: &[u8; NODE_ID_LEN],
+    peer_id: &[u8; NODE_ID_LEN],
+    wake: &[u8],
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    relay_wake_udp_with_psk(relay_udp, self_id, peer_id, wake, timeout,
+                            crate::relay::default_psk())
+}
+
+pub fn relay_wake_udp_with_psk(
+    relay_udp: &str,
+    self_id: &[u8; NODE_ID_LEN],
+    peer_id: &[u8; NODE_ID_LEN],
+    wake: &[u8],
+    timeout: Duration,
+    psk: Option<[u8; crate::secure::PSK_LEN]>,
+) -> Result<Vec<u8>, String> {
+    use crate::relay_udp::{UdpKind, UdpRelayClient, UdpStatus};
+
+    let mut c = UdpRelayClient::connect(relay_udp, timeout)
+        .map_err(|e| format!("UDP 中继不可达: {e}"))?
+        .with_psk(psk);
+    // 一次性会话 id：避免与「本节点自己的持有者订阅会话」抢占同一表项，
+    // 服务端把本会话 id 交给持有者，持有者据此把应答投回来。
+    let session = ephemeral_session_id(self_id);
+    c.hello(session, timeout)
+        .map_err(|e| format!("UDP 中继注册失败: {e}"))?;
+
+    let deadline = Instant::now() + timeout;
+    let mut next_send = Instant::now();
+    let mut sends = 0usize;
+    loop {
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "UDP 中继等待对端应答超时（已发 {} 次，承载层不重传）", sends));
+        }
+        if sends < WAKE_UDP_MAX_SENDS && now >= next_send {
+            c.send_data(peer_id, wake)
+                .map_err(|e| format!("UDP 中继发送失败: {e}"))?;
+            sends += 1;
+            next_send = now + WAKE_UDP_RESEND;
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        let wait = next_send
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1))
+            .min(left);
+        match c.recv_frame(wait)? {
+            // 对端应答：谁回的都收——中继只按 target 投递，能到这里就说明投到了。
+            Some(f) if f.kind == UdpKind::Deliver => return Ok(f.payload),
+            Some(f) if f.kind == UdpKind::Status => {
+                if f.payload.len() < 9 {
+                    continue;
+                }
+                match UdpStatus::from_code(f.payload[0]) {
+                    // 已转出，继续等对端应用应答。
+                    Some(UdpStatus::Forwarded) => continue,
+                    // 没转出去：立刻失败并带上中继给的原因，别让调用方以为是网络慢。
+                    Some(other) => {
+                        return Err(format!("UDP 中继未转发（{}）", other.as_str()))
+                    }
+                    None => continue,
+                }
+            }
+            // PONG / ACK / 其它控制帧：与本次唤醒无关。
+            Some(_) => continue,
+            None => continue,
+        }
+    }
+}
+
+/// 按顺序尝试 UDP 承载的中继列表；错误逐条聚合，不压成一句。
+pub fn relay_wake_udp_any(
+    relays_udp: &[String],
+    self_id: &[u8; NODE_ID_LEN],
+    peer_id: &[u8; NODE_ID_LEN],
+    wake: &[u8],
+    timeout: Duration,
+) -> Result<(String, Vec<u8>), String> {
+    if relays_udp.is_empty() {
+        return Err("未配置任何 UDP 中继端点".into());
+    }
+    let mut errs: Vec<String> = Vec::new();
+    for r in relays_udp {
+        match relay_wake_udp(r, self_id, peer_id, wake, timeout) {
+            Ok(v) => return Ok((r.clone(), v)),
+            Err(e) => errs.push(format!("{}: {}", r, e)),
+        }
+    }
+    Err(format!("全部 UDP 中继失败（{}）", errs.join("; ")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::endpoint::EndpointKind;
     use std::net::UdpSocket;
+    use std::sync::mpsc;
     use std::thread;
 
     fn ep(ip: &str, port: u16) -> Endpoint {
@@ -618,5 +738,69 @@ mod tests {
         assert!(a.punch_acked);
         let got = rx.recv_timeout(Duration::from_millis(500)).unwrap();
         assert_eq!(got, back, "对端应收到真实回打候选");
+    }
+
+    /// v2.4.86：唤醒走中继的 UDP 承载。用**真实 socket + 真实中继服务器**，
+    /// 持有者是一个独立线程（独立 socket），收到 `DELIVER` 才回应答。
+    #[test]
+    fn udp_relay_wake_round_trips_through_real_sockets() {
+        use crate::relay_udp::{UdpKind, UdpRelayClient, UdpRelayServer};
+
+        let h = UdpRelayServer::bind("127.0.0.1:0").unwrap().spawn();
+        let addr = h.local_addr().to_string();
+        let holder = crate::node_id_16("holder-udp");
+        let req = crate::node_id_16("req-udp");
+        let ack = br#"{"type":"WAKEUP_ACK","state":"hot"}"#.to_vec();
+
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let addr_for_holder = addr.clone();
+        let ack_for_holder = ack.clone();
+        let th = thread::spawn(move || -> usize {
+            let mut c = UdpRelayClient::connect(&addr_for_holder, Duration::from_millis(500))
+                .unwrap()
+                .with_psk(None);
+            c.hello(holder, Duration::from_millis(500)).unwrap();
+            ready_tx.send(()).unwrap();
+            let mut answered = 0usize;
+            while answered == 0 {
+                match c.recv_frame(Duration::from_millis(800)) {
+                    Ok(Some(f)) if f.kind == UdpKind::Deliver => {
+                        c.send_data(&f.from, &ack_for_holder).unwrap();
+                        answered += 1;
+                    }
+                    Ok(_) => continue,
+                    Err(_) => break,
+                }
+            }
+            answered
+        });
+        ready_rx.recv_timeout(Duration::from_secs(2)).expect("持有者应注册成功");
+
+        let got = relay_wake_udp_with_psk(&addr, &req, &holder, br#"{"type":"WAKEUP_REQ"}"#,
+                                          Duration::from_millis(1500), None)
+            .expect("UDP 唤醒应拿到对端应答");
+        assert_eq!(got, ack, "应答必须是对端应用真实发出的那一份");
+        assert_eq!(th.join().unwrap(), 1, "持有者应恰好收到并回应一次投递");
+        h.stop();
+    }
+
+    /// 对端不在 UDP 注册表里时，中继回 `STATUS(target_absent)`；
+    /// 这一层要**立刻**失败并把原因带出来，不能让调用方白等到超时。
+    #[test]
+    fn udp_relay_wake_reports_target_absent_without_waiting() {
+        use crate::relay_udp::UdpRelayServer;
+
+        let h = UdpRelayServer::bind("127.0.0.1:0").unwrap().spawn();
+        let addr = h.local_addr().to_string();
+        let t0 = Instant::now();
+        let err = relay_wake_udp_with_psk(&addr, &crate::node_id_16("req-absent"),
+                                          &crate::node_id_16("nobody-home"), b"{}",
+                                          Duration::from_secs(3), None)
+            .unwrap_err();
+        let took = t0.elapsed();
+        assert!(err.contains("target_absent"), "错误里必须带中继给的原因: {err}");
+        assert!(took < Duration::from_millis(2000),
+                "应在收到 STATUS 后立刻失败，实际等了 {:?}", took);
+        h.stop();
     }
 }

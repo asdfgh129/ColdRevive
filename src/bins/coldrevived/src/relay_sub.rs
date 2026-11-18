@@ -24,10 +24,11 @@ use cr_core::Config;
 use cr_nat::node_id_16;
 use cr_nat::reach::{now_ms, ReachDeclaration};
 use cr_nat::relay::{FrameKind, RelayClient, NODE_ID_LEN};
+use cr_nat::relay_udp::{UdpKind, UdpRelayClient};
 use std::net::UdpSocket;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const WAKE_REPLY_TIMEOUT: Duration = Duration::from_millis(1500);
@@ -37,6 +38,13 @@ const RECONNECT_DELAY: Duration = Duration::from_secs(1);
 /// 500ms 的代价是每次超时一次系统调用；换来的是探测结果一出现（最多延迟半秒）
 /// 就能把「我只能走中继」告诉中继。这个值只影响本线程，不碰业务路径。
 const SUB_POLL: Duration = Duration::from_millis(500);
+
+/// UDP 承载的会话保活间隔。
+///
+/// 中继按 `last_seen` 回收空闲会话（`coldrevive-relay` 默认 60 s）。订阅连接平时
+/// **一条业务帧都没有**，不主动续期就会在 60 s 后被静默删掉：表现为「进程还在、
+/// 日志没报错、但谁都叫不醒它」。取 20 s 是 60 s 的三分之一，够容两次报文丢失。
+const UDP_KEEPALIVE: Duration = Duration::from_secs(20);
 
 /// 最近一次探测得出的可达性声明。探测线程写入，订阅线程读取。
 ///
@@ -69,7 +77,8 @@ pub fn local_wake_host(bind: &str) -> String {
     }
 }
 
-/// 只在 `nat.enabled && nat.relay` 存在时启动；失败自动重连，不阻塞主线程。
+/// 只在 `nat.enabled` 且配了中继（`nat.relay` 或 `nat.relay_udp`）时启动；
+/// 失败自动重连，不阻塞主线程。
 pub fn spawn(cfg: &Config) {
     if !cfg.nat_enabled {
         return;
@@ -80,7 +89,8 @@ pub fn spawn(cfg: &Config) {
     } else {
         cfg.nat_relays.clone()
     };
-    if relays.is_empty() {
+    let relays_udp = cfg.nat_relay_udps.clone();
+    if relays.is_empty() && relays_udp.is_empty() {
         return;
     }
     let wake_port = match cfg.me() {
@@ -92,20 +102,43 @@ pub fn spawn(cfg: &Config) {
     }
     let self_id = node_id_16(&cfg.node_id);
     let wake_host = local_wake_host(&cfg.bind);
-    let label = cfg.node_id.clone();
-    thread::spawn(move || {
-        let mut start = 0usize;
-        loop {
-            let (addr, res) = serve_from(&relays, start, &self_id, &wake_host, wake_port);
-            if let Err(e) = res {
-                eprintln!("[{}][relay-sub] 订阅中断（{}）: {}，{}s 后切换重试",
-                          label, addr, e, RECONNECT_DELAY.as_secs());
+
+    // TCP 承载：一条线程，按列表顺序切换。
+    if !relays.is_empty() {
+        let label = cfg.node_id.clone();
+        let wake_host = wake_host.clone();
+        thread::spawn(move || {
+            let mut start = 0usize;
+            loop {
+                let (addr, res) = serve_from(&relays, start, &self_id, &wake_host, wake_port);
+                if let Err(e) = res {
+                    eprintln!("[{}][relay-sub] 订阅中断（{}）: {}，{}s 后切换重试",
+                              label, addr, e, RECONNECT_DELAY.as_secs());
+                }
+                // 断开后从下一个中继开始，避免对已宕机的实例反复重连。
+                start = (start + 1) % relays.len();
+                thread::sleep(RECONNECT_DELAY);
             }
-            // 断开后从下一个中继开始，避免对已宕机的实例反复重连。
-            start = (start + 1) % relays.len();
-            thread::sleep(RECONNECT_DELAY);
-        }
-    });
+        });
+    }
+
+    // v2.4.86：UDP 承载独立一条线程。两种承载可以同时跑（同一节点的两条路），
+    // 一条断了不影响另一条；各自有自己的重连与切换。
+    if !relays_udp.is_empty() {
+        let label = cfg.node_id.clone();
+        thread::spawn(move || {
+            let mut start = 0usize;
+            loop {
+                let addr = &relays_udp[start % relays_udp.len()];
+                if let Err(e) = serve_udp(addr, &self_id, &wake_host, wake_port, UDP_KEEPALIVE) {
+                    eprintln!("[{}][relay-sub] UDP 订阅中断（{}）: {}，{}s 后切换重试",
+                              label, addr, e, RECONNECT_DELAY.as_secs());
+                }
+                start = (start + 1) % relays_udp.len();
+                thread::sleep(RECONNECT_DELAY);
+            }
+        });
+    }
 }
 
 /// 从 `start` 开始依次尝试列表里的中继，返回实际使用的地址与结果。
@@ -183,6 +216,60 @@ fn serve(
     }
 }
 
+/// v2.4.86：UDP 承载上的订阅循环。语义与 [`serve`] 逐条对应：
+/// 收到 `DELIVER`（对端发来的唤醒/打洞帧）→ 原样投给本机守护进程的唤醒端口 →
+/// 把守护进程的**真实应答**投回来源会话。**不构造任何业务应答**。
+///
+/// 与 TCP 版的两处差别，都是承载本身带来的，不是实现取舍：
+///  1. 没有「注册即声明」这一步——UDP 线缆格式里没有声明帧，所以走 UDP 订阅的节点
+///     在中继看来 `declared=false`（`lookup` 会报 unknown）。这只影响「先查再打洞」
+///     的优化（不会替对端跳过直连），不影响唤醒能不能送到。
+///  2. 必须自己续期：中继按 `last_seen` 回收空闲会话，订阅平时没有业务帧，
+///     所以要每 `keepalive` 发一次 `PING`。`PONG` 由本循环当普通帧忽略——
+///     **不能用 `UdpRelayClient::ping()`**，那会一直读到 PONG 为止，把夹在中间的
+///     `DELIVER` 吞掉（等于悄悄丢一次唤醒）。
+fn serve_udp(
+    relay: &str,
+    self_id: &[u8; NODE_ID_LEN],
+    wake_host: &str,
+    wake_port: u16,
+    keepalive: Duration,
+) -> Result<(), String> {
+    let mut conn = UdpRelayClient::connect(relay, CONNECT_TIMEOUT)?;
+    conn.hello(*self_id, CONNECT_TIMEOUT)
+        .map_err(|e| format!("UDP 中继注册失败: {e}"))?;
+    eprintln!("[relay-sub] 已订阅 UDP 承载 {}（保活 {}s；该承载不支持可达性声明）",
+              relay, keepalive.as_secs());
+
+    let udp = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("订阅 UDP 绑定失败: {}", e))?;
+    udp.set_read_timeout(Some(WAKE_REPLY_TIMEOUT))
+        .map_err(|e| e.to_string())?;
+    let target = format!("{}:{}", wake_host, wake_port);
+    let mut buf = [0u8; 65535];
+    let mut last_ping = Instant::now();
+
+    loop {
+        match conn.recv_frame(SUB_POLL) {
+            Ok(Some(f)) if f.kind == UdpKind::Deliver && !f.payload.is_empty() => {
+                let source = f.from;
+                udp.send_to(&f.payload, &target)
+                    .map_err(|e| format!("唤醒 UDP 发送失败: {}", e))?;
+                // 守护进程拒绝/忽略该帧：不合成应答，请求侧按自身超时如实失败。
+                if let Ok((n, _)) = udp.recv_from(&mut buf) {
+                    conn.send_data(&source, &buf[..n])?;
+                }
+            }
+            // PONG / STATUS / 其它控制帧：与订阅无关，丢掉即可。
+            Ok(_) => {}
+            Err(e) => return Err(format!("UDP 订阅读包失败: {}", e)),
+        }
+        if last_ping.elapsed() >= keepalive {
+            conn.send_ping()?;
+            last_ping = Instant::now();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,6 +285,78 @@ mod tests {
     fn concrete_bind_is_used_verbatim() {
         assert_eq!(local_wake_host("192.168.1.210"), "192.168.1.210");
         assert_eq!(local_wake_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    /// v2.4.86 关键回归：**UDP 订阅会因空闲被中继回收**。
+    ///
+    /// 这个测试把中继的空闲超时压到 1.5 s、保活压到 300 ms，跑 4 s（≈ 3 个超时周期），
+    /// 然后从请求侧真的发一次唤醒。断言三件事：
+    ///   1. `sessions_expired == 0`（保活真的在续期）；
+    ///   2. 唤醒仍然能送到本机「守护进程」（独立 UDP socket），并拿回真实应答；
+    ///   3. 应答内容就是守护进程发的，不是订阅线程编的。
+    /// 去掉保活这一步，第 1、2 条都会失败——这正是「进程还活着但谁都叫不醒」的机理。
+    #[test]
+    fn udp_subscription_survives_idle_reaping_and_still_delivers() {
+        use cr_nat::holepunch::relay_wake_udp_with_psk;
+        use cr_nat::relay_udp::{UdpLimits, UdpRelayServer};
+
+        // 「守护进程」：真实 UDP socket，收到什么就回一个固定 ACK。
+        let daemon = UdpSocket::bind("127.0.0.1:0").unwrap();
+        daemon.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let daemon_port = daemon.local_addr().unwrap().port();
+        let ack = br#"{"type":"WAKEUP_ACK","state":"hot"}"#.to_vec();
+        let ack_for_daemon = ack.clone();
+        let dh = thread::spawn(move || -> usize {
+            let mut buf = [0u8; 4096];
+            let mut n_ans = 0usize;
+            while n_ans == 0 {
+                match daemon.recv_from(&mut buf) {
+                    Ok((n, from)) => {
+                        assert!(n > 0, "订阅线程不应投递空帧");
+                        daemon.send_to(&ack_for_daemon, from).unwrap();
+                        n_ans += 1;
+                    }
+                    Err(_) => break,
+                }
+            }
+            n_ans
+        });
+
+        let limits = UdpLimits { idle_timeout: Duration::from_millis(1500),
+                                 ..Default::default() };
+        let h = UdpRelayServer::bind("127.0.0.1:0").unwrap()
+            .with_limits(limits).spawn();
+        let addr = h.local_addr().to_string();
+
+        let holder = node_id_16("holder-idle");
+        let sub = {
+            let addr = addr.clone();
+            thread::spawn(move || serve_udp(&addr, &holder, "127.0.0.1", daemon_port,
+                                           Duration::from_millis(300)))
+        };
+        // 等订阅真的注册上（而不是靠猜一个 sleep 时长）。
+        let mut ok = false;
+        for _ in 0..40 {
+            if h.stats().sessions_active >= 1 { ok = true; break; }
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(ok, "订阅未注册成功: {:?}", h.stats());
+
+        // 跨过 3 个空闲周期：没有保活就一定会被回收。
+        thread::sleep(Duration::from_secs(4));
+        let s = h.stats();
+        assert_eq!(s.sessions_expired, 0, "保活失效，会话被回收了: {:?}", s);
+        assert!(s.sessions_active >= 1, "会话已不在: {:?}", s);
+
+        let got = relay_wake_udp_with_psk(&addr, &node_id_16("req-idle"), &holder,
+                                          br#"{"type":"WAKEUP_REQ"}"#,
+                                          Duration::from_millis(1500), None)
+            .expect("空闲 4 s 后仍应能唤醒");
+        assert_eq!(got, ack, "应答必须来自守护进程本身");
+        assert_eq!(dh.join().unwrap(), 1, "守护进程应恰好被投递一次");
+        // 订阅线程会一直跑（生产里也是死循环），这里不 join，随测试进程结束。
+        drop(sub);
+        h.stop();
     }
 
     /// 全列表不可达时必须如实返回聚合错误，不能谎报成功；且起始索引要轮转。

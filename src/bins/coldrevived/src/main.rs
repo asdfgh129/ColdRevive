@@ -268,7 +268,9 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
     st.index.save()?;
     st.sample = Some(facts.data);
     st.torrent = Some(torrent);
-    println!("[{}] 样本入库: {} B, infohash={}, keys={}",
+    // 这里印的是**索引条数**，不是字节数：旧文案写成 "{} B"，把「1 条」读成「1 字节」，
+    // 排查「为什么唤醒被 REJECT_NOT_FOUND」时会把人带到「样本太小/没写完」的错误方向。
+    println!("[{}] 样本入库: {} 条记录, infohash={}, keys={}",
              cfg.node_id, st.index.len(), st.torrent.as_ref().unwrap().info_hash,
              st.index.all_published_keys().len());
     Ok(())

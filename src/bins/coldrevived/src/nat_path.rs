@@ -480,6 +480,9 @@ pub fn wake_with_plan(
             .map(|e| e.addr())
             .collect()
     };
+    // v2.4.86：中继的 UDP 承载端点。与上面是**同一个中继的另一种承载**，
+    // 不是第二个中继；只在 TCP 承载全部失败后才试（顺序不抢跑，避免多一次等待）。
+    let relays_udp: Vec<String> = cfg.nat_relay_udps.clone();
 
     // ------------------------------------------------------------------
     // ADR-013：唤醒前先问中继「对端自报哪一类」，再决定要不要打洞。
@@ -596,7 +599,7 @@ pub fn wake_with_plan(
                     Ok(reply) => {
                         out.attempts.push(attempt_json("relay", &used, true,
                                                        "真实 DELIVERED 帧", 0));
-                        out = finish(out, state, req, reply, 0, ep);
+                        out = finish(out, state, req, reply, 0, ep.kind.label());
                         return out;
                     }
                     Err(e) => out.attempts.push(attempt_json("relay", &used, false,
@@ -626,7 +629,7 @@ pub fn wake_with_plan(
             let text = String::from_utf8_lossy(a.reply.as_ref().unwrap());
             match Json::parse(&text) {
                 Ok(reply) => {
-                    let o = finish(out, state, req, reply, a.rtt_ms, ep);
+                    let o = finish(out, state, req, reply, a.rtt_ms, ep.kind.label());
                     return o;
                 }
                 Err(e) => {
@@ -634,6 +637,26 @@ pub fn wake_with_plan(
                                                    &format!("应答非法 JSON: {}", e), a.rtt_ms));
                 }
             }
+        }
+    }
+    if out.result.is_err() && !relays_udp.is_empty()
+        && only_kind.map(|k| k == EndpointKind::Relay).unwrap_or(true)
+    {
+        // v2.4.86：TCP 承载全失败（或本就没配 TCP 中继）时，走中继的 UDP 承载再试一次。
+        // 判据不变：只有真的收到对端应用应答才算成功，与 TCP 路径同一把尺子。
+        match holepunch::relay_wake_udp_any(&relays_udp, &self_id, &peer_id, &wake, timeout) {
+            Ok((used, payload)) => match Json::parse(&String::from_utf8_lossy(&payload)) {
+                Ok(reply) => {
+                    out.attempts.push(attempt_json("relay-udp", &used, true,
+                                                   "真实 DELIVER 帧（UDP 承载）", 0));
+                    return finish(out, state, req, reply, 0, "relay-udp");
+                }
+                Err(e) => out.attempts.push(attempt_json(
+                    "relay-udp", &used, false,
+                    &format!("中继应答非法 JSON: {}", e), 0)),
+            },
+            Err(e) => out.attempts.push(attempt_json(
+                "relay-udp", &relays_udp.join(","), false, &e, 0)),
         }
     }
     if out.result.is_err() {
@@ -644,11 +667,11 @@ pub fn wake_with_plan(
 }
 
 fn finish(mut out: WakeOutcome, state: &Shared, req: &Json, reply: Json,
-          rtt_ms: u64, ep: &Endpoint) -> WakeOutcome {
+          rtt_ms: u64, path_label: &str) -> WakeOutcome {
     out.result = Ok((reply.clone(), rtt_ms));
-    out.path = Some(ep.kind.label().to_string());
+    out.path = Some(path_label.to_string());
     let mut st = state.lock().unwrap();
-    st.nat.last_wake_path = Some(ep.kind.label().to_string());
+    st.nat.last_wake_path = Some(path_label.to_string());
     if reply.get("status").and_then(Json::as_str) == Some("OK") {
         st.last_ack = Some(reply);
         st.last_file_hash = req.get("file_hash").and_then(Json::as_str).map(str::to_string);

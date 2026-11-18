@@ -1,0 +1,266 @@
+{
+  "spike": "W3.16",
+  "title": "中继只有 UDP 承载时的订阅与唤醒",
+  "status": "pass",
+  "is_s6_evidence": false,
+  "s6_status": "not_run",
+  "g2_claim": false,
+  "started_at": "2026-11-18T07:37:57.018591+00:00",
+  "finished_at": "2026-11-18T07:38:26.171021+00:00",
+  "relay_udp": "119.29.150.254:7101",
+  "holder": "192.168.1.221",
+  "requester": "192.168.1.210",
+  "checks": [
+    {
+      "label": "公网中继在跑（udp 7101，读得到计数）",
+      "ok": true,
+      "actual": "{\"udp_listen\":\"0.0.0.0:7101\",\"auth\":\"psk\",\"key_fp\":\"037d79762181690e\",\"datagrams\":61,\"bytes_in\":13174,\"bytes_out\":13254,"
+    },
+    {
+      "label": "221 上的样本与请求侧同一份（sha256 一致）",
+      "ok": true,
+      "actual": "556f57dbef103eef651acd2ea5138aff6550845dbe7ed05d61a80e6786a6ab7c"
+    },
+    {
+      "label": "持有者配置已落盘（221，nat.relay_udp 在文件里）",
+      "ok": true,
+      "actual": "\"workdir\": \"/tmp/w53\",\n    \"relay_udp\": \"119.29.150.254:7101\","
+    },
+    {
+      "label": "221 上唤醒端口 19901 已空出（无残留进程）",
+      "ok": true,
+      "actual": ""
+    },
+    {
+      "label": "持有者进程已拉起（221）",
+      "ok": true,
+      "actual": "started"
+    },
+    {
+      "label": "持有者 /health 200",
+      "ok": true,
+      "actual": ""
+    },
+    {
+      "label": "中继 UDP 注册表里有订阅会话（sessions_active≥1）",
+      "ok": true,
+      "actual": "sessions_active=1 hello=6"
+    },
+    {
+      "label": "持有者日志有 relay-sub 订阅记录",
+      "ok": true,
+      "actual": "1"
+    },
+    {
+      "label": "取到持有者通告",
+      "ok": true,
+      "actual": "{\"node_id\":\"A\",\"private_ip\":\"192.168.1.221\",\"wake_port\":19901,\"bt_port\":19902,\"endpoints\":[{\"kind\":\"private-lan\",\"ip\":\"192.168.1.221\",\"port\":19901,\"internal_por"
+    },
+    {
+      "label": "请求者 /health 200（本机 A）",
+      "ok": true,
+      "actual": ""
+    },
+    {
+      "label": "通告已装入请求者",
+      "ok": true,
+      "actual": "endpoints=1"
+    },
+    {
+      "label": "强制中继路：ok=true",
+      "ok": true,
+      "actual": "None"
+    },
+    {
+      "label": "强制中继路：path=relay-udp",
+      "ok": true,
+      "actual": "path=relay-udp strategy=none"
+    },
+    {
+      "label": "强制中继路：持有者回了 WAKEUP_ACK",
+      "ok": true,
+      "actual": "ack_status=OK"
+    },
+    {
+      "label": "报文真的过了公网中继（data_in≥2 且 deliver_out≥2）",
+      "ok": true,
+      "actual": "{'datagrams': 3, 'data_in': 2, 'deliver_out': 2, 'status_out': 2, 'mac_fail': 0, 'replay': 0, 'target_absent': 0, 'reject_out': 0}"
+    },
+    {
+      "label": "中继无 MAC 失败 / 无重放 / 无 target_absent",
+      "ok": true,
+      "actual": "{'datagrams': 3, 'data_in': 2, 'deliver_out': 2, 'status_out': 2, 'mac_fail': 0, 'replay': 0, 'target_absent': 0, 'reject_out': 0}"
+    },
+    {
+      "label": "已装入「候选端口无监听」的通告（模拟直连不可达）",
+      "ok": true,
+      "actual": "endpoints=1"
+    },
+    {
+      "label": "默认路：最终仍成功且落到 relay-udp",
+      "ok": true,
+      "actual": "ok=True path=relay-udp err=None"
+    },
+    {
+      "label": "默认路：直连候选确实试过且失败（不是直接跳到中继）",
+      "ok": true,
+      "actual": "[('private-lan', False), ('relay-udp', True)]"
+    },
+    {
+      "label": "对照请求者 /health 200",
+      "ok": true,
+      "actual": ""
+    },
+    {
+      "label": "对照：只配 TCP 承载时唤醒必须失败",
+      "ok": true,
+      "actual": "ok=False path=None"
+    },
+    {
+      "label": "对照：失败原因指向「连不上中继」而非「对端离线」",
+      "ok": true,
+      "actual": "[{\"kind\": \"relay\", \"addr\": \"119.29.150.254:7101\", \"ok\": false, \"detail\": \"全部中继失败（119.29.150.254:7101: connect: No connection could be made because the target machine actively refus"
+    },
+    {
+      "label": "对照：UDP 侧计数没有新增投递（证明失败不是伪装成功）",
+      "ok": true,
+      "actual": "{'datagrams': 1, 'data_in': 0, 'deliver_out': 0, 'status_out': 0, 'mac_fail': 0, 'replay': 0, 'target_absent': 0, 'reject_out': 0}"
+    }
+  ],
+  "observations": {
+    "file_hash": "556f57dbef103eef651acd2ea5138aff6550845dbe7ed05d61a80e6786a6ab7c",
+    "holder_log_subscribe": "1",
+    "advertise": {
+      "node_id": "A",
+      "endpoints": [
+        "192.168.1.221"
+      ]
+    },
+    "direct_candidates_pointed_at_closed_port": 19999,
+    "wake_forced_relay": {
+      "wake": {
+        "ok": true,
+        "path": "relay-udp",
+        "strategy": "none",
+        "rtt_ms": 0,
+        "attempts": [
+          {
+            "kind": "relay-udp",
+            "addr": "119.29.150.254:7101",
+            "ok": true,
+            "detail": "真实 DELIVER 帧（UDP 承载）",
+            "rtt_ms": 0
+          }
+        ],
+        "notes": [
+          "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明",
+          "强制候选路径：跳过可达性决策（仅验收量具用）"
+        ],
+        "reach_lookup": null,
+        "ack_status": "OK",
+        "s6_status": "not_run",
+        "evidence_valid_for_pass": false,
+        "error": null
+      },
+      "relay_delta": {
+        "datagrams": 3,
+        "data_in": 2,
+        "deliver_out": 2,
+        "status_out": 2,
+        "mac_fail": 0,
+        "replay": 0,
+        "target_absent": 0,
+        "reject_out": 0
+      }
+    },
+    "wake_default_path": {
+      "wake": {
+        "ok": true,
+        "path": "relay-udp",
+        "strategy": "none",
+        "rtt_ms": 0,
+        "attempts": [
+          {
+            "kind": "private-lan",
+            "addr": "192.168.1.221:19999",
+            "ok": false,
+            "detail": "唤醒无应答: An existing connection was forcibly closed by the remote host. (os error 10054)（punch_sent=2 acked=false peer_punched=false）",
+            "rtt_ms": 0
+          },
+          {
+            "kind": "relay-udp",
+            "addr": "119.29.150.254:7101",
+            "ok": true,
+            "detail": "真实 DELIVER 帧（UDP 承载）",
+            "rtt_ms": 0
+          }
+        ],
+        "notes": [
+          "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明"
+        ],
+        "reach_lookup": null,
+        "ack_status": "OK",
+        "s6_status": "not_run",
+        "evidence_valid_for_pass": false,
+        "error": null
+      },
+      "relay_delta": {
+        "datagrams": 3,
+        "data_in": 2,
+        "deliver_out": 2,
+        "status_out": 2,
+        "mac_fail": 0,
+        "replay": 0,
+        "target_absent": 0,
+        "reject_out": 0
+      },
+      "attempt_kinds": [
+        [
+          "private-lan",
+          false
+        ],
+        [
+          "relay-udp",
+          true
+        ]
+      ]
+    },
+    "control_tcp_only": {
+      "wake": {
+        "ok": false,
+        "path": null,
+        "strategy": "none",
+        "rtt_ms": 0,
+        "attempts": [
+          {
+            "kind": "relay",
+            "addr": "119.29.150.254:7101",
+            "ok": false,
+            "detail": "全部中继失败（119.29.150.254:7101: connect: No connection could be made because the target machine actively refused it. (os error 10061)）",
+            "rtt_ms": 0
+          }
+        ],
+        "notes": [
+          "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明",
+          "强制候选路径：跳过可达性决策（仅验收量具用）"
+        ],
+        "reach_lookup": null,
+        "ack_status": "",
+        "s6_status": "not_run",
+        "evidence_valid_for_pass": false,
+        "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+      },
+      "relay_delta": {
+        "datagrams": 1,
+        "data_in": 0,
+        "deliver_out": 0,
+        "status_out": 0,
+        "mac_fail": 0,
+        "replay": 0,
+        "target_absent": 0,
+        "reject_out": 0
+      }
+    }
+  },
+  "failed": 0
+}

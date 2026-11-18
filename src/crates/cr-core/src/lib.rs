@@ -318,6 +318,12 @@ pub struct Config {
     pub nat_relay_key: Option<String>,
     /// W3.8：中继列表（`nat.relay` 支持逗号分隔），客户端按顺序尝试并在失败时切换。
     pub nat_relays: Vec<String>,
+    /// v2.4.86：中继的 **UDP 承载**端点（`nat.relay_udp`，逗号分隔列表）。
+    ///
+    /// 与 `nat.relay` 是**同一个中继的另一种承载**，不是第二个中继：
+    /// 中继所在机器的入向 TCP 被掐时（本项目那台腾讯云轻量即如此），只能在 `nat.relay_udp`
+    /// 里填它的 UDP 端口，订阅与唤醒都走 UDP。两者可以同时配置，各自独立工作。
+    pub nat_relay_udps: Vec<String>,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
@@ -406,18 +412,23 @@ impl Config {
             .unwrap_or(true);
         // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
         // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
-        let nat_relays: Vec<String> = nat_get("relay")
-            .unwrap_or_default()
-            .split([',', ';'])
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .filter(|s| match s.rsplit_once(':') {
-                Some((h, p)) => !h.is_empty() && p.parse::<u16>().is_ok(),
-                None => false,
-            })
-            .map(str::to_string)
-            .collect();
+        let split_endpoints = |key: &str| -> Vec<String> {
+            nat_get(key)
+                .unwrap_or_default()
+                .split([',', ';'])
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter(|s| match s.rsplit_once(':') {
+                    Some((h, p)) => !h.is_empty() && p.parse::<u16>().is_ok(),
+                    None => false,
+                })
+                .map(str::to_string)
+                .collect()
+        };
+        let nat_relays: Vec<String> = split_endpoints("relay");
         let nat_relay = nat_relays.first().cloned();
+        // v2.4.86：中继的 UDP 承载端点。与 `relay` 同一套校验，非法项丢弃。
+        let nat_relay_udps: Vec<String> = split_endpoints("relay_udp");
         // M2/W5.1：`engine` 段完全可选。缺省 = 下载目录 `workdir/downloads` + **不监听入站**；
         // 引擎只在实际收到 `.torrent` 任务时惰性创建，T0/T1 的复活路径完全不经过它。
         let engine = j.get("engine").and_then(Json::as_obj);
@@ -471,6 +482,7 @@ impl Config {
             nat_relay,
             nat_relay_key: nat_get("relay_key"),
             nat_relays,
+            nat_relay_udps,
             nat_bt_external,
             nat_http_external,
             nat_utp,
@@ -631,6 +643,69 @@ mod tests {
         let cfg = Config::load(&p).unwrap();
         assert!(cfg.nat_relays.is_empty());
         assert!(cfg.nat_relay.is_none());
+        let _ = fs::remove_file(&p);
+    }
+
+    /// v2.4.86：`nat.relay_udp` 走同一套校验，但与 `relay` **互不影响**——
+    /// 它们是同一个中继的两种承载，允许只配 UDP（中继的入向 TCP 被掐时就是这种配法）。
+    #[test]
+    fn relay_udp_endpoints_are_parsed_independently() {
+        let mk = |relay: &str, udp: &str| -> String {
+            format!(r#"{{
+                "bind": "127.0.0.1",
+                "nodes": {{
+                    "A": {{"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802}},
+                    "B": {{"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}}
+                }},
+                "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+                "golden_req": "r.json", "golden_ack": "a.json",
+                "nat": {{"enabled": true, "relay": "{}", "relay_udp": "{}"}}
+            }}"#, relay, udp)
+        };
+        // 只配 UDP（TCP 侧被掐的中继）：relay 为空、UDP 列表照常生效
+        let p = std::env::temp_dir().join("cr_core_relay_udp_only.json");
+        fs::write(&p, mk("", "119.29.150.254:7101")).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert!(cfg.nat_relays.is_empty(), "没配 relay 就不能凭空造 TCP 端点");
+        assert!(cfg.nat_relay.is_none());
+        assert_eq!(cfg.nat_relay_udps, vec!["119.29.150.254:7101".to_string()]);
+        let _ = fs::remove_file(&p);
+
+        // 两种承载同时配：各自解析，互不吞并
+        let p = std::env::temp_dir().join("cr_core_relay_udp_both.json");
+        fs::write(&p, mk("r.example:7100", "u.example:7101, v.example:7102")).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert_eq!(cfg.nat_relays, vec!["r.example:7100".to_string()]);
+        assert_eq!(cfg.nat_relay_udps, vec!["u.example:7101".to_string(),
+                                            "v.example:7102".to_string()]);
+        let _ = fs::remove_file(&p);
+
+        // 非法项丢弃，不造占位端点
+        let p = std::env::temp_dir().join("cr_core_relay_udp_junk.json");
+        fs::write(&p, mk("", "nohost, w:0x, good:7101")).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert_eq!(cfg.nat_relay_udps, vec!["good:7101".to_string()]);
+        let _ = fs::remove_file(&p);
+    }
+
+    /// 旧配置（没有 `relay_udp` 键）必须得到空列表，行为逐字节不变。
+    #[test]
+    fn missing_relay_udp_key_means_empty() {
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802},
+                "B": {"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {"enabled": true, "relay": "127.0.0.1:7100"}
+        }"#;
+        let p = std::env::temp_dir().join("cr_core_relay_udp_absent.json");
+        fs::write(&p, text).unwrap();
+        let cfg = Config::load(&p).unwrap();
+        assert_eq!(cfg.nat_relays, vec!["127.0.0.1:7100".to_string()]);
+        assert!(cfg.nat_relay_udps.is_empty());
         let _ = fs::remove_file(&p);
     }
 

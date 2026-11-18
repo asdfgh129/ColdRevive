@@ -2,6 +2,41 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.86] - 2026-11-18 — 订阅与唤醒接到中继的 UDP 承载（W3.16）：这台 TCP 被掐的机器终于能当真正的中继用
+
+> v2.4.85 只让**量具**会走 UDP；守护进程的订阅与唤醒仍连 TCP，等于「路修好了但没人走」。
+> 本版把两侧接线完成。**`g2_claim=false`、`s6_status=not_run`、原生 TCP 侧 BLOCKED 均不变**。
+
+- **配置** `nat.relay_udp`（逗号分隔可多端点）：**同一个中继的另一种承载**，不是第二个中继；
+  与 `nat.relay` 可同时配，各自独立订阅、独立切换。只配它也能工作（中继入向 TCP 被掐时就是这种配法）。
+  非法端点丢弃、不造占位；旧配置无此键 → 空列表，行为逐字节不变。
+- **持有者侧** `relay-sub` 新增 UDP 订阅线程：`HELLO(node_id)` → `DELIVER` → 投给本机守护进程的
+  唤醒端口 → 把守护进程的**真实应答**投回来源会话（订阅线程不合成任何业务应答）。
+- **请求者侧** 新增 `holepunch::relay_wake_udp` / `relay_wake_udp_any`，与 TCP 版逐条对应
+  （一次性会话 id、`DATA(target=peer)`、等 `DELIVER`）。两处差别照写：
+  ① 承载不重传 → 调用层最多两连发（300 ms 间隔，命中即停），**不是**把 UDP 变可靠；
+  ② 中继回 `STATUS(target_absent)` 时**立刻**失败并带原因，不让调用方把「对端没注册」等成「网络慢」。
+  `wake_with_plan` 在 TCP 承载全失败后（或本就没配 TCP 中继）再试 UDP，路径标签记为 `relay-udp`。
+- **保活是必需的**：中继按 `last_seen` 回收空闲会话（默认 60 s），订阅平时没有业务帧，不续期就
+  会在 60 s 后被静默删掉——「进程还在、日志没报错、谁都叫不醒」。订阅线程每 20 s `send_ping()`，
+  `PONG` 由收包循环当普通帧忽略。**不能用 `UdpRelayClient::ping()`**：它读到 `PONG` 为止，
+  会把夹在中间的 `DELIVER` 吞掉。新增回归测试把中继空闲压到 1.5 s、保活 300 ms，跑 4 s 后
+  断言 `sessions_expired=0` 且仍能唤醒成功——去掉保活这条测试立刻红。
+- **实测（`tests/e2e/w53/udp_relay_wake.py`，23/23 全 PASS）**：持有者 `192.168.1.221`
+  以 `nat.relay_udp=119.29.150.254:7101` 订阅公网中继，请求者在 A（出口 `112.5.60.4`）侧唤醒——
+  强制中继路 `path=relay-udp`、`ack_status=OK`，中继增量 `datagrams=3 / data_in=2 / deliver_out=2 /
+  mac_fail=0 / replay=0 / target_absent=0`；把通告里的候选端口指到一个没监听的口（**不改 IP、不造地址**）
+  后，默认路径真的先试直连（`private-lan: false`）再落 `relay-udp`；**对照**：同一中继只配 TCP 承载时
+  唤醒失败，失败原因指向「连不上中继」，且 UDP 侧计数无任何新增投递。盒子侧 `sessions_active≥1`
+  与持有者日志 `relay-sub` 双向确认订阅真的进了 UDP 注册表。
+- **降级照写**：UDP 线缆格式没有声明帧 → 走 UDP 订阅的节点在中继看来 `declared=false`（`lookup` 报
+  unknown），只影响「先查再打洞」的优化，不影响送达；UDP 无重传、无拥塞控制不变；
+  A/B 仍同出口 `112.5.60.4`，「两个不同 NAT」仍未测。
+- **顺手修一处会误导排查的日志**：`样本入库: {} B` 实际印的是**索引条数**，读成「1 字节」会把人
+  带到「样本没写完」的错误方向，改为 `{} 条记录`。
+- `cargo test --workspace --offline` **260 passed / 0 failed**（新增 5 条：UDP 唤醒往返/快速失败、
+  `relay_udp` 配置解析两例、订阅保活回归）。
+
 ## [2.4.85] - 2026-11-18 — 专用 `UDP 7101` 落地；纠正 v2.4.84 的 MTU 错误结论
 
 > `g2_claim=false`、`s6_status=not_run` 不变；**原生 TCP 侧 BLOCKED 结论不变**。

@@ -97,6 +97,7 @@ cors_allowlist = []
 | nat | `stun_servers` | 空 | `"host:port"` 列表；空时用内置列表 |
 | nat | `gateway` / `upnp_location` | 空 | 映射协议探测目标；留空则用默认发现 |
 | nat | `relay` / `relay_key` | 空 | 中继地址（逗号分隔可多端点）/ PSK（64 位 hex 或 `file:<路径>`） |
+| nat | `relay_udp` | 空 | **同一个中继的 UDP 承载**端点（逗号分隔可多端点，如 `119.29.150.254:7101`）。中继所在机器的入向 TCP 被掐时（[ADR-020](../../02-architecture/adr/ADR-020-relay-udp-transport.md) §3.1），只填这一项即可：订阅与唤醒都走 UDP。与 `relay` 可同时配，两者独立工作、各自按列表切换。走 UDP 订阅的节点在中继看来 `declared=false`（该承载没有声明帧），只影响「先查再打洞」的优化，不影响送达 |
 | nat | `bt_external` | 空 | 运维在 CPE 上**真实建好**的 TCP 映射 `公网IP:端口` → 本机 `bt_port`。只有配置了它，tracker 才会向公网请求方通告 peer；未配置即返回空 peer 列表（绝不发 RFC1918）。**µTP 开着时还需要一条同号的 UDP 规则**——TCP 映射对 UDP 无效，缺它外部客户端会先等 µTP 超时再回落 |
 | nat | `http_external` | 空 | 同上，对应 HTTP/tracker 端口。配置后伴随种子写 BEP 12 `announce-list`（LAN + 公网两条，InfoHash 不变），唤醒 ACK 里给公网请求者的取种 URL 也换成这条 |
 | nat | `utp` | `true` | BT 监听端口上是否同时开 µTP（BEP 29，UDP 同端口）。关掉只留 TCP；标准客户端默认先试 µTP，关了它们要先等回落。不影响任何帧格式。**公网入向另需 CPE 上的 UDP 映射**（与 `bt_external` 那条 TCP 规则并列）；是否真的绑上以 `netstat -ano -p UDP` 的 PID 为准 |
