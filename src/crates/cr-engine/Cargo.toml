@@ -8,3 +8,7 @@ description = "M2 (W5.1): Engine Trait 抽象 + librqbit 9.1.0 实现（依赖�
 librqbit.workspace = true
 tokio.workspace = true
 bytes.workspace = true
+
+[dev-dependencies]
+cr-bridge = { path = "../cr-bridge" }
+cr-nat = { path = "../cr-nat" }

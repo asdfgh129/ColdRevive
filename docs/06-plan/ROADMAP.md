@@ -656,7 +656,10 @@ ColdRevive
     **但守护进程级逐出仍待签名唤醒复跑**，组件级真引擎证据不能替代。
   - **P3 `cr-bridge`（[ADR-021](../02-architecture/adr/ADR-021-punched-tcp-bridge.md)）已落地**：
     SOCKS5 出向钩子 + 回环 splice 入向，**不 fork、不换引擎**，6/6 单测；
-    对端地址显示 `127.0.0.1` 是已知降级。**端到端真实样本过桥仍未跑，不得说 BT 已支持打洞直连。**
+    对端地址显示 `127.0.0.1` 是已知降级。v2.4.89 补上**回环真引擎 e2e**：
+    1 MiB 真实样本经登记的 punched socket 完成下载（`served_registered=1`，
+    未登记负对照 0 B）；证据 `tests/e2e/w54/reports/bridge_librqbit_e2e.json`。
+    **这只是 handoff 能力，不得说 BT 已支持公网打洞直连。**
   - **v2.4.88 三个修复**：`Config.role` 显式化（此前 222 静默走 member，只表现为 `seed_tasks=0`）、
     重复 `addUri` 的假完成改为如实报错、`/health` 新增 `seed_active`/`served_bytes`。
   - **公网数据面首证**：222 跨公网 BT 取片 **2,097,152 B / 8 片**，sha256 与源文件一致，
@@ -666,8 +669,10 @@ ColdRevive
   - **公网中继原生 UDP**：`7101/UDP` 840/840、0 丢包，p50 区间 34–52 ms（见
     [M2-VANTAGE](M2-VANTAGE-2026-11-18.md) §3.4）；上一轮「④ 公网中继时延/丢包」由此闭环。
   - **仍未闭环**：① DHT announce（未授权 + 无可用邻居）；② 两个不同 NAT 同时经中继互达；
-    ③ BT-over-punched-TCP 端到端；④ 多样本守护进程级逐出；⑤ 地址轴（EIF vs ADF）。
-    `g2_claim=false`、`s6_status=not_run` 不变；全量回归 **269 passed / 0 failed**。
+    ③ `wake_with_plan` 接线（回环 handoff 已过，公网打洞仍 BLOCKED）；
+    ④ 多样本守护进程级逐出；⑤ 地址轴（EIF vs ADF）——222 只有单 IP，
+    `112.5.60.4` 是 A 侧 CPE 出口而非 222 可绑定地址，本轮跳过。
+    `g2_claim=false`、`s6_status=not_run` 不变；全量回归以本轮 `cargo test --workspace --offline` 为准。
 
 - **2026-11-18 M2 实现项推进（v2.4.79，四项里三项落地到可用、一项只到原语）**：
   按「还欠的四个实现项」逐条推进，**未宣称 G2 达标**（`g2_claim=false` 不变）。

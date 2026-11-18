@@ -122,6 +122,12 @@ pub struct EngineOptions {
     /// 结果让默认配置的 Transmission 在首连时干等 µTP，看起来像「连上了却没数据」。
     pub enable_utp: bool,
     pub ipv4_only: bool,
+    /// 出站 peer 连接走 SOCKS5（librqbit `ConnectionOptions.proxy_url`）。
+    ///
+    /// `Some("socks5://127.0.0.1:port")` 时**所有**出站 TCP 都过代理；
+    /// 代理侧负责把未登记的 peer 回落直连。ADR-021 用它把已打通的 socket
+    /// 交给引擎，不修改 librqbit。
+    pub proxy_url: Option<String>,
     pub upload_bps: Option<u32>,
     pub download_bps: Option<u32>,
     /// 初始化（读盘 + 校验已有分片）的等待上限，超时如实报错。
@@ -137,6 +143,7 @@ impl EngineOptions {
             enable_trackers: true,
             enable_utp: true,
             ipv4_only: true,
+            proxy_url: None,
             upload_bps: None,
             download_bps: None,
             init_timeout: Duration::from_secs(60),
@@ -199,6 +206,7 @@ impl RqbitEngine {
             // 入站是否可达由 `listen` 决定，两者不可混为一谈。
             connect: Some(ConnectionOptions {
                 enable_tcp: true,
+                proxy_url: opts.proxy_url.clone(),
                 ..Default::default()
             }),
             ipv4_only: opts.ipv4_only,

@@ -12,7 +12,8 @@ updated: 2026-11-18
 
 ## 状态
 
-已采纳（2026-11-18）。实现：`cr-bridge`。**不 fork、不换引擎**。
+已采纳（2026-11-18）。实现：`cr-bridge` + `cr-engine::EngineOptions.proxy_url`。
+**不 fork、不换引擎**；回环真引擎 e2e 已过（见下方实施状态）。
 
 ## 背景：打洞原语有了，数据面进不去
 
@@ -67,11 +68,30 @@ librqbit 的 `ConnectionOptions.proxy_url` 接受 `socks5://host:port`（见
 
 - 单测必须覆盖：注册 socket 的字节往返、未注册目标回落直连、非 CONNECT 命令拒绝、
   非法 ATYP 拒绝、注册项一次性。
-- 端到端（后续）：一条 punched socket 上跑完一个真实样本的一片，且引擎侧
-  `progress().downloaded_bytes > 0`。**在此之前，不得对外说「BT 已支持打洞直连」。**
+- 端到端（2026-11-18 已跑）：一条 punched socket 上跑完一个真实样本，且引擎侧
+  `progress().downloaded_bytes > 0`。**证据是回环上的 handoff 能力，不是 NAT 可达证据；
+  仍不得据此外推「BT 已支持公网打洞直连」。**
+
+## 实施状态（v2.4.89，2026-11-18）
+
+`cr-engine::EngineOptions` 新增 `proxy_url`，透传给 librqbit 的
+`ConnectionOptions.proxy_url`。真引擎 e2e 使用两端独立的 `RqbitEngine`：做种方监听回环；
+`cr_nat::tcp_punch` 在外部建立真 TCP；该 socket 以**不可直连**的 `203.0.113.9:<port>`
+为键登记进 `Bridge`；下载方只配 `socks5://127.0.0.1:<bridge_port>` 和这个假地址。
+
+实测：`served_registered=1`、下载 **1,048,576 B / 1 MiB**、落盘逐字节一致、
+做种方 `uploaded_bytes=1,048,576`。负对照换成同端口的 `203.0.113.10:<port>`
+但不登记：**0 B 下行**、`served_registered` 不变——排除「回落直连」冒充过桥。
+机器可读证据：`tests/e2e/w54/reports/bridge_librqbit_e2e.json`
+（`is_s6_evidence=false`、`g2_claim=false`、`s6_status=not_run`）。
+
+仍是缺口：守护进程的 `wake_with_plan` 尚未创建/登记 punched socket；入向
+`splice_to_listener` 仍只有单测；公网双侧打洞仍 `BLOCKED`。
 
 ## 复现
 
 ```bash
-cargo test -p cr-bridge --offline
+cargo test --offline -p cr-bridge
+CR_BRIDGE_E2E_REPORT="$PWD/tests/e2e/w54/reports/bridge_librqbit_e2e.json" \
+  cargo test --offline -p cr-engine --test bridge_librqbit_e2e -- --nocapture
 ```

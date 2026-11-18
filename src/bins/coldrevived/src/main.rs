@@ -343,6 +343,9 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         // 会先试 µTP、干等一段才回落，现场看着像「连上了却没数据」。
         enable_utp: cfg.nat_utp,
         ipv4_only: true,
+        // 守护进程尚未把 cr-bridge 接进唤醒路径，显式 None 保持旧行为；
+        // 需要走桥的调用方应直接用 cr-engine::EngineOptions（见 ADR-021）。
+        proxy_url: None,
         upload_bps: None,
         download_bps: None,
         init_timeout: Duration::from_secs(60),

@@ -1,6 +1,6 @@
 ---
 doc_id: ADR-018
-title: TCP 同时打开打洞的判据与边界（原语完成；桥接层见 ADR-021，端到端未验）
+title: TCP 同时打开打洞的判据与边界（原语完成；引擎 handoff 回环已验，公网仍 BLOCKED）
 category: 架构决策
 version: 1.0
 status: 已接受
@@ -64,11 +64,13 @@ M2 剩余项里有「BT/TCP 打洞」。真实 BT 客户端之间相当比例的
     而 UDP 侧学到的映射端口不能用于 TCP（W5.1f 同一条结论）。
   - 本 ADR 自身不提供「打洞后交给引擎」的路径，因此不能对外说「BT 已能走 TCP 打洞」。
 
-> **实施状态更新（v2.4.87/88，2026-11-18 晚；本 ADR 决策正文不变）**：
+> **实施状态更新（v2.4.87–89，2026-11-18 晚；本 ADR 决策正文不变）**：
 > 引擎接入路径已由 [ADR-021](ADR-021-punched-tcp-bridge.md) / `cr-bridge` 提供
-> （SOCKS5 出向钩子 + 回环 splice 入向，不 fork、不换引擎，6/6 单测）。
-> **但尚未接进 `wake_with_plan`，也没有真实样本过桥，端到端仍未验证**；
-> 因此「BT 已支持打洞直连」仍然是不成立的声明。公网双侧打洞仍 `BLOCKED`。
+> （SOCKS5 出向钩子 + 回环 splice 入向，不 fork、不换引擎）。
+> v2.4.89 的回环真引擎 e2e 已让 1 MiB 真实样本经登记的 punched socket 完成下载
+> （`served_registered=1`，未登记负对照 0 B），**证明的是 handoff 能力**。
+> 仍未接进 `wake_with_plan`，公网双侧打洞仍 `BLOCKED`；因此「BT 已支持公网打洞直连」
+> 仍是不成立的声明。
 - 风险：FFI 是 `unsafe`，且 socket 句柄所有权一旦搞错就是句柄泄漏或双关。
   缓解：句柄只在 `open_pending` 内创建，失败路径显式 `close`，成功路径立即 `into_stream`，
   不存在「同一句柄两处关闭」的分支。

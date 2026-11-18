@@ -535,6 +535,8 @@ name = "cr-engine"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "cr-bridge",
+ "cr-nat",
  "librqbit",
  "tokio",
 ]

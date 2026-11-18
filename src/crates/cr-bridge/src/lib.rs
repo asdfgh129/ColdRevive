@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -38,6 +39,11 @@ const REP_ATYP_UNSUPPORTED: u8 = 0x08;
 /// 一条 socket 只能被取走一次：BT 的一条 TCP 连接只服务一个 peer 会话。
 pub struct Bridge {
     registry: Mutex<HashMap<SocketAddr, TcpStream>>,
+    /// 命中注册表、由「已打通 socket」承载的 CONNECT 次数。
+    /// 这是 e2e 判定「真的走了桥」的证据；回落直连不计入。
+    served_registered: AtomicUsize,
+    /// 经本桥搬运的总字节数（双向合计）。
+    bytes_relayed: AtomicU64,
 }
 
 impl Default for Bridge {
@@ -48,7 +54,11 @@ impl Default for Bridge {
 
 impl Bridge {
     pub fn new() -> Self {
-        Self { registry: Mutex::new(HashMap::new()) }
+        Self {
+            registry: Mutex::new(HashMap::new()),
+            served_registered: AtomicUsize::new(0),
+            bytes_relayed: AtomicU64::new(0),
+        }
     }
 
     /// 登记一条已打通的连接。同一目标地址重复登记返回错误而不是静默覆盖——
@@ -70,6 +80,16 @@ impl Bridge {
     /// 当前登记数。只用于观测，不参与判定。
     pub fn registered(&self) -> usize {
         self.registry.lock().unwrap().len()
+    }
+
+    /// 命中注册表并由已打通 socket 承载的 CONNECT 次数。
+    pub fn served_registered(&self) -> usize {
+        self.served_registered.load(Ordering::Relaxed)
+    }
+
+    /// 双向搬运的总字节数。
+    pub fn bytes_relayed(&self) -> u64 {
+        self.bytes_relayed.load(Ordering::Relaxed)
     }
 
     /// 在指定地址起 SOCKS5 服务并阻塞到监听失败。
@@ -131,7 +151,11 @@ async fn handle_conn(mut client: TcpStream, bridge: Arc<Bridge>) -> io::Result<(
         }
     };
 
-    let mut upstream = match bridge.take(target) {
+    let registered = bridge.take(target);
+    if registered.is_some() {
+        bridge.served_registered.fetch_add(1, Ordering::Relaxed);
+    }
+    let mut upstream = match registered {
         Some(s) => s,
         None => match timeout(DIAL_TIMEOUT, TcpStream::connect(target)).await {
             Ok(Ok(s)) => s,
@@ -147,7 +171,8 @@ async fn handle_conn(mut client: TcpStream, bridge: Arc<Bridge>) -> io::Result<(
     };
 
     reply(&mut client, REP_SUCCEEDED).await?;
-    let _ = copy_bidirectional(&mut client, &mut upstream).await;
+    let (up, down) = copy_bidirectional(&mut client, &mut upstream).await.unwrap_or((0, 0));
+    bridge.bytes_relayed.fetch_add(up + down, Ordering::Relaxed);
     Ok(())
 }
 
@@ -263,6 +288,7 @@ mod tests {
         assert_eq!(read_n(&mut client, 4).await, b"pong");
 
         assert_eq!(bridge.registered(), 0, "登记项必须被取走，不能留在表里");
+        assert_eq!(bridge.served_registered(), 1, "命中注册表必须可观测");
     }
 
     #[tokio::test]
@@ -289,6 +315,7 @@ mod tests {
         assert_eq!(socks5_connect(&mut client, echo_addr).await, REP_SUCCEEDED);
         client.write_all(b"abcd").await.unwrap();
         assert_eq!(read_n(&mut client, 4).await, b"abcd");
+        assert_eq!(bridge.served_registered(), 0, "未登记目标回落直连不得计入桥命中");
     }
 
     #[tokio::test]

@@ -35,11 +35,11 @@ updated: 2026-11-18
 | [ADR-016](ADR-016-s6-emule-like-reach.md) | S6 是否仍须穷举 4 类 NAT + CGNAT | **阶段性改为 eMule 式可达语义**：类别覆盖降为描述性清单，不再是 pass 前提；真实设备 / 两台主机 / 30 次观测 / 不自动 pass 一条不松 | ✅ 已接受（2026-11-17 所有者决策） | **M4 前**，或当 ≥4 个不同真实出口可用时（先到为准） |
 
 | [ADR-017](ADR-017-active-seed-pool.md) | 谁能同时供片 | 由 `cr-sched` 唯一决策；`Engine::activate` 只能经 `wake_seed`，满载逐出最久未用 | ✅ 已接受（2026-11-18；v2.4.87 已接多样本，守护进程级逐出待复跑） | 多样本签名唤醒复跑时 |
-| [ADR-018](ADR-018-tcp-hole-punch.md) | TCP 打洞怎么做、算不算完成 | 最小 FFI + `poll`/`SO_ERROR` 判据；**原语完成**；接入路径见 ADR-021，端到端未验 | ✅ 已接受（2026-11-18） | ADR-021 的真实样本 E2E 通过或失败时 |
+| [ADR-018](ADR-018-tcp-hole-punch.md) | TCP 打洞怎么做、算不算完成 | 最小 FFI + `poll`/`SO_ERROR` 判据；**原语完成**；handoff 回环 E2E 见 ADR-021，公网双侧仍 BLOCKED | ✅ 已接受（2026-11-18） | 有第二个 NAT 后主机时复跑公网双侧 |
 | [ADR-019](ADR-019-public-vantage-nat-classification.md) | NAT 分类能不能信、单公网 IP 能测到哪 | 自建 RFC 5780 观测点（CHANGE-PORT 真换源口、CHANGE-IP 回 420）+ 三 socket 双对照；新增 `cone-undetermined`，**不得升级成 full-cone** | ✅ 已接受（2026-11-18） | 拿到第二块公网 IP 时补地址轴 |
 
 | [ADR-020](ADR-020-relay-udp-transport.md) | 入向 TCP 被边缘掐断后，中继走哪条路 | 换承载层：独立 UDP 线缆格式（`CRU1`，64 B 头 + 1168 B 负载，逐报文 HMAC，回程不大于来程，seq 滑窗抗重放）；**不做重传**，`forwarded` ≠ 对端收到 | ✅ 已接受（2026-11-18；v2.4.86 补齐订阅/唤醒接线与保活） | 引入拥塞控制或与 TCP 注册表合并时 |
-| [ADR-021](ADR-021-punched-tcp-bridge.md) | 打通的 TCP socket 怎么喂给 BT 引擎 | 用 librqbit 的 SOCKS5 钩子作出向 + 回环 splice 作入向，**不 fork、不换引擎**；对端地址会显示成 `127.0.0.1`，属已知降级 | ✅ 已接受（2026-11-18；实现 `cr-bridge`，6/6 单测） | A 方案在真实样本上失败时，退回 fork connector |
+| [ADR-021](ADR-021-punched-tcp-bridge.md) | 打通的 TCP socket 怎么喂给 BT 引擎 | 用 librqbit 的 SOCKS5 钩子作出向 + 回环 splice 作入向，**不 fork、不换引擎**；对端地址会显示成 `127.0.0.1`，属已知降级 | ✅ 已接受（2026-11-18；`cr-bridge` 6/6 单测 + 1 MiB 真引擎回环 E2E） | 守护进程唤醒路径接线；A 方案在公网样本失败时退回 fork connector |
 
 **统计**：21 项决策，20 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 

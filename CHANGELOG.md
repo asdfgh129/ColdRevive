@@ -2,6 +2,28 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.89] - 2026-11-18 — cr-bridge 真引擎端到端（回环 handoff）
+
+> `g2_claim=false`、`s6_status=not_run` 不变。本版补上 ADR-021 的验收证据，
+> 但只是**回环上的 socket 交接能力**，不是 NAT 可达或公网 BT-over-punched-TCP 证据。
+
+- **`EngineOptions.proxy_url`**：透传给 librqbit `ConnectionOptions.proxy_url`；
+  `coldrevived` 显式保持 `None`（守护进程尚未接桥），避免悄悄改变现有行为。
+- **`cr-bridge` 增加可观测计数**：`served_registered`（命中登记表的 CONNECT 次数）
+  与 `bytes_relayed`（双向搬运字节数）；回落直连不计入命中，防止假通过。
+- **真引擎 e2e**（`tests/bridge_librqbit_e2e.rs`）：两端独立 `RqbitEngine`；
+  做种方真监听；`cr_nat::tcp_punch` 外部建真 TCP；以不可直连的
+  `203.0.113.9:<port>` 登记 socket；下载方只配 SOCKS5 与该假地址。
+  实测 **1,048,576 B**、落盘逐字节一致、做种方 `uploaded_bytes=1,048,576`、
+  `served_registered=1`；负对照 `203.0.113.10:<port>` 不登记 → **0 B 下行**。
+  证据：`tests/e2e/w54/reports/bridge_librqbit_e2e.json`。
+- **仍不成立**：`wake_with_plan` 未接线；入向 `splice_to_listener` 仍只有单测；
+  公网双侧打洞仍 `BLOCKED`；不得说「BT 已支持公网打洞直连」。
+- 地址轴按所有者决定跳过：222 只有单 IP，`112.5.60.4` 是 A 侧 CPE 出口而非
+  222 可绑定地址，无法用「两个默认网关」或不存在的第二 IP 伪造 EIF/ADF 证据。
+- 全量回归 **270 passed / 0 failed**。文档同步：ADR-021 实施状态、ADR-018/索引、
+  M2-PROGRESS §8、ROADMAP 第三轮条目。
+
 ## [2.4.88] - 2026-11-18 — 三个可观测性/正确性修复 + 222 跨公网取片与中继对照
 
 > `g2_claim=false`、`s6_status=not_run` 不变。本版把「看起来成功」的三条路径改成如实报错或如实可观测，

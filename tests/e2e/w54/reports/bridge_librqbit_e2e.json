@@ -1,0 +1,18 @@
+{
+  "schema": "coldrevive.cr-bridge-e2e/v1",
+  "generated_at_unix": 1795005737,
+  "scope": "127.0.0.1 loopback; real librqbit; no NAT evidence",
+  "proxy_url": "socks5://127.0.0.1:49552",
+  "registered_target": "203.0.113.9:49551",
+  "downloaded_bytes": 1048576,
+  "total_bytes": 1048576,
+  "finished": true,
+  "byte_equal": true,
+  "uploaded_bytes": 1048576,
+  "served_registered": 1,
+  "negative_target": "203.0.113.10:49551",
+  "negative_downloaded_bytes": 0,
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}
