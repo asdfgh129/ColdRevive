@@ -116,7 +116,11 @@ pub struct NodeState {
     /// 因为持有者要监听 `bt_port` 做种，而 T0-07 的 `bt_port_listening` 是真实 TCP 连接探测。
     pub engine: SharedEngine,
     /// A 侧做种任务在引擎里的编号（W5.2）。`None` = 本节点不做种。
+    /// P0 之后它只是**主样本**的编号，多任务见 `seed_tasks`。
     pub seed_task: Option<cr_engine::TaskId>,
+    /// P0：infohash → 引擎任务号。多任务做种的核心映射：
+    /// 唤醒必须激活**请求的那一个**，否则多样本下会拿 A 的片去应答 B 的请求。
+    pub seed_tasks: HashMap<String, cr_engine::TaskId>,
     /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
     /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
     pub sched: LruScheduler,
@@ -195,6 +199,7 @@ fn main() {
         rpc_tasks: Vec::new(),
         engine: Arc::new(Mutex::new(None)),
         seed_task: None,
+        seed_tasks: HashMap::new(),
         // 容量来自 `engine.max_active_seeds`；缺省用 cr-sched 的工程默认值。
         sched: LruScheduler::new(
             cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
@@ -207,7 +212,13 @@ fn main() {
     // nat 缺省时完全不启动，T0/T1 行为逐字节不变。
     relay_sub::spawn(&cfg);
 
-    if node_id == "A" {
+    // 角色由配置显式决定；缺省仍按旧口径 node_id == "A" 推断，老配置行为不变。
+    // 之前把角色焊死在节点名字面量上：远端节点用 --node-id 222 启动时静默走 member
+    // 分支，不建种子、不打日志，只表现为 seed_tasks=0，排查会一路怀疑配置和网络。
+    let is_holder = cfg.role.as_deref()
+        .map(|r| r == "holder")
+        .unwrap_or(node_id == "A");
+    if is_holder {
         if let Err(e) = bootstrap_holder(&cfg, &mut st) {
             eprintln!("A 节点初始化失败: {}", e);
             std::process::exit(2);
@@ -236,7 +247,6 @@ fn main() {
 }
 
 fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
-    let facts = inspect_file(&cfg.sample_path)?;
     let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
     let lan_announce = format!("http://{}:{}/announce", cfg.host(&cfg.node_id), http_port);
     // 公网入向（W5.1d）：配了 `nat.http_external` 就写 BEP 12 `announce-list`——
@@ -249,28 +259,42 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
         ],
         None => vec![vec![lan_announce.clone()]],
     };
-    let torrent = cr_torrent::generate_with_announce_list(
-        &facts.data, &facts.name, PIECE_SIZE, &tiers);
     println!("[{}] 伴随种子 announce{}: {}", cfg.node_id,
              if tiers.len() > 1 { "-list" } else { "" },
              tiers.iter().flatten().cloned().collect::<Vec<_>>().join(" , "));
-    let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
-    torrent.write_to(&torrent_path)?;
 
-    let mut e = FileEntry::new(&facts.file_hash, &cfg.sample_path, &facts.name, facts.size);
-    e.torrent_path = torrent_path;
-    e.infohash = torrent.info_hash.clone();
-    e.piece_size = PIECE_SIZE;
-    e.keywords = cfg.keywords.clone();
-    e.published_keys = publish_keys(&cfg.namespace, &facts.file_hash, &cfg.keywords);
-    e.kad_published = true;
-    st.index.insert(e);
+    // P0：多样本。顺序固定为「`sample_path` 在前，`samples` 依次追加」，
+    // 因此旧配置（不写 `samples`）走的还是完全相同的单样本路径。
+    let paths = cfg.sample_paths();
+    let mut primary: Option<(Vec<u8>, Torrent)> = None;
+    for path in &paths {
+        let facts = inspect_file(path)?;
+        let torrent = cr_torrent::generate_with_announce_list(
+            &facts.data, &facts.name, PIECE_SIZE, &tiers);
+        let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
+        torrent.write_to(&torrent_path)?;
+
+        let mut e = FileEntry::new(&facts.file_hash, path, &facts.name, facts.size);
+        e.torrent_path = torrent_path;
+        e.infohash = torrent.info_hash.clone();
+        e.piece_size = PIECE_SIZE;
+        e.keywords = cfg.keywords.clone();
+        e.published_keys = publish_keys(&cfg.namespace, &facts.file_hash, &cfg.keywords);
+        e.kad_published = true;
+        st.index.insert(e);
+        println!("[{}] 样本登记: {} ({} B), infohash={}",
+                 cfg.node_id, facts.name, facts.size, torrent.info_hash);
+        if primary.is_none() {
+            primary = Some((facts.data, torrent));
+        }
+    }
     st.index.save()?;
-    st.sample = Some(facts.data);
+    let (data, torrent) = primary.ok_or("配置里没有任何可做种的样本")?;
+    st.sample = Some(data);
     st.torrent = Some(torrent);
     // 这里印的是**索引条数**，不是字节数：旧文案写成 "{} B"，把「1 条」读成「1 字节」，
     // 排查「为什么唤醒被 REJECT_NOT_FOUND」时会把人带到「样本太小/没写完」的错误方向。
-    println!("[{}] 样本入库: {} 条记录, infohash={}, keys={}",
+    println!("[{}] 样本入库: {} 条记录, 主 infohash={}, keys={}",
              cfg.node_id, st.index.len(), st.torrent.as_ref().unwrap().info_hash,
              st.index.all_published_keys().len());
     Ok(())
@@ -287,10 +311,12 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
 ///   回答别人，引擎自己不去 announce——否则会把自己当 peer 连回来。
 fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
     let cfg = st.cfg.clone();
-    let torrent = st.torrent.clone().ok_or("bootstrap 未生成伴随种子")?;
-    let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
-    let bytes = fs::read(&torrent_path)
-        .map_err(|e| format!("读取伴随种子 {} 失败: {e}", torrent_path.display()))?;
+    // P0：把**每一个**已入库的样本都以 paused 加入引擎。单个样本时这条路径与旧版一致
+    // （只有一次 add_torrent，任务号相同），多个样本时才有第二、第三个任务。
+    let entries: Vec<FileEntry> = st.index.entries.values().cloned().collect();
+    if entries.is_empty() {
+        return Err("bootstrap 未生成伴随种子".into());
+    }
     let share_dir = cfg.sample_path.parent()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| cfg.workdir.clone());
@@ -321,30 +347,78 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         download_bps: None,
         init_timeout: Duration::from_secs(60),
     })?;
-    let spec = TorrentSpec {
-        name: &torrent.name,
-        bytes: &bytes,
-        output_dir: Some(share_dir),
-        initial_peers: Vec::new(),
-        paused: true,
-        overwrite: true,
-        disable_trackers: true,
-    };
-    let task = engine.add_torrent(&spec)?;
-    let p = engine.progress(task).ok_or("任务加入引擎后立刻查不到状态")?;
-    if p.total_bytes == 0 {
-        return Err("引擎报种子总长为 0，拒绝以空任务做种".into());
+    let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
+    let mut primary: Option<cr_engine::TaskId> = None;
+    for e in &entries {
+        let bytes = fs::read(&e.torrent_path)
+            .map_err(|e2| format!("读取伴随种子 {} 失败: {e2}", e.torrent_path.display()))?;
+        // 每个样本的落盘目录取它自己所在目录：多样本可能来自不同目录，
+        // 统一塞进 `share_dir` 会让引擎按种子里的文件名互相覆盖。
+        let output_dir = e.path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| share_dir.clone());
+        let spec = TorrentSpec {
+            name: &e.name,
+            bytes: &bytes,
+            output_dir: Some(output_dir),
+            initial_peers: Vec::new(),
+            paused: true,
+            overwrite: true,
+            disable_trackers: true,
+        };
+        let task = engine.add_torrent(&spec)?;
+        let p = engine.progress(task).ok_or("任务加入引擎后立刻查不到状态")?;
+        if p.total_bytes == 0 {
+            return Err(format!("引擎报种子 {} 总长为 0，拒绝以空任务做种", e.name));
+        }
+        println!(
+            "[{}] 做种任务: infohash={} 任务 #{}, 已核对 {}/{} B, finished={}, state={}",
+            cfg.node_id, e.infohash, task, p.downloaded_bytes, p.total_bytes,
+            p.finished, p.state
+        );
+        tasks.insert(e.infohash.clone(), task);
+        if primary.is_none() {
+            primary = Some(task);
+        }
     }
     println!(
-        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 #{}, 已核对 {}/{} B, finished={}, state={}, \
-         utp_requested={}, utp_udp_port_occupied={}",
-        cfg.node_id, listen, engine.listen_addr(), task,
-        p.downloaded_bytes, p.total_bytes, p.finished, p.state,
+        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 {} 个, utp_requested={}, \
+         utp_udp_port_occupied={}",
+        cfg.node_id, listen, engine.listen_addr(), tasks.len(),
         engine.utp_requested(), engine.utp_port_occupied()
     );
-    st.seed_task = Some(task);
+    st.seed_tasks = tasks;
+    st.seed_task = primary;
     st.engine = Arc::new(Mutex::new(Some(engine)));
     Ok(())
+}
+
+/// P0：按请求的 infohash 选出要激活的引擎任务。
+///
+/// 顺序不能换，三条规则各有理由：
+/// 1. **精确命中** `seed_tasks` → 用它（多样本的正确路径）；
+/// 2. 映射为空 → 退回 `seed_task`（旧单任务路径，以及引擎尚未建好的时点）；
+/// 3. 映射非空但不含该 infohash → `None`，**绝不拿别的样本顶上**。
+///    第 3 条是这次改造的核心：多样本下「随便挑一个任务激活」会让持有者
+///    按错的样本应答，第三方客户端表现成「连上了但 0 速度」。
+fn seed_task_for(st: &NodeState, infohash: &str) -> Option<cr_engine::TaskId> {
+    pick_seed_task(&st.seed_tasks, st.seed_task, infohash)
+}
+
+/// 纯逻辑部分，单独拆出来是为了能回归——这段判断一旦退回「随便挑一个」，
+/// 单样本测试仍然全绿，只有多样本现场才会暴露。
+fn pick_seed_task(
+    tasks: &HashMap<String, cr_engine::TaskId>,
+    fallback: Option<cr_engine::TaskId>,
+    infohash: &str,
+) -> Option<cr_engine::TaskId> {
+    if let Some(t) = tasks.get(infohash) {
+        return Some(*t);
+    }
+    if tasks.is_empty() {
+        return fallback;
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -381,6 +455,25 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         // T1 双机取证：host / machine_id / pid 均取自运行环境，不接受配置伪造。
         let machine = env::var("COMPUTERNAME").or_else(|_| env::var("HOSTNAME"))
             .unwrap_or_else(|_| "unknown".to_string());
+        // 冷态不是故障：做种任务默认 paused，必须唤醒才供片。
+        // 以前 /health 只有 seed_tasks 数量，冷态和热态长得一模一样，
+        // 于是一次「没唤醒的取片测试」会被误读成 BT 数据面坏了。这里只报实测值。
+        let (seed_count, seed_active, served_bytes) = {
+            let st = state.lock().unwrap();
+            let mut active = 0usize;
+            let mut served = 0u64;
+            if let Ok(guard) = st.engine.lock() {
+                if let Some(e) = guard.as_ref() {
+                    for task in st.seed_tasks.values() {
+                        if let Some(p) = e.progress(*task) {
+                            if p.state == cr_engine::EngineState::Hot { active += 1; }
+                            served = served.saturating_add(p.uploaded_bytes);
+                        }
+                    }
+                }
+            }
+            (st.seed_tasks.len(), active, served)
+        };
         ("200 OK".into(),
          Json::obj(vec![
              ("status", Json::s("ok")),
@@ -388,6 +481,11 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              ("host", Json::s(cfg.me_host())),
              ("machine_id", Json::s(&machine)),
              ("pid", Json::n(std::process::id() as f64)),
+             // P0：多样本做种的**可观测面**。只报实际登记数，不把"配置了几个"当"做种几个"。
+             ("seed_tasks", Json::n(seed_count as f64)),
+             // 冷/热与真实供片量：`seed_active < seed_tasks` 就是「有任务但没供片」。
+             ("seed_active", Json::n(seed_active as f64)),
+             ("served_bytes", Json::n(served_bytes as f64)),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
@@ -720,6 +818,22 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
 /// 惰性创建引擎并把一个 `.torrent` 交给它。
 ///
 /// 失败原因（目录不可写、运行时起不来、种子字节非法）**原样上抛**，由调用方记进任务里。
+/// 重复 `addUri` 的假完成防线。
+///
+/// librqbit 对同一 infohash 的二次 add 返回已有句柄，进度立刻是 100%；
+/// 若此时产物已被删除，调用方就会拿到一个「下载成功」却没有任何文件的任务。
+/// 这里只看两个事实：既有任务是否已完成、产物是否真的在盘上；不成立时如实报错。
+fn duplicate_download_error(existing_finished: bool, output: &Path) -> Option<String> {
+    if existing_finished && !output.exists() {
+        Some(format!(
+            "同一 infohash 的任务已完成，但产物 {} 不在盘上：拒绝复用并返回假完成",
+            output.display()
+        ))
+    } else {
+        None
+    }
+}
+
 fn attach_to_engine(
     slot: &SharedEngine,
     dir: &Path,
@@ -739,6 +853,15 @@ fn attach_to_engine(
         *guard = Some(e);
     }
     let engine = guard.as_mut().expect("刚创建的引擎不会消失");
+    if let Ok(t) = cr_torrent::parse(bytes) {
+        if let Some(existing) = engine.task_by_infohash(&t.info_hash) {
+            let finished = engine.progress(existing).map(|p| p.finished).unwrap_or(false);
+            let output = dir.join(&t.name);
+            if let Some(err) = duplicate_download_error(finished, &output) {
+                return Err(err);
+            }
+        }
+    }
     let spec = TorrentSpec::new(name, bytes);
     engine.add_torrent(&spec)
 }
@@ -1059,14 +1182,15 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
         // 比直接报失败难查得多。
         // 先取出引擎槽与任务号再上锁：`wake_seed` 需要同时改 `sched` 与引擎，
         // 直接持有 `st.engine` 的借用会让 `&mut st.sched` 冲突（两个字段同属一个 guard）。
-        let seed_task = st.seed_task;
+        let seed_task = seed_task_for(&st, &entry.infohash);
         let engine_slot = st.engine.clone();
         let mut eg = engine_slot.lock().unwrap();
         let outcome = match (seed_task, eg.as_mut()) {
             (Some(task), Some(eng)) => Some(sched::wake_seed(&mut st.sched, eng, task)),
             (None, _) => {
                 // 没有做种任务却收到唤醒：如实记，不伪造供片。
-                eprintln!("[{}] 收到唤醒但本节点没有做种任务", cfg.node_id);
+                // 多样本下这里也覆盖「请求的 infohash 不在本节点」——不能退化成「随便挑一个」。
+                eprintln!("[{}] 收到唤醒但本节点没有 infohash={} 的做种任务", cfg.node_id, entry.infohash);
                 None
             }
             (Some(_), None) => {
@@ -1118,6 +1242,18 @@ mod rpc_tests {
             }
         });
         format!("http://127.0.0.1:{}/sample.torrent", addr.port())
+    }
+
+    #[test]
+    fn seed_task_is_chosen_by_infohash_and_never_by_luck() {
+        let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
+        tasks.insert("aa".into(), 7);
+        tasks.insert("bb".into(), 9);
+        assert_eq!(pick_seed_task(&tasks, Some(7), "bb"), Some(9), "必须激活请求的那一个");
+        assert_eq!(pick_seed_task(&tasks, Some(7), "cc"), None,
+                   "不在本节点的 infohash 不得拿别的样本顶上");
+        assert_eq!(pick_seed_task(&HashMap::new(), Some(3), "cc"), Some(3),
+                   "映射为空时保持旧单任务行为");
     }
 
     #[test]
@@ -1208,5 +1344,29 @@ mod rpc_tests {
         assert_eq!(ack_torrent_url(&cfg, "IH", "112.5.32.34"),
                    "http://192.168.1.210:17800/torrent/IH");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod duplicate_task_tests {
+    use super::*;
+
+    #[test]
+    fn finished_task_without_output_is_reported_not_fabricated() {
+        let dir = std::env::temp_dir().join(format!("cr_dup_task_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("sample.bin");
+        let _ = fs::remove_file(&out);
+
+        // 既有任务已完成但文件不在盘上 → 必须报错，不能返回一个 100% 的空任务。
+        let err = duplicate_download_error(true, &out).expect("必须识别假完成");
+        assert!(err.contains("不在盘上"), "{err}");
+        // 任务未完成、或产物确实在盘上，都属于正常复用。
+        assert!(duplicate_download_error(false, &out).is_none());
+        fs::write(&out, b"real bytes").unwrap();
+        assert!(duplicate_download_error(true, &out).is_none());
+
+        let _ = fs::remove_file(&out);
+        let _ = fs::remove_dir_all(&dir);
     }
 }

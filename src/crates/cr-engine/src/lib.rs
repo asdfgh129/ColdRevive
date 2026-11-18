@@ -280,6 +280,17 @@ impl RqbitEngine {
         self.tasks.lock().unwrap().get(&task).map(|t| t.info_hash.clone())
     }
 
+    /// 本会话里是否已有同一 infohash 的任务。
+    ///
+    /// librqbit 对重复 add 会返回**同一个已完成句柄**，于是调用方拿到一个号码、
+    /// 进度立刻是 100%，但磁盘文件可能早被删了——这是「假完成」。
+    /// 调用方必须先用这个方法识别出复用，再核对产物是否真的在盘上。
+    pub fn task_by_infohash(&self, info_hash: &str) -> Option<TaskId> {
+        self.tasks.lock().unwrap().iter()
+            .find(|(_, t)| t.info_hash == info_hash)
+            .map(|(id, _)| *id)
+    }
+
     pub fn add_torrent_with_timeout(&mut self, spec: &TorrentSpec<'_>, init_timeout: Duration) -> Result<TaskId, String> {
         let out_dir = spec.output_dir.clone().unwrap_or_else(|| self.download_dir.clone());
         std::fs::create_dir_all(&out_dir)

@@ -649,6 +649,26 @@ ColdRevive
     在可用邻居前提下做一次受控 announce 并独立查询验证；③ 多任务守护进程（多样本入库）
     落地后复跑逐出；④ 公网中继（VPS）时延/丢包。
 
+- **2026-11-18 M2 第三轮（v2.4.87–88）：P3 桥接层 + P0 多样本 + 222 公网数据面**
+  - **上一轮「下一步」③ 已落地**：`Config.samples` → `seed_tasks: infohash → TaskId`，
+    每个样本 paused 入库、按请求的 infohash 精确激活（映射非空但查不到就返回 `None`，
+    绝不拿别的样本顶上）；2 个样本的真实进程 `/health.seed_tasks=2`。
+    **但守护进程级逐出仍待签名唤醒复跑**，组件级真引擎证据不能替代。
+  - **P3 `cr-bridge`（[ADR-021](../02-architecture/adr/ADR-021-punched-tcp-bridge.md)）已落地**：
+    SOCKS5 出向钩子 + 回环 splice 入向，**不 fork、不换引擎**，6/6 单测；
+    对端地址显示 `127.0.0.1` 是已知降级。**端到端真实样本过桥仍未跑，不得说 BT 已支持打洞直连。**
+  - **v2.4.88 三个修复**：`Config.role` 显式化（此前 222 静默走 member，只表现为 `seed_tasks=0`）、
+    重复 `addUri` 的假完成改为如实报错、`/health` 新增 `seed_active`/`served_bytes`。
+  - **公网数据面首证**：222 跨公网 BT 取片 **2,097,152 B / 8 片**，sha256 与源文件一致，
+    唤醒走公网 UDP 17202，内网口 0 包；这是 cone NAT ↔ 有 DNAT 对端，**不是两个 NAT 互打**。
+  - **TCP 中继对照**：腾讯云 7100 **0/30** + 伪造 RST（TTL 随机 44–217，真实 116）；
+    222 同端口 **30/30**（p50 6–9 ms、RST 0）⇒ 注入是该云主机策略，不具普遍性。
+  - **公网中继原生 UDP**：`7101/UDP` 840/840、0 丢包，p50 区间 34–52 ms（见
+    [M2-VANTAGE](M2-VANTAGE-2026-11-18.md) §3.4）；上一轮「④ 公网中继时延/丢包」由此闭环。
+  - **仍未闭环**：① DHT announce（未授权 + 无可用邻居）；② 两个不同 NAT 同时经中继互达；
+    ③ BT-over-punched-TCP 端到端；④ 多样本守护进程级逐出；⑤ 地址轴（EIF vs ADF）。
+    `g2_claim=false`、`s6_status=not_run` 不变；全量回归 **269 passed / 0 failed**。
+
 - **2026-11-18 M2 实现项推进（v2.4.79，四项里三项落地到可用、一项只到原语）**：
   按「还欠的四个实现项」逐条推进，**未宣称 G2 达标**（`g2_claim=false` 不变）。
   - **`cr-dht`（W3.2）✅ 实现完成**：bencode / 160 位 ID 与 XOR 距离 / Kademlia 桶 /

@@ -2,6 +2,60 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.88] - 2026-11-18 — 三个可观测性/正确性修复 + 222 跨公网取片与中继对照
+
+> `g2_claim=false`、`s6_status=not_run` 不变。本版把「看起来成功」的三条路径改成如实报错或如实可观测，
+> 并补上第一条真实 WAN 数据面证据（cone NAT ↔ 有 DNAT 的公网对端）。
+
+- **角色不再焊死在 `node_id == "A"`**：`Config.role`（`holder`/`member`，缺省仍按 node_id 推断，
+  非法值启动即失败）。实测 222 用 `--node-id 222` + `role=holder` 正常建种子；此前静默走 member
+  分支，只表现为 `seed_tasks=0`，没有任何报错。
+- **拒绝假完成**：librqbit 对同 infohash 二次 add 会返回已有句柄，即便产物已删除也报 100%。
+  `RqbitEngine::task_by_infohash` + 磁盘产物核对后如实报错；实测重复 addUri 从 `complete` 变为
+  `waiting` 且 note 明写「拒绝复用并返回假完成」。
+- **`/health` 新增 `seed_active` / `served_bytes`**：冷态不再是「有任务但看不出没供片」。
+  实测唤醒前 `seed_tasks=1, seed_active=0`，唤醒后 `seed_active=1`，取片后 `served_bytes=2785280`。
+- **证据**：222 跨公网 BT 取片 2 MiB / 8 片、sha256 与源文件一致；唤醒经公网 UDP 17202；
+  内网口 `ens192` 全程 0 包。TCP 中继对照：222 `7100` 30/30 全通（p50 6–9 ms、RST 0 个），
+  腾讯云 `7100` 0/30 且伪造 RST TTL 随机 44–217（真实 116）→ 注入是单主机策略（更新 ADR-020 / M2-VANTAGE）。
+- 全量回归 **269 passed / 0 failed**。
+- 文档同步：`M2-PROGRESS` §8（第三轮当前状态）、`ROADMAP` 第三轮条目、
+  ADR-017/018 实施状态更新（决策正文不变）、ADR 索引统计修正为 21 项/20 已接受。
+  `g2_claim=false`、`s6_status=not_run` 不变。
+
+## [2.4.87] - 2026-11-18 — P3 桥接层落地（ADR-021）+ P0 多样本做种
+
+> `g2_claim=false`、`s6_status=not_run` 不变；**公网 TCP 打洞仍 BLOCKED**。
+> 本版解决的是「打通的 socket 怎么交给引擎」和「多个样本怎么同时做种」，
+> **不改变能不能打通、也不宣称 BT 已支持打洞直连**。
+
+- **P3 `cr-bridge`（ADR-021）**：不 fork、不换引擎，用 librqbit 的两个既有入口接入：
+  - **出向**：`ConnectionOptions.proxy_url` 指向本地 SOCKS5 服务；命中「已打通注册表」
+    就交出那条 socket，未命中回落**真实直连**（普通 BT 行为不变）；
+  - **入向**：`splice_to_listener` 把打通的连接接到引擎自己的监听口，引擎当普通入站处理。
+  - 6 条真实 socket 测试：注册项字节往返（键用不可达的 `203.0.113.9:6881`，若实现真去 dial
+    会超时而不是假通过）、未注册目标回落直连回显、非 CONNECT 拒绝码 `0x07`、
+    非法 ATYP 拒绝码 `0x08`、重复登记拒绝覆盖、splice 双向送达。
+  - **顺手修一个会把「明确拒绝」伪装成「网络断」的缺陷**：命令不支持时先回拒绝码再关连接，
+    但请求的地址段还没读完，Windows 回 RST，客户端只看到 `ConnectionReset`。
+    改为**先读完地址段再判命令**（测试 `non_connect_command_is_refused_with_code_7` 守着）。
+  - **降级照写**：对端地址显示为 `127.0.0.1`（被引擎当本地 peer，不参与 PEX/通告、部分统计不计）；
+    用户态多一次拷贝，未做大包压测前不写性能结论；一个 socket 只能被取走一次。
+- **P0 多样本做种**：`Config.samples`（可选数组，缺省空 = 旧行为逐字节不变）→
+  `NodeState.seed_tasks: infohash → TaskId`；启动时**每个样本都以 `paused` 加入引擎**；
+  `WAKEUP_REQ` 按 `entry.infohash` 激活**对应的那一个**，映射非空却查不到时返回 `None`，
+  **绝不拿别的样本顶上**（`pick_seed_task` 单测守着这条）。
+  `/health` 新增 `seed_tasks`（实际登记数，不是「配置了几个」）。
+- **实测（真实进程，非单测）**：配置 2 个 256 KiB 样本启动 A，日志
+  `样本入库: 2 条记录` + 两条 `做种任务: infohash=… 任务 #1/#2 … state=cold` +
+  `做种引擎就绪: … 任务 2 个`；`/health` 返回 `"seed_tasks":2`。
+  **单样本路径未变**：只配 `sample_path` 时仍是一次 `add_torrent`。
+- **未完成（不得写成完成）**：① BT-over-punched-TCP 的**端到端**仍未跑（桥接层只有单测，
+  尚未接进 `wake_with_plan`，也没有真实样本过桥）；② 多样本下的**守护进程级逐出**
+  仍需签名唤醒才能复跑（`cr-sched` 的真引擎逐出仍是组件级证据）；
+  ③ 公网双侧打洞 BLOCKED；④ 第二台 NAT 仍缺（222 双网卡同广播域，禁用 ens192 会失联且造不出两个 NAT）。
+- `cargo test --workspace --offline` **267 passed / 0 failed**（新增 7 条：桥接 6 + 选任务 1）。
+
 ## [2.4.86] - 2026-11-18 — 订阅与唤醒接到中继的 UDP 承载（W3.16）：这台 TCP 被掐的机器终于能当真正的中继用
 
 > v2.4.85 只让**量具**会走 UDP；守护进程的订阅与唤醒仍连 TCP，等于「路修好了但没人走」。

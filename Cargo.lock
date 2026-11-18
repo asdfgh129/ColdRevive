@@ -512,6 +512,13 @@ name = "cr-api"
 version = "0.1.0"
 
 [[package]]
+name = "cr-bridge"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+]
+
+[[package]]
 name = "cr-core"
 version = "0.1.0"
 

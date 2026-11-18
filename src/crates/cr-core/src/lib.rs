@@ -297,9 +297,20 @@ pub struct NodeSpec {
 #[derive(Debug, Clone)]
 pub struct Config {
     pub node_id: String,
+    /// 节点角色：`holder` 做种，`member` 只下载/唤醒。
+    ///
+    /// 缺省 `None` 时回退到旧口径（node_id == "A" 为 holder），保证老配置逐字节不变；
+    /// 显式给了非法值直接报错——角色决定「是否启动做种引擎」，静默改写会变成
+    /// 「以为在供片其实没有」，排查成本远高于启动失败。
+    pub role: Option<String>,
     pub bind: String,
     pub nodes: BTreeMap<String, NodeSpec>,
     pub sample_path: PathBuf,
+    /// P0：多样本做种（可选）。为空 = 只做 `sample_path` 这一个，行为与旧版逐字节一致。
+    ///
+    /// 守护进程会把这里每一个文件都登记进索引、以 `paused` 加入引擎，
+    /// 唤醒时按请求的 infohash 激活**对应的那一个**。容量仍受 `engine.max_active_seeds` 约束。
+    pub samples: Vec<PathBuf>,
     pub keywords: Vec<String>,
     pub namespace: String,
     pub workdir: PathBuf,
@@ -348,6 +359,19 @@ pub struct Config {
 }
 
 impl Config {
+    /// 要做种的样本清单。`samples` 为空时退回单一的 `sample_path`（旧配置口径）。
+    ///
+    /// 顺序即"主样本在前"：`sample_path` 永远排第一，后面的 `samples` 依次追加，
+    /// 且去重——同一个文件写两遍会让引擎加两个任务指向同一份数据。
+    pub fn sample_paths(&self) -> Vec<PathBuf> {
+        let mut out = vec![self.sample_path.clone()];
+        for p in &self.samples {
+            if !out.contains(p) {
+                out.push(p.clone());
+            }
+        }
+        out
+    }
     pub fn load(path: &Path) -> Result<Config, String> {
         let j = Json::load(path)?;
         let get_s = |k: &str| -> Result<String, String> {
@@ -437,6 +461,16 @@ impl Config {
                 .and_then(|(_, v)| v.as_str()).map(str::to_string)
         };
         let workdir = PathBuf::from(get_s("workdir")?);
+        // P0：多样本（`samples` 数组，可选）。缺省空数组 = 只做 `sample_path`，
+        // 旧配置不写这个键时行为完全不变。空串/非字符串项丢弃，不造占位路径。
+        let samples: Vec<PathBuf> = j.get("samples")
+            .and_then(Json::as_arr)
+            .map(|a| a.iter()
+                .filter_map(Json::as_str)
+                .filter(|s| !s.trim().is_empty())
+                .map(PathBuf::from)
+                .collect())
+            .unwrap_or_default();
         let engine_dir = engine_get("dir").map(PathBuf::from)
             .unwrap_or_else(|| workdir.join("downloads"));
         // 非法 `engine.listen` 直接报错：静默忽略会让「我要做种」变成「其实没监听」。
@@ -461,11 +495,23 @@ impl Config {
                 Some(n)
             }
         };
+        let role = match j.get("role").and_then(Json::as_str) {
+            None => None,
+            Some(s) => {
+                let r = s.trim().to_ascii_lowercase();
+                if r != "holder" && r != "member" {
+                    return Err(format!("role 非法（只能是 holder 或 member）: {s}"));
+                }
+                Some(r)
+            }
+        };
         Ok(Config {
             node_id: String::new(),
+            role,
             bind,
             nodes,
             sample_path: PathBuf::from(get_s("sample_path")?),
+            samples,
             keywords,
             namespace: j.get("namespace").and_then(Json::as_str)
                 .unwrap_or(NAMESPACE).to_string(),
@@ -733,6 +779,31 @@ mod tests {
         cfg.node_id = "A".into();
         assert_eq!(cfg.me_host(), "127.0.0.1");
         assert_eq!(cfg.peer_host(), "192.168.1.211");
+        let _ = fs::remove_file(&p);
+    }
+
+    #[test]
+    fn role_is_optional_but_never_silently_misspelled() {
+        let base = r#"{
+            "bind": "0.0.0.0",
+            "nodes": {"222": {"host": "112.5.32.34", "http_port": 17201,
+                              "wake_udp_port": 17202, "bt_port": 17200}},
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let p = std::env::temp_dir().join("cr_core_role_test.json");
+        fs::write(&p, base).unwrap();
+        // 缺省必须继续走旧的 node_id 推断，老配置逐字节不变。
+        assert_eq!(Config::load(&p).unwrap().role, None);
+
+        fs::write(&p, base.replace("\"bind\"", "\"role\": \"holder\", \"bind\"")).unwrap();
+        assert_eq!(Config::load(&p).unwrap().role.as_deref(), Some("holder"));
+        fs::write(&p, base.replace("\"bind\"", "\"role\": \"MEMBER\", \"bind\"")).unwrap();
+        assert_eq!(Config::load(&p).unwrap().role.as_deref(), Some("member"));
+
+        // 拼错角色时启动即失败，不能静默落进 member（= 不供片却假装在做种）。
+        fs::write(&p, base.replace("\"bind\"", "\"role\": \"holderr\", \"bind\"")).unwrap();
+        assert!(Config::load(&p).is_err());
         let _ = fs::remove_file(&p);
     }
 }
