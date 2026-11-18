@@ -2,6 +2,31 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.85] - 2026-11-18 — 专用 `UDP 7101` 落地；纠正 v2.4.84 的 MTU 错误结论
+
+> `g2_claim=false`、`s6_status=not_run` 不变；**原生 TCP 侧 BLOCKED 结论不变**。
+
+- **专用端口生效，DHT 不再被借用**：所有者加 `UDP 7101` 规则后，同一抓包口径从
+  「`0 packets captured`」（v2.4.84）变为 **26 个包有来有回**（首包 `112.5.60.4.5498 > 10.1.0.2.7101`）；
+  `6881/UDP` 复归 DHT（全程未下线）。`/root/vantage.sh` 现在把 STUN + UDP 中继一起拉起，
+  重启机器后不会只剩 STUN。
+- **跨主机实测（`7101/UDP`，A=`210` / B=`221` / 中继 `119.29.150.254`）**：
+  840 轮 **840/840、0 丢包**；p50 落在 **34–52 ms**（单次样本 20 轮又到 54 ms），
+  同路径 ICMP `25 ms`。
+- **不把单次 p50 当性能**：先看到「1100 B 比 200 B 快 15 ms」，于是同路径**交替载荷**跑四组
+  （200/1100/200/1100 → `33.95 / 46.59 / 43.18 / 42.75 ms`），大小顺序被打乱 ⇒
+  **载荷与 RTT 无关**；未证实推测（不作结论）：不同源端口 → 不同 NAT 映射 → 运营商按五元组散列选路。
+- **三方对账逐字节精确**：A 侧 `rounds=840 / received=840 / lost=0`；
+  B 侧 `delivered_in=840 / echoed_out=840 / bytes_in=366000`（`= 620×200 + 220×1100`）；
+  中继 `data_in=deliver_out=status_out=1680`（`= 2×840`）、`bytes_in=867232`
+  （`= 1240×280 + 440×1180 + 7×64 + 6×64`）、`mac_fail 0 / replay 0 / target_absent 0 / too_big 0`。
+- **纠正 v2.4.84 的错误结论（MTU）**：原文「64 B 头 + 1200 B 负载 = 1264 B，留在 1280 的 IPv6 最小 MTU 之内」
+  **漏算 IPv6 的 40 B IP 头 + 8 B UDP 头**（`1264+48=1312 > 1280`），该说法是假的。
+  `UDP_MAX_PAYLOAD` 由 `1200` 改为 **`1168`**（`64+1168=1232`，`1232+48=1280` 恰好填满），
+  新增单测 `max_datagram_fits_ipv6_min_mtu` 把「不分片」钉死（1264 那个数再想回来会被断言拦下）。
+- `cargo test --workspace --offline` **255 passed / 0 failed**。
+- 记录：`docs/06-plan/M2-VANTAGE-2026-11-18.md` §3.4（新增）/§4，[ADR-020](docs/02-architecture/adr/ADR-020-relay-udp-transport.md) 更正段。
+
 ## [2.4.84] - 2026-11-18 — 中继的 UDP 承载（W3.14）：在被掐 TCP 的边缘上第一次拿到原生公网路径
 
 > 所有者选择「走 UDP」而不是再换一台机器（[ADR-020](docs/02-architecture/adr/ADR-020-relay-udp-transport.md)）。

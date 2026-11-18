@@ -19,8 +19,9 @@
 //! 64..   负载
 //! ```
 //!
-//! 定长 64 字节头 + 最多 1200 字节负载 = 1264 字节，**留在 1280 的 IPv6 最小 MTU 之内**，
-//! 不需要分片诊断就能跨过大多数隧道/云网络。
+//! 定长 64 字节头 + 最多 1168 字节负载 = **1232 字节 UDP 负载**；加 IPv6 的 40 B IP 头 + 8 B UDP 头
+//! 正好 1280，即 **IPv6 最小 MTU 内不需要分片**。上限取 1168 而不是 1200 是为了留这 32 字节的余量
+//! （v2.4.84 曾按「1264 < 1280」记，漏算了 IPv6+UDP 的 48 字节头，v2.4.85 改正）。
 //!
 //! # 与 TCP 帧协议的关系
 //!
@@ -64,8 +65,9 @@ pub const UDP_HEADER_LEN: usize = 4 + 1 + 1 + 2 + NODE_ID_LEN + 8;
 pub const UDP_MAC_LEN: usize = 32;
 /// 一个报文的最小长度（头 + MAC）。
 pub const UDP_MIN_DGRAM: usize = UDP_HEADER_LEN + UDP_MAC_LEN;
-/// 默认单报文负载上限。+头 = 1264 字节，仍在 1280 之内。
-pub const UDP_MAX_PAYLOAD: usize = 1200;
+/// 默认单报文负载上限。+64 B 头 = 1232 B UDP 负载；加 IPv6 的 40 B IP 头 + 8 B UDP 头正好 1280
+/// （IPv6 最小 MTU），因此不需要分片。断言见 `max_datagram_fits_ipv6_min_mtu`。
+pub const UDP_MAX_PAYLOAD: usize = 1168;
 
 /// UDP 帧类型（**独立编号空间**，不与 TCP 的 `FrameKind` 混用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1224,5 +1226,22 @@ mod tests {
         assert!(c.hello(ids(0xd1), Duration::from_millis(300)).is_err());
         assert!(h.stats().mac_fail >= 1);
         h.stop();
+    }
+
+    /// 硬约束：最大报文（头 + MAC + 满负载）加 IPv6 头必须 ≤ 1280，否则「不分片」这句话是假的。
+    /// v2.4.84 把 1264 当成「在 1280 之内」（1264+48=1312），本条测试就是防它再回来。
+    #[test]
+    fn max_datagram_fits_ipv6_min_mtu() {
+        const IPV6_MIN_MTU: usize = 1280;
+        const IPV6_HDR: usize = 40;
+        const UDP_HDR: usize = 8;
+        let max_datagram = UDP_HEADER_LEN + UDP_MAC_LEN + UDP_MAX_PAYLOAD;
+        assert_eq!(max_datagram, 1232, "最大 UDP 负载应正好是 1232");
+        assert_eq!(
+            max_datagram + IPV6_HDR + UDP_HDR,
+            IPV6_MIN_MTU,
+            "恰好填满 IPv6 最小 MTU；再多 1 字节就要分片"
+        );
+        assert_eq!(UDP_MAX_PAYLOAD - NODE_ID_LEN, 1152, "用户可用的最大 DATA 负载");
     }
 }
