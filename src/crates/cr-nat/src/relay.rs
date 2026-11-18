@@ -119,6 +119,13 @@ pub enum FrameKind {
     LookupReach,
     /// `LookupReach` 的应答。负载 = 16B 目标 id + 1B 类别 + 8B 声明时刻（查不到时后两段为 0）。
     ReachResult,
+    /// **服务端拒绝这次请求**，负载 = UTF-8 原因。发完即断开。
+    ///
+    /// 存在的理由：中继限额（单 IP 注册频率 / 注册表满 / 同连接改 ID）原来都是
+    /// 「不打招呼直接关连接」，客户端只能看到 `读帧头失败: failed to fill whole buffer`，
+    /// 分不清是「被配额挡了」还是「链路断了」。运维据此排查会走向完全错误的方向。
+    /// 旧客户端收到 0x0c 会当作 `Unknown`，行为与以前一致（拒绝注册），不会误判成成功。
+    Reject,
     Unknown(u8),
 }
 
@@ -136,6 +143,7 @@ impl FrameKind {
             FrameKind::PeerReach => 0x09,
             FrameKind::LookupReach => 0x0a,
             FrameKind::ReachResult => 0x0b,
+            FrameKind::Reject => 0x0c,
             FrameKind::Unknown(c) => *c,
         }
     }
@@ -152,6 +160,7 @@ impl FrameKind {
             0x09 => FrameKind::PeerReach,
             0x0a => FrameKind::LookupReach,
             0x0b => FrameKind::ReachResult,
+            0x0c => FrameKind::Reject,
             other => FrameKind::Unknown(other),
         }
     }
@@ -246,6 +255,18 @@ enum PskChoice {
 static DEFAULT_PSK: Mutex<Option<[u8; crate::secure::PSK_LEN]>> = Mutex::new(None);
 
 /// 设置进程级 PSK（`None` = 明文）。
+/// 把 `Reject` 帧的负载翻成一句可读错误。
+///
+/// 空负载也要有话说：只说「被拒绝」而不说原因，等于让运维去猜。
+fn reject_reason(frame: &RelayFrame) -> String {
+    let reason = String::from_utf8_lossy(&frame.payload);
+    if reason.trim().is_empty() {
+        "中继拒绝请求（未给原因）".to_string()
+    } else {
+        format!("中继拒绝请求: {}", reason.trim())
+    }
+}
+
 pub fn set_default_psk(psk: Option<[u8; crate::secure::PSK_LEN]>) {
     if let Ok(mut g) = DEFAULT_PSK.lock() {
         *g = psk;
@@ -390,8 +411,11 @@ impl RelayConn {
             payload: node_id.to_vec(),
         };
         self.send(&frame)?;
-        // 等待 ACK
+        // 等待 ACK（或显式拒绝）
         let resp = self.recv_frame()?;
+        if resp.kind == FrameKind::Reject {
+            return Err(reject_reason(&resp));
+        }
         if resp.kind != FrameKind::Ack {
             return Err("relay 未回 ACK".into());
         }
@@ -422,6 +446,9 @@ impl RelayConn {
         };
         self.send(&frame)?;
         let resp = self.recv_frame()?;
+        if resp.kind == FrameKind::Reject {
+            return Err(reject_reason(&resp));
+        }
         if resp.kind != FrameKind::Ack {
             return Err("relay 未回 ACK（可能是不支持声明帧的旧版中继）".into());
         }

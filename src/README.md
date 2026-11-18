@@ -2,7 +2,7 @@
 
 > **当前状态**：[G0 条件冻结](../docs/06-plan/G0-REVIEW.md) 于 2026-11-13 生效后，**M1 已按门禁开工**：
 > 根 `Cargo.toml` / `Cargo.lock` 与 17 个 crate + 4 个 bin 已建立，`cargo test --workspace --offline`
-> **228 个 Rust 单测全绿**（2026-11-18）（cr-nat 落地新增 24 个：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类 + 策略 + 矩阵口径）；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
+> **232 个 Rust 单测全绿**（2026-11-18，Windows 与 Linux 两端）（cr-nat 落地新增 24 个：STUN/NAT-PMP/PCP/UPnP/中继本地 mock + 分类 + 策略 + 矩阵口径）；`coldrevived` / `coldrevive-cli` 为真实可运行二进制，T0 `--mode real` **21/21 PASS**
 > （`evidence_valid=true`，报告 `tests/e2e/t0/reports/t0-20261113T075155Z-real.json`）。
 > **2026-11-13 补记（T1 前置）**：`cr-core` 的 `NodeSpec` 增加可选 `host`（缺省回落 `bind`），
 > 新增 `Config::host / me_host / peer_host / url`；`coldrevived` 增加 `--self-host` / `--workdir` /
@@ -54,7 +54,8 @@ src/
 │   ├── coldrevive-agent/   托盘 / 浏览器捕获 / UPnP 续租 / 看护
 │   ├── coldrevive-cli/     CLI（M1 MVP 入口）
 │   ├── coldrevive-nat/     NAT 穿透诊断（含 --tcp-punch 同时打开；不触碰 T0/M1 流程）
-│   ├── coldrevive-dht/     Mainline DHT 自检 / 探测（--self-test / --ping / --get-peers）
+│   ├── coldrevive-dht/     Mainline DHT 自检 / 探测（--self-test / --ping / --get-peers / --walk）
+│   ├── coldrevive-relaybench/ 中继真实网络测量（RTT / 丢包 / 单 IP 上限外部观测）
 │   └── coldrevive-relay/   生产中继服务端（PSK + 加密 + 按 IP 限额 + 黑名单）
 └── ui/                     Web UI 静态资源（编译期嵌入二进制）
 ```

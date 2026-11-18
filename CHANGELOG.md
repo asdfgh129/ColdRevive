@@ -2,6 +2,58 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.80] - 2026-11-18 — M2 第二轮：补 Unix 证据 / 真引擎逐出 / 中继实测 / 公网 DHT 只读探测
+
+> 所有者指令：「按建议推进」（上一轮末尾的四条建议）。
+> **`g2_claim=false`、`s6_status=not_run` 不变**。证据与范围见
+> [M2-PROGRESS-2026-11-18](docs/06-plan/M2-PROGRESS-2026-11-18.md)。
+
+- **TCP 打洞 Unix 分支补证（ADR-018 的遗留项关闭）**：在 221（Ubuntu，rustc 1.100.0）
+  真实编译并运行 `cargo test -p cr-nat tcp_punch` → **4/4 通过**：回环双侧建立、
+  `PING/PONG` 双向字节、空端口如实超时。Linux 观测 `attempts=7`（Windows 回环为 1），
+  原因是同时打开要求 SYN 交叉、先到一侧收 RST 后重试；**差异在重试次数，不在能否建立**。
+  边界：仍是回环；公网双侧 `BLOCKED`（A 侧 CPE 无 TCP 映射）不变，BT 数据面仍未接线。
+- **真引擎逐出路径**：新增 `real_engine_eviction_pauses_the_previous_seed` —— 真 `RqbitEngine`
+  + 两个真 `.torrent`（各 96 KiB）、`paused` 加入、容量 1，按 A→B→A 唤醒，
+  断言 `Engine::state` 观测到 `Cold→Hot→Cold→Hot` 且 `evicted` 指向正确任务。
+  **边界**：守护进程仍只持有一个做种任务，这是组件级证据，不是「生产多任务已验证」。
+- **中继真实网络测量**：新增 `coldrevive-relaybench`（往返 + 并发外部观测）。
+  中继 `221:7100`，A（Windows）200 轮 / 256 B：**0 丢包**，p50 0.821 ms、p99 1.117 ms、max 1.492 ms；
+  222（Ubuntu）200 轮：0 丢包，p50 0.588 ms、p99 5.661 ms、max 8.008 ms。
+  单 IP 并发上限外部观测与服务端计数逐条对上：A 96 条 → 关 32（`ip_cap_rejected +32`），
+  222 80 条 → 关 16（`+16`），证明限额按来源 IP 而非全局。注册频率配额在密集突发下触发
+  （50 成功 / 80 被拒，服务端 `ip_rate_limited=80`）。**范围**：LAN 真机 + 真中继进程，
+  **不是公网 VPS**；公网中继时延/丢包仍未测。
+- **修掉「拒绝不说原因」**：配额触顶时服务端直接关连接，客户端只看到
+  `读帧头失败: failed to fill whole buffer`（会被误判成网络故障）。新增
+  `FrameKind::Reject = 0x0c`（负载 = UTF-8 原因）：单 IP 注册频率 / 注册表已满 / 同连接改 ID
+  三条路径在断开前发原因帧；客户端 `register` / `register_declared` 翻成
+  `中继拒绝请求: <原因>`。旧客户端收到 `0x0c` 当 `Unknown` 处理，行为与以前一致。
+  回归测试改为断言错误里必须出现「拒绝」与「频率」。
+- **`cr-dht` 公网只读探测（首次拿到真实公网应答）**：
+  - 先修可用性缺陷：BEP 5 引导节点全是**域名**，工具原来只收字面 IP（报
+    `invalid socket address syntax`，像是用户写错）。新增 `parse_target`：先字面解析，
+    失败再当域名解析并**只取 IPv4**（socket 是 v4），回显 `resolved` 便于核对。3 条单测。
+  - `dht.transmissionbt.com:6881` **ping 4/4 成功**、`get_peers` 返回 8 条 compact 节点；
+    其余 5 个常见引导节点（`router.bittorrent.com`、`router.utorrent.com`、`dht.aelitis.com`、
+    `dht.libtorrent.org:25401`、`dht.bt.am:2710`）全部超时。
+  - 新增 `--walk <seed[,seed...]>`（只读、查询数硬上限、不发 `announce_peer`）。
+    实测学到 `unique_contacts=1` —— 用**独立 Python 实现**交叉验证确认：
+    该引导节点每次返回「同一节点重复 8 次」，地址每轮不同且随后不可达
+    （`remote_id` 恒定，确为该节点）。**不是我方解码缺陷**，是应答本身不可用。
+  - **`announce_peer` 未执行，记 `BLOCKED`**：双重原因 ① 写入公网 DHT 需所有者明确授权；
+    ② 当前拿不到可用邻居，宣告出去无人转发。
+- **环境坑（会重复踩，已写入文档）**：① 221 上 `cargo test` 需 `libssl-dev`（`crypto-hash`
+  经 librqbit 依赖链在 Linux 要 openssl 头文件，缺了在 `openssl-sys` build script 阶段失败）；
+  ② **`tar` 同步保留旧 mtime，cargo 据此复用陈旧 rlib**，会得到假的编译结论
+  （现象：两端文件 md5 相同却报 `cannot find function ...`）——同步后必须 `touch` 所有 `.rs` 与 `Cargo.toml`。
+- **验证**：`cargo test --workspace --offline` **232 passed / 0 failed**，Windows 与 Linux（221）
+  两端各自全绿且数字一致（含新增 4 条：DHT 目标解析 3 条 + 真引擎逐出 1 条）。
+  中继启动行与 `--stats-file` 计数核对通过。
+- **文档**：新增 [M2-PROGRESS-2026-11-18](docs/06-plan/M2-PROGRESS-2026-11-18.md)（含复现命令与
+  「未完成」清单）；ADR-017 补「真实引擎逐出」节、ADR-018 回填 Unix 分支结果；
+  README / TEST / ROADMAP 同步。
+
 ## [2.4.79] - 2026-11-18 — M2 实现项推进：cr-dht / LRU 接引擎 / 中继生产化 / TCP 打洞原语
 
 > 所有者指令：「M2 还缺 cr-dht 等骨架 crate、LRU 接引擎、中继生产化、BT/TCP 打洞。继续推进 M2」。

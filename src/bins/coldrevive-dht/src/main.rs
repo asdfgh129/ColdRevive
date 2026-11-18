@@ -29,11 +29,14 @@ fn main() {
             "用法:\n  \
              coldrevive-dht --self-test\n  \
              coldrevive-dht --serve <bind> [--node-id <hex>]\n  \
-             coldrevive-dht --ping <ip:port>\n  \
-             coldrevive-dht --get-peers <ip:port> <infohash-hex> [--announce <port>]\n\
+             coldrevive-dht --ping <host:port>\n  \
+             coldrevive-dht --get-peers <host:port> <infohash-hex> [--announce <port>]\n  \
+             coldrevive-dht --walk <seed[,seed...]> [--rounds 3] [--max-queries 32]\n\
              \n\
-             说明: --self-test 只在 127.0.0.1 上验证编解码与收发（evidence_scope=loopback），\n\
-             不是 S3/S6 证据。--ping/--get-peers 的真实性取决于给定地址。"
+             说明: 目标可以是域名（如 dht.transmissionbt.com:6881），会解析到 IPv4。\n\
+             --self-test 只在 127.0.0.1 上验证编解码与收发（evidence_scope=loopback），\n\
+             不是 S3/S6 证据。--ping/--get-peers 的真实性取决于给定地址。\n\
+             --walk 只读（不发 announce_peer），有查询数上限。"
         );
         std::process::exit(if args.is_empty() { 2 } else { 0 });
     }
@@ -74,9 +77,9 @@ fn main() {
             Ok(c) => c,
             Err(e) => fail(&format!("客户端绑定失败: {e}")),
         };
-        let addr = match addr_text.parse::<SocketAddr>() {
+        let addr = match parse_target(&addr_text) {
             Ok(a) => a,
-            Err(e) => fail(&format!("地址 {addr_text} 非法: {e}")),
+            Err(e) => fail(&format!("{e}")),
         };
         match client.ping(addr, Duration::from_millis(2000)) {
             Ok(remote) => println!(
@@ -84,7 +87,8 @@ fn main() {
                 json(&[
                     ("ok", "true".into()),
                     ("mode", q("ping")),
-                    ("target", q(&addr.to_string())),
+                    ("target", q(&addr_text)),
+                    ("resolved", q(&addr.to_string())),
                     ("remote_id", q(&remote.to_hex())),
                     ("local_addr", q(&client.local_addr().unwrap_or(addr).to_string())),
                 ])
@@ -110,9 +114,9 @@ fn main() {
             Ok(c) => c,
             Err(e) => fail(&format!("客户端绑定失败: {e}")),
         };
-        let addr = match addr_text.parse::<SocketAddr>() {
+        let addr = match parse_target(&addr_text) {
             Ok(a) => a,
-            Err(e) => fail(&format!("地址 {addr_text} 非法: {e}")),
+            Err(e) => fail(&format!("{e}")),
         };
         let (token, nodes, values) = match client.get_peers(addr, ih, Duration::from_millis(3000)) {
             Ok(v) => v,
@@ -151,8 +155,144 @@ fn main() {
         return;
     }
 
+    if let Some(addr_text) = opt("--find-node") {
+        let id = node_id_from(&opt("--node-id"));
+        let client = match DhtClient::bind("0.0.0.0:0", id) {
+            Ok(c) => c,
+            Err(e) => fail(&format!("客户端绑定失败: {e}")),
+        };
+        let addr = match parse_target(&addr_text) {
+            Ok(a) => a,
+            Err(e) => fail(&format!("{e}")),
+        };
+        let target = match opt("--target").and_then(|t| NodeId::from_hex(&t).ok()) {
+            Some(t) => t,
+            None => NodeId::random(),
+        };
+        match client.find_node(addr, target, Duration::from_millis(2000)) {
+            Ok(nodes) => println!(
+                "{}",
+                json(&[
+                    ("ok", "true".into()),
+                    ("mode", q("find-node")),
+                    ("target", q(&addr_text)),
+                    ("resolved", q(&addr.to_string())),
+                    ("nodes", nodes.len().to_string()),
+                    ("node_list", q(&nodes.iter().map(|c| c.addr.to_string()).collect::<Vec<_>>().join(","))),
+                ])
+            ),
+            Err(e) => fail(&format!("find_node {addr} 失败: {e}")),
+        }
+        return;
+    }
+
+    if let Some(seeds_text) = opt("--walk") {
+        std::process::exit(walk(&seeds_text, &opt("--rounds"), &opt("--max-queries")));
+    }
+
     eprintln!("未知参数组合；用 --help 查看用法");
     std::process::exit(2);
+}
+
+/// 受控漫游：从引导节点出发，用 `find_node` 走有限跳，统计「真实公网上能学到多少活节点」。
+///
+/// 为什么要有它：单点 `--ping` 只证明「某一台机器回了一个包」；而 DHT 的价值在于
+/// 「能从种子扩散到一个邻域」。这两件事的证据强度差一个量级。
+///
+/// 纪律：
+/// - **全程不发 `announce_peer`**，不向公网写入任何东西，只读。
+/// - 查询数有硬上限（默认 32），不把别人的节点当压测目标。
+/// - 每个数字都是真实收发计数；一个都没通就 `ok:false`，不拿「0 个」假装成功。
+fn walk(seeds_text: &str, rounds: &Option<String>, max_queries: &Option<String>) -> i32 {
+    let rounds: usize = rounds.as_deref().and_then(|s| s.parse().ok()).unwrap_or(3).clamp(1, 6);
+    let cap: usize = max_queries
+        .as_deref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(32)
+        .clamp(1, 128);
+
+    let mut seeds = Vec::new();
+    for part in seeds_text.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        match parse_target(part) {
+            Ok(a) => seeds.push(a),
+            Err(e) => fail(&format!("{e}")),
+        }
+    }
+    if seeds.is_empty() {
+        fail("--walk 需要至少一个引导节点");
+    }
+
+    let client = match DhtClient::bind("0.0.0.0:0", NodeId::random()) {
+        Ok(c) => c,
+        Err(e) => fail(&format!("客户端绑定失败: {e}")),
+    };
+    let target = NodeId::random();
+
+    let mut visited: std::collections::BTreeSet<SocketAddr> = seeds.iter().copied().collect();
+    let mut queue: std::collections::VecDeque<SocketAddr> = seeds.iter().copied().collect();
+    let mut learned: std::collections::BTreeMap<[u8; ID_LEN], SocketAddr> = Default::default();
+    let (mut queried, mut alive, mut answered, mut failures) = (0usize, 0usize, 0usize, 0usize);
+    let mut elapsed_rounds = Vec::new();
+
+    for _ in 0..rounds {
+        if queried >= cap {
+            break;
+        }
+        let started = std::time::Instant::now();
+        let mut batch: Vec<SocketAddr> = Vec::new();
+        while let Some(addr) = queue.pop_front() {
+            if queried >= cap {
+                queue.push_front(addr); // 留给下一轮，不算进本轮
+                break;
+            }
+            batch.push(addr);
+            queried += 1;
+            if client.ping(addr, Duration::from_millis(1200)).is_ok() {
+                alive += 1;
+            }
+            match client.find_node(addr, target, Duration::from_millis(1500)) {
+                Ok(contacts) => {
+                    answered += 1;
+                    for c in contacts {
+                        learned.entry(*c.id.as_bytes()).or_insert(c.addr);
+                        if visited.insert(c.addr) {
+                            queue.push_back(c.addr);
+                        }
+                    }
+                }
+                Err(_) => failures += 1,
+            }
+        }
+        elapsed_rounds.push(started.elapsed().as_millis());
+        if batch.is_empty() || queue.is_empty() {
+            break;
+        }
+    }
+
+    let ok = answered > 0;
+    let detail = json(&[
+        ("ok", if ok { "true".into() } else { "false".into() }),
+        ("mode", q("walk")),
+        ("seeds", q(seeds_text)),
+        ("seeds_total", seeds.len().to_string()),
+        ("queries_cap", cap.to_string()),
+        ("queried", queried.to_string()),
+        ("ping_alive", alive.to_string()),
+        ("find_node_answered", answered.to_string()),
+        ("find_node_failed", failures.to_string()),
+        ("unique_contacts", learned.len().to_string()),
+        ("frontier_left", queue.len().to_string()),
+        ("round_ms", q(&elapsed_rounds.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))),
+        ("evidence_scope", q("public-readonly")),
+        ("announced", q("none")),
+    ]);
+    if ok {
+        println!("{detail}");
+        0
+    } else {
+        eprintln!("{detail}");
+        1
+    }
 }
 
 /// 回环自检：服务端与客户端都用真实 socket，断言「应答里的 id == 服务端 id」。
@@ -219,6 +359,38 @@ fn parse_infohash(hex_text: &str) -> Result<[u8; ID_LEN], String> {
     Ok(*id.as_bytes())
 }
 
+/// 解析目标：先按字面 `ip:port`，失败再当主机名解析。
+///
+/// 必须支持域名，因为 BEP 5 的引导节点全是域名（`router.bittorrent.com:6881` 等），
+/// 只收字面 IP 会把「最常用的一条路径」变成非法输入——而且报错是
+/// `invalid socket address syntax`，看起来像用户写错了地址，实际是工具不支持。
+///
+/// 只取 IPv4：本 crate 的 socket 是 v4（`DhtClient::bind("0.0.0.0:0")`），
+/// 解析出 v6 却拿去用只会在更深处失败。解析结果一并回显，便于核对「到底打了谁」。
+fn parse_target(text: &str) -> Result<SocketAddr, String> {
+    if let Ok(a) = text.parse::<SocketAddr>() {
+        return Ok(a);
+    }
+    use std::net::ToSocketAddrs;
+    let mut v6_seen = false;
+    match text.to_socket_addrs() {
+        Ok(iter) => {
+            for a in iter {
+                if a.is_ipv4() {
+                    return Ok(a);
+                }
+                v6_seen = true;
+            }
+            if v6_seen {
+                Err(format!("{text} 只解析出 IPv6 地址；本工具的 DHT socket 仅支持 IPv4"))
+            } else {
+                Err(format!("{text} 没有解析出任何地址"))
+            }
+        }
+        Err(e) => Err(format!("地址 {text} 既不是 ip:port 也无法解析为域名: {e}")),
+    }
+}
+
 fn hex(b: &[u8]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
@@ -260,4 +432,31 @@ fn fail_code(msg: &str) -> i32 {
 fn bencode_smoke() -> bool {
     let v = bencode::dict(vec![("t", bencode::bytes("aa"))]);
     bencode::decode(&v.encode()).map(|d| d == v).unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn literal_ip_port_passes_through() {
+        let a = parse_target("127.0.0.1:6881").expect("字面地址必须直接可用");
+        assert_eq!(a.to_string(), "127.0.0.1:6881");
+    }
+
+    #[test]
+    fn hostname_is_resolved_to_ipv4() {
+        // `localhost` 在 hosts 里恒有映射，不依赖外网，适合当域名解析的样板。
+        let a = parse_target("localhost:6881").expect("域名必须可解析");
+        assert!(a.is_ipv4(), "DHT socket 只有 v4，解析必须落到 v4");
+        assert_eq!(a.port(), 6881, "端口必须保留");
+    }
+
+    #[test]
+    fn garbage_is_rejected_with_explicit_error() {
+        let e = parse_target("not a host:6881").unwrap_err();
+        assert!(!e.is_empty());
+        // 不能悄悄回落到某个默认地址：那会让「探测失败」看起来像「探测成功」。
+        assert!(e.contains("无法解析") || e.contains("没有解析出"));
+    }
 }

@@ -48,6 +48,18 @@ M2 欠的「LRU 调度接引擎」正是这个洞。执行层面有三个可选�
   配置层拒绝 0，不在运行期静默夹到 1——这个数字决定节点能不能供片，
   「配错了」不能长得像「配好了」。
 
+## 2026-11-18 补证：真实引擎下的逐出
+
+第一版只有 `FakeOps` 单测，属于「我们按约定调了 pause」。第二轮补了
+`coldrevived::sched::tests::real_engine_eviction_pauses_the_previous_seed`：
+真 `RqbitEngine` + 两个真 `.torrent`（各 96 KiB）、`paused` 加入、容量 1，
+按 A→B→A 唤醒，断言 `Engine::state` 观测到 `Cold → Hot → Cold → Hot`。
+Windows 与 Linux 两端均通过（全仓 232 passed）。
+
+**仍然存在的限制**：守护进程只持有一个做种任务（`st.seed_task: Option<TaskId>`），
+所以这是**组件级**证据。「多任务守护进程」需要先改产品形态（多样本入库 + 每任务映射），
+不在本轮范围；不得据此声称「生产多任务调度已验证」。
+
 ## 后果
 
 - 正面：活跃任务数有硬上限且可观测（`/health` 的 `seeding_active` / `seeding_cap` /

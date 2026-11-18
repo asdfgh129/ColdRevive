@@ -219,4 +219,96 @@ mod tests {
         assert!(s.is_active(1));
         assert_eq!(s.len(), 1);
     }
+
+    // ------------------------------------------------------------------
+    // 真实引擎（librqbit）下的逐出路径
+    //
+    // FakeOps 只能证明「我们按约定调了 pause」，证明不了「引擎真的把那个任务停了」。
+    // 状态映射错位、pause 幂等性、逐出后仍被统计成 HOT —— 这些都只在真引擎上暴露。
+    // 因此这里断言的是 `Engine::state` 的观测值，不看调度器自己的记账。
+    // ------------------------------------------------------------------
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("cr-sched-{tag}-{}-{nanos}", std::process::id()))
+    }
+
+    fn wait_state(eng: &RqbitEngine, task: TaskId, want: EngineState, ms: u64) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms);
+        while std::time::Instant::now() < deadline {
+            if eng.state(task) == want {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        eng.state(task) == want
+    }
+
+    #[test]
+    fn real_engine_eviction_pauses_the_previous_seed() {
+        use cr_engine::EngineOptions;
+
+        let dir = tmp_dir("evict");
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let data_a = vec![0xA5u8; 96 * 1024];
+        let data_b = vec![0x5Au8; 96 * 1024];
+        std::fs::write(dir.join("a.bin"), &data_a).expect("写 A 数据");
+        std::fs::write(dir.join("b.bin"), &data_b).expect("写 B 数据");
+        let tor_a = cr_torrent::generate(&data_a, "a.bin", 32 * 1024, "");
+        let tor_b = cr_torrent::generate(&data_b, "b.bin", 32 * 1024, "");
+
+        let mut opts = EngineOptions::new(&dir);
+        opts.listen = None; // 只做出站：测试不占端口，避免与真实守护进程抢端口
+        opts.enable_dht = false;
+        opts.enable_trackers = false;
+        opts.init_timeout = std::time::Duration::from_secs(30);
+        let mut eng = RqbitEngine::new(opts).expect("创建引擎");
+
+        // 两个任务都以 paused 加入：COLD 语义（按需唤醒），与守护进程的真实路径一致。
+        let mut spec_a = cr_engine::TorrentSpec::new("a.bin", &tor_a.raw);
+        spec_a.paused = true;
+        spec_a.disable_trackers = true;
+        let id_a = eng.add_torrent(&spec_a).expect("加入 A");
+        let mut spec_b = cr_engine::TorrentSpec::new("b.bin", &tor_b.raw);
+        spec_b.paused = true;
+        spec_b.disable_trackers = true;
+        let id_b = eng.add_torrent(&spec_b).expect("加入 B");
+        assert_ne!(id_a, id_b, "两个任务必须是不同任务号");
+
+        assert_eq!(eng.state(id_a), EngineState::Cold, "paused 加入后应为冷态");
+        assert_eq!(eng.state(id_b), EngineState::Cold);
+
+        // 活跃池容量 1：先让 A 供片。
+        let mut sched = LruScheduler::new(1);
+        let first = wake_seed(&mut sched, &mut eng, id_a);
+        assert!(first.serving, "首次唤醒必须供片：{:?}", first);
+        assert_eq!(first.admission, "activated");
+        assert!(wait_state(&eng, id_a, EngineState::Hot, 8000),
+                "A 激活后引擎状态应为 hot，实际 {:?}", eng.state(id_a));
+
+        // 再唤醒 B：必须挤掉 A，并且 A 在引擎里真的变成冷态。
+        let second = wake_seed(&mut sched, &mut eng, id_b);
+        assert!(second.serving, "第二次唤醒必须供片：{:?}", second);
+        assert_eq!(second.admission, "evicted_then_activated");
+        assert_eq!(second.evicted, Some(id_a), "被逐出的必须是最久未用的 A");
+        assert!(second.errors.is_empty(), "逐出路径不应有错误：{:?}", second.errors);
+
+        assert!(wait_state(&eng, id_a, EngineState::Cold, 8000),
+                "A 被逐出后引擎里必须真的暂停，实际 {:?}", eng.state(id_a));
+        assert!(wait_state(&eng, id_b, EngineState::Hot, 8000),
+                "B 激活后引擎状态应为 hot，实际 {:?}", eng.state(id_b));
+
+        // 反向再挤一次：证明逐出不是单向的一次性巧合。
+        let third = wake_seed(&mut sched, &mut eng, id_a);
+        assert_eq!(third.evicted, Some(id_b));
+        assert!(wait_state(&eng, id_b, EngineState::Cold, 8000),
+                "B 被逐出后引擎里必须真的暂停，实际 {:?}", eng.state(id_b));
+        assert!(wait_state(&eng, id_a, EngineState::Hot, 8000));
+
+        eng.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

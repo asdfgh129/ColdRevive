@@ -1130,6 +1130,19 @@ fn accept_loop(listener: TcpListener, shared: Arc<Shared>) {
     }
 }
 
+/// 断开前先把拒绝原因发出去。
+///
+/// 发失败也照样断开：拒绝的优先级高于礼貌。但**能发就必须发**——客户端只看到
+/// 「连接被关」时，无法区分「配额挡了」与「网络断了」，排查方向会完全跑偏。
+fn reject_before_close(w: &Arc<Mutex<ChanWriter>>, reason: &str) {
+    let frame = RelayFrame {
+        kind: FrameKind::Reject,
+        node: [0u8; NODE_ID_LEN],
+        payload: reason.as_bytes().to_vec(),
+    };
+    let _ = send_frame(w, &frame);
+}
+
 fn send_frame(w: &Arc<Mutex<ChanWriter>>, frame: &RelayFrame) -> bool {
     match w.lock() {
         Ok(mut g) => g.send(frame),
@@ -1290,6 +1303,7 @@ fn serve_chan(
                 if let Some(cur) = registered {
                     if cur != id {
                         shared.stat(|s| s.rejected += 1);
+                        reject_before_close(&writer, "同一条连接不能改成另一个节点 ID");
                         break;
                     }
                 }
@@ -1298,10 +1312,12 @@ fn serve_chan(
                 // 反而比断开更占资源。
                 if !shared.registration_allowed(ip) {
                     shared.stat(|s| s.ip_rate_limited += 1);
+                    reject_before_close(&writer, "注册频率超过单 IP 配额，请退避后重试");
                     break;
                 }
                 if !shared.registry.insert(id, writer.clone(), shared.limits.max_nodes) {
                     shared.stat(|s| s.rejected += 1);
+                    reject_before_close(&writer, "本实例注册表已满");
                     break;
                 }
                 registered = Some(id);
@@ -1342,6 +1358,7 @@ fn serve_chan(
                 if let Some(cur) = registered {
                     if cur != id {
                         shared.stat(|s| s.rejected += 1);
+                        reject_before_close(&writer, "同一条连接不能改成另一个节点 ID");
                         break;
                     }
                 }
@@ -1350,10 +1367,12 @@ fn serve_chan(
                 // 反而比断开更占资源。
                 if !shared.registration_allowed(ip) {
                     shared.stat(|s| s.ip_rate_limited += 1);
+                    reject_before_close(&writer, "注册频率超过单 IP 配额，请退避后重试");
                     break;
                 }
                 if !shared.registry.insert(id, writer.clone(), shared.limits.max_nodes) {
                     shared.stat(|s| s.rejected += 1);
+                    reject_before_close(&writer, "本实例注册表已满");
                     break;
                 }
                 registered = Some(id);
@@ -1510,8 +1529,9 @@ fn serve_chan(
                 let owner = peer.expect("peer 已判定为 Some");
                 shared.apply_peer_sync(owner, &nodes);
             }
-            // DELIVERED / ACK / REACH_RESULT 是服务端→客户端的帧；客户端回送属于协议违规。
-            FrameKind::Delivered | FrameKind::Ack | FrameKind::ReachResult => {}
+            // DELIVERED / ACK / REACH_RESULT / REJECT 是服务端→客户端的帧；
+            // 客户端回送属于协议违规，忽略而不是断开（断开会让一条坏帧变成一次重连风暴）。
+            FrameKind::Delivered | FrameKind::Ack | FrameKind::ReachResult | FrameKind::Reject => {}
             FrameKind::Unknown(_) => shared.stat(|s| s.rejected += 1),
         }
     }
@@ -1885,7 +1905,10 @@ mod tests {
 
         let mut b = RelayClient::new(addr).connect(Duration::from_secs(2)).unwrap();
         let err = b.register(&id(b'B')).expect_err("同 IP 第二次注册应被拒");
-        assert!(!err.is_empty());
+        // 必须能区分「被配额拒绝」与「链路断了」：以前只有一句 failed to fill whole buffer，
+        // 那种错误会把人往网络故障的方向带。
+        assert!(err.contains("拒绝"), "错误必须表明是中继拒绝: {err}");
+        assert!(err.contains("频率"), "错误必须带具体原因: {err}");
         assert!(wait_until(|| handle.stats().ip_rate_limited >= 1, Duration::from_millis(800)),
                 "ip_rate_limited 应为 1（当前 {:?}）", handle.stats().ip_rate_limited);
         // 第一次注册仍然有效：配额只挡新注册，不清空已注册的节点。
