@@ -111,13 +111,20 @@ impl DataPlane {
     }
 
     pub fn json(&self) -> cr_core::Json {
+        let t = self.tunnels.lock().unwrap();
+        // v2.4.93：`tunnels` 只是**登记条数**，不保证泵还活着。旧口径下泵线程静默死亡时
+        // `tunnels=1` 仍然成立，看板上完全看不出问题；这里把「活着几条」单列。
+        let alive = t.values().filter(|s| s.is_running()).count();
+        let total = t.len();
+        drop(t);
         cr_core::Json::obj(vec![
             ("enabled", cr_core::Json::b(true)),
             ("proxy", cr_core::Json::s(&self.proxy_url)),
             ("socks5_registered", cr_core::Json::n(self.bridge.registered() as f64)),
             ("served_registered", cr_core::Json::n(self.bridge.served_registered() as f64)),
             ("bytes_relayed", cr_core::Json::n(self.bridge.bytes_relayed() as f64)),
-            ("tunnels", cr_core::Json::n(self.tunnels.lock().unwrap().len() as f64)),
+            ("tunnels", cr_core::Json::n(total as f64)),
+            ("tunnels_alive", cr_core::Json::n(alive as f64)),
             ("carrier", cr_core::Json::s("relay-tcp")),
         ])
     }

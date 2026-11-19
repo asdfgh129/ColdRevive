@@ -536,7 +536,12 @@ impl RelayTunnelSet {
                         }
                         Ok(Some(_)) => {} // 控制帧/他人帧不属于数据面
                         Ok(None) => {}
-                        Err(e) => return Err(format!("relay 收帧失败: {e}")),
+                        Err(e) => {
+                            // v2.4.93：这条路径以前静默 return Err，线程死了没人知道，
+                            // 外表现只剩「tunnels=1 但一个字节也不走」。必须留痕。
+                            eprintln!("[relay-tunnel] 数据面收帧失败，隧道中止: {e}");
+                            return Err(format!("relay 收帧失败: {e}"));
+                        }
                     }
                     // 每轮把出向队列排空，避免 20 ms 轮询把每个 DATA 都拖慢一跳。
                     while let Ok((dst, tf)) = out_rx.try_recv() {

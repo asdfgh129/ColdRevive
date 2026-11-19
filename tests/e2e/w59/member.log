@@ -1,0 +1,8 @@
+[nat] 中继 PSK 已装载，指纹 037d79762181690e（须与中继端一致）
+[data-plane] SOCKS5 桥就绪: socks5://127.0.0.1:55383（opt-in）
+[A] UDP 监听 0.0.0.0:17801
+[A] HTTP 监听 0.0.0.0:17800
+[relay-sub] 已订阅中继 82.157.68.159:7100（可达性声明: unknown）
+[data-plane] 中继隧道已确认并登记: channel=842154240 peer=203.0.113.31:17902 relay=82.157.68.159:7100 session=c09fca5bbf394fa49c0370c41a71a4b0
+[engine] BT 引擎已创建，不监听入站（下载目录 C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w59/run-member\downloads）
+[engine] 已知 peer（来自对端通告）: [203.0.113.31:17902]

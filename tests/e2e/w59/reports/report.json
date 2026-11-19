@@ -1,0 +1,125 @@
+{
+  "run": "w59",
+  "title": "公网双端「打洞失败 → 中继接管」BT 数据面（v2.4.93 修复后）",
+  "version": "v2.4.93",
+  "date": "2026-11-19",
+  "topology": {
+    "holder": {
+      "host": "222",
+      "lan": "192.168.34.222",
+      "public_egress": "112.5.32.34",
+      "role": "holder",
+      "bind_bt": "0.0.0.0:17902"
+    },
+    "member": {
+      "host": "A",
+      "lan": "192.168.1.210",
+      "public_egress": "112.5.60.4",
+      "role": "member",
+      "bind_bt": "0.0.0.0:17802"
+    },
+    "relay": {
+      "addr": "82.157.68.159:7100",
+      "auth": "psk",
+      "key_fp": "037d79762181690e",
+      "carrier": "tcp"
+    },
+    "stun": "82.157.68.159:3478/3479"
+  },
+  "observed": {
+    "wake": {
+      "path": "relay",
+      "ack_status": "OK",
+      "direct_candidate": "192.168.34.222:17901",
+      "direct_ok": false,
+      "direct_rtt_ms": 1200,
+      "relay_hop": "真实 DELIVERED 帧",
+      "tunnel": "OPEN/OPENED 双向握手完成"
+    },
+    "download": {
+      "status": "complete",
+      "completed_length": "1048576",
+      "total_length": "1048576",
+      "connections": "0",
+      "md5_holder": "b0e93e825f86000e5341cf4aecb0559e",
+      "md5_member": "b0e93e825f86000e5341cf4aecb0559e"
+    },
+    "holder_data": {
+      "enabled": true,
+      "carrier": "relay-sub-tcp",
+      "opens": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 51,
+      "bytes_to_engine": 1264,
+      "bytes_from_engine": 1049585,
+      "splices_done": 1
+    },
+    "holder_seed": {
+      "seed_active": 1,
+      "served_bytes": 1048576
+    },
+    "member_data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:55383",
+      "socks5_registered": 0,
+      "served_registered": 1,
+      "bytes_relayed": 1050849,
+      "tunnels": 1,
+      "tunnels_alive": 1,
+      "carrier": "relay-tcp"
+    },
+    "relay_delta": {
+      "connections": 3,
+      "registered": 3,
+      "delivered": 167,
+      "dropped": 0,
+      "data_bytes_admitted": 1050048,
+      "bandwidth_limited": 0,
+      "rate_limited": 0,
+      "rejected": 0,
+      "bad_tag": 0
+    },
+    "relay_conn_sampling": {
+      "samples": 60,
+      "both_ips_present": 60,
+      "member_two_conns": 35,
+      "window_ms": [
+        1795058736216,
+        1795058751316
+      ],
+      "per_ip_observations": {
+        "112.5.32.34": 60,
+        "112.5.60.4": 95
+      },
+      "note": "每个采样点 250 ms；成员侧出现两条连接 = 订阅连接 + 数据面连接同时在线"
+    }
+  },
+  "assertions": {
+    "download_complete": true,
+    "completed_bytes_1048576": true,
+    "md5_identical": true,
+    "wake_path_is_relay": true,
+    "wake_ack_ok": true,
+    "tunnel_confirmed_by_peer": true,
+    "holder_splice_done": true,
+    "byte_identity_1264_plus_1049585": true,
+    "relay_dropped_zero": true,
+    "relay_admitted_matches_payload": true,
+    "no_bandwidth_limited": true,
+    "tunnel_pump_alive": true,
+    "both_public_ips_on_relay": true
+  },
+  "all_pass": true,
+  "boundaries": [
+    "**不是 NAT 可达性证据**：两台主机在 192.168.1.0/24 上还有一条管理面直连（222 有 192.168.1.222 别名），所以「跨 NAT 不可直连」靠的是**通告地址不可达**（192.168.34.222 / 203.0.113.31 都从 A 不可达），不是物理隔离；nat_type=unknown、s6_status=not_run、g2_claim=false。",
+    "**控制面走 LAN**：advertise 与种子文件经 192.168.1.222:17900 取；只有 BT 字节流被强制走公网中继。",
+    "**单次 1 MiB**：未做吞吐、并发、长稳测试；中继默认 512 KiB/s 数据令牌桶。",
+    "**打洞失败是观测结论而非设置**：直连候选 192.168.34.222:17901 从 A 不可达（1204 ms 无应答）；本轮 STUN 未产出映射（nat_type=unknown），故只能说「本轮直连不可用 → 中继接管」。"
+  ],
+  "bug_found": "v2.4.92 的 RELAY 读帧用 read_exact，轮询读超时落在记录中间会丢掉已读字节并导致流错位；表现为持有者写完 1 MiB、下载方只收到 1441 B、中继 dropped 暴涨。",
+  "bug_fixed": "v2.4.93 改为可续读缓冲（cr_nat::secure::fill_pending），读超时只表示「本轮未凑齐」，缓冲保留，凑齐才解析；明文与加密两条路径共用。"
+}

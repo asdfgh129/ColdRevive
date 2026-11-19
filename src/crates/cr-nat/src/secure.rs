@@ -336,36 +336,76 @@ pub struct SecureReader {
     counters: Arc<SecureCounters>,
     /// 最近一次成功读到的记录时间（判断空闲）
     last_seen_ms: Arc<AtomicU64>,
+    /// **未读完的记录缓冲**（v2.4.93）。
+    ///
+    /// 旧实现用 `read_exact` 读头/体/tag，读超时被归类成 `Timeout` 直接返回——
+    /// 但 `read_exact` 出错前可能已经消费掉半个记录，这些字节就丢了。下一次 `recv()`
+    /// 会把记录体当成记录头来解析：要么「记录超限」，要么 tag 校验失败，连接报废。
+    /// 低时延链路上记录总是整块到达，所以只在 LAN 自测里看不出问题；公网上 16 KiB 分块
+    /// 经 512 KiB/s 令牌桶限速后，20 ms 轮询超时落在记录中间是常态，于是数据面会在
+    /// 传输刚开始时静默死亡——外表现是「隧道登记了、对端也说发了 1 MiB，本机收到 0」。
+    pending: Vec<u8>,
+}
+
+/// 把缓冲补到至少 `need` 字节。
+///
+/// `Ok(true)` = 够了；`Ok(false)` = 本轮读超时，**缓冲原样保留**（不丢半个记录）；
+/// `Err` = 链路关闭或真错误。用 `read` 而不是 `read_exact`：必须能容忍「读到一半超时」。
+pub(crate) fn fill_pending<R: std::io::Read>(
+    r: &mut R,
+    buf: &mut Vec<u8>,
+    need: usize,
+    what: &str,
+) -> Result<bool, RecvError> {
+    while buf.len() < need {
+        let mut tmp = [0u8; 8192];
+        match r.read(&mut tmp) {
+            Ok(0) => return Err(RecvError::Io(format!("{what}: 对端已关闭连接"))),
+            Ok(n) => buf.extend_from_slice(&tmp[..n]),
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                return Ok(false)
+            }
+            Err(e) => return Err(RecvError::Io(format!("{what}: {e}"))),
+        }
+    }
+    Ok(true)
 }
 
 impl SecureReader {
     pub fn recv(&mut self) -> Result<RelayFrame, RecvError> {
         loop {
-            let mut head = [0u8; 5];
-            self.stream
-                .read_exact(&mut head)
-                .map_err(|e| io_err("读记录头失败", e))?;
-            let rtype = head[0];
-            let len = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
+            // 记录头（5 B）→ 记录体（len）→ tag（32 B），**全部走可续读缓冲**：
+            // 任一步读超时都只返回 Timeout，已到的字节留在 self.pending 里，下次接着读。
+            if !fill_pending(&mut self.stream, &mut self.pending, 5, "读记录头失败")? {
+                return Err(RecvError::Timeout("记录头未到齐".into()));
+            }
+            let rtype = self.pending[0];
+            let len = u32::from_be_bytes([
+                self.pending[1],
+                self.pending[2],
+                self.pending[3],
+                self.pending[4],
+            ]) as usize;
             if len > self.max_frame + FRAME_HEADER_LEN {
                 return Err(RecvError::Protocol(format!(
                     "记录超限: {} > {}",
                     len, self.max_frame
                 )));
             }
-            let mut body = vec![0u8; len];
-            if len > 0 {
-                self.stream
-                    .read_exact(&mut body)
-                    .map_err(|e| io_err("读记录体失败", e))?;
+            let total = 5 + len + 32;
+            if !fill_pending(&mut self.stream, &mut self.pending, total, "读记录失败")? {
+                return Err(RecvError::Timeout(format!(
+                    "记录体/tag 未到齐（已收 {}/{} B）",
+                    self.pending.len(),
+                    total
+                )));
             }
-            let mut tag = [0u8; 32];
-            self.stream
-                .read_exact(&mut tag)
-                .map_err(|e| io_err("读记录 tag 失败", e))?;
+            let rec: Vec<u8> = self.pending.drain(..total).collect();
+            let body = &rec[5..5 + len];
+            let tag = &rec[5 + len..total];
 
-            let want = record_tag(&self.mac, self.seq, rtype, len, &body);
-            if !ct_eq(&want, &tag) {
+            let want = record_tag(&self.mac, self.seq, rtype, len, body);
+            if !ct_eq(&want, tag) {
                 // 序号被消费掉，不再复用：篡改只能让连接报废，不能诱使重同步。
                 SecureCounters::bump(&self.counters.bad_tag);
                 return Err(RecvError::Protocol(format!(
@@ -380,7 +420,7 @@ impl SecureReader {
 
             match rtype {
                 RT_DATA => {
-                    let mut plain = body;
+                    let mut plain = body.to_vec();
                     keystream_xor(&self.enc, seq, &mut plain);
                     return RelayFrame::decode(&plain).ok_or_else(|| {
                         RecvError::Protocol("帧解析失败（明文非法）".into())
@@ -421,14 +461,6 @@ impl SecureReader {
 
     pub fn shutdown(&self) {
         let _ = self.stream.shutdown(Shutdown::Both);
-    }
-}
-
-fn io_err(what: &str, e: std::io::Error) -> RecvError {
-    let msg = format!("{}: {}", what, e);
-    match e.kind() {
-        ErrorKind::WouldBlock | ErrorKind::TimedOut => RecvError::Timeout(msg),
-        _ => RecvError::Io(msg),
     }
 }
 
@@ -622,6 +654,7 @@ fn finish_channel(
         reply: Some(Arc::downgrade(&writer)),
         counters: counters.clone(),
         last_seen_ms: Arc::new(AtomicU64::new(now_ms())),
+        pending: Vec::new(),
     };
     Ok(Channel {
         reader,
@@ -868,5 +901,71 @@ mod tests {
         assert_eq!(stats.ping_sent, 1);
         assert_eq!(stats.pong_sent, 0, "服务端没收到 PING，不该发 PONG");
         assert_eq!(stats.records_in, 2, "入方向应有 PONG + DATA 两条（{:?}）", stats);
+    }
+
+    /// v2.4.93 回归：读超时**只表示「还没凑齐」，不得丢已读字节**。
+    ///
+    /// 这是加密与明文两条路径共用的续读原语。旧实现直接 `read_exact`，
+    /// 超时前已消费的半帧被丢弃，下一轮把帧体当帧头解析 → 连接报废。
+    #[test]
+    fn fill_pending_keeps_partial_bytes_across_timeouts() {
+        struct Scripted {
+            steps: Vec<Option<Vec<u8>>>, // None = 读超时
+            i: usize,
+        }
+        impl std::io::Read for Scripted {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                match self.steps.get(self.i) {
+                    Some(Some(v)) => {
+                        self.i += 1;
+                        let n = v.len();
+                        assert!(n <= out.len());
+                        out[..n].copy_from_slice(v);
+                        Ok(n)
+                    }
+                    Some(None) => {
+                        self.i += 1;
+                        Err(std::io::Error::new(
+                            std::io::ErrorKind::WouldBlock,
+                            "本轮无数据",
+                        ))
+                    }
+                    None => Ok(0),
+                }
+            }
+        }
+
+        let mut r = Scripted {
+            steps: vec![
+                Some(vec![1, 2, 3]),
+                None,
+                Some(vec![4, 5]),
+                None,
+                Some(vec![6]),
+            ],
+            i: 0,
+        };
+        let mut buf = Vec::new();
+        assert!(!fill_pending(&mut r, &mut buf, 6, "t").unwrap(), "第一次应判定为本轮未凑齐");
+        assert_eq!(buf, vec![1, 2, 3], "超时前读到的 3 B 必须保留");
+        assert!(!fill_pending(&mut r, &mut buf, 6, "t").unwrap());
+        assert_eq!(buf, vec![1, 2, 3, 4, 5], "继续累积，不得回退或丢弃");
+        assert!(fill_pending(&mut r, &mut buf, 6, "t").unwrap(), "凑齐后应返回 true");
+        assert_eq!(buf, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    /// 同伴：对端真关闭时要如实报链路错误，不能伪装成「本轮没数据」，
+    /// 否则订阅线程会一直空转、永远不重连。
+    #[test]
+    fn fill_pending_reports_closed_link_as_error() {
+        struct Closed;
+        impl std::io::Read for Closed {
+            fn read(&mut self, _o: &mut [u8]) -> std::io::Result<usize> {
+                Ok(0)
+            }
+        }
+        let mut buf = Vec::new();
+        let e = fill_pending(&mut Closed, &mut buf, 5, "读记录头失败").unwrap_err();
+        assert!(matches!(e, RecvError::Io(_)), "关闭必须是 Io 而不是 Timeout: {e:?}");
     }
 }

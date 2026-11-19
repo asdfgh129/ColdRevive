@@ -42,7 +42,7 @@ updated: 2026-11-18
 | [ADR-021](ADR-021-punched-tcp-bridge.md) | 打通的 TCP socket 怎么喂给 BT 引擎 | 用 librqbit 的 SOCKS5 钩子作出向 + 回环 splice 作入向，**不 fork、不换引擎**；对端地址会显示成 `127.0.0.1`，属已知降级 | ✅ 已接受（2026-11-18；`cr-bridge` 6/6 单测 + 1 MiB 真引擎回环 E2E） | 守护进程唤醒路径接线；A 方案在公网样本失败时退回 fork connector |
 | [ADR-022](ADR-022-punch-first-relay-fallback.md) | 打洞与中继怎么选 | 两阶段裁决（Local→Commit），**两端共识才 Direct**，否则共同回落 Relay；裁决走中继消息帧、不新增帧类型、不改唤醒协议；`Route::Relay` 不代表中继有 BT 数据面 | ✅ 已接受（2026-11-18；状态机 12 例 + 真中继双端 5 例 + 真引擎直连/中继双路径 E2E） | 中继补 BT 数据面时；公网双侧打洞解 BLOCKED 时 |
 
-| [ADR-023](ADR-023-bt-over-relay.md) | 中继能不能承载 BT 数据面 | 用**TCP 中继帧**承载字节流（不新增帧类型、不重造 TCP）：`CD` 头 + channel + DATA/CLOSE/OPEN/OPENED，16 KiB 分块走 ADR-014 令牌桶；cr-bridge 的 `Upstream::Tunnel` 交给 librqbit SOCKS5 钩子；持有者侧在订阅连接上分流并 splice 到本地引擎；UDP 仍只做控制面 | ✅ 已接受（2026-11-19；v1.1 补齐双向握手 + splice，双进程 1 MiB 取片实测） | UDP 数据面需要可靠层时才开；公网双端「打洞失败→中继接管」仍待跑 |
+| [ADR-023](ADR-023-bt-over-relay.md) | 中继能不能承载 BT 数据面 | 用**TCP 中继帧**承载字节流（不新增帧类型、不重造 TCP）：`CD` 头 + channel + DATA/CLOSE/OPEN/OPENED，16 KiB 分块走 ADR-014 令牌桶；cr-bridge 的 `Upstream::Tunnel` 交给 librqbit SOCKS5 钩子；持有者侧在订阅连接上分流并 splice 到本地引擎；UDP 仍只做控制面 | ✅ 已接受（2026-11-19；v1.1 双向握手 + splice，**v1.2 读帧必须可续读**；公网双端 1 MiB 取片实测） | UDP 数据面需要可靠层时才开；**真正的打洞**要等 STUN 双端都产出映射后才谈得上 |
 
 **统计**：23 项决策，22 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 

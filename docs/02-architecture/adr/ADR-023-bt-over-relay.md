@@ -2,7 +2,7 @@
 doc_id: ADR-023
 title: ADR-023 BT-over-relay：用 TCP 中继帧承载 BT 字节流（不自建可靠传输）
 category: 架构决策
-version: 1.0
+version: 1.2
 status: 已定稿
 owner: 架构组
 updated: 2026-11-19
@@ -14,7 +14,8 @@ updated: 2026-11-19
 
 已采纳（2026-11-19）。实现：`cr-nat::relay_tunnel` + `cr-bridge` 的 tunnel 上游 +
 `coldrevived` 的 opt-in 唤醒接线；**v1.1（2026-11-19 晚）补齐持有者侧 splice 与
-OPEN/OPENED 握手**，见「v1.1 增补」。
+OPEN/OPENED 握手**，见「v1.1 增补」；**v1.2 修掉读帧在轮询超时下丢半帧导致
+公网数据面静默断流**，见「v1.2 增补」——v1.1 的实现只在小 RTT 路径上正确。
 
 ## 背景：为什么以前说「中继没有 BT 数据面」
 
@@ -139,6 +140,39 @@ librqbit 只肯拨「看起来像公网 peer」的地址，而两台 NAT 后的�
   因为它的唯一消费者就是装有本地桥的对端。
 - 必须与 `nat.punch_route=true` 同时配置，否则地址不可达，通告出去就是假 peer。
 
+## v1.2 增补：读帧必须可续读（v2.4.93）
+
+v1.1 的实现能用，但只在**小 RTT 路径**上用对。公网一跑就暴露：
+
+| 观测 | 值 |
+| :--- | :--- |
+| 持有者 | `←引擎 1,049,585 B`、`splices_done=1`（引擎确实供完了片） |
+| 下载方 | `bytes_relayed=1441`、`tunnels=1`（隧道「在」，但只搬了 1441 B） |
+| 中继 | `dropped` +224（目标节点「不在注册表」= 连接已死） |
+| 下载 | 0 字节（文件是 aria2 预分配的全零） |
+
+**根因**：`RelayConn` 读帧用 `read_exact` 读帧头/帧体，轮询读超时被归类成「本轮没有帧」
+后直接返回——但 `read_exact` 超时前**可能已经消费掉半帧**，这些字节被丢弃。下一轮把帧体
+当帧头解析 →「帧体超限」/解析失败 → 订阅或隧道线程 `return Err` → 连接关闭 → 中继把后续
+帧按「目标不存在」计入 `dropped`。加密路径 `SecureReader::recv` 同样如此，而公网中继**只走加密**。
+
+为什么 LAN 测不出来：W58 的中继在同一交换机上，记录总是整块到达，20 ms 轮询超时永远落在
+记录边界；公网 16 KiB 分块 + 512 KiB/s 令牌桶 + 85 ms RTT，超时落在记录中间是常态。
+
+**决策**：读帧一律走**可续读缓冲**（`cr_nat::secure::fill_pending`）——
+用 `read` 累积字节，`WouldBlock/TimedOut` 只表示「本轮未凑齐」，缓冲原样保留，凑齐才解析。
+明文与加密两条路径共用同一个原语。
+
+**这是本 ADR 的硬约束**：用**短周期读超时轮询**的长连接，读帧不得用 `read_exact`。
+范围要说清——中继服务端用的是单次 300 s 空闲超时（`idle`），帧中间超时只可能意味着对端真死了，
+那里直接关连接是正确语义，故未改；危险的是客户端那种「20 ms 一轮、等不到就当本轮没帧」的用法。
+
+**可观测性**：隧道泵出错不再静默（打日志 `/health.data_plane.tunnels_alive`）——
+`tunnels` 只是**登记条数**，泵死了它照样是 1，看板会骗人。
+
+回归：`relay::tests::frame_split_across_read_timeout_is_resumed_not_lost`（真 TCP，
+一帧切成 37 B + 余下、中间停 150 ms）、`secure::tests::fill_pending_*`。
+
 ## 实施状态
 
 ### v2.4.91（承载与交接）
@@ -162,10 +196,18 @@ librqbit 只肯拨「看起来像公网 peer」的地址，而两台 NAT 后的�
 - `data_plane`：派生会话 id 注册 + `send_open` + `wait_opened` 后才登记进桥。
 - 引擎侧：`nat.punch_route=true` 时把对端通告的 `bt_external` 作为 `initial_peers`
   交给 librqbit，不再依赖「持有者必须有可达 tracker」。
+### v2.4.93（公网双端 + 读帧可续读）
+
+- **bug 修复**：`fill_pending` 可续读缓冲，明文/加密共用（见「v1.2 增补」）；
+  隧道泵出错留痕，`/health.data_plane` 增 `tunnels_alive`。
+- **公网双端实测**：持有者 222（真 NAT `112.5.32.34`）↔ 下载方 A（家庭宽带 `112.5.60.4`），
+  中继 `82.157.68.159:7100`（PSK）。1 MiB `complete`、两端 md5 一致、<2 s；
+  中继单轮 Δ`data_bytes_admitted`=1,050,048、**Δ`dropped`=0**；采样 60/60 点两源同时在线。
+  证据 `tests/e2e/w59/`（13 条断言）。
 - **仍未完成（不得冒充）**：
   1. UDP 承载的数据面仍未实现（1168 B 上限、无重传，需可靠层，属独立工作）。
-  2. 「打洞失败 → 中继数据面接管」的公网双端完整链路（含真实 NAT 类型分类）
-     尚未作为一次运行记录进证据；当前只有 crate 级、真引擎 e2e 与双进程中继证据。
+  2. **真正的打洞**：本轮 STUN 未产出映射（`nat_type=unknown`），所以「打洞尝试失败」
+     这一半仍是观测结论而非实验结论；要做需先让 STUN 在双端都拿到映射。
 
 ## 复现
 
@@ -177,4 +219,4 @@ CR_RELAY_E2E_REPORT="$PWD/tests/e2e/w57/reports/relay_data.json" \
   cargo test --offline -p cr-engine --test relay_data_e2e -- --nocapture
 ```
 
-双进程公网证据见 `tests/e2e/w58/README.md`（运行脚本与原始输出在该目录）。
+双进程 LAN 证据见 `tests/e2e/w58/README.md`；**公网双端证据见 `tests/e2e/w59/README.md`**（运行脚本、原始输出、13 条断言与中继侧连接采样都在该目录）。

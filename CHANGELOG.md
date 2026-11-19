@@ -2,6 +2,42 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.93] - 2026-11-19 — 公网双端中继取片成功；修掉 v2.4.92 的数据面静默断流
+
+> `g2_claim=false`、`s6_status=not_run` 不变。本版把 v2.4.92 的「同 LAN + LAN 中继」
+> 换成**公网中继 + 两个不同公网出口的真实 NAT**，并因此发现 v2.4.92 的公网数据面是坏的。
+
+- **致命 bug（已修）**：`RelayConn` 读帧用 `read_exact` 读帧头/帧体，轮询读超时被归成
+  「本轮没有帧」后直接返回，但超时前**可能已消费半帧**，这些字节被丢弃；下一轮把帧体当帧头
+  解析 → 「帧体超限」/解析失败 → 订阅或隧道线程 `return Err` → 连接关闭 → 中继把后续帧按
+  「目标不存在」计入 `dropped`。加密路径（`SecureReader::recv`）同样如此，而公网中继**只走加密**。
+  LAN 中继上记录总是整块到达，所以 W58 完全测不出来；公网 16 KiB 分块 + 512 KiB/s 令牌桶 +
+  85 ms RTT 下，超时落在记录中间是常态。
+  现场表现极具误导性：持有者 `←引擎 1,049,585 B`、`splices_done=1`（看着全对），
+  下载方 `bytes_relayed=1441`、`tunnels=1`（也「有」隧道），下载 0 字节，中继 `dropped +224`。
+- **修法**：新增 `cr_nat::secure::fill_pending` 可续读缓冲——用 `read`（而非 `read_exact`）
+  累积，`WouldBlock/TimedOut` 只表示「本轮未凑齐」，缓冲原样保留，凑齐再解析；明文与加密共用。
+  同时把静默死亡变可见：隧道泵出错打日志、`/health.data_plane` 新增 **`tunnels_alive`**
+  （`tunnels` 只是登记条数，泵死了它照样是 1）。
+- **回归测试**：`relay::frame_split_across_read_timeout_is_resumed_not_lost`（真 TCP，
+  一帧故意切成 37 B + 余下、中间停 150 ms）、`secure::fill_pending_keeps_partial_bytes_across_timeouts`、
+  `secure::fill_pending_reports_closed_link_as_error`。
+- **W59 实测（公网，一次干净运行）**：持有者 222（真 NAT `112.5.32.34`）↔ 下载方 A
+  （本机 Windows，家庭宽带 `112.5.60.4`），中继 `82.157.68.159:7100`（PSK）。
+  `path=relay`、`ack_status=OK`；直连候选 `192.168.34.222:17901` 从 A 1204 ms 无应答 →
+  中继接管；1 MiB 下载 `status=complete`、两端 md5 均 `b0e93e82…559e`、**<2 s**。
+  持有者 `opens=1/accepted=1/splices_done=1`、`→引擎 1,264 B / ←引擎 1,049,585 B`、
+  引擎自证 `served_bytes=1,048,576`；下载方 `bytes_relayed=1,050,849`（=1,264+1,049,585）、
+  `tunnels_alive=1`；中继单轮 Δ`data_bytes_admitted`=**1,050,048**、Δ`delivered`=+167、
+  **Δ`dropped`=0**、`bandwidth_limited`/`rate_limited` 均 0。采样 **60/60** 个点两个公网源
+  同时在线上中继。证据 `tests/e2e/w59/`（13 条断言全过）。
+- **边界（不变）**：222 在 `192.168.1.0/24` 上另有管理面别名，故**不是** NAT 可达性证据；
+  `nat_type=unknown`、`s6_status=not_run`；控制面（advertise/种子）走 LAN，只有 BT 字节流进隧道；
+  单次 1 MiB、未测吞吐与并发。
+- **仍未完成**：UDP 承载的数据面（无重传层）；真正的「双端公网映射都拿不到 → 打洞尝试失败」
+  需要 STUN 产出映射后才谈得上（本轮 `nat_type=unknown`）。
+- 全量回归：`cargo test --workspace --offline` **313 passed / 0 failed**。
+
 ## [2.4.92] - 2026-11-19 — 持有者侧 splice + OPEN/OPENED 握手 + 双进程中继取片实测
 
 > `g2_claim=false`、`s6_status=not_run` 不变。本版补上 ADR-023 缺的**另一半**：

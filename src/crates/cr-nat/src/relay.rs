@@ -35,7 +35,7 @@
 
 use crate::relay_server::DEFAULT_MAX_FRAME;
 use crate::secure::RecvError;
-use std::io::{ErrorKind, Read, Write};
+use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -51,15 +51,8 @@ pub const FRAME_HEADER_LEN: usize = 1 + NODE_ID_LEN + 4;
 /// 订阅连接抢占服务端注册表里 `HashMap<node_id, conn>` 的唯一表项。改用一次性会话 id 后：
 /// 请求侧注册的 id 唯一；服务端把该 id 作为 `DELIVERED.node`（来源）交给持有者，
 /// 持有者据此把真实 WAKEUP_ACK 准确回投到这次请求的 TCP 连接。
-/// 明文连接没有 secure 记录层，超时分类要在这里补齐，口径与 [`RecvError`] 一致。
-fn classify_plain_read(e: std::io::Error, what: &str) -> RecvError {
-    let msg = format!("{what}: {e}");
-    match e.kind() {
-        ErrorKind::TimedOut | ErrorKind::WouldBlock => RecvError::Timeout(msg),
-        _ => RecvError::Io(msg),
-    }
-}
-
+/// 明文连接没有 secure 记录层，超时分类在 [`crate::secure::fill_pending`] 里统一处理，
+/// 口径与 [`RecvError`] 一致（超时 → 保留缓冲、返回"本轮没有帧"）。
 pub fn ephemeral_session_id(self_id: &[u8; NODE_ID_LEN]) -> [u8; NODE_ID_LEN] {
     static SEQ: AtomicU64 = AtomicU64::new(1);
     let nanos = SystemTime::now()
@@ -354,6 +347,7 @@ impl RelayClient {
                 io: ConnIo::Plain {
                     reader: stream.try_clone().map_err(|e| e.to_string())?,
                     writer: stream,
+                    pending: Vec::new(),
                 },
             }),
         }
@@ -365,6 +359,9 @@ enum ConnIo {
     Plain {
         reader: TcpStream,
         writer: TcpStream,
+        /// **未读完的帧缓冲**（v2.4.93）：读超时不得丢掉已读到的半帧。
+        /// 详见 `crate::secure::fill_pending` 的注释——同一条坑在明文路径上也存在。
+        pending: Vec<u8>,
     },
     Secure {
         reader: crate::secure::SecureReader,
@@ -560,33 +557,13 @@ impl RelayConn {
 
     fn recv_frame_inner(&mut self) -> Result<Option<RelayFrame>, RecvError> {
         match &mut self.io {
-            ConnIo::Plain { reader, .. } => {
-                let mut head = [0u8; FRAME_HEADER_LEN];
-                if let Err(e) = reader.read_exact(&mut head) {
-                    let e = classify_plain_read(e, "读帧头失败");
-                    return if matches!(e, RecvError::Timeout(_)) { Ok(None) } else { Err(e) };
-                }
-                let len = u32::from_be_bytes([
-                    head[1 + NODE_ID_LEN],
-                    head[2 + NODE_ID_LEN],
-                    head[3 + NODE_ID_LEN],
-                    head[4 + NODE_ID_LEN],
-                ]) as usize;
-                if len > DEFAULT_MAX_FRAME {
-                    return Err(RecvError::Protocol(format!("帧体超限: {len}")));
-                }
-                let mut payload = vec![0u8; len];
-                if len > 0 {
-                    if let Err(e) = reader.read_exact(&mut payload) {
-                        let e = classify_plain_read(e, "读帧体失败");
-                        return if matches!(e, RecvError::Timeout(_)) { Ok(None) } else { Err(e) };
-                    }
-                }
-                let mut raw = head.to_vec();
-                raw.extend_from_slice(&payload);
-                RelayFrame::decode(&raw)
-                    .map(Some)
-                    .ok_or_else(|| RecvError::Protocol("帧解析失败".into()))
+            ConnIo::Plain { reader, pending, .. } => {
+                // 与加密路径同一条红线：读超时只表示「这一轮还没凑齐一帧」，
+                // 已经读到的字节必须留在 `pending` 里，否则下一轮会把帧体当帧头解析。
+                let mut buf = std::mem::take(pending);
+                let out = Self::plain_recv(reader, &mut buf);
+                *pending = buf;
+                out
             }
             ConnIo::Secure { reader, .. } => match reader.recv() {
                 Ok(f) => Ok(Some(f)),
@@ -594,6 +571,33 @@ impl RelayConn {
                 Err(e) => Err(e),
             },
         }
+    }
+
+    /// 明文帧的**可续读**解析：先凑齐帧头，再凑齐帧体，凑不齐就原样留着下次接着读。
+    fn plain_recv(
+        reader: &mut TcpStream,
+        buf: &mut Vec<u8>,
+    ) -> Result<Option<RelayFrame>, RecvError> {
+        if !crate::secure::fill_pending(reader, buf, FRAME_HEADER_LEN, "读帧头失败")? {
+            return Ok(None);
+        }
+        let len = u32::from_be_bytes([
+            buf[1 + NODE_ID_LEN],
+            buf[2 + NODE_ID_LEN],
+            buf[3 + NODE_ID_LEN],
+            buf[4 + NODE_ID_LEN],
+        ]) as usize;
+        if len > DEFAULT_MAX_FRAME {
+            return Err(RecvError::Protocol(format!("帧体超限: {len}")));
+        }
+        let total = FRAME_HEADER_LEN + len;
+        if !crate::secure::fill_pending(reader, buf, total, "读帧体失败")? {
+            return Ok(None);
+        }
+        let raw: Vec<u8> = buf.drain(..total).collect();
+        RelayFrame::decode(&raw)
+            .map(Some)
+            .ok_or_else(|| RecvError::Protocol("帧解析失败".into()))
     }
 }
 
@@ -648,6 +652,7 @@ pub fn lookup_reach_any(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read as _;
     use std::net::TcpListener;
     use std::thread;
 
@@ -756,5 +761,57 @@ mod tests {
         let delivered = conn.recv_frame().unwrap();
         assert_eq!(delivered.kind, FrameKind::Delivered);
         assert_eq!(&delivered.payload, b"wakeup");
+    }
+
+    /// v2.4.93 回归：**帧被读超时切成两半时不得丢字节**。
+    ///
+    /// 旧实现用 `read_exact` 读帧头/帧体，20 ms 轮询超时一旦落在帧中间就返回「本轮没帧」，
+    /// 已消费的半帧被丢弃；下一轮把帧体当帧头解析 → 「帧体超限」或解析失败 → 连接报废。
+    /// 公网 16 KiB 分块经 512 KiB/s 令牌桶限速后必然触发，LAN 测不出来。
+    #[test]
+    fn frame_split_across_read_timeout_is_resumed_not_lost() {
+        use std::io::Write as _;
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let frame = RelayFrame {
+            kind: FrameKind::Delivered,
+            node: [0x5A; NODE_ID_LEN],
+            payload: vec![0xA7u8; 4000],
+        }
+        .encode();
+        let expected = frame.len();
+        let (head, tail) = frame.split_at(37); // 故意切在帧体中间
+        let head = head.to_vec();
+        let tail = tail.to_vec();
+        let server = std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            s.write_all(&head).unwrap();
+            s.flush().unwrap();
+            std::thread::sleep(Duration::from_millis(150)); // > 客户端读超时
+            s.write_all(&tail).unwrap();
+            s.flush().unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+        });
+
+        let mut conn = RelayClient::plaintext(addr.to_string())
+            .connect(Duration::from_secs(3))
+            .unwrap();
+        conn.set_read_timeout(Some(Duration::from_millis(20))).unwrap();
+
+        let mut got = None;
+        for _ in 0..200 {
+            let f = conn.recv_frame_optional().expect("读超时不得升级成错误");
+            if let Some(f) = f {
+                got = Some(f);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let f = got.expect("半帧必须被续读出来，不能因为一次读超时就丢掉");
+        assert_eq!(f.payload.len(), 4000, "帧体长度必须完整（帧头 {} B 被切开）", expected);
+        assert_eq!(f.node, [0x5A; NODE_ID_LEN], "帧头字段必须解析正确，不能把帧体当帧头");
+        server.join().unwrap();
     }
 }
