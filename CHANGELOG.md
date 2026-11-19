@@ -34,8 +34,16 @@
 - **边界（不变）**：222 在 `192.168.1.0/24` 上另有管理面别名，故**不是** NAT 可达性证据；
   `nat_type=unknown`、`s6_status=not_run`；控制面（advertise/种子）走 LAN，只有 BT 字节流进隧道；
   单次 1 MiB、未测吞吐与并发。
-- **仍未完成**：UDP 承载的数据面（无重传层）；真正的「双端公网映射都拿不到 → 打洞尝试失败」
-  需要 STUN 产出映射后才谈得上（本轮 `nat_type=unknown`）。
+- **W60 证据补充（同版本，无代码改动）**：复查发现 W59 的 `nat_type=unknown` 是**报告初始值**——
+  `w59-run.sh` 从未调用 `nat probe`，「STUN 未产出映射」并非实测。补跑后两端都拿到真实映射：
+  A `112.5.60.4:38576/38576` = `port-restricted-cone`（EIM），222 `112.5.32.34:2053/2054`
+  = `symmetric`。用验收量具旁路强制打洞：`punch_sent=2 acked=false peer_punched=false`、
+  真实超时 1203 ms → **失败**（symmetric 对端到 A 的映射端口不可预知）；生产自动路径据对端
+  `relay-only` 声明 `skip_direct=true` 选中继，`ack_status=OK`、OPEN/OPENED 完成，
+  1 MiB `complete`、两端 md5 一致、`bytes_relayed=1,050,849`。证据 `tests/e2e/w60/`
+  （18 条断言全过）。注意 W59 边界文字里的「STUN 未产出映射」应以此条为准。
+- **仍未完成**：UDP 承载的数据面（无重传层）。真正的打洞实验已由 W60 补上，
+  但**同版本无代码改动**；`s6_status=not_run`、`g2_claim=false` 不因此放宽。
 - 全量回归：`cargo test --workspace --offline` **313 passed / 0 failed**。
 
 ## [2.4.92] - 2026-11-19 — 持有者侧 splice + OPEN/OPENED 握手 + 双进程中继取片实测

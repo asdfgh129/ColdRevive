@@ -204,10 +204,13 @@ v1.1 的实现能用，但只在**小 RTT 路径**上用对。公网一跑就暴
   中继 `82.157.68.159:7100`（PSK）。1 MiB `complete`、两端 md5 一致、<2 s；
   中继单轮 Δ`data_bytes_admitted`=1,050,048、**Δ`dropped`=0**；采样 60/60 点两源同时在线。
   证据 `tests/e2e/w59/`（13 条断言）。
-- **仍未完成（不得冒充）**：
-  1. UDP 承载的数据面仍未实现（1168 B 上限、无重传，需可靠层，属独立工作）。
-  2. **真正的打洞**：本轮 STUN 未产出映射（`nat_type=unknown`），所以「打洞尝试失败」
-     这一半仍是观测结论而非实验结论；要做需先让 STUN 在双端都拿到映射。
+- **W60 证据补充（同版本，无代码改动）**：W59 的 `nat_type=unknown` 是**未跑 probe 的初始值**，
+  不是实测。补跑后 A 为 `port-restricted-cone`（两次映射一致）、222 为 `symmetric`（2053/2054 不同）；
+  强制 `stun-mapped` 候选真打洞：`punch_sent=2 acked=false peer_punched=false`、1203 ms 真实超时，
+  **失败**。生产按对端 `relay-only` 声明跳直连、走中继，1 MiB `complete`、md5 一致。
+  证据 `tests/e2e/w60/`（18 条断言）。**边界**：222 有 LAN 管理面别名，仍非 NAT 可达证据。
+- **仍未完成（不得冒充）**：UDP 承载的数据面仍未实现（1168 B 上限、无重传，需可靠层，属独立工作）。
+  「真正的打洞」实验已由 W60 补上，但 `s6_status=not_run`、`g2_claim=false` 不变。
 
 ## 复现
 
@@ -219,4 +222,4 @@ CR_RELAY_E2E_REPORT="$PWD/tests/e2e/w57/reports/relay_data.json" \
   cargo test --offline -p cr-engine --test relay_data_e2e -- --nocapture
 ```
 
-双进程 LAN 证据见 `tests/e2e/w58/README.md`；**公网双端证据见 `tests/e2e/w59/README.md`**（运行脚本、原始输出、13 条断言与中继侧连接采样都在该目录）。
+双进程 LAN 证据见 `tests/e2e/w58/README.md`；公网双端证据见 `tests/e2e/w59/README.md`；**真 STUN 分类 + 强制打洞失败 → 中继接管见 `tests/e2e/w60/README.md`**（运行脚本、原始输出、13 条断言与中继侧连接采样都在该目录）。

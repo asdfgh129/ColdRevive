@@ -1,0 +1,114 @@
+{
+  "run": "w60",
+  "title": "真 STUN 分类下「打洞失败 → 中继接管」完整链路（v2.4.93）",
+  "date": "2026-11-19",
+  "topology": {
+    "member": {
+      "node": "A",
+      "lan": "192.168.1.210",
+      "egress": "112.5.60.4",
+      "stun_mappings": [
+        "112.5.60.4:38576",
+        "112.5.60.4:38576"
+      ],
+      "nat_type": "port-restricted-cone"
+    },
+    "holder": {
+      "node": "222",
+      "lan": "192.168.34.222",
+      "egress": "112.5.32.34",
+      "stun_mappings": [
+        "112.5.32.34:2053",
+        "112.5.32.34:2054"
+      ],
+      "nat_type": "symmetric"
+    },
+    "relay": "82.157.68.159:7100 (PSK, TCP carrier)",
+    "stun": "82.157.68.159:3478/3479"
+  },
+  "observed": {
+    "forced_direct_attempt": {
+      "kind": "stun-mapped",
+      "target": "112.5.32.34:2053",
+      "ok": false,
+      "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+      "rtt_ms": 1203,
+      "self_mapping": "双向打洞：本侧映射 112.5.60.4:38579",
+      "peer_punch_back": true
+    },
+    "automatic_path": {
+      "path": "relay",
+      "ack_status": "OK",
+      "reach_class": "relay-only",
+      "skip_direct": true,
+      "notes": [
+        "可达性查询：82.157.68.159:7100 报告 peer=relay-only（声明时刻 1795082971940），跳过全部直连候选与打洞准备",
+        "中继数据面已确认（OPEN/OPENED 双向握手完成）: channel=842154240 peer=203.0.113.31:17902"
+      ]
+    },
+    "download": {
+      "status": "complete",
+      "completedLength": "1048576",
+      "md5_member": "b0e93e825f86000e5341cf4aecb0559e",
+      "md5_holder": "b0e93e825f86000e5341cf4aecb0559e"
+    },
+    "holder_data": {
+      "enabled": true,
+      "carrier": "relay-sub-tcp",
+      "opens": 1,
+      "accepted": 1,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 52,
+      "bytes_to_engine": 1264,
+      "bytes_from_engine": 1049585,
+      "splices_done": 1
+    },
+    "member_data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:57495",
+      "socks5_registered": 0,
+      "served_registered": 1,
+      "bytes_relayed": 1050849,
+      "tunnels": 1,
+      "tunnels_alive": 1,
+      "carrier": "relay-tcp"
+    },
+    "holder_seed": {
+      "seed_active": 1,
+      "served_bytes": 1048576
+    }
+  },
+  "assertions": {
+    "probe_A_has_real_mapping": true,
+    "probe_A_is_cone_eim": true,
+    "probe_222_has_real_mapping": true,
+    "probe_222_is_symmetric": true,
+    "forced_punch_failed": true,
+    "punch_packets_actually_sent": true,
+    "peer_did_not_reach_me": true,
+    "punch_used_real_timeout": true,
+    "peer_sent_punch_back": true,
+    "auto_wake_path_relay": true,
+    "auto_skipped_futile_punch": true,
+    "tunnel_two_way_handshake": true,
+    "download_complete": true,
+    "download_bytes_1048576": true,
+    "md5_identical": true,
+    "holder_splice_done": true,
+    "byte_identity": true,
+    "tunnel_pump_alive": true
+  },
+  "all_pass": true,
+  "boundaries": [
+    "强制直连是验收量具的显式旁路（wake 第三参数 kind），生产自动路径按对端 relay-only 声明跳过打洞；",
+    "  两者共同说明：直连候选确实不可用，且生产没有错误地依赖它。",
+    "222 的 STUN 映射是「到 STUN 服务器」的端口（2051/2052）；symmetric NAT 到 A 的映射端口不可预知，",
+    "  这正是打洞失败的机制，不是实现缺陷。",
+    "控制面（advertise / 种子）经 192.168.1.222:17900 走 LAN；只有 BT 字节流进公网中继。",
+    "222 另有 192.168.1.222 管理面别名，A 与 222 存在 L2 通路；本轮不是 NAT 可达性证据。",
+    "s6_status=not_run、evidence_valid_for_pass=false、g2_claim=false 不变；单次 1 MiB、无吞吐/并发结论。"
+  ]
+}

@@ -649,6 +649,17 @@ ColdRevive
     在可用邻居前提下做一次受控 announce 并独立查询验证；③ 多任务守护进程（多样本入库）
     落地后复跑逐出；④ 公网中继（VPS）时延/丢包。
 
+- **2026-11-19 M2 第七轮补证据（v2.4.93，无代码改动）：W60 真 STUN 分类 + 强制打洞失败 → 中继接管**
+  - 复查发现 W59 的 `nat_type=unknown` 是**没跑 `nat probe` 的初始值**，不是「STUN 没产出映射」的实测。
+  - 补跑：A `112.5.60.4:38576/38576` = `port-restricted-cone`（EIM），
+    222 `112.5.32.34:2053/2054` = `symmetric`。
+  - 用验收量具旁路 `wake … stun-mapped` 真打洞：`punch_sent=2 acked=false peer_punched=false`、
+    1203 ms 真实超时 → **失败**（symmetric 到 A 的映射不可预测，222 也经中继回打了 2 帧）。
+  - 生产自动路径据 `relay-only` 声明 `skip_direct=true` → 中继，`ack_status=OK`、OPEN/OPENED 完成；
+    1 MiB `complete`、两端 md5 一致、`bytes_relayed=1,050,849`。`tests/e2e/w60/`（18 条断言）。
+  - 边界不变：控制面走 LAN、222 有 LAN 管理面别名（非 NAT 可达证据）、`s6_status=not_run`、
+    `g2_claim=false`；**仍未完成**只剩 UDP 数据面。
+
 - **2026-11-19 M2 第七轮（v2.4.93）：公网双端中继取片跑通；修掉读帧超时丢半帧**
   - **把 W58 的两个弱条件都换掉**：中继搬到公网 `82.157.68.159:7100`（PSK），
     一端换成真实家庭宽带出口（本机 Windows `112.5.60.4`），另一端真 NAT `112.5.32.34`。
