@@ -42,7 +42,7 @@
   `relay-only` 声明 `skip_direct=true` 选中继，`ack_status=OK`、OPEN/OPENED 完成，
   1 MiB `complete`、两端 md5 一致、`bytes_relayed=1,050,849`。证据 `tests/e2e/w60/`
   （18 条断言全过）。注意 W59 边界文字里的「STUN 未产出映射」应以此条为准。
-- **仍未完成**：UDP 承载的数据面（无重传层）。真正的打洞实验已由 W60 补上，
+- **仍未完成**：UDP 承载的数据面（无重传层）；方案选型见 **ADR-024 提案（未批准，无代码改动）**：
   但**同版本无代码改动**；`s6_status=not_run`、`g2_claim=false` 不因此放宽。
 - 全量回归：`cargo test --workspace --offline` **313 passed / 0 failed**。
 
