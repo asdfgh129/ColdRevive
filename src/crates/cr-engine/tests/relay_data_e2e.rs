@@ -17,7 +17,11 @@ use cr_bridge::Bridge;
 use cr_engine::{EngineOptions, RqbitEngine, TorrentSpec};
 use cr_nat::relay::{RelayClient, NODE_ID_LEN};
 use cr_nat::relay_server::RelayServer;
-use cr_nat::relay_tunnel::{RelayTunnel, RelayTunnelSet};
+use cr_nat::relay_tunnel::{derive_session_id, RelayTunnel, RelayTunnelSet};
+use cr_nat::relay_udp::{UdpRelayClient, UdpRelayServer};
+use cr_nat::relay_udp_stream::{
+    recv_open, send_open_and_wait, send_opened, splice_stream_with, UdpRelayStream,
+};
 use librqbit::{create_torrent, spawn_utils::BlockingSpawner, CreateTorrentOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
@@ -285,5 +289,180 @@ fn relay_frames_carry_real_librqbit_piece() {
         println!("RELAY_E2E_REPORT={path}");
     }
 
+    handle.stop();
+}
+
+/// 把 UDP 可靠流 ↔ tokio duplex 对接（ADR-024 阶段 2 的桥接形态）。
+/// 两个专用线程各起 current_thread runtime：std 阻塞读不跑在共享 runtime 上，
+/// 与 `coldrevived::data_plane` 生产代码同构。
+fn pump_duplex_udp_stream(duplex: DuplexStream, stream: UdpRelayStream) {
+    let (read, write) = stream.split();
+    let (mut duplex_read, mut duplex_write) = tokio::io::split(duplex);
+    thread::Builder::new()
+        .name("udp-relay-e2e-to-stream".into())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let mut buf = [0u8; 16 * 1024];
+                let mut wr = write;
+                loop {
+                    match duplex_read.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if std::io::Write::write_all(&mut wr, &buf[..n]).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .unwrap();
+    thread::Builder::new()
+        .name("udp-relay-e2e-from-stream".into())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async move {
+                let mut buf = [0u8; 16 * 1024];
+                let mut rd = read;
+                loop {
+                    match std::io::Read::read(&mut rd, &mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if duplex_write.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .unwrap();
+}
+
+/// ADR-024 阶段 3 第 2 条：与 TCP 数据面**同一把尺**——真 librqbit 经 SOCKS5
+/// 从不可直连的 TEST-NET-3 地址取 1 MiB，但字节经 UDP 中继可靠流搬运。
+/// 这里只证明「UDP 承载的数据面能闭环」，不冒充 ADR-020 那类 TCP 被 RST 的部署。
+#[test]
+fn udp_relay_frames_carry_real_librqbit_piece() {
+    let a_dir = tmp_dir("udp-seed");
+    let b_dir = tmp_dir("udp-download");
+    let sample_path = a_dir.join(SAMPLE_NAME);
+    let data = sample_bytes();
+    std::fs::write(&sample_path, &data).unwrap();
+    let torrent = make_torrent(&sample_path);
+
+    let mut seed_opts = engine_opts(&a_dir, None);
+    seed_opts.listen = Some("127.0.0.1:0".parse().unwrap());
+    let mut seeder = RqbitEngine::new(seed_opts).expect("做种引擎必须启动");
+    let seeder_addr = seeder.listen_addr().expect("做种方必须真监听");
+    let seed_task = seeder
+        .add_torrent_with_timeout(&torrent_spec(&torrent, &a_dir, None), Duration::from_secs(30))
+        .expect("做种任务必须加入");
+
+    let psk = [0x32u8; 32];
+    let srv = UdpRelayServer::bind("127.0.0.1:0")
+        .unwrap()
+        .with_psk(Some(psk));
+    let addr = srv.local_addr().unwrap().to_string();
+    let handle = srv.spawn();
+    let timeout = Duration::from_millis(1500);
+    // 持有方数据面注册在**派生会话 id** 上（节点 id 那条会话留给订阅/唤醒）——
+    // 与 `relay_sub::serve_udp_data_plane` 及 `DataPlane::attach_relay_udp_tunnel` 同口径。
+    let holder = derive_session_id(&SIDE_B, b"cr-dp-v1");
+    let initiator = derive_session_id(&SIDE_A, b"cr-dp-v1");
+
+    // 持有方：peer 传全 0，从首个 DELIVER 锁定发起方；先拨通引擎再回 OPENED。
+    let holder_thread = {
+        let addr = addr.clone();
+        thread::spawn(move || {
+            let mut cb = UdpRelayClient::connect(&addr, timeout)
+                .unwrap()
+                .with_psk(Some(psk));
+            cb.hello(holder, timeout).unwrap();
+            let mut stream = UdpRelayStream::new(cb, [0u8; NODE_ID_LEN]).unwrap();
+            let (channel, got_initiator) = recv_open(&mut stream).unwrap();
+            assert_eq!(channel, CHANNEL);
+            assert_eq!(got_initiator, initiator);
+            let sock = std::net::TcpStream::connect(seeder_addr).unwrap();
+            send_opened(&mut stream).unwrap();
+            let (r, w) = stream.split();
+            splice_stream_with(r, w, sock, None).unwrap()
+        })
+    };
+
+    // 发起方：派生会话 id 注册，OPEN/OPENED 后才把 duplex 登记进 SOCKS5 桥。
+    let mut ca = UdpRelayClient::connect(&addr, timeout)
+        .unwrap()
+        .with_psk(Some(psk));
+    ca.hello(initiator, timeout).unwrap();
+    let mut stream = UdpRelayStream::new(ca, holder).unwrap();
+    send_open_and_wait(&mut stream, CHANNEL, &initiator).unwrap();
+
+    let bridge_rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let bridge = Arc::new(Bridge::new());
+    let listener = bridge_rt
+        .block_on(TcpListener::bind("127.0.0.1:0"))
+        .unwrap();
+    let bridge_addr = listener.local_addr().unwrap();
+    let b = bridge.clone();
+    bridge_rt.spawn(async move { let _ = b.serve_listener(listener).await; });
+
+    let (client_duplex, bridge_tunnel_side) = tokio::io::duplex(64 * 1024);
+    let advertised: SocketAddr = format!("203.0.113.33:{}", seeder_addr.port()).parse().unwrap();
+    bridge.register_tunnel(advertised, bridge_tunnel_side).unwrap();
+    pump_duplex_udp_stream(client_duplex, stream);
+
+    let proxy = Some(format!("socks5://{bridge_addr}"));
+    let mut downloader = RqbitEngine::new(engine_opts(&b_dir, proxy)).unwrap();
+    let task = downloader
+        .add_torrent_with_timeout(
+            &torrent_spec(&torrent, &b_dir, Some(advertised)),
+            Duration::from_secs(30),
+        )
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let mut last = None;
+    while Instant::now() < deadline {
+        let p = downloader.sample(task).expect("任务必须仍在引擎里");
+        last = Some(p.clone());
+        if p.finished && p.downloaded_bytes >= SAMPLE_LEN as u64 {
+            break;
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    let progress = last.expect("至少采样一次");
+    let (to_engine, from_engine) = holder_thread.join().unwrap();
+    let stats = handle.stats();
+    println!(
+        "UDP_RELAY_DATA_E2E served_registered={} downloaded={} finished={} \
+         to_engine={to_engine} from_engine={from_engine} relay_deliver_out={} \
+         relay_data_bytes_in={} bandwidth_limited={}",
+        bridge.served_registered(),
+        progress.downloaded_bytes,
+        progress.finished,
+        stats.deliver_out,
+        stats.data_bytes_in,
+        stats.bandwidth_limited,
+    );
+
+    assert_eq!(bridge.served_registered(), 1, "必须命中登记的 UDP 中继隧道");
+    assert!(progress.finished, "样本必须经 UDP 承载下载完成");
+    assert!(progress.downloaded_bytes >= SAMPLE_LEN as u64);
+    assert_eq!(std::fs::read(b_dir.join(SAMPLE_NAME)).unwrap(), data);
+    assert!(seeder.sample(seed_task).unwrap().uploaded_bytes > 0);
+    assert!(to_engine > 0 && from_engine > 0, "持有者 splice 必须双向搬字节");
+    assert_eq!(stats.bandwidth_limited, 0, "1 MiB 不应撞默认 2 MiB 突发预算");
     handle.stop();
 }

@@ -237,6 +237,13 @@ fn main() {
         if let Some(v) = opt("--udp-rate").and_then(|s| s.parse::<u32>().ok()) {
             ulim.rate_pps = v.max(1);
         }
+        // ADR-024 阶段 0：UDP 数据字节预算，与 TCP 的 --data-rate/--data-burst 同口径。
+        if let Some(v) = opt("--udp-data-rate").and_then(|s| s.parse::<u64>().ok()) {
+            ulim.data_byte_rate = v.max(1);
+        }
+        if let Some(v) = opt("--udp-data-burst").and_then(|s| s.parse::<u64>().ok()) {
+            ulim.data_burst_bytes = v.max(1);
+        }
         let srv = match cr_nat::relay_udp::UdpRelayServer::bind(&addr) {
             Ok(s) => s.with_psk(psk).with_limits(ulim),
             Err(e) => {
@@ -254,8 +261,9 @@ fn main() {
         let h = srv.spawn();
         println!("RELAY_UDP_LISTEN={}", a);
         println!(
-            "RELAY_UDP_LIMITS=max_sessions:{},max_per_ip:{},idle:{}s,rate:{}/s",
-            ulim.max_sessions, ulim.max_per_ip, ulim.idle_timeout.as_secs(), ulim.rate_pps
+            "RELAY_UDP_LIMITS=max_sessions:{},max_per_ip:{},idle:{}s,rate:{}/s,data_rate:{}/s,data_burst:{}",
+            ulim.max_sessions, ulim.max_per_ip, ulim.idle_timeout.as_secs(), ulim.rate_pps,
+            ulim.data_byte_rate, ulim.data_burst_bytes
         );
         println!(
             "[coldrevive-relay] UDP 承载监听 {}（每报文 HMAC，最大负载 {} 字节）",
@@ -281,7 +289,9 @@ fn main() {
                  \"datagrams\":{},\"bytes_in\":{},\"bytes_out\":{},\"hello\":{},\"hello_ack\":{},\
                  \"rebound\":{},\"data_in\":{},\"deliver_out\":{},\"status_out\":{},\"pong_out\":{},\
                  \"reject_out\":{},\"bye\":{},\"mac_fail\":{},\"bad_format\":{},\"magic_mismatch\":{},\
-                 \"too_big\":{},\"replay\":{},\"rate_limited\":{},\"not_registered\":{},\
+                 \"too_big\":{},\"replay\":{},\"rate_limited\":{},\"data_bytes_in\":{},\
+                 \"data_bytes_out\":{},\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},\
+                 \"not_registered\":{},\
                  \"target_absent\":{},\"sessions_rejected\":{},\"sessions_active\":{},\
                  \"sessions_expired\":{}}}",
                 addr,
@@ -305,6 +315,10 @@ fn main() {
                 stats.too_big,
                 stats.replay,
                 stats.rate_limited,
+                stats.data_bytes_in,
+                stats.data_bytes_out,
+                stats.bandwidth_limited,
+                stats.bandwidth_limited_bytes,
                 stats.not_registered,
                 stats.target_absent,
                 stats.sessions_rejected,

@@ -241,18 +241,42 @@ pub fn spawn(cfg: &Config) {
     // 一条断了不影响另一条；各自有自己的重连与切换。
     if !relays_udp.is_empty() {
         let label = cfg.node_id.clone();
+        let udp_for_sub = relays_udp.clone();
         thread::spawn(move || {
             let mut start = 0usize;
             loop {
-                let addr = &relays_udp[start % relays_udp.len()];
+                let addr = &udp_for_sub[start % udp_for_sub.len()];
                 if let Err(e) = serve_udp(addr, &self_id, &wake_host, wake_port, UDP_KEEPALIVE) {
                     eprintln!("[{}][relay-sub] UDP 订阅中断（{}）: {}，{}s 后切换重试",
                               label, addr, e, RECONNECT_DELAY.as_secs());
                 }
-                start = (start + 1) % relays_udp.len();
+                start = (start + 1) % udp_for_sub.len();
                 thread::sleep(RECONNECT_DELAY);
             }
         });
+    }
+
+    // ADR-024 阶段 2：UDP 数据面持有方。仅在 opt-in 且本机是持有者时启动。
+    // 用**派生会话 id**单独注册一条 UDP 连接（与 node_id 的订阅会话分离，避免互相顶掉），
+    // 收到 OPEN → 先拨通本地引擎 → 回 OPENED → 双向 splice。
+    if cfg.nat_data_plane_carrier.eq_ignore_ascii_case("udp") && !relays_udp.is_empty() {
+        if let Some(target) = dial {
+            let label = cfg.node_id.clone();
+            let relay_list = relays_udp.clone();
+            thread::spawn(move || {
+                let mut start = 0usize;
+                loop {
+                    let addr = &relay_list[start % relay_list.len()];
+                    if let Err(e) = serve_udp_data_plane(addr, &self_id, target) {
+                        eprintln!("[{}][relay-sub] UDP 数据面中断（{}）: {}，{}s 后重连",
+                                  label, addr, e, RECONNECT_DELAY.as_secs());
+                    }
+                    start = (start + 1) % relay_list.len();
+                    thread::sleep(RECONNECT_DELAY);
+                }
+            });
+            eprintln!("[relay-sub] UDP 数据面持有方已启用: 派生会话 → 本地引擎 {target}");
+        }
     }
 }
 
@@ -516,6 +540,64 @@ fn serve_udp(
             last_ping = Instant::now();
         }
     }
+}
+
+/// ADR-024 阶段 2：UDP 数据面持有方循环（派生会话 id，独立连接）。
+/// 只服务数据面 OPEN：校验来源 → 拨本地引擎 → 回 OPENED → 双向 splice。
+/// 未握手成功前不拨引擎、不回 OPENED，让发起方如实超时回落直连。
+fn serve_udp_data_plane(
+    relay: &str,
+    self_id: &[u8; NODE_ID_LEN],
+    dial: SocketAddr,
+) -> Result<(), String> {
+    use cr_nat::relay_udp_stream::{
+        recv_open, send_opened, splice_stream_with as splice, UdpRelayStream,
+    };
+
+    // 与发起方 derive_session_id(self_id, b"cr-dp-v1") 对应：持有方用同样的派生 id
+    // 注册数据面会话，发起方 send_data 的目标就是这个派生 id。
+    let dp_id = cr_nat::relay_tunnel::derive_session_id(self_id, b"cr-dp-v1");
+    let mut client = UdpRelayClient::connect(relay, CONNECT_TIMEOUT)?;
+    client
+        .hello(dp_id, CONNECT_TIMEOUT)
+        .map_err(|e| format!("UDP 数据面注册失败: {e}"))?;
+    eprintln!("[relay-sub] UDP 数据面已订阅 {relay}（派生会话），等待 OPEN → 本地引擎 {dial}");
+
+    // 一条连接服务一条 OPEN 后 splice；splice 结束（或出错）后返回，由上层重连。
+    // 这与 TCP 侧「持有者 splice 在独立线程」语义一致，只是 UDP 侧本线程专职数据面。
+    let mut stream = UdpRelayStream::new(client, [0u8; NODE_ID_LEN])?;
+    let (channel, initiator) = recv_open(&mut stream)?;
+    HOLDER.opens.fetch_add(1, Ordering::Relaxed);
+    eprintln!("[relay-sub] UDP 数据面 OPEN: channel={channel} peer={}", cr_hash::hex(&initiator));
+
+    // UdpRelayStream 以全 0 peer 构造，收到 OPEN 的首个 DELIVER 时已从真实来源
+    // （= 发起方派生 id）锁定发送目标，后续 OPENED / ACK 都发往正确的对端。
+    let sock = match TcpStream::connect_timeout(&dial, CONNECT_TIMEOUT) {
+        Ok(s) => s,
+        Err(e) => {
+            HOLDER.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!("拨本地引擎 {dial} 失败: {e}"));
+        }
+    };
+    send_opened(&mut stream)?;
+    HOLDER.accepted.fetch_add(1, Ordering::Relaxed);
+
+    let progress: cr_nat::relay_tunnel::ProgressFn = Arc::new(|to_up, n| {
+        let c = if to_up { &HOLDER.bytes_to_engine } else { &HOLDER.bytes_from_engine };
+        c.fetch_add(n, Ordering::Relaxed);
+    });
+    let (r, w) = stream.split();
+    match splice(r, w, sock, Some(progress)) {
+        Ok((to_engine, from_engine)) => {
+            eprintln!("[relay-sub] UDP 数据面结束: channel={channel} →引擎 {to_engine} B，←引擎 {from_engine} B");
+        }
+        Err(e) => {
+            HOLDER.rejected.fetch_add(1, Ordering::Relaxed);
+            return Err(format!("UDP 数据面 splice 异常: {e}"));
+        }
+    }
+    HOLDER.splices_done.fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }
 
 #[cfg(test)]

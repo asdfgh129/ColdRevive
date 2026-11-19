@@ -693,9 +693,10 @@ fn finish(mut out: WakeOutcome, state: &Shared, req: &Json, reply: Json,
     }
     drop(st);
 
-    // ADR-023：opt-in 数据面。唤醒成功后把经 TCP 中继的隧道登记进本地 SOCKS5 桥，
-    // 键是引擎真正会拨打的对端 BT 地址。登记失败**如实记录并回落直连**，
-    // 不能把「唤醒成功」当成「数据面已经走中继」。
+    // ADR-023 / ADR-024：opt-in 数据面。唤醒成功后把经中继的隧道登记进本地 SOCKS5 桥，
+    // 键是引擎真正会拨打的对端 BT 地址。承载由 `nat.data_plane_carrier` 决定：
+    //   tcp（默认）= ADR-023 既有行为；udp = ADR-024 阶段 2 的 opt-in 可靠 UDP 承载。
+    // 登记失败**如实记录并回落直连**，不能把「唤醒成功」当成「数据面已经走中继」。
     let (dp, cfg, adv) = {
         let st = state.lock().unwrap();
         (st.data_plane.clone(), st.cfg.clone(), st.nat.peer_adv.clone())
@@ -703,25 +704,37 @@ fn finish(mut out: WakeOutcome, state: &Shared, req: &Json, reply: Json,
     if let (Some(dp), Some(adv)) = (dp, adv) {
         let self_id = node_id_16(&cfg.node_id);
         let peer_id = node_id_16(&adv.node_id);
-        let relay = cfg.nat_relays.first().cloned().or_else(|| cfg.nat_relay.clone());
+        let use_udp = cfg.nat_data_plane_carrier.eq_ignore_ascii_case("udp");
+        let relay = if use_udp {
+            cfg.nat_relay_udps.first().cloned()
+        } else {
+            cfg.nat_relays.first().cloned().or_else(|| cfg.nat_relay.clone())
+        };
         let target = adv.bt_external.as_ref().and_then(|ep| ep.addr().parse::<SocketAddr>().ok());
         match (relay, target) {
             (Some(relay), Some(target)) => {
                 let channel = u32::from_be_bytes([
                     peer_id[0], peer_id[1], self_id[0], self_id[1],
                 ]);
-                match dp.attach_relay_tunnel(&relay, &self_id, &peer_id, channel, target) {
+                let res = if use_udp {
+                    dp.attach_relay_udp_tunnel(&relay, &self_id, &peer_id, channel, target)
+                } else {
+                    dp.attach_relay_tunnel(&relay, &self_id, &peer_id, channel, target)
+                };
+                match res {
                     // 措辞必须是「已确认」：这一步现在要求对端真的回了 OPENED，
                     // 不是「帧发出去了」。
                     Ok(()) => out.notes.push(format!(
-                        "中继数据面已确认（OPEN/OPENED 双向握手完成）: channel={channel} peer={target}"
+                        "中继数据面已确认（{}，OPEN/OPENED 双向握手完成）: channel={channel} peer={target}",
+                        if use_udp { "UDP" } else { "TCP" }
                     )),
                     Err(e) => out.notes.push(format!("中继数据面未登记（回落直连）: {e}")),
                 }
             }
-            _ => out.notes.push(
-                "中继数据面未登记：缺 TCP 中继或对端 BT 端点（回落直连）".into()
-            ),
+            _ => out.notes.push(format!(
+                "中继数据面未登记：缺{}中继或对端 BT 端点（回落直连）",
+                if use_udp { " UDP" } else { " TCP" }
+            )),
         }
     }
     out
@@ -845,7 +858,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     ("local_ok", Json::b(local_ok)),
                     ("route", Json::s(route.label())),
                     ("relay_data_plane", Json::s("tcp-carrier-implemented")),
-                    ("relay_data_plane_udp", Json::s("not_implemented")),
+                    ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-unverified")),
                     ("s6_status", Json::s("not_run")),
                 ]),
                 Err(e) => Json::obj(vec![
@@ -958,7 +971,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("peer", Json::s(&peer_label)),
                 ("tcp_punch_established", Json::b(true)),
                 ("relay_data_plane", Json::s("tcp-carrier-implemented")),
-                ("relay_data_plane_udp", Json::s("not_implemented")),
+                ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-unverified")),
                 ("is_s6_evidence", Json::b(false)),
                 ("g2_claim", Json::b(false)),
                 ("s6_status", Json::s("not_run")),

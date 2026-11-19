@@ -19,6 +19,7 @@ pub mod reach;
 pub mod relay;
 pub mod relay_tunnel;
 pub mod relay_udp;
+pub mod relay_udp_stream;
 pub mod secure;
 pub mod relay_server;
 pub mod stun;

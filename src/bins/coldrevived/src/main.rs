@@ -196,7 +196,9 @@ fn main() {
                 std::process::exit(2);
             }
         }
-        match data_plane::DataPlane::new() {
+        match data_plane::DataPlane::new_with_carrier(
+            data_plane::DataPlane::carrier_from_config(&cfg)
+        ) {
             Ok(dp) => Some(dp),
             Err(e) => {
                 eprintln!("[{node_id}] 数据面启动失败: {e}");

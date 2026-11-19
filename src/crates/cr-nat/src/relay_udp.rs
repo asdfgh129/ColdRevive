@@ -131,9 +131,14 @@ impl UdpKind {
 pub enum UdpStatus {
     Forwarded,
     TargetAbsent,
+    /// 会话级 pps 超限（每秒包数），与带宽超限分开——两者排障方向不同。
     RateLimited,
     TooBig,
     NotRegistered,
+    /// ADR-014 / ADR-024 阶段 0：全局数据字节预算不足。**不是**端到端送达失败，
+    /// 也不是对端不存在；调用方应显示「中继忙」而非「节点离线」。STATUS 帧在此码
+    /// 之后附带 UTF-8 原因文本（前 9 字节仍是 `1B 码 + 8B seq`，老调用方只读首字节）。
+    BandwidthLimited,
 }
 
 impl UdpStatus {
@@ -144,6 +149,7 @@ impl UdpStatus {
             UdpStatus::RateLimited => 2,
             UdpStatus::TooBig => 3,
             UdpStatus::NotRegistered => 4,
+            UdpStatus::BandwidthLimited => 5,
         }
     }
     pub fn from_code(c: u8) -> Option<UdpStatus> {
@@ -153,6 +159,7 @@ impl UdpStatus {
             2 => UdpStatus::RateLimited,
             3 => UdpStatus::TooBig,
             4 => UdpStatus::NotRegistered,
+            5 => UdpStatus::BandwidthLimited,
             _ => return None,
         })
     }
@@ -163,6 +170,7 @@ impl UdpStatus {
             UdpStatus::RateLimited => "rate_limited",
             UdpStatus::TooBig => "too_big",
             UdpStatus::NotRegistered => "not_registered",
+            UdpStatus::BandwidthLimited => "bandwidth_limited",
         }
     }
 }
@@ -287,6 +295,14 @@ pub struct UdpLimits {
     pub idle_timeout: Duration,
     pub rate_pps: u32,
     pub max_payload: usize,
+    /// **本实例**每秒允许转发的数据字节数（全局令牌桶，不是每会话）。
+    /// ADR-014 / ADR-024 阶段 0：与 TCP 侧 `Limits::data_byte_rate` 同口径、同默认值。
+    /// UDP 的 DATA 帧天然 ≤1152 B（远小于 TCP 的 4096 B 信令阈值），**不能**照搬
+    /// 「小帧绕过预算」——否则整个 UDP 数据面都能逃过带宽护栏。UDP 侧改按**帧类型**
+    /// 判据：只有 `UdpKind::Data` 计费，其余都是信令。
+    pub data_byte_rate: u64,
+    /// 数据字节令牌桶容量（允许的突发字节数），与 TCP `data_burst_bytes` 对齐。
+    pub data_burst_bytes: u64,
 }
 
 impl Default for UdpLimits {
@@ -297,7 +313,42 @@ impl Default for UdpLimits {
             idle_timeout: Duration::from_secs(60),
             rate_pps: 2000,
             max_payload: UDP_MAX_PAYLOAD,
+            // 512 KiB/s ≈ 4 Mbps，突发 4 秒——与 TCP 侧 `Limits::default()` 完全一致。
+            data_byte_rate: 512 * 1024,
+            data_burst_bytes: 2 * 1024 * 1024,
         }
+    }
+}
+
+/// UDP 数据帧字节令牌桶（ADR-014 同口径）。
+///
+/// 与 `Session::allow` 的 pps 粗粒度窗口分开：pps 挡「刷包」，字节桶挡「占满带宽」。
+/// 两者拒绝的原因不同、计数不同，排障方向也不同。按时间平滑补充而非每秒清零，
+/// 避免窗口边界放过 2 倍突发；一次性申请整帧，超了就整帧拒绝，不半途截流。
+struct ByteBucket {
+    tokens: f64,
+    rate: f64,
+    burst: f64,
+    last: Instant,
+}
+
+impl ByteBucket {
+    fn new(limits: &UdpLimits) -> Self {
+        let rate = limits.data_byte_rate.max(1) as f64;
+        let burst = limits.data_burst_bytes.max(1) as f64;
+        Self { tokens: burst, rate, burst, last: Instant::now() }
+    }
+    fn try_take(&mut self, bytes: usize) -> bool {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.tokens = (self.tokens + dt * self.rate).min(self.burst);
+        let n = bytes as f64;
+        if self.tokens < n {
+            return false;
+        }
+        self.tokens -= n;
+        true
     }
 }
 
@@ -322,6 +373,15 @@ pub struct UdpStatsInner {
     pub too_big: AtomicU64,
     pub replay: AtomicU64,
     pub rate_limited: AtomicU64,
+    /// ADR-014 同口径：通过字节预算的 DATA 帧负载总字节数（累计，是放行量非送达量）。
+    pub data_bytes_in: AtomicU64,
+    /// 实际转发出去的 DELIVER 数据帧负载总字节数（累计）。
+    pub data_bytes_out: AtomicU64,
+    /// 因数据字节预算不足而未转发的 DATA 帧数。与 `rate_limited`（pps）分开：
+    /// 一个是带宽占满，一个是刷包，排障方向不同。
+    pub bandwidth_limited: AtomicU64,
+    /// 被字节预算拒绝的 DATA 负载字节数（累计）。
+    pub bandwidth_limited_bytes: AtomicU64,
     pub not_registered: AtomicU64,
     pub target_absent: AtomicU64,
     pub sessions_rejected: AtomicU64,
@@ -350,6 +410,10 @@ pub struct UdpRelayStats {
     pub too_big: u64,
     pub replay: u64,
     pub rate_limited: u64,
+    pub data_bytes_in: u64,
+    pub data_bytes_out: u64,
+    pub bandwidth_limited: u64,
+    pub bandwidth_limited_bytes: u64,
     pub not_registered: u64,
     pub target_absent: u64,
     pub sessions_rejected: u64,
@@ -379,6 +443,10 @@ impl UdpStatsInner {
             too_big: g(&self.too_big),
             replay: g(&self.replay),
             rate_limited: g(&self.rate_limited),
+            data_bytes_in: g(&self.data_bytes_in),
+            data_bytes_out: g(&self.data_bytes_out),
+            bandwidth_limited: g(&self.bandwidth_limited),
+            bandwidth_limited_bytes: g(&self.bandwidth_limited_bytes),
             not_registered: g(&self.not_registered),
             target_absent: g(&self.target_absent),
             sessions_rejected: g(&self.sessions_rejected),
@@ -468,6 +536,8 @@ pub struct UdpRelayServer {
     running: Arc<AtomicBool>,
     last_reap: Instant,
     seed: u64,
+    /// 全局数据字节令牌桶（ADR-014 口径）。UDP DATA 帧按帧类型计费，信令绕过。
+    data_budget: ByteBucket,
 }
 
 /// 服务端句柄：可读计数、可停。
@@ -508,16 +578,19 @@ impl UdpRelayServer {
         let sock = UdpSocket::bind(addr).map_err(|e| format!("绑定 {addr} 失败: {e}"))?;
         sock.set_read_timeout(Some(Duration::from_millis(200)))
             .map_err(|e| e.to_string())?;
+        let limits = UdpLimits::default();
+        let data_budget = ByteBucket::new(&limits);
         Ok(Self {
             sock: Arc::new(sock),
             psk: None,
-            limits: UdpLimits::default(),
+            limits,
             sessions: HashMap::new(),
             by_addr: HashMap::new(),
             stats: Arc::new(UdpStatsInner::default()),
             running: Arc::new(AtomicBool::new(true)),
             last_reap: Instant::now(),
             seed: now_ms(),
+            data_budget,
         })
     }
 
@@ -527,6 +600,8 @@ impl UdpRelayServer {
     }
 
     pub fn with_limits(mut self, limits: UdpLimits) -> Self {
+        // 预算参数可能变了，令牌桶必须重建；否则 --data-rate 配了却不生效。
+        self.data_budget = ByteBucket::new(&limits);
         self.limits = limits;
         self
     }
@@ -664,11 +739,31 @@ impl UdpRelayServer {
                 self.emit(from, out)
             }
             UdpKind::Data => {
-                s.data_in.fetch_add(1, Ordering::Relaxed);
                 if dg.payload.len() < NODE_ID_LEN {
                     s.bad_format.fetch_add(1, Ordering::Relaxed);
                     return Vec::new();
                 }
+                // ADR-014 / ADR-024 阶段 0：UDP DATA 帧按字节预算计费。判据是**帧类型**
+                // （能走到这里说明已是 Data），不是大小——UDP 数据帧天然 ≤1152 B，
+                // 用 4096 B 阈值会全部逃过预算。整帧申请，超了整帧拒绝并带明确原因，
+                // 不静默丢，也不当成「对端不存在」。
+                if !self.data_budget.try_take(dg.payload.len()) {
+                    s.bandwidth_limited.fetch_add(1, Ordering::Relaxed);
+                    s.bandwidth_limited_bytes
+                        .fetch_add(dg.payload.len() as u64, Ordering::Relaxed);
+                    let seq = self.send_counter(&dg.session);
+                    let mut sp = Vec::with_capacity(9 + 64);
+                    sp.push(UdpStatus::BandwidthLimited.code());
+                    sp.extend_from_slice(&dg.seq.to_be_bytes());
+                    sp.extend_from_slice(b"relay data bandwidth budget exhausted");
+                    let st =
+                        encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
+                    s.status_out.fetch_add(1, Ordering::Relaxed);
+                    return self.emit(from, st);
+                }
+                s.data_bytes_in
+                    .fetch_add(dg.payload.len() as u64, Ordering::Relaxed);
+                s.data_in.fetch_add(1, Ordering::Relaxed);
                 let mut target = [0u8; NODE_ID_LEN];
                 target.copy_from_slice(&dg.payload[..NODE_ID_LEN]);
                 let body = &dg.payload[NODE_ID_LEN..];
@@ -689,6 +784,8 @@ impl UdpRelayServer {
                         );
                         s.bytes_out
                             .fetch_add(d.len() as u64, Ordering::Relaxed);
+                        s.data_bytes_out
+                            .fetch_add(dpayload.len() as u64, Ordering::Relaxed);
                         out.push((taddr, d));
                         s.deliver_out.fetch_add(1, Ordering::Relaxed);
                         UdpStatus::Forwarded
@@ -1258,5 +1355,130 @@ mod tests {
             "恰好填满 IPv6 最小 MTU；再多 1 字节就要分片"
         );
         assert_eq!(UDP_MAX_PAYLOAD - NODE_ID_LEN, 1152, "用户可用的最大 DATA 负载");
+    }
+
+    // ------------------------------------------------------------------
+    // ADR-024 阶段 0：UDP 数据字节预算（ADR-014 同口径）
+    // ------------------------------------------------------------------
+
+    /// 预算耗尽时 DATA 必须整帧拒绝、带明确原因、单独计数，且不转发（deliver_out=0）。
+    /// 判据是「中继忙」不是「节点离线」：STATUS 码必须是 BandwidthLimited 而非 TargetAbsent。
+    #[test]
+    fn data_byte_budget_rejects_with_reason_and_separate_count() {
+        let psk = [0x11u8; PSK_LEN];
+        // 突发只够一帧：首帧放行，第二帧必然撞预算。
+        let limits = UdpLimits {
+            data_byte_rate: 1, // 低到补充可忽略
+            data_burst_bytes: 32,
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        let mut b = client(&h, Some(psk));
+        a.hello(ids(0xe1), Duration::from_millis(500)).unwrap();
+        b.hello(ids(0xe2), Duration::from_millis(500)).unwrap();
+
+        // 首帧负载 16(id) + 8 = 24 B，刚好在 32 B 突发内 → 放行。
+        a.send_data(&ids(0xe2), b"12345678").unwrap();
+        let f = b.recv_frame(Duration::from_millis(500)).unwrap().expect("首帧应被转发");
+        assert_eq!(f.kind, UdpKind::Deliver);
+        // 首帧的 Forwarded STATUS 也回给发送方，必须先消费，否则会污染下一帧断言。
+        let s0 = a.recv_frame(Duration::from_millis(500)).unwrap().expect("首帧 STATUS");
+        assert_eq!(UdpStatus::from_code(s0.payload[0]), Some(UdpStatus::Forwarded));
+
+        // 第二帧：预算已耗尽 → 收到 BandwidthLimited STATUS，带 UTF-8 原因。
+        a.send_data(&ids(0xe2), b"12345678").unwrap();
+        let st = a.recv_frame(Duration::from_millis(500)).unwrap().expect("应收到拒绝 STATUS");
+        assert_eq!(st.kind, UdpKind::Status);
+        assert_eq!(
+            UdpStatus::from_code(st.payload[0]),
+            Some(UdpStatus::BandwidthLimited),
+            "必须是带宽限流，不能伪装成 target_absent 或静默丢"
+        );
+        assert!(
+            st.payload.len() > 9
+                && String::from_utf8_lossy(&st.payload[9..]).contains("bandwidth"),
+            "拒绝必须带可观测原因，实际 {:?}",
+            st.payload
+        );
+        let stats = h.stats();
+        assert_eq!(stats.bandwidth_limited, 1);
+        assert!(stats.bandwidth_limited_bytes >= 24);
+        assert!(stats.data_bytes_in >= 24);
+        assert_eq!(stats.deliver_out, 1, "被拒的帧不得计入转发");
+        h.stop();
+    }
+
+    /// 信令优先：字节预算耗尽后，HELLO/PING 仍正常工作（ADR-014 的核心约束）。
+    /// 若把信令也算进预算，唤醒链路会随数据面拥塞一起断，这是绝不能退化的行为。
+    #[test]
+    fn signaling_survives_exhausted_data_budget() {
+        let psk = [0x12u8; PSK_LEN];
+        let limits = UdpLimits {
+            data_byte_rate: 1,
+            data_burst_bytes: 1, // 一字节 DATA 都放不下
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        // HELLO 是信令，绕过预算 → 注册必须成功。
+        a.hello(ids(0xe3), Duration::from_millis(500)).unwrap();
+        // PING 是信令 → 必须有 PONG。
+        let rtt = a.ping(Duration::from_millis(500)).unwrap();
+        assert!(rtt < 500_000);
+        assert_eq!(h.stats().bandwidth_limited, 0, "信令不该触发数据预算计数");
+        h.stop();
+    }
+
+    /// 按时间补充：预算耗尽后等待足够令牌，DATA 应重新放行（整帧放行口径）。
+    #[test]
+    fn data_byte_budget_replenishes_over_time() {
+        let psk = [0x13u8; PSK_LEN];
+        let limits = UdpLimits {
+            data_byte_rate: 240, // 240 B/s → 约 100 ms 补回一帧
+            data_burst_bytes: 24,
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        let mut b = client(&h, Some(psk));
+        a.hello(ids(0xe4), Duration::from_millis(500)).unwrap();
+        b.hello(ids(0xe5), Duration::from_millis(500)).unwrap();
+
+        a.send_data(&ids(0xe5), b"12345678").unwrap();
+        b.recv_frame(Duration::from_millis(500)).unwrap().expect("首帧应放行");
+        a.recv_frame(Duration::from_millis(500)).unwrap().expect("消费首帧 Forwarded STATUS");
+        a.send_data(&ids(0xe5), b"12345678").unwrap();
+        let st = a.recv_frame(Duration::from_millis(500)).unwrap().expect("应收到限流 STATUS");
+        assert_eq!(UdpStatus::from_code(st.payload[0]), Some(UdpStatus::BandwidthLimited));
+
+        // 等令牌补回（240 B/s，24 B 约 100 ms，留足余量）。
+        thread::sleep(Duration::from_millis(300));
+        a.send_data(&ids(0xe5), b"12345678").unwrap();
+        let f = b.recv_frame(Duration::from_millis(500)).unwrap().expect("补充后应重新放行");
+        assert_eq!(f.kind, UdpKind::Deliver);
+        h.stop();
+    }
+
+    /// 帧类型判据：特大 PING 负载（仍 < 4096）也不能被误算成数据面。
+    /// 这是 UDP 与 TCP 的口径差异——UDP 靠 kind 而非大小区分信令/数据。
+    #[test]
+    fn large_signaling_payload_is_not_charged_as_data() {
+        let psk = [0x14u8; PSK_LEN];
+        let limits = UdpLimits {
+            data_byte_rate: 1,
+            data_burst_bytes: 1,
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        a.hello(ids(0xe6), Duration::from_millis(500)).unwrap();
+        // PING 带一个大负载；PONG 只回前 8 字节 token + 8 字节时刻，回包仍很短，
+        // 不构成放大器。关键断言：信令按帧类型豁免，不产生 bandwidth_limited。
+        a.send(UdpKind::Ping, &vec![0x7bu8; 512]).unwrap();
+        let f = a.recv_frame(Duration::from_millis(500)).unwrap().expect("PONG 应送达");
+        assert_eq!(f.kind, UdpKind::Pong);
+        assert_eq!(h.stats().bandwidth_limited, 0, "信令按帧类型豁免，不看大小");
+        h.stop();
     }
 }

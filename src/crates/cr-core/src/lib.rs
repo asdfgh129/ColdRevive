@@ -335,6 +335,12 @@ pub struct Config {
     /// 中继所在机器的入向 TCP 被掐时（本项目那台腾讯云轻量即如此），只能在 `nat.relay_udp`
     /// 里填它的 UDP 端口，订阅与唤醒都走 UDP。两者可以同时配置，各自独立工作。
     pub nat_relay_udps: Vec<String>,
+    /// ADR-024 阶段 2：中继数据面承载。`"tcp"`（默认，ADR-023 既有行为）或 `"udp"`。
+    ///
+    /// 只有显式设为 `"udp"` 才注册 UDP 数据面会话；缺省与非法值都回落 `"tcp"`，
+    /// 保证 W58/W59/W60 既有结论与默认行为逐字节不变（opt-in 硬约束）。
+    /// UDP 承载用于「中继入向 TCP 被掐、UDP 可用」的部署；需要同时配 `nat.relay_udp`。
+    pub nat_data_plane_carrier: String,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
@@ -502,6 +508,16 @@ impl Config {
         let nat_relay = nat_relays.first().cloned();
         // v2.4.86：中继的 UDP 承载端点。与 `relay` 同一套校验，非法项丢弃。
         let nat_relay_udps: Vec<String> = split_endpoints("relay_udp");
+        // ADR-024：数据面承载，opt-in。缺省 / 非法 → "tcp"（回落既有行为）。
+        let nat_data_plane_carrier = match nat_get("data_plane_carrier") {
+            Some(s) if s.trim().eq_ignore_ascii_case("udp") => "udp".to_string(),
+            Some(s) if s.trim().eq_ignore_ascii_case("tcp") => "tcp".to_string(),
+            Some(s) => {
+                eprintln!("[config] nat.data_plane_carrier 非法（{}），回落 tcp", s);
+                "tcp".to_string()
+            }
+            None => "tcp".to_string(),
+        };
         // M2/W5.1：`engine` 段完全可选。缺省 = 下载目录 `workdir/downloads` + **不监听入站**；
         // 引擎只在实际收到 `.torrent` 任务时惰性创建，T0/T1 的复活路径完全不经过它。
         let engine = j.get("engine").and_then(Json::as_obj);
@@ -578,6 +594,7 @@ impl Config {
             nat_relay_key: nat_get("relay_key"),
             nat_relays,
             nat_relay_udps,
+            nat_data_plane_carrier,
             nat_bt_external,
             nat_relay_rendezvous,
             nat_http_external,
@@ -850,6 +867,38 @@ mod tests {
         let cfg = Config::load(&p).unwrap();
         assert_eq!(cfg.nat_relays, vec!["127.0.0.1:7100".to_string()]);
         assert!(cfg.nat_relay_udps.is_empty());
+        let _ = fs::remove_file(&p);
+    }
+
+    /// ADR-024 阶段 2：数据面承载 opt-in。缺省/非法 → tcp（既有行为逐字节不变），
+    /// 仅显式 udp → udp。大小写不敏感。
+    #[test]
+    fn data_plane_carrier_is_opt_in_tcp_by_default() {
+        let base = |carrier: &str| -> String {
+            format!(r#"{{
+                "bind": "127.0.0.1",
+                "nodes": {{
+                    "A": {{"http_port": 16810, "wake_udp_port": 16811, "bt_port": 16812}},
+                    "B": {{"http_port": 16910, "wake_udp_port": 16911, "bt_port": 16912}}
+                }},
+                "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+                "golden_req": "r.json", "golden_ack": "a.json",
+                "nat": {{"enabled": true, "relay_udp": "127.0.0.1:7101"{} }}
+            }}"#, carrier)
+        };
+        let p = std::env::temp_dir().join("cr_core_dp_carrier.json");
+        // 缺省 → tcp
+        fs::write(&p, base("")).unwrap();
+        assert_eq!(Config::load(&p).unwrap().nat_data_plane_carrier, "tcp");
+        // 显式 udp（大小写不敏感）
+        fs::write(&p, base(r#", "data_plane_carrier": "UDP""#)).unwrap();
+        assert_eq!(Config::load(&p).unwrap().nat_data_plane_carrier, "udp");
+        // 显式 tcp
+        fs::write(&p, base(r#", "data_plane_carrier": "tcp""#)).unwrap();
+        assert_eq!(Config::load(&p).unwrap().nat_data_plane_carrier, "tcp");
+        // 非法值 → 回落 tcp（不静默当成 udp）
+        fs::write(&p, base(r#", "data_plane_carrier": "quic""#)).unwrap();
+        assert_eq!(Config::load(&p).unwrap().nat_data_plane_carrier, "tcp");
         let _ = fs::remove_file(&p);
     }
 

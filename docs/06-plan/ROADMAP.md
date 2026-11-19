@@ -78,7 +78,7 @@ ColdRevive
 | **G0** | M0 结束 | [S1–S8](../02-architecture/TECH-STACK.md) 全部有结论，关键技术路线冻结 |
 | **G1** | M1 结束 | T0/T1 全链路闭环成功，受控环境复活成功率 100% |
 | **G2** | M2 结束 | NFR-01/02/03 达标；S6 按 eMule 式可达语义结案（ADR-016：真实设备 + 两台物理主机 + 每条路径 30 次真实 WAKEUP_ACK + HighID/LowID 两半各有证据）。**NAT 类别覆盖是描述性清单，不是 pass 前提**；声明须带已知限制，不得写「矩阵通过」 |
-| **ADR-024 提案门禁** | 所有者确认方案后；阶段 0→1→2→3 逐段过闸 | [ADR-024](../../02-architecture/adr/ADR-024-udp-bt-data-plane.md) 为提案，未批准前不改代码。闸门：① UDP 字节预算对齐 ADR-014；② 丢包/乱序注入下 1 MiB 字节一致、无重复投递、窗口有界；③ 有界窗口 + RTO 退避且 opt-in，TCP 仍默认；④ 真引擎 SOCKS5 取片 md5 一致；⑤ 未在有 TCP 入向 RST 的部署复现前，不得宣称覆盖 ADR-020 场景。 |
+| **ADR-024 分阶段闸门** | ✅ 阶段 0–2 已完成；阶段 3 两条证据到位，③⑤ 仍开 | [ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md) v0.2 已接受并实施，默认承载仍 `tcp`。闸门：① ✅ UDP 字节预算对齐 ADR-014（`--udp-data-rate/--udp-data-burst`，按 `UdpKind::Data` 计费）；② ✅ 双向注入 5%/2%/1% 下 1 MiB 字节一致、无重复投递、窗口有界；③ 🟡 有界窗口 + RTO 退避 + opt-in 已满足，「跨公网公平性」无量具；④ ✅ 真引擎 SOCKS5 取片 1 MiB（TCP/UDP 同尺并列）；⑤ ❌ **未在有 TCP 入向 RST 的部署复现**，故状态串保留 `udp-carrier-implemented-rst-unverified`，不得宣称覆盖 ADR-020 场景。 |
 | **G3** | M3 结束 | [兼容性矩阵](../05-quality/TEST.md) 全绿，NFR-04 达标 |
 | **G4** | M4 结束 | 安全测试全通过，公测 KPI 达标，法务评审通过 |
 
@@ -660,6 +660,26 @@ ColdRevive
     1 MiB `complete`、两端 md5 一致、`bytes_relayed=1,050,849`。`tests/e2e/w60/`（18 条断言）。
   - 边界不变：控制面走 LAN、222 有 LAN 管理面别名（非 NAT 可达证据）、`s6_status=not_run`、
     `g2_claim=false`；**仍未完成**只剩 UDP 数据面。
+
+- **2026-11-19 M2 第八轮（v2.4.94）：ADR-024 落地——UDP 承载上的 BT 数据面（opt-in）**
+  - **动机不是性能**：W59/W60 已证明 TCP 承载可用就够取片；缺的是 ADR-020 §3.1 那类
+    「入向 TCP 被边缘注入 RST」的部署（`119.29.150.254:7100` 0/30，UDP 同期正常）。
+  - **阶段 0**：UDP 字节预算（`--udp-data-rate` 512 KiB/s、`--udp-data-burst` 2 MiB），
+    按 `UdpKind::Data` **帧类型**计费（沿用「≤4096 B 绕过」会让所有 UDP DATA 免费），
+    超限回 `UdpStatus::BandwidthLimited`（码 5 + 原因），不静默丢。
+  - **阶段 1**：`cr_nat::relay_udp_stream`（std-only）：`"US"` 20 B 头、独立 app seq、
+    累积 ACK + 64 位 SACK、`WINDOW=32`、RTO 200 ms→5 s、3 dupACK 快重传；`STATUS` 永不滑窗。
+  - **阶段 2**：`nat.data_plane_carrier`（默认 `tcp`）opt-in；未收 `OPENED` 不登记隧道；
+    持有方先拨引擎再回 `0xED`。`/health.data_plane` 增 `carrier`/`udp_tunnels`/`udp_tunnels_alive`。
+  - **阶段 3 证据（均本机回环）**：① 真 `UdpRelayServer` + 双向注入，1 MiB 5.99 s 通过，
+    DATA `seen=1220/dropped=56/reordered=23/duplicated=11`，`dup_dropped=248`、
+    `max_inflight=32`/`max_incoming=31`、交付字节精确 1048576、`status_ignored=1175/1175`；
+    ② 真 librqbit 经 SOCKS5 取片 `downloaded=1048576 finished=true`，
+    中继 `deliver_out=1940`、`data_bytes_in=1,120,714`、`bandwidth_limited=0`。
+  - **状态串**：`relay_data_plane_udp="udp-carrier-implemented-rst-unverified"`——
+    没在 TCP-RST 部署复现，`rst-unverified` 不可删。默认 `tcp`，W58/W59/W60 结论不变。
+  - **仍未闭环**：TCP-RST 部署复现；UDP 数据面的公网双端实测；拥塞/公平性量具；
+    公网 DHT announce。`g2_claim=false`、`s6_status=not_run`；全量 **335 passed / 0 failed**。
 
 - **2026-11-19 M2 第七轮（v2.4.93）：公网双端中继取片跑通；修掉读帧超时丢半帧**
   - **把 W58 的两个弱条件都换掉**：中继搬到公网 `82.157.68.159:7100`（PSK），

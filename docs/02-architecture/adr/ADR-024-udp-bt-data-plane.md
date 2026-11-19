@@ -1,9 +1,9 @@
 ---
 doc_id: ADR-024
-title: ADR-024 中继 UDP 承载上的 BT 数据面（提案，未批准）
+title: ADR-024 中继 UDP 承载上的 BT 数据面
 category: 架构决策
-version: 0.1
-status: 提案（待所有者确认；本 ADR 不含实现）
+version: 0.2
+status: 已接受（2026-11-19 所有者「按建议执行」；阶段 0–2 实施完成，阶段 3 前两条有证据、第三条未做）
 owner: 架构组
 updated: 2026-11-19
 ---
@@ -12,9 +12,13 @@ updated: 2026-11-19
 
 ## 状态
 
-**提案，未接受。** 2026-11-19 所有者选择「先出设计再实现」。
-本文件不修改任何代码；`nat.relay_data_plane_udp` 仍为 `not_implemented`，
-TCP 承载仍是唯一数据面实现。批准后才能进入本文 §7 的分阶段实施。
+**已接受，按建议执行。** 2026-11-19 所有者先选「先出设计再实现」，随后确认「按建议执行」，
+即采用方案 B（std-only 有界可靠层）并按本文闸门分阶段实施。
+v0.2 记录实施结果：阶段 0（UDP 字节治理）、阶段 1（`cr_nat::relay_udp_stream`）、
+阶段 2（opt-in 数据面接线）与阶段 3 前两条证据均已完成；状态串为
+`relay_data_plane_udp="udp-carrier-implemented-rst-unverified"`。
+**阶段 3 第三条未完成**：没有在 ADR-020 那类「入向 TCP 被边缘注入 RST」的部署上复现，
+因此不宣称解决那类机器；默认承载仍是 TCP。
 
 ## 背景：为什么还要考虑 UDP 数据面
 
@@ -38,7 +42,7 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
 | 中继 UDP 头 `seq` 参与 64 位抗重放滑窗 | `Session::accept_seq` | **重传必须换新的 UDP 头 seq**；可靠层 seq 必须是独立字段 |
 | 中继 UDP 只有 PPS 限额（2000/s/session），**没有字节级令牌桶** | ADR-014 只覆盖 TCP 帧 | 数据面启用前必须补字节治理，否则可绕过既有带宽治理 |
 | 订阅会话 60 s 空闲回收，keepalive 20 s | ADR-020 / `relay_sub::serve_udp` | 大文件传输中不得静默停心跳 |
-| 默认承载仍为 TCP；UDP 只能 opt-in | ADR-023 | 不得因本提案改变 W58/W59/W60 的任何既有结论 |
+| 默认承载仍为 TCP；UDP 只能 opt-in | ADR-023 | 不得因本 ADR 改变 W58/W59/W60 的任何既有结论 |
 
 ## 目标与非目标
 
@@ -65,7 +69,7 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
 | **C. 复用 `librqbit_utp`** | 用真实 uTP（BEP 29）做可靠层，经虚拟 UDP socket 适配到中继 DATA/Deliver | 成熟的重传/窗口/拥塞控制；仓库已有 `tests/spikes/s5/utp` 实证栈可用 | ① 需新依赖，协议面 crate 要另立 ADR（ADR-015）；② uTP 假定真实 UDP socket 与对端地址，中继是 session 转发，虚拟适配层不小；③ 该实现是 **Cubic，未实现 LEDBAT**（spike 报告实测），与 QoS 退让目标不一致 |
 | **D. QUIC** | 完整 QUIC 栈 | 最完整的可靠性 + 拥塞控制 | 依赖与安全边界远超本项目；ADR-020 已明确否决「自己造一个更差的 QUIC」 |
 
-## 建议（仍需批准）
+## 建议（已批准并执行）
 
 **采用 B，但分阶段、带闸门，且明确定位为「中继内受控链路的可靠层」，不是通用传输协议。**
 
@@ -86,49 +90,68 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
 - 与 TCP 流共享瓶颈时测出明显饿死（需先有量具，不靠估计）；
 - 任何实现把 `STATUS` 当作端到端送达。
 
-## 分阶段实施（批准后才开始）
+## 分阶段实施（已执行；v0.2 回填结果）
 
-### 阶段 0：先补治理（无数据面）
+### 阶段 0：先补治理（无数据面）✅
 
-- 中继 UDP 统计增加 `data_bytes_in/out`，按 ADR-014 同一口径计入带宽账本；
-  超限要有明确的 `Reject` 原因，不能静默丢。
-- 现有 UDP 唤醒/订阅行为与统计不变；`relay_data_plane_udp` 保持 `not_implemented`。
-- 验收：单测证明超限被拒且原因可观测；W3.16 的 23/23 订阅用例仍过。
+- 中继 UDP 统计新增 `data_bytes_in/out`、`bandwidth_limited`、`bandwidth_limited_bytes`，
+  按 ADR-014 同一口径（512 KiB/s、2 MiB 突发）计费；UDP 侧按**UDP 帧类型**判据，
+  只有 `UdpKind::Data` 进字节桶，HELLO/PING/STATUS 等信令绕过。
+  超限以 `UdpStatus::BandwidthLimited`（码 5，附 UTF-8 原因）返回 STATUS，
+  不静默丢、也不误报 `target_absent`。
+- CLI 新增 `--udp-data-rate` / `--udp-data-burst`；唤醒/订阅的转发行为与既有计数不变。
+- 验收：`relay_udp::tests` 14/14（含 4 条预算用例）；W3.16 订阅用例仍过。
 
-### 阶段 1：`cr_nat::relay_udp_stream`（纯协议面，std-only）
+### 阶段 1：`cr_nat::relay_udp_stream`（纯协议面，std-only）✅
 
 - 独立于 UDP 头 `seq` 的 **app seq**；UDP 头 seq 每个 datagram 递增以免被抗重放丢弃。
-- 接收：有界乱序重组窗口、重复丢弃、缺口驱动 ACK（累积 + 有界 SACK 位图）。
-- 发送：有界窗口、RTO 指数退避、3 次重复 ACK 快重传、显式关闭。
-- 对外只暴露 `Read + Write`（或可直接喂 `TunnelMux` 的 `dispatch`/出队接口），
-  不引入 async 运行时。
+- 接收：有界乱序重组窗口（`WINDOW=32`）、重复丢弃、缺口驱动 ACK（累积 + 64 位 SACK）。
+- 发送：有界窗口、RTO 指数退避（200 ms→5 s）、3 次重复 ACK 快重传、显式 CLOSE。
+- 对外暴露 `Read + Write` 与 `split()` 两半；不引入 async 运行时。
+  ACK/CLOSE 也装在 `UdpKind::Data` 里，**同样计入**阶段 0 字节预算（保守，不绕过 ADR-014）。
 - 验收：单元与真 socket 测试覆盖 丢包 / 乱序 / 重复 / 超时重传 / 有界内存；
-  **不得**把中继 `STATUS` 计入「对端已收」。
+  中继 `STATUS` 只记数，`status_never_acts_as_ack` 钉死不得滑窗。
 
-### 阶段 2：接入数据面（opt-in）
+### 阶段 2：接入数据面（opt-in）✅
 
-- 新增配置 `nat.data_plane_carrier = "tcp" | "udp"`（默认 `tcp`）；
-  只有显式选 `udp` 才注册 UDP 数据面会话。
+- 新增配置 `nat.data_plane_carrier = "tcp" | "udp"`（默认 `tcp`，非法值回落 `tcp`）；
+  只有显式选 `udp` 才注册 UDP 数据面会话，W58/W59/W60 默认行为不变。
 - 发起方：`UdpRelayClient::connect/hello` + `derive_session_id(self_id, b"cr-dp-v1")`
-  （与 TCP 相同的派生逻辑，避免订阅会话被顶掉）；OPEN/OPENED 握手语义不变。
-- 持有方：`relay_sub::serve_udp` 增加与 TCP 同样的 `CD` magic 分流 + `TunnelMux` +
-  独立线程拨本地引擎；复用 `splice_blocking_with` 与 `HolderStats`。
-- 分片：每个 `TunnelFrame` 编码后切成 ≤1152 B 的 UDP DATA；每片带 channel/app seq。
-- 看板：新增 `carrier` 与 `udp_*` 计数；沿用 `tunnels_alive` 语义（登记数不等于活着）。
-- `punch_route::relay_data_plane_udp` 只有在阶段 3 的真实证据出现后才改为 `implemented`。
+  （与 TCP 相同的派生逻辑，避免订阅会话被顶掉）；OPEN/OPENED 语义不变——
+  **未收到 `0xED` 不登记 SOCKS5 隧道**，红线单测 `udp_attach_without_peer_confirmation_fails_honestly`。
+- **寻址必须是派生 id**：发起方把 DATA 发到 `derive_session_id(peer_id, b"cr-dp-v1")`，
+  不是对端节点 id。UDP 侧节点 id 那条会话由订阅/唤醒占用，发错目标会被订阅线程当唤醒帧
+  丢掉，只表现为「3 s 超时回落直连」——实施期真踩到了（见 M2-PROGRESS §14.4 第 6 条），
+  正例单测 `udp_attach_registers_tunnel_when_holder_confirms` 钉住。
+- 持有方：`relay_sub` 在 UDP 订阅之外另起数据面服务；`UdpRelayStream` 用全零 peer 构造，
+  从首个已验签的 `DELIVER.from` 锁定发起方；`recv_open` → 先拨本地引擎 → `send_opened` →
+  `splice_stream_with`，复用 TCP 侧 `HolderStats`。
+- **归属校验（ADR-023 同一条红线）**：`recv_open` 要求 OPEN 声明的发起方 id **等于**中继
+  观测来源，且来源不可为全零；不符即拒绝、不拨引擎。单测
+  `recv_open_rejects_initiator_that_differs_from_observed_source`。
+- **实施偏差**：UDP 数据面没有复用 `CD` magic / `TunnelMux` 分流——UDP DATA 已是独立会话，
+  流内用 `"US"` 线段魔数区分；OPEN 仍复用 ADR-023 的 `TunnelFrame::open` 23 B 编码。
+- 分片：每条线段 = 20 B 头（app seq / ACK / SACK）+ ≤1132 B 用户字节，
+  装在 UDP DATA 的 16 B 目标 id 之后，合计不超过 1168 B 负载上限。
+- 看板：`/health.data_plane` 新增 `carrier`、`udp_tunnels`、`udp_tunnels_alive`；
+  沿用 `tunnels_alive` 语义（登记数不等于活着）。
+- 阶段 3 证据出现后，`relay_data_plane_udp` 才从 `not_implemented` 改为
+  `udp-carrier-implemented-rst-unverified`。
 
 ### 阶段 3：证据（没有证据就不改状态字符串）
 
-1. 环回 + 真实 `UdpRelayServer`：1 MiB 字节级一致；注入 5% 丢包 / 2% 乱序 / 1% 重复；
-   断言无损坏、无重复投递、窗口有界。
-2. 与 TCP 数据面同一把尺：真引擎 librqbit 经 SOCKS5 取片，md5 两端一致。
-3. 只有在**确有 TCP 入向被 RST 的部署**上复现成功，才宣称解决 ADR-020 场景；
-   否则只写「同 LAN/普通公网 UDP 中继可用」，不冒充覆盖那类机器。
+1. ✅ 环回 + 真实 `UdpRelayServer`：1 MiB 字节级一致；注入 5% 丢包 / 2% 乱序 / 1% 重复；
+   断言无损坏、无重复投递、窗口有界（实测数字见下节）。
+2. ✅ 与 TCP 数据面同一把尺：真引擎 librqbit 经 SOCKS5 取片，`1048576 B`、`finished=true`，
+   两端一致；同一测试文件里 TCP 与 UDP 两条用例并列跑。
+3. ❌ **未完成**：只有在**确有 TCP 入向被 RST 的部署**上复现成功，才宣称解决 ADR-020 场景。
+   本轮只在 `127.0.0.1` 中继与真实 librqbit 上验证，**没有**在腾讯云轻量那类机器上复测；
+   因此状态串保留 `rst-unverified`，`relay_data_plane_udp` 的「已实现」只指承载本身能跑通。
 
 ## 与现有 ADR 的关系
 
-- **ADR-020**：本提案不改其任何约束；恰恰是其「UDP 可用、TCP 被掐」场景的下游需求。
-  ADR-020 反对的是**无边界地自造 QUIC 替代品**；本提案用阶段闸门和明确非目标回应这一条。
+- **ADR-020**：本 ADR 不改其任何约束；恰恰是其「UDP 可用、TCP 被掐」场景的下游需求。
+  ADR-020 反对的是**无边界地自造 QUIC 替代品**；本 ADR 用阶段闸门和明确非目标回应这一条。
 - **ADR-023**：隧道帧、OPEN/OPENED、持有者 splice、session id 派生全部复用；
   仅承载层可替换。
 - **ADR-014**：阶段 0 是把 TCP 的字节预算口径补齐到 UDP，而不是新增一套治理。
@@ -136,13 +159,43 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
 
 ## 复现/核验
 
-本 ADR 为提案，无实现可复现。现有事实可核：
-
 ```bash
-# UDP 承载目前只做唤醒，无数据面（源码模块头与状态字符串）
-grep -n "not_implemented" src/bins/coldrevived/src/{punch_route.rs,nat_path.rs}
-# UDP DATAGRAM 上限与 MTU 断言
+# 阶段 0：UDP 字节预算（超限带原因，不静默丢）
+cargo test --offline -p cr-nat relay_udp::tests      # 14/14
+
+# 阶段 1：纯协议面（线格式 / 乱序 / 重复 / 超时重传 / 快重传 / STATUS 不当 ACK）
+cargo test --offline -p cr-nat relay_udp_stream::    # 14/14
+
+# 阶段 2：未收到 OPENED 必须如实失败；收到则登记（正例同时钉住派生 id 寻址）
+cargo test --offline -p coldrevived data_plane::tests::udp_attach
+
+# 阶段 3-1：真 UdpRelayServer + 双向注入（加 --nocapture 看 [stage3] 行）
+cargo test --offline -p cr-nat real_udp_relay_carries_1mib -- --nocapture
+
+# 阶段 3-2：真引擎 librqbit 经 SOCKS5 取片（同文件另有一条 TCP 对照）
+cargo test --offline -p cr-engine --test relay_data_e2e -- --nocapture
+
+# UDP 承载上限与 MTU
 cargo test --offline -p cr-nat max_datagram_fits_ipv6_min_mtu
-# 既有 UDP 订阅证据（23/23）
-# 见 tests/e2e/w53/README.md
 ```
+
+**阶段 3-1 实测（本机，一次干净运行，5.99 s）**：1 MiB，发送窗口上限 `WINDOW=32`。
+DATA 方向注入 `seen=1220 / dropped=56 (4.6%) / reordered=23 (1.9%) / duplicated=11 (0.9%)`，
+ACK 方向注入 `seen=1175 / dropped=57 / reordered=20 / duplicated=14`；结果
+`retransmits=293`、接收侧 `dup_dropped=248`（重复段被丢弃而非重复交付）、
+`max_inflight=32` / `max_incoming=31`（窗口有界）、交付字节精确 `1048576`（重复投递不增账），
+`status_ignored=1175/1175`（中继 STATUS 全部只记数、不滑窗）。
+
+**阶段 3-2 实测（本机，真 librqbit + 真 UDP 中继 + SOCKS5 桥）**：
+`downloaded=1048576 finished=true`，持有者 `→引擎 1264 B / ←引擎 1,049,586 B`，
+中继 `deliver_out=1940`、`data_bytes_in=1,120,714`、`bandwidth_limited=0`。
+
+**证据边界（照写，不许放宽）**
+
+1. 两条证据都在 `127.0.0.1` 上，**不是**公网/跨 NAT 证据；跨公网吞吐、RTT 敏感性与公平性
+   一律未测，不得从本 ADR 推出性能结论。
+2. 没有在 ADR-020 §3.1 那类「入向 TCP 被边缘注入 RST」的机器上复现，
+   故 `relay_data_plane_udp="udp-carrier-implemented-rst-unverified"` 的
+   `rst-unverified` **不可省略**。
+3. 默认承载仍是 `tcp`；W58/W59/W60 的全部结论不受影响。
+4. `g2_claim=false`、`s6_status=not_run` 不变；UDP 数据面不是 NAT 可达性证据。

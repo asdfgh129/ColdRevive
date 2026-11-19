@@ -2,6 +2,61 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.94] - 2026-11-19 — ADR-024 落地：UDP 承载上的 BT 数据面（opt-in，默认仍 TCP）
+
+> `g2_claim=false`、`s6_status=not_run` 不变；**默认承载仍是 `tcp`**，W58/W59/W60 的结论
+> 全部不受影响。本版解决的是 ADR-020 那类「入向 TCP 被边缘注入 RST」部署的**覆盖面**
+> 问题，不是性能问题——跨公网吞吐与公平性一律未测。
+
+- **阶段 0：UDP 字节治理**（此前 UDP 只有每会话 pps 限额，数据面一旦上线就能绕过 ADR-014）：
+  `UdpLimits` 增加 `data_byte_rate`（默认 512 KiB/s）/ `data_burst_bytes`（默认 2 MiB）。
+  判据按 **UDP 帧类型**而不是帧长：只有 `UdpKind::Data` 进字节桶——沿用 TCP 那条
+  「≤4096 B 帧绕过预算」会让所有 UDP DATA（≤1152 B）全部免费。
+  超限回 `UdpStatus::BandwidthLimited`（码 5 + UTF-8 原因），既不静默丢，也不误报
+  `target_absent`。新增统计 `data_bytes_in/out`、`bandwidth_limited`、
+  `bandwidth_limited_bytes`；CLI `--udp-data-rate` / `--udp-data-burst`。
+- **阶段 1：`cr_nat::relay_udp_stream`（std-only 有界可靠层）**：`"US"` 线段格式，
+  20 B 头 = kind / 独立 app seq / 累积 ACK / 64 位 SACK；app seq 与 UDP 头 `seq` 分开，
+  因为**重传必须换新的 UDP 头 seq**，否则被中继抗重放滑窗丢弃。
+  接收侧有界乱序重组 + 重复丢弃 + 缺口驱动 ACK；发送侧 `WINDOW=32`、
+  RTO 200 ms→5 s 指数退避、3 次重复 ACK 快重传、显式 CLOSE 与半关语义。
+  对外只暴露 `Read + Write` 与 `split()` 两半，不引入 async 运行时。
+  **中继 `STATUS` 只记数、永不滑窗**（`status_never_acts_as_ack` 钉死）。
+- **阶段 2：opt-in 接入数据面**：新配置 `nat.data_plane_carrier`（`tcp` 默认 / `udp`；
+  非法值回落 `tcp` 并告警）。发起方在 `derive_session_id(self_id, b"cr-dp-v1")` 的 UDP
+  会话上做 OPEN/OPENED，**未收到 `0xED` 就失败且不登记隧道**（红线单测
+  `udp_attach_without_peer_confirmation_fails_honestly`）；持有方在 `relay_udp` 订阅之外
+  另起数据面服务，用全零 peer 构造流后从首个已验签 `DELIVER.from` 锁定对端，
+  `recv_open` → 先拨本地引擎 → `send_opened` → `splice_stream_with`，复用 TCP 侧 `HolderStats`。
+  `/health.data_plane` 新增 `carrier` / `udp_tunnels` / `udp_tunnels_alive`。
+  **实施偏差（照写）**：UDP 数据面没有复用 `CD` magic + `TunnelMux` 分流——UDP DATA 本身
+  就是独立会话，流内用 `"US"` 魔数区分；OPEN 仍复用 ADR-023 的 23 B `TunnelFrame::open` 编码。
+- **实施期抓到的真 bug（已修，两个红线用例钉住）**：发起方最初把 DATA 发到持有方的**节点 id**，
+  而持有方 UDP 数据面注册在 `derive_session_id(node_id, b"cr-dp-v1")` 上——节点 id 那条会话
+  留给订阅/唤醒，OPEN 会被订阅线程当唤醒帧丢掉，现场只表现为「3 s 超时回落直连」，
+  看起来像对端没上线；组件/引擎用例当时全绿，因为两端一致地「错」。修法是改发派生 id，
+  并补正例 `udp_attach_registers_tunnel_when_holder_confirms`（**只有负例的握手测试等于没测**）。
+  同时把 ADR-023 的归属红线搬到 UDP：`recv_open` 要求 OPEN 声明的发起方 id 等于中继观测来源、
+  且来源不可为全零，冒名即拒（`recv_open_rejects_initiator_that_differs_from_observed_source`）。
+- **阶段 3 证据（两条，均本机 `127.0.0.1`）**：
+  ① `real_udp_relay_carries_1mib_under_loss_reorder_and_duplicate_injection`：
+  真 `UdpRelayServer`，数据/ACK **双向**注入，1 MiB **5.99 s** 通过。
+  DATA 方向 `seen=1220 / dropped=56 (4.6%) / reordered=23 (1.9%) / duplicated=11 (0.9%)`，
+  ACK 方向 `seen=1175 / dropped=57 / reordered=20 / duplicated=14`；
+  `retransmits=293`、接收侧 `dup_dropped=248`（重复段丢弃而非重复交付）、
+  `max_inflight=32` / `max_incoming=31`（窗口有界）、交付字节精确 `1048576`、
+  `status_ignored=1175/1175`。
+  ② `udp_relay_frames_carry_real_librqbit_piece`：真 librqbit 经 SOCKS5 取片，
+  `downloaded=1048576 finished=true`；持有者 `→引擎 1,264 B / ←引擎 1,049,586 B`；
+  中继 `deliver_out=1940`、`data_bytes_in=1,120,714`、`bandwidth_limited=0`。
+  与同文件里的 TCP 对照用例并列跑，同一把尺。
+- **状态串**：`punch_route.relay_data_plane_udp` 由 `not_implemented` 改为
+  `udp-carrier-implemented-rst-unverified`。**`rst-unverified` 不可省略**：没有在
+  ADR-020 §3.1 那类机器上复现，不得据此宣称覆盖那类部署。
+- **仍未完成**：TCP 入向被 RST 的部署复现；跨公网吞吐/公平性（无拥塞控制，不宣称）；
+  UDP 数据面的公网双端实测。
+- 全量回归：`cargo test --workspace --offline` **335 passed / 0 failed**。
+
 ## [2.4.93] - 2026-11-19 — 公网双端中继取片成功；修掉 v2.4.92 的数据面静默断流
 
 > `g2_claim=false`、`s6_status=not_run` 不变。本版把 v2.4.92 的「同 LAN + LAN 中继」

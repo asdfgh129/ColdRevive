@@ -42,11 +42,11 @@ updated: 2026-11-18
 | [ADR-021](ADR-021-punched-tcp-bridge.md) | 打通的 TCP socket 怎么喂给 BT 引擎 | 用 librqbit 的 SOCKS5 钩子作出向 + 回环 splice 作入向，**不 fork、不换引擎**；对端地址会显示成 `127.0.0.1`，属已知降级 | ✅ 已接受（2026-11-18；`cr-bridge` 6/6 单测 + 1 MiB 真引擎回环 E2E） | 守护进程唤醒路径接线；A 方案在公网样本失败时退回 fork connector |
 | [ADR-022](ADR-022-punch-first-relay-fallback.md) | 打洞与中继怎么选 | 两阶段裁决（Local→Commit），**两端共识才 Direct**，否则共同回落 Relay；裁决走中继消息帧、不新增帧类型、不改唤醒协议；`Route::Relay` 不代表中继有 BT 数据面 | ✅ 已接受（2026-11-18；状态机 12 例 + 真中继双端 5 例 + 真引擎直连/中继双路径 E2E） | 中继补 BT 数据面时；公网双侧打洞解 BLOCKED 时 |
 
-| [ADR-024](ADR-024-udp-bt-data-plane.md) | UDP 承载能不能跑 BT 数据面 | **提案**：不追性能，只覆盖「TCP 入向被边缘 RST」那类部署；对比维持现状 / std-only 自研有界可靠层 / 复用 uTP / QUIC，建议走 B 但分阶段带闸门（先补 UDP 字节预算，再做 app seq+ACK+有界窗口，最后才 opt-in 接入） | ⏳ **提案，未批准**（2026-11-19；本 ADR 不含实现，`relay_data_plane_udp` 仍为 `not_implemented`） | 所有者确认方案；ADR-014 字节治理补齐；拥塞/公平性量具 |
+| [ADR-024](ADR-024-udp-bt-data-plane.md) | UDP 承载能不能跑 BT 数据面 | 不追性能，只覆盖「TCP 入向被边缘 RST」那类部署；对比维持现状 / std-only 自研有界可靠层 / 复用 uTP / QUIC，**选 B 并分阶段带闸门**（UDP 字节预算 → `relay_udp_stream` 有界可靠层 → opt-in 接入 → 证据）。实施偏差：UDP 数据面用 `"US"` 线段魔数而非复用 `CD`/`TunnelMux` 分流，OPEN 仍复用 ADR-023 的 23 B 编码 | ✅ 已接受并实施（2026-11-19；阶段 0–2 完成，阶段 3 前两条有证据：1 MiB 双向注入 5%/2%/1% 字节一致、真 librqbit SOCKS5 取片 1 MiB；`relay_data_plane_udp="udp-carrier-implemented-rst-unverified"`） | 在有 TCP 入向 RST 的部署上复现；拥塞/公平性量具 |
 
 | [ADR-023](ADR-023-bt-over-relay.md) | 中继能不能承载 BT 数据面 | 用**TCP 中继帧**承载字节流（不新增帧类型、不重造 TCP）：`CD` 头 + channel + DATA/CLOSE/OPEN/OPENED，16 KiB 分块走 ADR-014 令牌桶；cr-bridge 的 `Upstream::Tunnel` 交给 librqbit SOCKS5 钩子；持有者侧在订阅连接上分流并 splice 到本地引擎；UDP 仍只做控制面 | ✅ 已接受（2026-11-19；v1.1 双向握手 + splice，**v1.2 读帧必须可续读**；W59 公网双端、W60 真打洞失败→中继接管实测） | UDP 数据面需要可靠层时才开 |
 
-**统计**：24 项决策，22 项已接受、2 项待定（ADR-005 待 M4；ADR-024 提案待确认）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
+**统计**：24 项决策，23 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 
 > **ADR-011 实施状态**：L1 / L2 已于 2026-11-11 在 `tests/spikes/s2/` 完成首轮实现与
 > RFC1918 / 回环验证（L3 仍否决），详见 [PLAN §22–§23](../../../tests/spikes/s2/PLAN.md)、
