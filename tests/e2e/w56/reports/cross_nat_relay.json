@@ -1,0 +1,94 @@
+{
+  "schema": "coldrevive.cross-nat-relay/v1",
+  "generated_at": "2026-11-19",
+  "title": "两个不同 NAT 后的主机经公网 UDP 中继互达（无入向映射）",
+  "relay": {
+    "endpoint": "119.29.150.254:7101",
+    "carrier": "udp",
+    "auth": "psk",
+    "key_fp": "037d79762181690e"
+  },
+  "endpoints": [
+    {
+      "role": "sender",
+      "host": "192.168.1.221",
+      "local_bind": "192.168.1.221:35374",
+      "public_egress": "112.5.60.4",
+      "stun_mapped": ["112.5.60.4:29061 (119.29.150.254:3478)", "112.5.60.4:29061 (119.29.150.254:3479)"],
+      "mapping_axis": "endpoint-independent",
+      "filtering_behavior": "port-restricted",
+      "nat_type": "port-restricted-cone",
+      "inbound_mapping_configured": false,
+      "note": "既有办公室 CPE 出口；未为本测试添加任何端口转发"
+    },
+    {
+      "role": "echo",
+      "host": "192.168.1.222",
+      "local_bind": "192.168.34.222:41258",
+      "nic": "ens160",
+      "public_egress": "112.5.32.34",
+      "stun_mapped": ["112.5.32.34:2058 (119.29.150.254:3478)", "112.5.32.34:2059 (119.29.150.254:3479)"],
+      "mapping_axis": "address-port-dependent",
+      "nat_type": "symmetric",
+      "inbound_mapping_configured": false,
+      "note": "绑定到 192.168.34.222 走 ens160 默认出口；该出口的动态映射随目的端口变化，本测试未配置 DNAT。管理口 ens192=192.168.1.222 只用于 SSH，未参与数据流"
+    }
+  ],
+  "result": {
+    "rounds": 200,
+    "payload_bytes": 512,
+    "received": 200,
+    "lost": 0,
+    "loss_pct": 0.00,
+    "rtt_ms_min": 41.905,
+    "rtt_ms_p50": 42.602,
+    "rtt_ms_p90": 43.018,
+    "rtt_ms_p99": 43.127,
+    "rtt_ms_max": 43.697,
+    "status_forwarded": 200,
+    "status_target_absent": 0,
+    "status_rate_limited": 0,
+    "echo_delivered_in": 200,
+    "echo_echoed_out": 200,
+    "echo_bytes_in": 102400,
+    "total_ms": 8550
+  },
+  "relay_stats_delta": {
+    "datagrams": 402,
+    "bytes_in": 236928,
+    "bytes_out": 236872,
+    "data_in": 400,
+    "deliver_out": 400,
+    "status_out": 400,
+    "hello": 1,
+    "replay": 0,
+    "mac_fail": 0,
+    "rate_limited": 0,
+    "target_absent": 0,
+    "note": "data_in=400 = 发送端 200 条 + 回声端 200 条；deliver_out 与 status_out 各 400"
+  },
+  "server_capture": {
+    "file": "/tmp/crossnat7101.pcap (on 119.29.150.254)",
+    "filter": "udp port 7101",
+    "inbound_packets_from_112_5_60_4": 202,
+    "inbound_packets_from_112_5_32_34": 201,
+    "sample": [
+      "08:46:00.049092 IP 112.5.60.4.29078 > 10.1.0.2.7101: UDP, length 592",
+      "08:46:00.049230 IP 10.1.0.2.7101 > 112.5.32.34.2048: UDP, length 592",
+      "08:46:00.076199 IP 112.5.32.34.2048 > 10.1.0.2.7101: UDP, length 592",
+      "08:46:00.076278 IP 10.1.0.2.7101 > 112.5.60.4.29078: UDP, length 592"
+    ],
+    "note": "592 B UDP = 32 B CRU1 头 + 32 B HMAC + 16 B 源 id + 512 B 负载。抓包证明中继同时看到两个不同公网源，并在两者之间逐包转发"
+  },
+  "scope": "relay frame interconnection between two real NATs; NOT a hole-punching result and NOT BT data-plane evidence",
+  "conclusion": "两个不同 NAT（其中一侧 symmetric）在无入向映射的前提下，均可只靠出向 UDP 会话经同一公网中继互达；symmetric 不影响中继路径。",
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "artifacts": [
+    "sender-221.json",
+    "echo-222.json",
+    "relay-stats-before.json",
+    "relay-stats-after.json"
+  ]
+}

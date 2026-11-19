@@ -17,6 +17,7 @@ pub mod punch_route;
 pub mod punch_wire;
 pub mod reach;
 pub mod relay;
+pub mod relay_tunnel;
 pub mod relay_udp;
 pub mod secure;
 pub mod relay_server;

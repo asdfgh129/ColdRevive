@@ -649,6 +649,37 @@ ColdRevive
     在可用邻居前提下做一次受控 announce 并独立查询验证；③ 多任务守护进程（多样本入库）
     落地后复跑逐出；④ 公网中继（VPS）时延/丢包。
 
+- **2026-11-19 M2 第六轮（v2.4.92）：持有者侧 splice + 双向握手 + 双进程取片**
+  - **§8.5 第 2 条闭环（部分）**：接收方不再需要手工登记。`relay_sub` 在**同一条订阅
+    连接**上按 magic 分流，收到 `OPEN` 就拨本地引擎监听口、**拨通了才回 `OPENED`**、
+    再起双向 splice；发起方 `wait_opened` 成功后才把隧道登记进 SOCKS5 桥。
+  - **反假阳性**：`OPEN` 的 body 必须是 16 B 的发起方会话 id，且**等于中继观测到的来源**；
+    `OPENED` 必须在首字节之前；超时即失败不登记。三条都有单测。
+  - **`nat.relay_rendezvous`（新）**：没有入向映射时的会合地址（限 RFC 5737），
+    让对端引擎肯拨号、由桥改道到中继隧道；`kind=relay` 不进公网入向证据链。
+  - **顺带修掉一个长期误判**：`/health` 曾因同线程在 `vec![...]` 各元素里重复取 `state`
+    锁而自锁（表现为「`punch_route` 一开 `/health` 就超时」），已改为整段一次加锁
+    并加回归用例。
+  - **证据**：W58 两个真进程经中继完成 1 MiB 取片（`path=relay`、`OPEN/OPENED` 确认、
+    两端 md5 一致、持有者 `opens=1/accepted=1`、`→引擎 1 264 B / ←引擎 1 049 585 B`），
+    `tests/e2e/w58/`。**仍未闭环**：UDP 数据面、公网双端「打洞失败→中继接管」。
+    `g2_claim=false`、`s6_status=not_run` 不变。
+
+- **2026-11-19 M2 第五轮（v2.4.91）：跨双 NAT 中继实测 + BT-over-relay**
+  - **§8.5 第 1 条闭环**：221（port-restricted cone / `112.5.60.4`）与 222
+    （真 symmetric / `112.5.32.34`，绑 `192.168.34.222`）在无入向映射下经 UDP 中继
+    **200/200 往返、0 丢包、p50 42.6 ms**；服务端抓包见两个公网源逐包互转。
+    证据 `tests/e2e/w56/reports/cross_nat_relay.json`。**symmetric 不影响中继路径。**
+  - **ADR-023**：TCP 中继在 `82.157.68.159:7100` 双端各 20/20（ADR-020 的 RST
+    结论只对 `119.29.150.254:7100` 成立）。新增 `cr-nat::relay_tunnel`
+    （既有帧承载 16 KiB 分块，多 channel、CLOSE、ADR-014 计费）与
+    `cr-bridge::Upstream::Tunnel`。真引擎 e2e：1 MiB 逐字节一致、`served_registered=1`、
+    负对照 0 B；证据 `tests/e2e/w57/reports/relay_data.json`。
+  - **`wake_with_plan` 接线（opt-in）**：`nat.punch_route=true` 才建 SOCKS5 桥；
+    唤醒成功后开 TCP 中继隧道并按对端通告地址登记，失败如实回落。
+    **仍未闭环**：持有者侧 `relay_sub` 的 splice、UDP 数据面、
+    公网双端「打洞失败→中继接管」。`g2_claim=false`、`s6_status=not_run` 不变。
+
 - **2026-11-18 M2 第四轮（v2.4.90）：打洞优先 / 中继兜底（两阶段裁决）**
   - **做了什么**：`cr-nat::punch_route`（纯状态机）+ `cr-nat::punch_wire`（线格式与收发）；
     两阶段裁决 `Local → Commit`，只有「本端 ok ∧ 对端 Local ok ∧ 对端 Commit ok」才 `Direct`，

@@ -14,6 +14,7 @@
 
 mod bt;
 mod commands;
+mod data_plane;
 mod nat_path;
 mod punch_route;
 mod relay_sub;
@@ -127,6 +128,8 @@ pub struct NodeState {
     pub sched: LruScheduler,
     /// ADR-022：打洞优先 / 中继兜底的协商观测（默认关闭，仅诊断，不进门禁）。
     pub punch_route: punch_route::PunchRouteState,
+    /// ADR-023：opt-in 的中继数据面。None 时引擎 proxy_url 保持 None。
+    pub data_plane: Option<std::sync::Arc<data_plane::DataPlane>>,
 }
 
 fn main() {
@@ -184,6 +187,26 @@ fn main() {
         stun_sink: Arc::new(Mutex::new(None)),
     };
 
+    // ADR-023：数据面 opt-in。未开启时连 runtime 都不创建，既有部署行为不变。
+    // PSK 必须在任何 RelayClient::connect 之前装进进程默认，否则数据面会明文连公网中继。
+    let data_plane = if cfg.nat_punch_route {
+        if let Some(spec) = cfg.nat_relay_key.as_deref() {
+            if let Err(e) = cr_nat::relay::set_psk_from_spec(Some(spec)) {
+                eprintln!("[{node_id}] 中继 PSK 无效: {e}");
+                std::process::exit(2);
+            }
+        }
+        match data_plane::DataPlane::new() {
+            Ok(dp) => Some(dp),
+            Err(e) => {
+                eprintln!("[{node_id}] 数据面启动失败: {e}");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        None
+    };
+
     let mut st = NodeState {
         index: ShadowIndex::open(&state_path),
         cfg: cfg.clone(),
@@ -208,6 +231,7 @@ fn main() {
             cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
         ),
         punch_route: punch_route::PunchRouteState::from_config(&cfg),
+        data_plane,
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -337,6 +361,7 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
             .map_err(|e| format!("bt 监听地址非法: {e}"))?,
     };
 
+    let proxy_url = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
     let mut engine = RqbitEngine::new(EngineOptions {
         download_dir: share_dir.clone(),
         listen: Some(listen),
@@ -347,9 +372,9 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         // 会先试 µTP、干等一段才回落，现场看着像「连上了却没数据」。
         enable_utp: cfg.nat_utp,
         ipv4_only: true,
-        // 守护进程尚未把 cr-bridge 接进唤醒路径，显式 None 保持旧行为；
-        // 需要走桥的调用方应直接用 cr-engine::EngineOptions（见 ADR-021）。
-        proxy_url: None,
+        // opt-in（ADR-023）：默认 None 逐字节保持旧行为；开启后所有出站连接
+        // 经本地 SOCKS5，未登记目标仍回落真实直连（cr-bridge 既有语义）。
+        proxy_url,
         upload_bps: None,
         download_bps: None,
         init_timeout: Duration::from_secs(60),
@@ -465,7 +490,14 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         // 冷态不是故障：做种任务默认 paused，必须唤醒才供片。
         // 以前 /health 只有 seed_tasks 数量，冷态和热态长得一模一样，
         // 于是一次「没唤醒的取片测试」会被误读成 BT 数据面坏了。这里只报实测值。
-        let (seed_count, seed_active, served_bytes) = {
+        //
+        // v2.4.92 修复：**整个 /health 只取一次 `state` 锁**。
+        // 原先在 `Json::obj(vec![...])` 的每个元素里各写一次 `state.lock()`，
+        // 而 `vec!` 的元素是同一个数组表达式里的临时值——前一个元素的 guard 活到
+        // 语句结束，于是同一线程第二次 `lock()` 就把自己锁死：表现是 `/health`
+        // 永远超时，而 `/nat/public`（不碰 state）正常，看起来像「数据面把进程搞挂了」。
+        // 同一个坑在 punch_route 打开时最容易撞上，所以它长期被记成「punch_route 的 bug」。
+        let (seed_count, seed_active, served_bytes, punch_route_json) = {
             let st = state.lock().unwrap();
             let mut active = 0usize;
             let mut served = 0u64;
@@ -479,7 +511,18 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                     }
                 }
             }
-            (st.seed_tasks.len(), active, served)
+            (st.seed_tasks.len(), active, served, st.punch_route.json())
+        };
+        // 数据面 / 持有者计数各有自己的锁，放在 state 之外取，避免锁序纠缠。
+        let data_plane_json = {
+            let st = state.lock().unwrap();
+            match st.data_plane.as_ref() {
+                Some(dp) => dp.json(),
+                None => cr_core::Json::obj(vec![
+                    ("enabled", cr_core::Json::b(false)),
+                    ("carrier", cr_core::Json::s("none")),
+                ]),
+            }
         };
         ("200 OK".into(),
          Json::obj(vec![
@@ -493,9 +536,14 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              // 冷/热与真实供片量：`seed_active < seed_tasks` 就是「有任务但没供片」。
              ("seed_active", Json::n(seed_active as f64)),
              ("served_bytes", Json::n(served_bytes as f64)),
-             // ADR-022：协商观测。relay_data_plane=not_implemented 明确写在这里，
-             // 防止把「决策回落到中继」读成「BT 取片已走中继」。
-             ("punch_route", state.lock().unwrap().punch_route.json()),
+             // ADR-022：协商观测。承载维度分开写，防止把「决策回落到中继」读成
+             // 「BT 取片已走中继」。
+             ("punch_route", punch_route_json),
+             // ADR-023：opt-in 数据面。缺省是一个明确的 disabled 对象，不省略字段。
+             ("data_plane", data_plane_json),
+             // 持有者侧（被下载的一方）的 splice 计数：真实 OPEN/拨号/字节数。
+             // 「接了但没有数据流过」在这几个字段上一眼可见。
+             ("holder_data", relay_sub::holder_stats_json()),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
@@ -689,15 +737,31 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
 
             // 引擎在 NodeState 锁之外操作：创建会话 / 读盘校验可能耗时数百毫秒，
             // 不能把 /health、KAD 分发一起堵住。
-            let (slot, engine_dir, engine_listen) = {
+            let (slot, engine_dir, engine_listen, proxy_url, initial_peers) = {
                 let st = state.lock().unwrap();
-                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen)
+                let proxy = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
+                // v2.4.92：opt-in 时把「已经唤醒过的对端」直接交给引擎。
+                //
+                // 为什么不能只靠 tracker：中继场景里持有者没有任何入向映射，它的
+                // tracker 只能通告中继会合地址；而会合地址在 `is_public_ipv4` 意义下
+                // 不可路由，只有本地桥能把拨号改道。既然如此，就没必要再让引擎绕一圈
+                // 去 announce —— 守护进程本来就知道该拨谁（`nat peer` 拿到的通告）。
+                let peers = if st.cfg.nat_punch_route {
+                    st.nat.peer_adv.as_ref()
+                        .and_then(|a| a.bt_external.as_ref())
+                        .and_then(|e| e.addr().parse::<std::net::SocketAddr>().ok())
+                        .into_iter().collect()
+                } else {
+                    Vec::new()
+                };
+                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen, proxy, peers)
             };
             let mut engine_task = None;
             let mut error = String::new();
             if let Some(bytes) = fetched.as_ref() {
                 let name = parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default();
-                match attach_to_engine(&slot, &engine_dir, engine_listen, &name, bytes) {
+                match attach_to_engine(&slot, &engine_dir, engine_listen, proxy_url.as_deref(),
+                                       &name, bytes, &initial_peers) {
                     Ok(tid) => {
                         engine_task = Some(tid);
                         note = format!(
@@ -848,13 +912,16 @@ fn attach_to_engine(
     slot: &SharedEngine,
     dir: &Path,
     listen: Option<std::net::SocketAddr>,
+    proxy_url: Option<&str>,
     name: &str,
     bytes: &[u8],
+    initial_peers: &[std::net::SocketAddr],
 ) -> Result<u64, String> {
     let mut guard = slot.lock().unwrap();
     if guard.is_none() {
         let mut opts = EngineOptions::new(dir);
         opts.listen = listen;
+        opts.proxy_url = proxy_url.map(str::to_string);
         let e = RqbitEngine::new(opts)?;
         match e.listen_addr() {
             Some(a) => println!("[engine] BT 引擎已创建，监听 {}（下载目录 {}）", a, dir.display()),
@@ -872,7 +939,11 @@ fn attach_to_engine(
             }
         }
     }
-    let spec = TorrentSpec::new(name, bytes);
+    let mut spec = TorrentSpec::new(name, bytes);
+    if !initial_peers.is_empty() {
+        println!("[engine] 已知 peer（来自对端通告）: {:?}", initial_peers);
+        spec.initial_peers = initial_peers.to_vec();
+    }
     engine.add_torrent(&spec)
 }
 
@@ -1254,9 +1325,94 @@ mod rpc_tests {
         format!("http://127.0.0.1:{}/sample.torrent", addr.port())
     }
 
+    /// v2.4.92 回归：`/health` 曾经**在同一线程里把 `state` 锁了两次**。
+    ///
+    /// `Json::obj(vec![...])` 里的每个元素都是同一条语句中的临时值，前一个元素
+    /// `state.lock()` 的 guard 活到语句结束，于是后一个元素的 `state.lock()` 把
+    /// 自己锁死：症状是「`/health` 永远超时，但 `/nat/public`（不碰 state）正常」。
+    /// 因为最容易在 `punch_route=true` 的部署上撞到，它长期被误记成「数据面把进程搞挂」。
+    ///
+    /// 判据用读超时：自锁时读不到任何字节。
     #[test]
-    fn seed_task_is_chosen_by_infohash_and_never_by_luck() {
-        let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
+    fn health_answers_promptly_even_with_data_plane_enabled() {
+        let dir = std::env::temp_dir().join(format!("cr_health_dl_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801, "bt_port": 17802},
+                "B": {"http_port": 17900, "wake_udp_port": 17901, "bt_port": 17902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {"enabled": true, "relay": "127.0.0.1:7100", "punch_route": true}
+        }"#;
+        let p = dir.join("c.json");
+        std::fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let hub = UdpHub {
+            socket: Arc::new(udp),
+            stun_sink: Arc::new(Mutex::new(None)),
+        };
+        let st = NodeState {
+            cfg: cfg.clone(),
+            index: ShadowIndex::open(&dir.join("state.json")),
+            nonces: HashSet::new(),
+            remote_keys: HashMap::new(),
+            last_ack: None,
+            sample: None,
+            torrent: None,
+            bt_seeding: false,
+            download: None,
+            stale_pids: Vec::new(),
+            blacklist: HashSet::new(),
+            last_file_hash: None,
+            nat: nat_path::NatContext::from_config(&cfg),
+            hub,
+            rpc_tasks: Vec::new(),
+            engine: Arc::new(Mutex::new(None)),
+            seed_task: None,
+            seed_tasks: HashMap::new(),
+            sched: LruScheduler::new(1),
+            punch_route: punch_route::PunchRouteState::from_config(&cfg),
+            data_plane: data_plane::DataPlane::new().ok(),
+        };
+        assert!(st.data_plane.is_some(), "本用例的前提就是数据面已开启");
+        assert!(st.punch_route.enabled);
+        let state = Arc::new(Mutex::new(st));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        {
+            let st2 = state.clone();
+            let cfg2 = cfg.clone();
+            thread::spawn(move || {
+                if let Ok((s, _)) = listener.accept() {
+                    handle_conn(s, cfg2, st2);
+                }
+            });
+        }
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(b"GET /health HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n").unwrap();
+        let mut buf = Vec::new();
+        c.read_to_end(&mut buf).expect("3 s 内必须读到响应（自锁会读超时）");
+        let text = String::from_utf8_lossy(&buf);
+        assert!(text.contains("200 OK"), "{}", text);
+        assert!(text.contains("\"status\":\"ok\""), "{}", text);
+        // 三段都要在：多锁一次就会少一段，少一段等于运维看不全。
+        assert!(text.contains("\"punch_route\""), "{}", text);
+        assert!(text.contains("\"data_plane\""), "{}", text);
+        assert!(text.contains("\"holder_data\""), "{}", text);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn seed_task_is_chosen_by_infohash_and_never_by_luck() {        let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
         tasks.insert("aa".into(), 7);
         tasks.insert("bb".into(), 9);
         assert_eq!(pick_seed_task(&tasks, Some(7), "bb"), Some(9), "必须激活请求的那一个");

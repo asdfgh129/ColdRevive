@@ -1,0 +1,7 @@
+[data-plane] SOCKS5 桥就绪: socks5://127.0.0.1:32845（opt-in）
+[221] UDP 监听 0.0.0.0:17801
+[221] HTTP 监听 0.0.0.0:17800
+[relay-sub] 已订阅中继 192.168.1.221:7100（可达性声明: unknown）
+[data-plane] 中继隧道已确认并登记: channel=842150450 peer=203.0.113.31:17902 relay=192.168.1.221:7100 session=8706ec5043da9259c0655a6f06984394
+[engine] BT 引擎已创建，不监听入站（下载目录 /root/cr-w58/run-member/downloads）
+[engine] 已知 peer（来自对端通告）: [203.0.113.31:17902]

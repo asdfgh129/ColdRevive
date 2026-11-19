@@ -1,0 +1,15 @@
+{
+  "schema": "coldrevive.relay-data-e2e/v1",
+  "served_registered": 1,
+  "downloaded_bytes": 1048576,
+  "finished": true,
+  "byte_equal": true,
+  "negative_downloaded_bytes": 0,
+  "relay_delivered": 123,
+  "relay_data_bytes_admitted": 1050071,
+  "scope": "in-process real relay; real librqbit; not NAT evidence",
+  "relay_data_plane": "implemented-over-tcp-carrier",
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}

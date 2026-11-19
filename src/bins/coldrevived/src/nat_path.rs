@@ -229,6 +229,21 @@ pub fn self_advertisement(state: &Shared, cfg: &Config) -> PeerAdvertisement {
             evidence: "operator-configured-bt-mapping".into(),
         });
     }
+    // v2.4.92：没有真实映射、但开了「打洞优先 / 中继兜底」时，通告**中继会合地址**。
+    // 语义是「请按这个地址拨我，本机 SOCKS5 桥会把它接到中继隧道」，不是端口映射：
+    // kind=Relay 因此不进 `is_explicit_port_mapping()`，不会被读成公网入向证据。
+    // 真实映射优先：两处都配时以运营侧的实际映射为准。
+    if adv.bt_external.is_none() {
+        if let Some(ip) = &cfg.nat_relay_rendezvous {
+            adv.bt_external = Some(Endpoint {
+                kind: EndpointKind::Relay,
+                ip: ip.clone(),
+                port: bt_port,
+                internal_port: bt_port,
+                evidence: "relay-rendezvous(no-inbound-mapping)".into(),
+            });
+        }
+    }
     adv
 }
 
@@ -676,6 +691,39 @@ fn finish(mut out: WakeOutcome, state: &Shared, req: &Json, reply: Json,
         st.last_ack = Some(reply);
         st.last_file_hash = req.get("file_hash").and_then(Json::as_str).map(str::to_string);
     }
+    drop(st);
+
+    // ADR-023：opt-in 数据面。唤醒成功后把经 TCP 中继的隧道登记进本地 SOCKS5 桥，
+    // 键是引擎真正会拨打的对端 BT 地址。登记失败**如实记录并回落直连**，
+    // 不能把「唤醒成功」当成「数据面已经走中继」。
+    let (dp, cfg, adv) = {
+        let st = state.lock().unwrap();
+        (st.data_plane.clone(), st.cfg.clone(), st.nat.peer_adv.clone())
+    };
+    if let (Some(dp), Some(adv)) = (dp, adv) {
+        let self_id = node_id_16(&cfg.node_id);
+        let peer_id = node_id_16(&adv.node_id);
+        let relay = cfg.nat_relays.first().cloned().or_else(|| cfg.nat_relay.clone());
+        let target = adv.bt_external.as_ref().and_then(|ep| ep.addr().parse::<SocketAddr>().ok());
+        match (relay, target) {
+            (Some(relay), Some(target)) => {
+                let channel = u32::from_be_bytes([
+                    peer_id[0], peer_id[1], self_id[0], self_id[1],
+                ]);
+                match dp.attach_relay_tunnel(&relay, &self_id, &peer_id, channel, target) {
+                    // 措辞必须是「已确认」：这一步现在要求对端真的回了 OPENED，
+                    // 不是「帧发出去了」。
+                    Ok(()) => out.notes.push(format!(
+                        "中继数据面已确认（OPEN/OPENED 双向握手完成）: channel={channel} peer={target}"
+                    )),
+                    Err(e) => out.notes.push(format!("中继数据面未登记（回落直连）: {e}")),
+                }
+            }
+            _ => out.notes.push(
+                "中继数据面未登记：缺 TCP 中继或对端 BT 端点（回落直连）".into()
+            ),
+        }
+    }
     out
 }
 
@@ -796,7 +844,8 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     ("ok", Json::b(true)),
                     ("local_ok", Json::b(local_ok)),
                     ("route", Json::s(route.label())),
-                    ("relay_data_plane", Json::s("not_implemented")),
+                    ("relay_data_plane", Json::s("tcp-carrier-implemented")),
+                    ("relay_data_plane_udp", Json::s("not_implemented")),
                     ("s6_status", Json::s("not_run")),
                 ]),
                 Err(e) => Json::obj(vec![
@@ -908,7 +957,8 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("route", Json::s(route.label())),
                 ("peer", Json::s(&peer_label)),
                 ("tcp_punch_established", Json::b(true)),
-                ("relay_data_plane", Json::s("not_implemented")),
+                ("relay_data_plane", Json::s("tcp-carrier-implemented")),
+                ("relay_data_plane_udp", Json::s("not_implemented")),
                 ("is_s6_evidence", Json::b(false)),
                 ("g2_claim", Json::b(false)),
                 ("s6_status", Json::s("not_run")),

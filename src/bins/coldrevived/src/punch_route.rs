@@ -5,8 +5,10 @@
 //!
 //! 边界（与 `punch_wire` 保持一致，不要在这里放宽）：
 //! 1. 只做判据和交接：是否打通由 `tcp_punch` 的 `poll+SO_ERROR` 决定。
-//! 2. **中继没有 BT 数据面**：`Route::Relay` 只表示不登记 punched socket，
-//!    不意味着取片走中继。
+//! 2. `Route::Relay` 只表示不登记 punched socket。**v2.4.92 起** TCP 中继上确实有
+//!    BT 数据面（`relay_sub` 的 OPEN/splice + `data_plane` 的 OPENED/桥接），但 UDP 承载
+//!    仍没有重传层，所以 `relay_data_plane_udp` 独立标 `not_implemented`——
+//!    两种承载的结论不能混着读。
 //! 3. 默认关闭：`nat.punch_route=false` 时 `proxy_url` 保持 None，既有部署不变。
 
 pub use cr_nat::punch_wire::{
@@ -57,8 +59,10 @@ impl PunchRouteState {
             ("direct", Json::n(self.direct.load(Ordering::Relaxed) as f64)),
             ("relay", Json::n(self.relay.load(Ordering::Relaxed) as f64)),
             ("failed", Json::n(self.failed.load(Ordering::Relaxed) as f64)),
-            // 明确写出「没有 BT 数据面」，防止把 relay 决策读成「取片已走中继」。
-            ("relay_data_plane", Json::s("not_implemented")),
+            // 承载维度分开写：TCP 中继有真数据面（ADR-023），UDP 承载没有重传层。
+            // 合成一个字段会让人把「有一条通了」读成「随便哪条都通」。
+            ("relay_data_plane", Json::s("tcp-carrier-implemented")),
+            ("relay_data_plane_udp", Json::s("not_implemented")),
             ("is_s6_evidence", Json::b(false)),
             ("g2_claim", Json::b(false)),
             ("s6_status", Json::s("not_run")),
@@ -91,6 +95,9 @@ mod tests {
         assert_eq!(j.get("relay").and_then(Json::as_i64), Some(1));
         assert_eq!(j.get("failed").and_then(Json::as_i64), Some(1));
         assert_eq!(j.get("g2_claim").and_then(Json::as_bool), Some(false));
-        assert_eq!(j.get("relay_data_plane").and_then(Json::as_str), Some("not_implemented"));
+        assert_eq!(j.get("relay_data_plane").and_then(Json::as_str),
+                   Some("tcp-carrier-implemented"));
+        assert_eq!(j.get("relay_data_plane_udp").and_then(Json::as_str),
+                   Some("not_implemented"));
     }
 }

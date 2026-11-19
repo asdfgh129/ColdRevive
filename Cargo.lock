@@ -410,6 +410,7 @@ name = "coldrevived"
 version = "0.1.0"
 dependencies = [
  "cr-api",
+ "cr-bridge",
  "cr-core",
  "cr-engine",
  "cr-hash",
@@ -420,6 +421,7 @@ dependencies = [
  "cr-store",
  "cr-torrent",
  "cr-wake",
+ "tokio",
 ]
 
 [[package]]

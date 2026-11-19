@@ -1,4 +1,4 @@
-//! 把「已经打通的 TCP socket」塞进 BT 引擎，而不改引擎（ADR-021）。
+//! 把「已经打通的 TCP socket / 中继隧道」塞进 BT 引擎，而不改引擎（ADR-021/023）。
 //!
 //! 引擎（librqbit）只认自己建立的连接：出站由它 `connect`，入站由它 `accept`。
 //! 打洞得到的 socket 两头都不属于它，于是数据面进不去。这里用两个**官方钩子**绕开：
@@ -15,11 +15,13 @@
 use std::collections::HashMap;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt, copy_bidirectional};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
 
@@ -33,12 +35,59 @@ const REP_HOST_UNREACHABLE: u8 = 0x04;
 const REP_COMMAND_UNSUPPORTED: u8 = 0x07;
 const REP_ATYP_UNSUPPORTED: u8 = 0x08;
 
-/// 注册表：目标地址 → 一条已建立的 socket。
+/// SOCKS5 上游：可以是打洞得到的真 socket（ADR-021），也可以是中继隧道（ADR-023）。
+/// 两种都只需 `AsyncRead + AsyncWrite`，`copy_bidirectional` 不关心底层是谁。
+pub enum Upstream {
+    Direct(TcpStream),
+    Tunnel(DuplexStream),
+}
+
+impl AsyncRead for Upstream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Upstream::Direct(s) => Pin::new(s).poll_read(cx, buf),
+            Upstream::Tunnel(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for Upstream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        match self.get_mut() {
+            Upstream::Direct(s) => Pin::new(s).poll_write(cx, buf),
+            Upstream::Tunnel(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Upstream::Direct(s) => Pin::new(s).poll_flush(cx),
+            Upstream::Tunnel(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        match self.get_mut() {
+            Upstream::Direct(s) => Pin::new(s).poll_shutdown(cx),
+            Upstream::Tunnel(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+/// 注册表：目标地址 → 一条已建立的上游连接（直连 socket 或中继隧道）。
 ///
 /// 键是**引擎将要拨打的地址**（对端通告的 IP:端口），值是本进程持有的那条连接。
-/// 一条 socket 只能被取走一次：BT 的一条 TCP 连接只服务一个 peer 会话。
+/// 一项只能被取走一次：BT 的一条 TCP 连接只服务一个 peer 会话。
 pub struct Bridge {
-    registry: Mutex<HashMap<SocketAddr, TcpStream>>,
+    registry: Mutex<HashMap<SocketAddr, Upstream>>,
     /// 命中注册表、由「已打通 socket」承载的 CONNECT 次数。
     /// 这是 e2e 判定「真的走了桥」的证据；回落直连不计入。
     served_registered: AtomicUsize,
@@ -64,16 +113,25 @@ impl Bridge {
     /// 登记一条已打通的连接。同一目标地址重复登记返回错误而不是静默覆盖——
     /// 覆盖会丢掉前一条连接，现场表现成「第一次能传、第二次卡死」。
     pub fn register(&self, peer: SocketAddr, stream: TcpStream) -> Result<(), &'static str> {
+        self.register_upstream(peer, Upstream::Direct(stream))
+    }
+
+    /// 登记一条中继隧道（ADR-023）。与 `register` 共用同一张表和一次性语义。
+    pub fn register_tunnel(&self, peer: SocketAddr, stream: DuplexStream) -> Result<(), &'static str> {
+        self.register_upstream(peer, Upstream::Tunnel(stream))
+    }
+
+    fn register_upstream(&self, peer: SocketAddr, upstream: Upstream) -> Result<(), &'static str> {
         let mut m = self.registry.lock().unwrap();
         if m.contains_key(&peer) {
             return Err("该目标地址已登记，拒绝覆盖");
         }
-        m.insert(peer, stream);
+        m.insert(peer, upstream);
         Ok(())
     }
 
     /// 取走登记项（一次性）。
-    pub fn take(&self, peer: SocketAddr) -> Option<TcpStream> {
+    pub fn take(&self, peer: SocketAddr) -> Option<Upstream> {
         self.registry.lock().unwrap().remove(&peer)
     }
 
@@ -158,7 +216,7 @@ async fn handle_conn(mut client: TcpStream, bridge: Arc<Bridge>) -> io::Result<(
     let mut upstream = match registered {
         Some(s) => s,
         None => match timeout(DIAL_TIMEOUT, TcpStream::connect(target)).await {
-            Ok(Ok(s)) => s,
+            Ok(Ok(s)) => Upstream::Direct(s),
             Ok(Err(_)) => {
                 reply(&mut client, REP_HOST_UNREACHABLE).await?;
                 return Ok(());
@@ -254,7 +312,7 @@ mod tests {
         resp[1]
     }
 
-    async fn read_n(stream: &mut TcpStream, n: usize) -> Vec<u8> {
+    async fn read_n<S: AsyncRead + Unpin>(stream: &mut S, n: usize) -> Vec<u8> {
         let mut buf = vec![0u8; n];
         timeout(Duration::from_secs(5), stream.read_exact(&mut buf)).await
             .expect("读超时").unwrap();
@@ -394,5 +452,30 @@ mod tests {
         let got = timeout(Duration::from_secs(5), &mut engine_side_future).await
             .expect("引擎侧超时").unwrap();
         assert_eq!(got, b"data");
+    }
+
+    #[tokio::test]
+    async fn registered_relay_tunnel_carries_bytes_instead_of_dialling() {
+        // ADR-023：上游换成 duplex（由 cr-nat::relay_tunnel 驱动）后，
+        // SOCKS5 前端与 copy_bidirectional 仍原样工作。
+        let (tunnel_side, mut peer_side) = tokio::io::duplex(4096);
+        let bridge = Arc::new(Bridge::new());
+        let target: SocketAddr = "203.0.113.23:6881".parse().unwrap();
+        bridge.register_tunnel(target, tunnel_side).unwrap();
+
+        let bl = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let baddr = bl.local_addr().unwrap();
+        let b = bridge.clone();
+        tokio::spawn(async move { let _ = b.serve_listener(bl).await; });
+
+        let mut client = TcpStream::connect(baddr).await.unwrap();
+        assert_eq!(socks5_connect(&mut client, target).await, REP_SUCCEEDED);
+        client.write_all(b"tunnel-ping").await.unwrap();
+        assert_eq!(read_n(&mut peer_side, 11).await, b"tunnel-ping");
+        peer_side.write_all(b"tunnel-pong").await.unwrap();
+        assert_eq!(read_n(&mut client, 11).await, b"tunnel-pong");
+
+        assert_eq!(bridge.registered(), 0);
+        assert_eq!(bridge.served_registered(), 1);
     }
 }

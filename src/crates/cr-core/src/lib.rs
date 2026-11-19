@@ -338,6 +338,16 @@ pub struct Config {
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
+    /// v2.4.92：**中继会合地址**（`nat.relay_rendezvous`，IPv4，限 RFC 5737 文档网段）。
+    ///
+    /// librqbit 只肯拨「看起来像公网 peer」的地址，而两台 NAT 后的机器谁都没有入向映射。
+    /// 这个地址的唯一作用是让对端引擎愿意发起连接，再由**本机 SOCKS5 桥**把它改道到中继
+    /// 隧道；它**不是**端口映射，也不会被通告成公网入向证据（`EndpointKind::Relay`）。
+    ///
+    /// 只允许 `203.0.113.0/24`、`198.51.100.0/24`、`192.0.2.0/24`：写真实 IP 会让后续的
+    /// tracker 与可达性声明把它读成「真的有公网入向」，那是假证据。必须与
+    /// `nat.punch_route=true` 同时使用。
+    pub nat_relay_rendezvous: Option<String>,
     /// 运维侧真实创建的 HTTP/tracker 端口映射（外部 IP:端口）。
     /// 配置后伴随种子里会写入 `announce-list`（BEP 12）：LAN 一条 + 这条公网一条，
     /// 同一份种子同时服务两类客户端；tracker 仍按请求方 IP 决定回私网还是公网 peer。
@@ -348,11 +358,10 @@ pub struct Config {
     pub nat_utp: bool,
     /// ADR-022：打洞优先 / 中继兜底的**双端协商**是否启用。默认 `false`，
     /// 老配置逐字节不变。启用后 BT 引擎的出向走本地 SOCKS5 桥，只有协商判定
-    /// `Direct` 且 nonce 握手双端通过才登记 punched socket；否则回落普通直连/中继
-    /// 控制面，**绝不把半打通的 socket 交给引擎**。
+    /// `Direct` 且 nonce 握手双端通过才登记 punched socket；否则回落中继数据面。
     ///
-    /// 注意：本仓库的中继只传唤醒/控制帧，**没有 BT 数据面**；所以「双端都打不通」
-    /// 时不会凭空产生一条数据路径，这一点必须在诊断输出里如实呈现。
+    /// v2.4.92 起 TCP 中继上**有** BT 数据面（ADR-023：OPEN/OPENED 握手 + 双向 splice），
+    /// UDP 承载仍然没有重传层，所以「打不通就打不了」只对 UDP 路径成立。
     pub nat_punch_route: bool,
     /// M2/W5.1 BT 引擎下载目录。`engine` 段缺省时落到 `<workdir>/downloads`。
     pub engine_dir: PathBuf,
@@ -448,6 +457,32 @@ impl Config {
             .and_then(|o| o.iter().find(|(n, _)| n == "punch_route"))
             .and_then(|(_, v)| v.as_bool())
             .unwrap_or(false);
+        // v2.4.92：中继会合地址。它不是映射，所以只允许文档网段——写真实 IP 会被
+        // tracker 与可达性声明读成「有公网入向」，而实际上那条路只有本地桥能走。
+        let nat_relay_rendezvous = match nat_get("relay_rendezvous") {
+            None => None,
+            Some(s) => {
+                let ip: std::net::Ipv4Addr = s.parse().map_err(|_| {
+                    format!("nat.relay_rendezvous 必须是 IPv4 地址（当前 \"{s}\"）")
+                })?;
+                let o = ip.octets();
+                let doc = matches!((o[0], o[1], o[2]),
+                                   (203, 0, 113) | (198, 51, 100) | (192, 0, 2));
+                if !doc {
+                    return Err(format!(
+                        "nat.relay_rendezvous 必须是 RFC 5737 文档网段\
+                         （203.0.113.0/24、198.51.100.0/24、192.0.2.0/24），当前 {ip}：\
+                         会合地址不代表真实可达，写真实 IP 会被误读成端口映射"
+                    ));
+                }
+                if !nat_punch_route {
+                    return Err(
+                        "nat.relay_rendezvous 需要同时开启 nat.punch_route：\
+                         没有本地桥时该地址不可达，通告出去就是假 peer".into());
+                }
+                Some(ip.to_string())
+            }
+        };
         // W3.8：`nat.relay` 接受逗号 / 分号分隔的中继列表（单值等价于旧行为）。
         // 空白项与非法 `host:port` 一律丢弃，不生成占位端点。
         let split_endpoints = |key: &str| -> Vec<String> {
@@ -544,6 +579,7 @@ impl Config {
             nat_relays,
             nat_relay_udps,
             nat_bt_external,
+            nat_relay_rendezvous,
             nat_http_external,
             nat_utp,
             nat_punch_route,
@@ -667,10 +703,57 @@ mod tests {
         let _ = fs::remove_file(&p2);
     }
 
+    /// v2.4.92：中继会合地址只接受文档网段，且必须与 punch_route 同时开启。
+    ///
+    /// 两个拒绝都是刻意的：把它写成真实 IP 会让 tracker/声明把它读成公网入向，
+    /// 而那条路只有本地桥能走；没有桥就通告出去则是对端永远连不上的假 peer。
+    #[test]
+    fn relay_rendezvous_requires_doc_range_and_punch_route() {
+        let mk = |extra: &str| -> String {
+            format!(r#"{{
+                "bind": "127.0.0.1",
+                "nodes": {{
+                    "A": {{"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802}},
+                    "B": {{"http_port": 16900, "wake_udp_port": 16901, "bt_port": 16902}}
+                }},
+                "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+                "golden_req": "r.json", "golden_ack": "a.json",
+                "nat": {{"enabled": true, "relay": "127.0.0.1:7000"{extra}}}
+            }}"#)
+        };
+        let p = std::env::temp_dir().join("cr_core_rendezvous.json");
+        let load = |s: String| Config::load({
+            fs::write(&p, s).unwrap(); &p
+        });
+
+        let ok = load(mk(r#", "punch_route": true, "relay_rendezvous": "203.0.113.31""#)).unwrap();
+        assert_eq!(ok.nat_relay_rendezvous.as_deref(), Some("203.0.113.31"));
+        assert!(ok.nat_punch_route);
+
+        // 真实公网 IP 必须被拒：它会变成「看起来有公网入向」的假证据。
+        let e = load(mk(r#", "punch_route": true, "relay_rendezvous": "82.157.68.159""#))
+            .expect_err("真实 IP 不得作为会合地址");
+        assert!(e.contains("RFC 5737"), "{}", e);
+
+        // 私网地址同样被拒（不在文档网段里，且不可达）。
+        let e = load(mk(r#", "punch_route": true, "relay_rendezvous": "192.168.1.210""#))
+            .expect_err("私网 IP 不得作为会合地址");
+        assert!(e.contains("RFC 5737"), "{}", e);
+
+        // 没有本地桥就没有数据面，通告出去是假 peer。
+        let e = load(mk(r#", "relay_rendezvous": "203.0.113.31""#))
+            .expect_err("未开 punch_route 时不得配置会合地址");
+        assert!(e.contains("punch_route"), "{}", e);
+
+        let e = load(mk(r#", "punch_route": true, "relay_rendezvous": "not-an-ip""#))
+            .expect_err("非 IPv4 必须报错");
+        assert!(e.contains("IPv4"), "{}", e);
+        let _ = fs::remove_file(&p);
+    }
+
     /// W3.8：`nat.relay` 支持列表；单值必须与旧行为逐字节等价，非法项必须被丢弃。
     #[test]
-    fn relay_list_is_parsed_and_junk_is_dropped() {
-        let mk = |relay: &str| -> String {
+    fn relay_list_is_parsed_and_junk_is_dropped() {        let mk = |relay: &str| -> String {
             format!(r#"{{
                 "bind": "127.0.0.1",
                 "nodes": {{

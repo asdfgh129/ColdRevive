@@ -2,6 +2,73 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.92] - 2026-11-19 — 持有者侧 splice + OPEN/OPENED 握手 + 双进程中继取片实测
+
+> `g2_claim=false`、`s6_status=not_run` 不变。本版补上 ADR-023 缺的**另一半**：
+> 接收方不再需要手工登记，两个真进程能自己把中继隧道接到本地引擎上。
+
+- **`cr-nat::relay_tunnel` 重构**：拆出 `TunnelMux`（不拥有连接、由调用方驱动，出向帧
+  逐帧带目的地——一条订阅连接服务多个对端）、`TunnelReader`/`TunnelWriter`（可 `split`，
+  两半互不阻塞）、`splice_blocking_with`（进度回调 + 半关语义）、`derive_session_id`。
+  新增 `FLAG_OPEN(0x04)` / `FLAG_OPENED(0x08)`：`OPEN` 的 body **必须**是 16 B 的发起方
+  会话 id，`OPENED` 必须为空，长度不符一律拒绝。
+- **双向握手（反假阳性）**：发起方 `send_open` 后必须 `wait_opened(3 s)`，超时即失败、
+  不登记进 SOCKS5 桥；接受方**先拨通本地引擎再回 `OPENED`**。顺序反过来会让下载方把一条
+  空隧道登记进桥，现场表现成「BT 连接凭空 EOF」，而日志里全是「隧道已登记」。
+  `OPEN` 声明的 id 必须等于中继观测到的来源 id——中继不做归属校验，端上不做就等于
+  谁都能往别人的 channel 灌字节。
+- **持有者侧 `relay_sub` splice**：订阅连接上按 magic 分流（`CD` → 数据面，其余 → 唤醒，
+  逐字节不变）；`OPEN` → 独立线程拨 `engine.listen` + 双向 splice。**不在订阅循环里同步
+  拨号**，否则一条 BT 连接能把唤醒路径一起卡住；有活动 channel 时读超时从 500 ms 降到
+  20 ms，并在等唤醒应答的空隙里排空出向队列（否则一次唤醒能把数据面拖慢 1.5 s）。
+- **`/health.holder_data`**：`opens/accepted/rejected/duplicate_open/peer_mismatch/
+  unknown_channel/data_frames/bytes_to_engine/bytes_from_engine/splices_done`，
+  字节数**边传边计**（只在收尾时加，传输期间会一直显示 0）。
+- **`nat.relay_rendezvous`（新，opt-in）**：中继会合地址（限 RFC 5737 文档网段，必须与
+  `punch_route=true` 同配）。没有入向映射时持有者把它作为 `bt_external`（`kind=relay`）
+  通告，对端引擎据此拨号、由本机桥改道到中继隧道。它**不是端口映射**：不进
+  `is_explicit_port_mapping()`、不作为公网入向证据；填真实 IP/私网地址**启动即报错**。
+  `tracker_endpoint_for` 对 `kind=relay` 单独放行（唯一消费者是装有本地桥的对端）。
+- **引擎侧已知 peer**：`punch_route=true` 时把对端通告的 `bt_external` 作为
+  `initial_peers` 交给 librqbit，不再依赖「持有者必须有可达 tracker」。
+- **修复 `/health` 自锁（长期误记成数据面的锅）**：原实现在 `Json::obj(vec![...])` 的
+  每个元素里各写一次 `state.lock()`，前一个元素的 guard 活到语句结束，**同一线程第二次
+  `lock()` 把自己锁死** → `/health` 永远超时，而 `/nat/public`（不碰 state）正常。
+  现在整段只取一次锁；回归用例 `health_answers_promptly_even_with_data_plane_enabled`
+  用 3 s 读超时当判据。
+- **双进程实测（W58）**：222（holder，`nat.punch_route`+会合地址）与 221（member）经中继
+  `192.168.1.221:7100` 完成 1 MiB 取片：`path=relay`、`ack_status=OK`、
+  `中继数据面已确认（OPEN/OPENED）`、下载 `complete` 且两端 md5 一致
+  （`6172cae1…d5852`）；持有者 `opens=1/accepted=1/splices_done=1`，
+  `→引擎 1,264 B / ←引擎 1,049,585 B`，引擎自证 `served_bytes=1,048,576`；
+  中继 `dropped=0`、`bandwidth_limited=0`。证据 `tests/e2e/w58/`。
+  **边界**：两台同处 `192.168.1.0/24`、中继在 LAN 上，故**不是** NAT 可达证据；
+  221 → `82.157.68.159:7100` 的 `REGISTER` 拿不到 ACK（原因未定位）已如实记录，
+  未拿它当证据。
+- **仍未完成**：UDP 承载的数据面（无重传层）；「打洞失败 → 中继接管」的公网双端完整链路。
+- 全量回归：`cargo test --workspace --offline` **310 passed / 0 failed**。
+
+## [2.4.91] - 2026-11-19 — 跨双 NAT 中继实测 + BT-over-relay（ADR-023）
+
+> `g2_claim=false`、`s6_status=not_run` 不变。
+
+- **A：跨两个真实 NAT 的中继互达**：221（port-restricted cone / `112.5.60.4`）与
+  222（真 symmetric / `112.5.32.34`，绑 `192.168.34.222`）均无入向映射，
+  经 `119.29.150.254:7101` UDP 中继 **200/200** 往返、0 丢包、p50 42.6 ms；
+  服务端抓包同时看到两个公网源并逐包转发。证据 `tests/e2e/w56/reports/cross_nat_relay.json`。
+- **ADR-023 BT-over-relay**：`82.157.68.159:7100` TCP 中继双端各 20/20，
+  说明 ADR-020 的 RST 结论只对原路径成立。`cr-nat::relay_tunnel` 用既有 RELAY/DELIVERED
+  帧承载 16 KiB 分块字节流（channel + DATA/CLOSE），不新增帧类型、不重造 TCP。
+- **`cr-bridge::Upstream::{Direct,Tunnel}`**：SOCKS5 前端不变，tunnel 命中走桥，
+  未命中仍回落真实直连。
+- **真引擎 e2e**：`served_registered=1`、1 MiB 逐字节一致、负对照 0 B、
+  中继 `data_bytes_admitted=1,050,071`；证据 `tests/e2e/w57/reports/relay_data.json`。
+- **守护进程 opt-in**：`nat.punch_route=true` 才建 SOCKS5 桥与 runtime；
+  `wake_with_plan` 成功后登记中继隧道，失败如实回落；`/health.data_plane` 可观测。
+- **仍未完成**：持有者侧 splice 未接 `relay_sub`；UDP 数据面未实现；
+  公网双端「打洞失败→中继接管」未跑。
+- 全量回归见本轮测试记录。文档：新增 ADR-023、ADR 索引、M2-PROGRESS §10、ROADMAP、CONFIG。
+
 ## [2.4.90] - 2026-11-18 — 打洞优先 / 中继兜底（两阶段裁决，反双向黑洞）
 
 > `g2_claim=false`、`s6_status=not_run` 不变。本版把「能打洞就打洞、打不了就中继」

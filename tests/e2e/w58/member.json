@@ -1,0 +1,29 @@
+{
+  "role": "member",
+  "bind": "0.0.0.0",
+  "nodes": {
+    "222": {
+      "host": "192.168.34.222",
+      "http_port": 17900,
+      "wake_udp_port": 17901,
+      "bt_port": 17902
+    },
+    "221": {
+      "host": "192.168.1.221",
+      "http_port": 17800,
+      "wake_udp_port": 17801,
+      "bt_port": 17802
+    }
+  },
+  "sample_path": "/root/cr-w58/sample.bin",
+  "keywords": ["coldrevive", "w58", "relay-data"],
+  "workdir": "/root/cr-w58/run-member",
+  "golden_req": "/root/cr-w58/golden/req.json",
+  "golden_ack": "/root/cr-w58/golden/ack.json",
+  "downloader": "/root/cr-w58/downloader",
+  "nat": {
+    "enabled": true,
+    "relay": "192.168.1.221:7100",
+    "punch_route": true
+  }
+}

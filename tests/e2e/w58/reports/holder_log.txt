@@ -1,0 +1,12 @@
+[data-plane] SOCKS5 桥就绪: socks5://127.0.0.1:44141（opt-in）
+[relay-sub] 持有者数据面已启用: 隧道 → 本地引擎 127.0.0.1:17902（TCP 承载）
+[222] 伴随种子 announce: http://192.168.34.222:17900/announce
+[relay-sub] 已订阅中继 192.168.1.221:7100（可达性声明: unknown）
+[222] 样本登记: sample.bin (1048576 B), infohash=0f67435dd14bf363b465ae67dc22f362d51c5a7b
+[222] 样本入库: 1 条记录, 主 infohash=0f67435dd14bf363b465ae67dc22f362d51c5a7b, keys=4
+[222] 做种任务: infohash=0f67435dd14bf363b465ae67dc22f362d51c5a7b 任务 #1, 已核对 1048576/1048576 B, finished=true, state=cold
+[222] 做种引擎就绪: 请求监听 0.0.0.0:17902 / 实际 Some(0.0.0.0:17902), 任务 1 个, utp_requested=true, utp_udp_port_occupied=true
+[222] HTTP 监听 0.0.0.0:17900
+[222] UDP 监听 0.0.0.0:17901
+[relay-sub] 数据面 OPEN: channel=842150450 peer=8706ec5043da9259c0655a6f06984394 → 拨本地引擎 127.0.0.1:17902
+[relay-sub] 数据面结束: channel=842150450 →引擎 1264 B，←引擎 1049585 B

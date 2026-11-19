@@ -1,0 +1,69 @@
+{
+  "schema": "coldrevive.relay-data-two-process/v1",
+  "scope": "two real daemons over a real relay; not NAT-reachability evidence",
+  "topology": {
+    "holder": {
+      "host": "192.168.1.222",
+      "priv": "192.168.34.222",
+      "role": "holder",
+      "punch_route": true
+    },
+    "downloader": {
+      "host": "192.168.1.221",
+      "role": "member",
+      "punch_route": true
+    },
+    "relay": {
+      "endpoint": "192.168.1.221:7100",
+      "carrier": "relay-tcp",
+      "auth": "none"
+    },
+    "rendezvous": "203.0.113.31:17902",
+    "rendezvous_kind": "relay",
+    "sample_bytes": 1048576,
+    "pieces": "4"
+  },
+  "wake": {
+    "path": "relay",
+    "ack_status": "OK",
+    "direct_candidate_failed": true,
+    "tunnel_confirmed": true
+  },
+  "download": {
+    "status": "complete",
+    "completed_bytes": 1048576,
+    "total_bytes": 1048576,
+    "md5_holder": "6172cae176d636d28590b1a9d57d5852",
+    "md5_member": "6172cae176d636d28590b1a9d57d5852",
+    "byte_equal": true
+  },
+  "holder_side": {
+    "opens": 1,
+    "accepted": 1,
+    "splices_done": 1,
+    "bytes_to_engine": 1264,
+    "bytes_from_engine": 1049585,
+    "engine_seed_active": 1,
+    "engine_served_bytes": 1048576
+  },
+  "downloader_side": {
+    "tunnels": 1,
+    "served_registered": 1,
+    "bytes_relayed": 1050849
+  },
+  "relay_side": {
+    "data_bytes_admitted_cumulative_two_runs": 2099990,
+    "data_bytes_admitted_first_run": 1050048,
+    "dropped": 0,
+    "bandwidth_limited": 0
+  },
+  "notes": [
+    "桥字节（流字节）与中继计费字节本来不等：ADR-014 只对超过 4096 B 的帧计费",
+    "两台主机同处 192.168.1.0/24；会合地址 203.0.113.31 不可路由，故本轮不可能回落直连",
+    "未使用公网中继：221 → 82.157.68.159:7100 的 REGISTER 拿不到 ACK（原因未定位），仅记录"
+  ],
+  "relay_data_plane": "implemented-over-tcp-carrier",
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}

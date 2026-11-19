@@ -328,6 +328,17 @@ pub fn tracker_endpoint_for(
     if !requester_public {
         return Some((advertisement.private_ip.clone(), advertisement.bt_port));
     }
+    // v2.4.92：中继会合端点单独放行。
+    //
+    // `is_public_ipv4` 明确把 RFC 5737 文档网段判成「非公网」，这是对的——它们不能
+    // 当成真实可达的 peer。但会合地址的唯一用途就是「让对端引擎肯拨号、再由对端本地桥
+    // 改道到中继隧道」，所以 kind=Relay 时按原值返回。普通客户端拨它会失败（文档网段
+    // 不可路由），这个代价远小于「伪造一个真实 IP 冒充端口映射」。
+    if let Some(e) = advertisement.bt_external.as_ref() {
+        if e.kind == EndpointKind::Relay && e.internal_port == advertisement.bt_port {
+            return Some((e.ip.clone(), e.port));
+        }
+    }
     let public = advertisement.bt_external.clone()
         .filter(|e| is_public_ipv4(&e.ip) && e.internal_port == advertisement.bt_port)
         .or_else(|| plan.and_then(|p| p.tracker_public.clone()))
@@ -440,6 +451,40 @@ mod tests {
         let plan = build_plan(&local, &peer, None);
         assert!(!plan.candidates.iter().any(|e| e.kind == EndpointKind::Relay));
         assert!(plan.notes.iter().any(|n| n.contains("未提供中继地址")));
+    }
+
+    /// v2.4.92：中继会合端点必须**只**以 `EndpointKind::Relay` 的身份被放行。
+    ///
+    /// 同样一个文档网段地址，若被写成 `ConfiguredMapping`（假装是真实端口映射），
+    /// 就必须仍然被拒——否则「会合地址」会被当成绕过「绝不伪造公网 peer」的后门。
+    #[test]
+    fn relay_rendezvous_is_advertised_but_cannot_masquerade_as_mapping() {
+        let r = report(NatType::Unknown, Strategy::None, None);
+        let mut a = local_advertisement("A", "192.168.34.222", 17901, 17902, &r, None, 0);
+        a.bt_external = Some(Endpoint {
+            kind: EndpointKind::Relay,
+            ip: "203.0.113.31".into(),
+            port: 17902,
+            internal_port: 17902,
+            evidence: "relay-rendezvous(no-inbound-mapping)".into(),
+        });
+        assert_eq!(tracker_endpoint_for(&a, "112.5.60.4", None),
+                   Some(("203.0.113.31".into(), 17902)),
+                   "会合地址必须能发给公网请求方，否则对端引擎无从拨号");
+        // 但 LAN 请求方仍拿内网地址：本网内不需要绕中继。
+        assert_eq!(tracker_endpoint_for(&a, "192.168.1.221", None),
+                   Some(("192.168.34.222".into(), 17902)));
+
+        let mut fake = a.clone();
+        fake.bt_external = Some(Endpoint {
+            kind: EndpointKind::ConfiguredMapping,
+            ip: "203.0.113.31".into(),
+            port: 17902,
+            internal_port: 17902,
+            evidence: "operator-configured-bt-mapping".into(),
+        });
+        assert_eq!(tracker_endpoint_for(&fake, "112.5.60.4", None), None,
+                   "文档网段不得以「真实映射」的身份被通告");
     }
 
     #[test]
