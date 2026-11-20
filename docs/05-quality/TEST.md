@@ -2,15 +2,19 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 2.9
+version: 3.0
 status: 待评审
 owner: 测试组
-updated: 2026-11-17
+updated: 2026-11-20
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 2.9 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-17
+> 编号 DOC-12 · 版本 3.0 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-20
+> **v3.0**：补 §2.12–§2.15（W62 FR-11 握手拦截 / W14 FR-14 空闲休眠 / W24+W24-pub FR-24
+> 关键词检索 / W25+W25-live FR-25 与真实 aMule 双向互通）。均不改门禁口径：
+> `g2_claim=false`、`s6_status=not_run`；全量 `cargo test --workspace --offline`
+> **384 passed / 0 failed / 3 ignored**（2026-11-20）。
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
@@ -514,6 +518,84 @@ ssh 退出会带走它，首轮 0 行；③ `-c 80` 被 aMule 自身的 KAD 流�
 （均按各自 `.gitignore` 留作本地证据，不入库）。判定**不改写**报告里的
 `evidence_valid_for_pass=false` / `auto_pass=false`；`g2_claim` 仍为 `false`——
 三项 Spike 只回答技术路线，G2 仍欠 M2 实现项（`cr-dht`、LRU 调度接引擎、中继生产化、BT/TCP 打洞）。
+
+### 2.12 W62 FR-11 握手拦截（2026-11-20 新增，PASS，opt-in）
+
+`engine.guard_handshake` 默认 `false`；开启后引擎退到回环内部口，`cr-guard` 占对外
+`bt_port`，按握手里的 infohash 走唯一合法入口 `sched::wake_seed` 本地唤醒。
+脚本 `tests/e2e/w62/probe_guard.py`，报告 `tests/e2e/w62/reports/`。
+
+| # | 判据 | 观测 |
+| :--- | :--- | :--- |
+| ① | 未经唤醒的引擎 `seed_active=0` | `/health` 采样 |
+| ② | 裸 BT 握手能唤醒**对应**样本 | 两个不同 256 KiB 样本各握手一次，`guard.woken=1` |
+| ③ | 取片内容一致 | 客户端落盘 md5 与样本逐字节一致 |
+| ④ | 未知 infohash 不唤醒 | `guard.missed=1`，`seed_active` 仍 0 |
+
+**踩到的坑**：`read_handshake` 读走 68 B 后必须用 `splice_prefaced` 把已读字节**补回**
+数据面，否则引擎收到截断握手 → 唤醒成功但 0 字节（与 ADR-021 同类）。
+**边界**：仅本机回环、仅 TCP；µTP 走内部口不外透。
+
+### 2.13 W14 FR-14 空闲自动休眠（2026-11-20 新增，PASS，opt-in）
+
+唯一休眠入口 `coldrevived::idle::sleep_hot_seeds`（与 `sched::wake_seed` 对称）。
+`engine.idle_sleep_secs` / `scheduler.idle_sleep_minutes` **默认关闭、0=关闭、秒优先**；
+`/health.idle` 暴露 `enabled/threshold_secs/idle_secs/sleeps/last_slept`。
+脚本 `probe_idle.py` + `wait_sleep.py` + `make_report.py`，**12/12**。
+
+| # | 判据 | 观测 |
+| :--- | :--- | :--- |
+| ① | 休眠前 COLD | `state-A.json` `state=COLD` |
+| ② | 真实握手唤醒并取片 | 64 KiB md5 `a0099d2a…` 一致，`guard.woken=1` |
+| ③ | 空闲阈值到点自动回 COLD | `seed_active 1→0`、`idle.sleeps=1`、`last_slept=[1]` |
+| ④ | 状态序列可追溯 | `["COLD","WAKING","HOT","COLD"]` |
+| ⑤ | 休眠后 KAD 仍可查到 | 4 个 `published_keys` 保留；`find` → `hit_node=A / count=1` |
+
+**踩到的坑**：`seed_tasks` 的键是 **infohash**、影子索引按 **file_hash**，只按一种标识匹配
+会得到「引擎已 pause、索引仍 HOT」；已加回归单测
+`seed_tasks_keyed_by_infohash_still_updates_shadow_state`。
+**边界**：只有空闲计时触发，**没有** CPU/内存/带宽阈值触发；仅回环；
+`seed_active=0` 但影子索引与 KAD Key 保留——**「KAD 还查得到」不等于还在做种**。
+
+### 2.14 W24/W24-pub FR-24 eD2k 关键词检索（2026-11-20 新增，公共轨 PASS，公网 BLOCKED）
+
+本地轨 `tests/e2e/w24/`：`/cli ed2k` 从真实文件算 `ed2k_hash` 输出标准链接，独立纯 Python
+MD4 复算 **2/2**。公共轨 `tests/e2e/w24-pub/`（**12/12**）：生产 `coldrevive-ed2k search`
+对真实 aMuleD 先 `BOOTSTRAP_REQ(0x01)/RES(0x09)` 再发 `SEARCH_KEY_REQ(0x33)`。
+
+| # | 判据 | 观测（`192.168.1.221:4672`） |
+| :--- | :--- | :--- |
+| ① | bootstrap 真的回了 | `bootstrap_ms=273`，`self_id` 非零 |
+| ② | `0x33` 命中且 Key 对得上 | `target_matches_key=true`、`rtt_ms=6` |
+| ③ | `0x3B` 解析出可用条目 | `answer_count=1`、`file_id=28654c6a…` |
+| ④ | 链接可直接交给旧客户端 | `ed2k://\|file\|coldrevive-ed2k-probe-…\|63\|28654c6a…\|/` |
+| ⑤ | Key 与发布侧逐字节一致 | `ad50ee0f06284f630cdf3950a06da42e`（S2 与生产同值） |
+
+**关键观测**：**aMule 不 bootstrap 就不理 `0x33`**——第一版直接发 `0x33` 得 0 结果，
+补上 `0x01/0x09` 后同一请求立即有应答。KAD `ReadTag` 必须拒 `STR1..STR22` 与 `BLOB`，
+否则条目整包解析失败（aMule `CFileDataIO::ReadTag` 不认这些类型）。
+**公网仍 BLOCKED**：A 主机直连 5 个公网 KAD 节点全部超时、`answer_count=0`，
+记 `public-search.json`（`public_kad_contacted=true`、`answer_count=0`），不改成通过。
+
+### 2.15 W25/W25-live FR-25 与真实 aMule 2.3.3 双向互通（2026-11-20 新增，LAN PASS，公网 BLOCKED）
+
+组件级 `tests/e2e/w25/loopback_transfer.rs`：真 TCP 回环三边界（4 KiB / ==PARTSIZE /
+多分块）hash+content 全一致。真实客户端 `tests/e2e/w25-live/`（**22/22**，判据脚本会
+ssh 去读 aMule 落地目录的 md5，读不到记 BLOCKED 不记 pass）：
+
+| 方向 | 样本 | 观测 |
+| :--- | :--- | :--- |
+| 下载（我们 ← aMule `221:4662`） | 262144 B | `peer_hello=true`、`blocks_received=25`、`hash_matches/content_matches/completed=true` |
+| 上传（aMule ← 我们）单块 | 65536 B | `queue_granted=true`、`blocks_sent=1`、`bytes_sent=65536`，落地 md5 `ca9e1458…` 一致 |
+| 上传（aMule ← 我们）多块 | 262144 B | `blocks_sent=3`、`bytes_sent=339968`，落地 md5 `b04f5194…` 一致 |
+
+**判据必须这么写**：aMule 会对**已收区间重复发 `REQUESTPARTS`**，重复发送如实计入
+`bytes_sent`（多块样本 339968 > 262144）。所以正确性只看**对端落地文件 md5**，
+只有单块样本才要求字节数精确相等；把 `bytes_sent == size` 当判据会误判成失败。
+**边界**：RFC1918 LAN（`210` ↔ `221`）；daemon 未接线、公网 server/peer 未测；
+无 server 登录 / source exchange / credit / AICH；样本都 < `PARTSIZE(9,728,000)`，
+跨分片与 `OP_HASHSETREQUEST` 校验未覆盖；`queue_rank_sent=""` 是队列立即授予，
+`OP_QUEUERANKING` 分支未被真实客户端触发过。
 
 ## 3. 兼容性矩阵（必须全绿）
 

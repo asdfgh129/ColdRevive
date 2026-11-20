@@ -2,10 +2,10 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.8
+version: 2.9
 status: 有效
 owner: 架构组
-updated: 2026-11-13
+updated: 2026-11-20
 ---
 
 # 文档体系说明与导航
@@ -132,6 +132,7 @@ updated: YYYY-MM-DD
 
 - 文档体系版本记录在 `CHANGELOG.md`；单文档版本记录在各自 front matter。
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
+- **v2.4.97 补记（2026-11-20 / FR-14 与 FR-24/25 真实对端）**：三项 P0 从「组件级」推到真实客户端。DOC-11（CONFIG）→ **2.3**：补 `engine.idle_sleep_secs` / `scheduler.idle_sleep_minutes`（**opt-in、0=关闭、秒优先**）与 `engine.guard_handshake`，并把 `idle_sleep_minutes` 默认值由 `10` 改为 `0`——休眠是 opt-in，默认行为不变；新增 `/health.idle` 观测口径。DOC-12（TEST）→ **3.0**：新增 §2.12–§2.15（W62 / W14 / W24+W24-pub / W25+W25-live）。DOC-14（ROADMAP）→ **2.17**。DOC-09（PROTO）→ **2.6**：只在 §2.2.2 末追加实测行为备注（`OP_REQUESTPARTS` 会被重复请求、搜索前必须先 bootstrap、`OP_HASHSETREQUEST` 仅 ≥ `PARTSIZE` 触发），**协议帧与字段一字未改**，`PROTOCOL_VERSION = 1` 与 T0 golden 不变。DOC-27（阶段小结）→ 1.1。**门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`；`cargo test --workspace --offline` **384 passed / 0 failed / 3 ignored**。
 - **v2.4.78 补记（2026-11-17 / 判定）**：**S3 = `pass`、S5 = `fallback`、S6 = `pass`（`closed_with_exceptions`）**
   —— 三项 Spike 由所有者依真实证据手工判定，记录见
   [G2-SPIKE-VERDICT-2026-11-17](06-plan/G2-SPIKE-VERDICT-2026-11-17.md) 与 `tests/fixtures/g2-spike-verdicts.toml`。

@@ -2,15 +2,15 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.16
+version: 2.17
 status: 持续维护
 owner: 项目组
-updated: 2026-11-17
+updated: 2026-11-20
 ---
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.16 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-17
+> 编号 DOC-14 · 版本 2.17 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-20
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -820,6 +820,29 @@ ColdRevive
   - **下一步（按收益排序）**：① 在 221 上复跑 `cargo test -p cr-nat tcp_punch`（补 Unix 证据）；
     ② 中继按 IP 限速在真实公网中继上跑一轮时延/丢包（7100 入口）；③ 多任务做种接入后
     复跑逐出路径；④ `cr-dht` 接引导节点做一次受控公网 announce（需所有者授权，同 S3 口径）。
+
+- **2026-11-20 补三项 P0（v2.4.96 → v2.4.97，从「组件级」推到「真实对端」）**：
+  按 [STATUS-INVENTORY](STATUS-INVENTORY-2026-11-20.md) 的盘点结论先补 P0 未实现项。
+  **未宣称 G2 达标**：`g2_claim=false`、`s6_status=not_run`、默认承载仍 `tcp`。
+  - **FR-11 握手拦截（W62，12/12）✅**：`engine.guard_handshake` opt-in，`cr-guard` 与引擎
+    分端口，按 infohash 走唯一入口 `wake_seed`。坑：`read_handshake` 读走的 68 B 必须
+    `splice_prefaced` 补回，否则唤醒成功但 0 字节。仅回环 TCP。
+  - **FR-14 空闲自动休眠（W14，12/12）✅ opt-in**：唯一入口 `idle::sleep_hot_seeds`
+    （与 `wake_seed` 对称）；`engine.idle_sleep_secs` / `scheduler.idle_sleep_minutes`
+    默认关闭、0=关闭、秒优先；`/health.idle` 可观测。坑：`seed_tasks` 键是 infohash、
+    索引按 file_hash，单标识匹配会「引擎 pause 了索引还 HOT」。**无资源阈值触发**。
+  - **FR-24 公共轨检索（W24-pub，12/12）🟡 LAN 通过 / 公网 BLOCKED**：`coldrevive-ed2k search`
+    先 bootstrap（`0x01/0x09`）再 `0x33`，解析 `0x3B` 的 KAD tag 产出标准 `ed2k://`。
+    **aMule 不 bootstrap 就不理 `0x33`**；KAD `ReadTag` 必须拒 `STR1..STR22`/`BLOB`。
+    公网 5 个 KAD 节点全超时（`answer_count=0`），需 G0 `protocol_scope` 放宽。
+  - **FR-25 与真实 aMule 2.3.3 双向（W25-live，22/22）🟡 组件级通过**：`download`/`serve`
+    走生产 `cr-ed2k::stack`；下载 262144 B/25 块 hash+content 一致，上传 65536 B 与 262144 B
+    两样本**对端落地 md5**一致。**判据**：aMule 会重复 `REQUESTPARTS`，`bytes_sent` 可大于
+    文件大小（339968 > 262144）→ 正确性只看对端落地 md5。
+    **仍 BLOCKED**：daemon 未接线、公网 server/peer 未测、无 server 登录/source exchange/
+    credit/AICH；样本均 < `PARTSIZE`，跨分片与 hashset 校验未覆盖。
+  - **下一步**：① 把 `cr-ed2k` 接进 `coldrevived` 生产路径（FR-25 升「已实现」的唯一路径）；
+    ② 用 > `PARTSIZE` 的样本补跨分片 + `OP_HASHSETREQUEST`；③ FR-24 公网检索待 G0 放宽。
 
 ## 相关文档
 

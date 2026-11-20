@@ -39,7 +39,11 @@ publish_rate = 20
 
 [scheduler]
 max_active_seeds = 50
-idle_sleep_minutes = 10
+# FR-14 空闲自动休眠：**opt-in，0 = 关闭（默认）**。HOT 做种任务空闲满阈值后
+# 由唯一入口 `idle::sleep_hot_seeds` 暂停并切回 COLD；影子索引与 KAD 发布 Key 保留，
+# 所以休眠后 KAD 仍查得到 ——「查得到」不等于「还在做种」，看 /health.idle。
+# 秒级优先项是 engine.idle_sleep_secs（JSON 段），两者同时出现时秒优先。
+idle_sleep_minutes = 0
 wake_session_ttl_sec = 7200
 memory_soft_limit_mb = 100
 memory_hard_limit_mb = 200

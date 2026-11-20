@@ -2,15 +2,15 @@
 doc_id: DOC-09
 title: 协议规范（PROTO）
 category: 协议
-version: 2.5
+version: 2.6
 status: 待评审
 owner: 架构组 / 内核组
-updated: 2026-11-11
+updated: 2026-11-20
 ---
 
 # 协议规范（PROTO）
 
-> 编号 DOC-09 · 版本 2.5 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-11
+> 编号 DOC-09 · 版本 2.6 · 状态 待评审 · 责任人 架构组 / 内核组 · 更新 2026-11-20
 > **本协议是私有控制面契约**。数据面 100% 使用标准 BT / eD2K 协议，不受本文约束。
 > 任何字段变更必须递增 `PROTOCOL_VERSION` 并新增 [ADR](../02-architecture/adr/README.md)，禁止静默修改。
 > **v2.1 只修正 §1/§2 的 eMule KAD 集成映射（外部协议映射）**，§3 私有唤醒报文的字段一字未改，
@@ -24,6 +24,9 @@ updated: 2026-11-11
 > **v2.5 补齐 L2 的源字典与 eD2k TCP 数据面映射（§2.2）**：`0x44` / `0x34` 载荷、标准
 > eD2k 客户端间 TCP 报文序列，并**更正 `Emule_File_Key` 的分块边界规则**（aMule 用 Red 变体）。
 > 仍只改 §1/§2 的外部协议映射，§3 私有唤醒字段一字未动，`PROTOCOL_VERSION = 1` 与 T0 golden 不变。
+> **v2.6 只追加实测行为备注（§2.2.2 末）**：`OP_REQUESTPARTS` 会被重复请求、搜索前必须先 bootstrap
+> （`0x01`→`0x09` 才能让 `0x33` 有应答）、`OP_HASHSETREQUEST` 仅在 ≥ `PARTSIZE` 时触发。
+> 协议帧与字段**一个字没改**，`PROTOCOL_VERSION = 1` 与 T0 golden 不变。
 
 ## 1. 命名空间与常量
 
@@ -162,6 +165,19 @@ SEARCH_RES         (0x3B) = <senderID 16><target 16><count u16>[<answer 16><tagc
 > **实现口径**：v1 最小栈只做上述标准报文，不实现压缩 `0x40`、混淆、积分 / credit / 安全标识、
 > 源交换、AICH 与 >4 GiB 的 I64 分片（`0xA2` / `0xA3`）。最小上传队列属传输栈、必须实现；
 > 完整 eMule 信用体系仍属 [PRD 非目标](../01-product/PRD.md)，M1 实测排队代价后再定（ADR-011）。
+
+> **2026-11-20 与真实 aMule 2.3.3 互通的实测补充**（不改协议，只记行为）：
+> ① `OP_REQUESTPARTS` **会重复** —— aMule 对已收区间会再发一次同样的 3 组 start/end，
+> 所以上传侧 `bytes_sent` **可以大于文件大小**（262144 B 的样本实测 `bytes_sent=339968`）。
+> 判「传对了」只能用**对端落地文件 md5**，不能用字节数相等；只有单块文件两者才恰好相等。
+> ② `OP_HASHSETREQUEST` 只在文件 ≥ `PARTSIZE` 时才发；< `PARTSIZE` 的样本走不到 hashset 校验，
+> 因此「小文件互通成功」不覆盖 hashset 路径。
+> ③ 队列：空槽时回 `OP_ACCEPTUPLOADREQ`，**不会**先发 `OP_QUEUERANKING`；
+> 本轮实测 `queue_rank_sent` 为空，`OP_QUEUERANKING` 分支未被真实客户端触发过。
+> ④ **搜索前必须 bootstrap**：直接发 `KADEMLIA2_SEARCH_KEY_REQ (0x33)` 给 aMuleD 得到
+> **零应答**（不是超时，是没有包）；先发 `KADEMLIA2_BOOTSTRAP_REQ (0x01)` 收到
+> `BOOTSTRAP_RES (0x09)` 之后，同一条 `0x33` 立即有 `0x3B` 应答。客户端侧实现必须按这个顺序。
+> 证据见 [TEST §2.15](../05-quality/TEST.md) 与 [tests/e2e/w25-live](../../tests/e2e/w25-live/README.md)。
 
 #### 2.2.3 `ed2k_hash` 的分块边界规则（**更正 §1**）
 
