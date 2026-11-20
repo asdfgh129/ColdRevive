@@ -413,6 +413,7 @@ dependencies = [
  "cr-bridge",
  "cr-core",
  "cr-engine",
+ "cr-guard",
  "cr-hash",
  "cr-indexer",
  "cr-kad",

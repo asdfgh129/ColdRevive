@@ -1,0 +1,72 @@
+{
+  "schema": "coldrevive.w62.fr11/v1",
+  "scope": "opt-in 握手拦截：旧客户端直连 bt_port → 标准 BT 握手 → 按 infohash 本地唤醒；仅 TCP，不宣称 µTP 可达（µTP 走内部口不外透）",
+  "checks": [
+    {
+      "name": "two_distinct_samples",
+      "ok": true,
+      "detail": "a=fc605e608591 b=e23d4998f886"
+    },
+    {
+      "name": "handshake_woke_sample_b",
+      "ok": true,
+      "detail": "probe 退出码 0 且无 FAIL（见 guard_probe_b.json）"
+    },
+    {
+      "name": "piece_md5_sample_b",
+      "ok": true,
+      "detail": "期望 md5=c775e17816e8329cb3425a1998813ad8"
+    },
+    {
+      "name": "handshake_woke_sample_a",
+      "ok": true,
+      "detail": "probe 退出码 0 且无 FAIL（见 guard_probe_a.json）"
+    },
+    {
+      "name": "piece_md5_sample_a",
+      "ok": true,
+      "detail": "期望 md5=a5fd855858b04b5d09969b6bb3fd2bd8"
+    },
+    {
+      "name": "correct_samples_went_hot",
+      "ok": true,
+      "detail": {
+        "sample_b.bin": "HOT",
+        "sample_a.bin": "HOT"
+      }
+    },
+    {
+      "name": "guard_enabled",
+      "ok": true,
+      "detail": {
+        "enabled": true,
+        "handshakes": 3,
+        "woken": 2,
+        "missed": 1
+      }
+    },
+    {
+      "name": "guard_counts",
+      "ok": true,
+      "detail": "handshakes=3 woken=2 missed=1（2 命中 + 1 未知 infohash）"
+    },
+    {
+      "name": "seed_active_matches",
+      "ok": true,
+      "detail": "2"
+    },
+    {
+      "name": "proxy_uses_internal_loopback",
+      "ok": true,
+      "detail": "外部 bt_port 与引擎内部口都在回环，splice 路径已打印"
+    },
+    {
+      "name": "unknown_infohash_rejected",
+      "ok": true,
+      "detail": "未知 infohash 记录 missed，不唤醒任何样本"
+    }
+  ],
+  "passed": 11,
+  "total": 11,
+  "boundary": "本机回环单次样本；未测公网直连、未测 NAT；g2_claim=false、s6_status=not_run 不变"
+}

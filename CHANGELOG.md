@@ -2,6 +2,30 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.96] - 2026-11-20 — 补 P0 未实现 FR-11/24/25（FR-11 闭环，FR-24/25 部分）
+
+> 按阶段盘点（DOC-28）的建议先补 P0。**FR-11 完全闭环；FR-24/25 只到「本地/组件级」，
+> 公网与 daemon 全量接线仍 BLOCKED**。不改门禁：`g2_claim=false`、`s6_status=not_run`。
+> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **377 passed / 0 failed**。
+
+- **FR-11 握手拦截（W62，11/11）**：`cr-guard` 从骨架扩为标准 68 B BT 握手解析 +
+  `read_handshake`（5 s 超时，防 T0-07 裸 connect 挂线程）+ `splice_prefaced`
+  （补回已读字节，否则引擎收到截断握手 → 唤醒成功但 0 数据面）。
+  `engine.guard_handshake` opt-in，默认 false；开启后引擎退到回环内部口、guard 占对外
+  bt_port，按 infohash 走唯一合法入口 `sched::wake_seed` 本地唤醒。
+  `/health.guard` 暴露 handshakes/woken/missed。
+  证据：两个不同 256 KiB 样本，裸握手只唤醒对应样本、取片 md5 逐字节一致；
+  未知 infohash → `missed=1`、无唤醒。边界：仅本机回环、**仅 TCP**（µTP 不外透）。
+- **FR-24 本地部分（W24，独立 MD4 复算 2/2）**：`cr-hash` 补无前缀 MD4 关键词哈希的
+  RFC 1320 已知答案测试；`cr-kad::kad_ed2k` 纳入审计过的 A 轨 Key + 0x33/0x3B 编解码
+  （离线原语，不对公网发包）；`/cli ed2k` 从真实文件内容算 `ed2k_hash` 输出标准
+  `ed2k://` 链接。**公网 KAD 0x33 词典检索 BLOCKED**（G0 scope + 0/19 静默）。
+- **FR-25 组件级（W25，33 单测 + 回环 e2e）**：S2 审计过的 sha1/kad wire/ed2k wire/stack
+  经 `#[path]` 纳入生产 crate `cr-ed2k`（单一事实来源）。`tests/loopback_transfer.rs`
+  真 TCP 跑 serve/download 两端，三种 PARTSIZE 边界（4KiB / ==9.28MB / 多分块）
+  hash+content 全一致。**daemon 未接线、公网传输未测、全量双轨发布未做，仍 BLOCKED**。
+- 文档：DOC-28 状态盘点按本轮三 FR 的新口径回填；新增 `tests/e2e/w24`、`w25`、`w62`。
+
 ## [2.4.95a] - 2026-11-20 — 公平性量具 v1：TCP/UDP 同预算对照 + 可靠层 RTO 时间序列
 
 > 只加 `#[ignore]` 量具与证据，**不改协议、不改默认承载、不改门禁**。

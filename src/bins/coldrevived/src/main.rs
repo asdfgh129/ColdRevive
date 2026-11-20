@@ -126,6 +126,13 @@ pub struct NodeState {
     /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
     /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
     pub sched: LruScheduler,
+    /// FR-11 握手拦截统计（只有 opt-in 时才非零）：(收到握手数, 命中并唤醒数, 未命中数)。
+    pub guard_stats: Arc<Mutex<(u64, u64, u64)>>,
+    /// FR-11：引擎内部监听地址。只有 `bt_guard_handshake=true` 时 `Some`；
+    /// 值是 `engine.listen_addr()` 的实测回环地址，splice 必须连它。
+    pub guard_internal: Option<SocketAddr>,
+    /// FR-11：guard 代理对外占用的地址（原 bt_port 监听地址）。
+    pub guard_external: Option<SocketAddr>,
     /// ADR-022：打洞优先 / 中继兜底的协商观测（默认关闭，仅诊断，不进门禁）。
     pub punch_route: punch_route::PunchRouteState,
     /// ADR-023：opt-in 的中继数据面。None 时引擎 proxy_url 保持 None。
@@ -232,6 +239,9 @@ fn main() {
         sched: LruScheduler::new(
             cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
         ),
+        guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+        guard_internal: None,
+        guard_external: None,
         punch_route: punch_route::PunchRouteState::from_config(&cfg),
         data_plane,
     };
@@ -266,6 +276,9 @@ fn main() {
         }
         let shared = Arc::new(Mutex::new(st));
         spawn_udp(hub.clone(), cfg.clone(), shared.clone());
+        // FR-11：握手拦截代理必须在共享状态与引擎都就绪后才监听对外口，
+        // 否则 seed_tasks 还是空的，pick_seed_task 会拿空映射退化成「唤醒主样本」。
+        spawn_handshake_guard(cfg.clone(), shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
@@ -363,10 +376,24 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
             .map_err(|e| format!("bt 监听地址非法: {e}"))?,
     };
 
+    // FR-11（opt-in）：引擎退到回环内部口，对外 bt_port 交给 cr-guard 代理。
+    // 代理在 main 里拿到 Arc<NodeState> 后启动（这里还是 &mut，尚无共享句柄）。
+    // 引擎实际监听地址通过 engine.listen_addr() 取，不猜端口：librqbit 绑定
+    // 127.0.0.1:0 后由内核分配，splice 必须连它真正绑上的那个地址。
+    let engine_bind = if cfg.bt_guard_handshake {
+        // 先向内核要一个空闲回环端口再释放：bt_port+1 可能是 HTTP/唤醒端口，
+        // 写死会撞车；0 端口交给 librqbit 则会让 µTP 探测绑到错误端口上误报。
+        let probe = TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("guard 内部端口探测失败: {e}"))?;
+        probe.local_addr().map_err(|e| format!("guard 内部端口读取失败: {e}"))?
+    } else {
+        listen
+    };
+
     let proxy_url = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
     let mut engine = RqbitEngine::new(EngineOptions {
         download_dir: share_dir.clone(),
-        listen: Some(listen),
+        listen: Some(engine_bind),
         enable_dht: false,
         enable_trackers: false,
         // W5.1e：µTP 默认开。librqbit 只把它当成一个 `ListenerMode` 开关，
@@ -423,6 +450,17 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
     );
     st.seed_tasks = tasks;
     st.seed_task = primary;
+    if cfg.bt_guard_handshake {
+        let actual = engine.listen_addr().ok_or(
+            "guard 模式要求引擎有回环内部监听地址，但 listen_addr() 为 None"
+        )?;
+        st.guard_internal = Some(actual);
+        st.guard_external = Some(listen);
+        println!(
+            "[{}] FR-11 握手拦截已配置: 外部 {} → 引擎内部 {}（代理在共享状态就绪后启动）",
+            cfg.node_id, listen, actual
+        );
+    }
     st.engine = Arc::new(Mutex::new(Some(engine)));
     Ok(())
 }
@@ -453,6 +491,109 @@ fn pick_seed_task(
         return fallback;
     }
     None
+}
+
+/// FR-11（opt-in）：启动 BT 握手拦截代理。
+///
+/// 只占用配置的外部 `bt_port`；引擎已在回环内部口监听。每条连接：
+/// 读 68 字节标准握手 → 解析 infohash → `sched::wake_seed` 本地唤醒对应样本
+/// → 把已读字节补回并 splice 给引擎。
+///
+/// 负例（非 BT 握手 / 未知 infohash）不唤醒、不断开整个服务：直接关该连接即可，
+/// 让 T0-07 那种「只 connect 不发字节」的健康探测也能安全超时退出。
+fn spawn_handshake_guard(cfg: Config, state: Arc<Mutex<NodeState>>) {
+    let (external, internal) = {
+        let st = state.lock().unwrap();
+        match (st.guard_external, st.guard_internal) {
+            (Some(e), Some(i)) => (e, i),
+            _ => return,
+        }
+    };
+    let listener = match TcpListener::bind(external) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[{}] FR-11 guard 绑定 {} 失败: {}", cfg.node_id, external, e);
+            return;
+        }
+    };
+    println!("[{}] FR-11 guard 代理监听 {}（→ 引擎 {}）", cfg.node_id, external, internal);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(client) = stream else { continue };
+            let cfg = cfg.clone();
+            let state = state.clone();
+            thread::spawn(move || handle_guard_connection(client, cfg, state, internal));
+        }
+    });
+}
+
+fn handle_guard_connection(
+    mut client: TcpStream,
+    cfg: Config,
+    state: Arc<Mutex<NodeState>>,
+    internal: SocketAddr,
+) {
+    // 裸 connect（T0-07）与慢速客户端不能长期挂线程：5 s 读超时后直接关连接。
+    let Ok(prefix) = cr_guard::read_handshake(&mut client, Duration::from_secs(5)) else {
+        return;
+    };
+    let Ok(ih) = cr_guard::handshake_infohash_hex(&prefix) else {
+        // 非标准 BT 握手：不唤醒，直接关。这是零信任，不猜 infohash。
+        return;
+    };
+    let hit = {
+        let mut st = state.lock().unwrap();
+        st.guard_stats.lock().unwrap().0 += 1;
+        if let Some(task) = seed_task_for(&st, &ih) {
+            // 与 UDP 唤醒同一套状态跃迁与记账：唯一合法 activate 入口是 wake_seed。
+            let engine_slot = st.engine.clone();
+            let mut eg = engine_slot.lock().unwrap();
+            let outcome = match eg.as_mut() {
+                Some(eng) => Some(sched::wake_seed(&mut st.sched, eng, task)),
+                None => None,
+            };
+            drop(eg);
+            if let Some(o) = outcome.as_ref() {
+                if let Some(ev) = o.evicted {
+                    println!("[{}] FR-11 活跃池逐出任务 #{} 以服务握手唤醒", cfg.node_id, ev);
+                }
+                for e in &o.errors {
+                    eprintln!("[{}] FR-11 活跃池: {}", cfg.node_id, e);
+                }
+            }
+            let serving = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
+            if serving {
+                st.guard_stats.lock().unwrap().1 += 1;
+                // 找到该 infohash 对应的索引项做 COLD→HOT；绝不用别的样本顶上。
+                if let Some(fh) = st.index.entries.values()
+                    .find(|e| e.infohash == ih).map(|e| e.file_hash.clone())
+                {
+                    let already_hot = st.index.get(&fh)
+                        .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
+                    if !already_hot {
+                        if let Some(e) = st.index.get_mut(&fh) {
+                            e.transition(cr_store::FileState::Waking);
+                            e.transition(cr_store::FileState::Hot);
+                        }
+                    }
+                }
+                st.bt_seeding = true;
+                let _ = st.index.save();
+            }
+            serving
+        } else {
+            st.guard_stats.lock().unwrap().2 += 1;
+            eprintln!("[{}] FR-11 握手 infohash={} 未命中本节点做种任务", cfg.node_id, ih);
+            false
+        }
+    };
+    let _ = hit; // 命中与否都继续 splice：让标准 BT 流程走完（未知 infohash 由引擎自己拒）。
+
+    // 补回已读的 68 字节再双向搬运。丢前缀是 ADR-021 记过的典型坑：
+    // 唤醒看起来成功，但引擎收到截断握手 → 0 字节数据面。
+    if let Err(e) = cr_guard::splice_prefaced(client, internal, &prefix) {
+        eprintln!("[{}] FR-11 splice 失败: {}", cfg.node_id, e);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +687,18 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              // 持有者侧（被下载的一方）的 splice 计数：真实 OPEN/拨号/字节数。
              // 「接了但没有数据流过」在这几个字段上一眼可见。
              ("holder_data", relay_sub::holder_stats_json()),
+             // FR-11：握手拦截的可观测面。默认 opt-in 关闭，stats 全 0。
+             // 只有 (woken>0) 才能证明「旧客户端直接连入触发了唤醒」。
+             ("guard", {
+                 let st = state.lock().unwrap();
+                 let (seen, woken, missed) = *st.guard_stats.lock().unwrap();
+                 Json::obj(vec![
+                     ("enabled", Json::b(cfg.bt_guard_handshake)),
+                     ("handshakes", Json::n(seen as f64)),
+                     ("woken", Json::n(woken as f64)),
+                     ("missed", Json::n(missed as f64)),
+                 ])
+             }),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
@@ -1380,6 +1533,9 @@ mod rpc_tests {
             seed_task: None,
             seed_tasks: HashMap::new(),
             sched: LruScheduler::new(1),
+            guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+            guard_internal: None,
+            guard_external: None,
             punch_route: punch_route::PunchRouteState::from_config(&cfg),
             data_plane: data_plane::DataPlane::new().ok(),
         };

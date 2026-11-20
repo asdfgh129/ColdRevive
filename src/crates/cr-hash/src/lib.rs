@@ -280,4 +280,14 @@ mod tests {
         );
         assert_ne!(kad_keyword_hash("ABC"), kad_keyword_hash("abc"));
     }
+
+    #[test]
+    fn kad_keyword_hash_is_unnamespaced_md4_known_answer() {
+        // ADR-011：eMule 的关键词 Key 是 MD4(UTF-8(term))，无命名空间前缀。
+        // 标准 MD4 已知答案防止「实现悄悄换成 SHA-1 / 加了前缀」而测试仍绿。
+        assert_eq!(hex(&kad_keyword_hash("")), "31d6cfe0d16ae931b73c59d7e0c089c0");
+        assert_eq!(hex(&kad_keyword_hash("abc")), "a448017aaf21d8525fc10ae87aa6729d");
+        assert_eq!(hex(&kad_keyword_hash("message digest")), "d9130a8164549fe818874806e1c7014b");
+        assert_eq!(kad_keyword_hash("冷"), md4("冷".as_bytes()), "非 ASCII 走 UTF-8 原字节");
+    }
 }

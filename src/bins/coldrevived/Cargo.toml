@@ -17,4 +17,5 @@ cr-nat = { path = "../../crates/cr-nat" }
 cr-engine = { path = "../../crates/cr-engine" }
 cr-sched = { path = "../../crates/cr-sched" }
 cr-bridge = { path = "../../crates/cr-bridge" }
+cr-guard = { path = "../../crates/cr-guard" }
 tokio = { workspace = true }

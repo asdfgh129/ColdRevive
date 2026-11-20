@@ -8,6 +8,10 @@
 
 use cr_core::{Json, NAMESPACE};
 use cr_hash::{sha1_hex, sha256_hex};
+
+/// ADR-011 eMule 兼容轨的字节层原语（无前缀 MD4 Key + 0x33/0x3B 编解码）。
+/// 只做离线可验证的编解码，不代表公网检索可用。
+pub mod kad_ed2k;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::time::Duration;
 

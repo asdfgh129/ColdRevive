@@ -1,0 +1,5 @@
+before guard= {'enabled': True, 'handshakes': 2, 'woken': 1, 'missed': 1} seed_active= 1
+握手回包 peer_id= b'-rQ9100-\xb1PB\x9b\xe48\x9f\xb2\x96\x9a\xbb\xbc'
+after  guard= {'enabled': True, 'handshakes': 3, 'woken': 2, 'missed': 1} seed_active= 2
+已 unchoke
+收到 262144/262144 B 块数=16 md5=a5fd855858b04b5d09969b6bb3fd2bd8 期望=a5fd855858b04b5d09969b6bb3fd2bd8

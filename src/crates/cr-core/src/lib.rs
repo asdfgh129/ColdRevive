@@ -373,6 +373,14 @@ pub struct Config {
     pub engine_dir: PathBuf,
     /// 引擎入站监听地址（`engine.listen` = `"ip:port"`）。`None` = 只做出站，不监听。
     pub engine_listen: Option<SocketAddr>,
+    /// FR-11：BT 握手拦截代理是否启用（`engine.guard_handshake`，默认 `false`）。
+    ///
+    /// 开启后由 cr-guard 占用对外 `bt_port`，读 68 B 标准握手 → 按 infohash 本地唤醒
+    /// → 补回已读字节并 splice 给引擎的回环内部口。这样旧客户端**直接连入**
+    /// 也能触发被动唤醒（SRS FR-11），不必先收到私有 UDP 唤醒。
+    /// 默认关闭：既有 T0/T1/W5.x 证据的字节级行为不变；µTP 在代理模式下不外透，
+    /// 因此该 opt-in 只宣称 TCP 握手拦截，不宣称 µTP 可达。
+    pub bt_guard_handshake: bool,
     /// 做种活跃池上限（`engine.max_active_seeds`，W4.3）。`None` = 用 `cr-sched` 的默认值。
     ///
     /// 只有活跃池里的任务会 `activate`；超过上限时逐出最久未用者并暂停它。
@@ -560,6 +568,12 @@ impl Config {
                 Some(n)
             }
         };
+        // FR-11 握手拦截：opt-in。engine_get 只取字符串，布尔键单独读——
+        // 写成 `"false"` 字符串不生效（不是合法布尔），保持「非法即默认关」。
+        let bt_guard_handshake = j.get("engine")
+            .and_then(|e| e.get("guard_handshake"))
+            .and_then(Json::as_bool)
+            .unwrap_or(false);
         let role = match j.get("role").and_then(Json::as_str) {
             None => None,
             Some(s) => {
@@ -603,6 +617,7 @@ impl Config {
             engine_dir,
             engine_listen,
             engine_max_active_seeds,
+            bt_guard_handshake,
         })
     }
 
@@ -900,6 +915,31 @@ mod tests {
         fs::write(&p, base(r#", "data_plane_carrier": "quic""#)).unwrap();
         assert_eq!(Config::load(&p).unwrap().nat_data_plane_carrier, "tcp");
         let _ = fs::remove_file(&p);
+    }
+
+    /// FR-11：握手拦截默认关闭；只有 engine.guard_handshake 显式 true 才开。
+    /// 字符串 "true" 或非布尔不得意外开启（opt-in 硬约束）。
+    #[test]
+    fn guard_handshake_is_opt_in_and_never_truthy_by_accident() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {"A": {"host": "127.0.0.1", "http_port": 1, "wake_udp_port": 2, "bt_port": 3}},
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "engine": {ENGINE}
+        }"#;
+        let mk = |engine: &str| {
+            let txt = base.replace("{ENGINE}", engine);
+            let p = std::env::temp_dir().join("cr_core_guard_optin.json");
+            fs::write(&p, txt).unwrap();
+            let v = Config::load(&p).unwrap().bt_guard_handshake;
+            let _ = fs::remove_file(&p);
+            v
+        };
+        assert!(!mk("{}"), "缺省必须关闭");
+        assert!(!mk(r#"{"guard_handshake": false}"#));
+        assert!(mk(r#"{"guard_handshake": true}"#));
+        assert!(!mk(r#"{"guard_handshake": "true"}"#), "字符串不得被当成布尔 true");
     }
 
     /// ADR-022：punch_route 默认关闭，显式 true 才开；非布尔不得被当成 true。

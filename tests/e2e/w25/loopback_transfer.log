@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running tests\loopback_transfer.rs (target\debug\deps\loopback_transfer-6be5a710275b4446.exe)
+
+running 1 test
+single_part_4KiB ok: size=4096 blocks=1 hash=c793fe8d8bab1bd988ab59dfcc6971c3 queue_rank=None
+exact_one_part_boundary ok: size=9728000 blocks=53 hash=4b1fbb234258a272836abf37a5efbf7a queue_rank=None
+multi_part ok: size=9736192 blocks=53 hash=ee64fc6cf67277295dd61a99e4878afa queue_rank=None
+test production_ed2k_stack_loopback_single_and_multipart ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.20s
+

@@ -1,0 +1,16 @@
+[A] 伴随种子 announce: http://127.0.0.1:18800/announce
+[A] 样本登记: sample_a.bin (262144 B), infohash=8b0ceff950a0189725b03716051ffdf91ff26abe
+[A] 样本登记: sample_b.bin (262144 B), infohash=fd19f3540419facc90c1bf628e9c1c63d1598d4f
+[A] 样本入库: 2 条记录, 主 infohash=8b0ceff950a0189725b03716051ffdf91ff26abe, keys=5
+[A] 做种任务: infohash=fd19f3540419facc90c1bf628e9c1c63d1598d4f 任务 #1, 已核对 262144/262144 B, finished=true, state=cold
+[A] 做种任务: infohash=8b0ceff950a0189725b03716051ffdf91ff26abe 任务 #2, 已核对 262144/262144 B, finished=true, state=cold
+[A] 做种引擎就绪: 请求监听 127.0.0.1:18802 / 实际 Some(127.0.0.1:52053), 任务 2 个, utp_requested=true, utp_udp_port_occupied=true
+[A] FR-11 握手拦截已配置: 外部 127.0.0.1:18802 → 引擎内部 127.0.0.1:52053（代理在共享状态就绪后启动）
+[A] FR-11 guard 代理监听 127.0.0.1:18802（→ 引擎 127.0.0.1:52053）
+[A] UDP 监听 127.0.0.1:18801
+[A] HTTP 监听 127.0.0.1:18800
+
+thread '<unnamed>' (18128) panicked at src\bins\coldrevived\src\nat_path.rs:749:18:
+range start index 1 out of range for slice of length 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+[A] FR-11 握手 infohash=0000000000000000000000000000000000000000 未命中本节点做种任务

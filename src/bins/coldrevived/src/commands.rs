@@ -62,6 +62,7 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "seed" => seed_stats(state),
+        "ed2k" => ed2k_links(state, &arg(&args, 0)),
         "download" => download(state, &cfg, &arg(&args, 0)),
         "golden" => golden(&cfg),
         "env" => env_defaults(state),
@@ -274,6 +275,59 @@ fn seed_stats(state: &Shared) -> Json {
         }
     }
     Json::obj(vec![("seed", Json::obj(fields))])
+}
+
+/// FR-24（本地可验证部分）：按真实文件内容算 `ed2k_hash`，产出标准 `ed2k://` 链接。
+///
+/// 只做**本地索引 → 链接**：`fileID` 由 `fs::read(path)` 的内容导出（ADR-011 L1 硬约束，
+/// 不可伪造），关键词 Key 用无前缀 MD4（`cr_kad::kad_ed2k::ed2k_keyword_key`）。
+/// **不查询公共 eMule 词典**：G0 `protocol_scope` 仍限定「跳过 HELLO」、公网 0x33/0x43
+/// 索引操作 0/19 静默（OPEN-QUESTIONS §1），所以公网检索保持 BLOCKED，这里不编造结果。
+///
+/// 参数：可选 file_hash；缺省时输出全部索引条目。
+fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
+    let st = state.lock().unwrap();
+    let entries: Vec<FileEntry> = if file_hash.is_empty() {
+        st.index.entries.values().cloned().collect()
+    } else {
+        match st.index.get(file_hash) {
+            Some(e) => vec![e.clone()],
+            None => return Json::obj(vec![
+                ("found", Json::b(false)),
+                ("note", Json::s(format!("索引里没有 file_hash={file_hash}"))),
+            ]),
+        }
+    };
+    let mut links = Vec::new();
+    for e in &entries {
+        let bytes = match fs::read(&e.path) {
+            Ok(b) => b,
+            Err(err) => {
+                links.push(Json::obj(vec![
+                    ("file_hash", Json::s(&e.file_hash)),
+                    ("error", Json::s(format!("读文件失败: {err}"))),
+                ]));
+                continue;
+            }
+        };
+        let hash = cr_hash::ed2k_hash(&bytes);
+        let link = cr_hash::ed2k_link(&e.name, bytes.len(), &hash);
+        let keys: Vec<String> = e.keywords.iter()
+            .map(|k| cr_hash::hex(&cr_kad::kad_ed2k::ed2k_keyword_key(k)))
+            .collect();
+        links.push(Json::obj(vec![
+            ("file_hash", Json::s(&e.file_hash)),
+            ("name", Json::s(&e.name)),
+            ("size", Json::n(bytes.len() as f64)),
+            ("ed2k_link", Json::s(&link)),
+            ("keyword_keys_md4", Json::arr(keys.into_iter().map(Json::s).collect())),
+        ]));
+    }
+    Json::obj(vec![
+        ("count", Json::n(links.len() as f64)),
+        ("links", Json::arr(links)),
+        ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽；本命令只做本地索引")),
+    ])
 }
 
 fn golden(cfg: &Config) -> Json {

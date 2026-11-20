@@ -1,0 +1,31 @@
+{
+  "role": "holder",
+  "bind": "127.0.0.1",
+  "nodes": {
+    "A": {
+      "host": "127.0.0.1",
+      "http_port": 18800,
+      "wake_udp_port": 18801,
+      "bt_port": 18802
+    },
+    "B": {
+      "host": "127.0.0.1",
+      "http_port": 18900,
+      "wake_udp_port": 18901,
+      "bt_port": 18902
+    }
+  },
+  "sample_path": "tests/e2e/w62/run/sample_a.bin",
+  "samples": [
+    "tests/e2e/w62/run/sample_a.bin",
+    "tests/e2e/w62/run/sample_b.bin"
+  ],
+  "keywords": ["coldrevive", "w62", "guard"],
+  "workdir": "tests/e2e/w62/run",
+  "golden_req": "tests/e2e/w62/run/golden/req.json",
+  "golden_ack": "tests/e2e/w62/run/golden/ack.json",
+  "downloader": "tests/e2e/w62/run/downloads",
+  "engine": {
+    "guard_handshake": true
+  }
+}
