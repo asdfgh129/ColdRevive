@@ -66,6 +66,7 @@ updated: 2026-11-13
 | DOC-22 | G0 技术路线冻结评审记录 | [06-plan/G0-REVIEW.md](06-plan/G0-REVIEW.md) | 已接受 |
 | DOC-23 | S3 / S5 / S6 判据判定记录 | [06-plan/G2-SPIKE-VERDICT-2026-11-17.md](06-plan/G2-SPIKE-VERDICT-2026-11-17.md) | 已定稿 |
 | DOC-27 | M2 阶段小结（2026-11-20，v2.4.95） | [06-plan/PHASE-SUMMARY-2026-11-20.md](06-plan/PHASE-SUMMARY-2026-11-20.md) | 有效 |
+| DOC-28 | 阶段状态盘点：P/M 完成与待办（2026-11-20） | [06-plan/STATUS-INVENTORY-2026-11-20.md](06-plan/STATUS-INVENTORY-2026-11-20.md) | 有效 |
 
 ## 4. Front Matter 规范
 
