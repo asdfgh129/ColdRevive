@@ -2,6 +2,54 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
+
+> 承接 v2.4.96「FR-24/25 只到本地/组件级」。本轮把三项 P0 都推到**真实对端**：
+> FR-14 从「只有状态字段」变成 opt-in 自动休眠；FR-24 有了公共轨（对真实 aMuleD KAD
+> bootstrap + `0x33`）；FR-25 与 aMule 2.3.3 下载/上传双向都跑通。
+> **不改门禁**：`g2_claim=false`、`s6_status=not_run`、默认承载仍是 `tcp`。
+> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **384 passed / 0 failed / 3 ignored**。
+
+- **FR-14 空闲自动休眠（opt-in，W14 12/12）**：新增唯一休眠入口
+  `coldrevived::idle::sleep_hot_seeds`（与 `sched::wake_seed` 对称），把到期的 HOT 做种
+  任务 `pause` 并 `transition(FileState::Cold)`，同时 `index.save()` 让影子索引落盘。
+  配置 `engine.idle_sleep_secs`（也接受顶层/`[scheduler]` 的 `idle_sleep_minutes`，
+  **秒优先、0=关闭、默认关闭**）；`/health.idle` 暴露
+  `enabled/threshold_secs/idle_secs/sleeps/last_slept`。
+  关键坑：`seed_tasks` 的键是 **infohash**、索引按 **file_hash**——只按一种标识匹配会让
+  「引擎已 pause，索引仍 HOT」，已加回归单测钉住。
+  实测：真实握手唤醒 → 取 64 KiB md5 一致（`guard.woken=1`）→ 2 s 后
+  `seed_active 1→0`、`idle.sleeps=1`、`last_slept=[1]`，索引 `COLD` 且
+  `state: ["COLD","WAKING","HOT","COLD"]`、4 个 `published_keys` 保留、`find` 仍
+  `hit_node=A`。**边界**：只有空闲计时触发，CPU/内存/带宽阈值仍未接；仅回环。
+- **FR-24 公共轨（W24-pub 12/12）**：新增 `coldrevive-ed2k search` 子命令——
+  先 `BOOTSTRAP_REQ(0x01)/RES(0x09)`（aMule 不 bootstrap 就不理 `0x33`），再发
+  `SEARCH_KEY_REQ(0x33)`，解析 `SEARCH_RES(0x3B)` 的 KAD `ReadTag`
+  （`[type:u8][name_len:u16][name][value]`，**拒绝 STR1..STR22/BLOB**，aMule 的
+  `ReadTag` 不接受），生成标准 `ed2k://`；`evidence_valid_for_pass` 只在真解析出链接时为真。
+  对真实 aMuleD `192.168.1.221:4672`：`target_matches_key=true`、`bootstrap_ms=273`、
+  `rtt_ms=6`、`answer_count=1`、`file_id=28654c6a…`，Key
+  `ad50ee0f06284f630cdf3950a06da42e` 与 S2 发布侧逐字节一致。
+  **公网仍 BLOCKED**：A 主机直连 5 个公网 KAD 节点全部超时、`answer_count=0`，
+  如实留证（`reports/public-search.json`）而非改写结论。
+- **FR-25 与真实 aMule 2.3.3 双向互通（W25-live 22/22）**：新增 `download` /
+  `serve` / `link` 三个子命令，均走生产 `cr-ed2k::stack`。
+  - 下载（我们 ← aMule `192.168.1.221:4662`）：262144 B、`blocks_received=25`、
+    `hash_matches=true`、`content_matches=true`、`completed=true`。
+  - 上传（aMule ← 我们）：65536 B 单块 `bytes_sent=65536`；262144 B 多 range
+    `blocks_sent=3`；两者对端落地 md5 与本机样本逐字节一致。
+  - `link` 由**文件内容**导出 `ed2k_hash`（MD4 over 9.28 MB + Red 变体规则），
+    不许从别处抄 hash。
+  - 判据口径修正：aMule 会对已收区间**重复发 `REQUESTPARTS`**，重复发送如实计入
+    `bytes_sent`（多块样本 339968 > 262144），故上传方向用「对端落地 md5」判正确性，
+    只有单块样本才要求字节数精确相等。
+  - **仍 BLOCKED**：daemon 未接线、公网 server/peer 未测、全量双轨发布未做；
+    无 server 登录 / source exchange / credit / AICH；样本都 < `PARTSIZE(9,728,000)`，
+    跨分片与 `OP_HASHSETREQUEST` 校验未覆盖（`hashset_verified=false`）；
+    `queue_rank_sent=""` 表示队列立即授予，`OP_QUEUERANKING` 分支未被真实客户端触发过。
+- 文档：新增 `tests/e2e/w14/`、`tests/e2e/w24-pub/`、`tests/e2e/w25-live/`（各带
+  `make_report.py` + `README.md`）；DOC-28 状态盘点按新口径回填 FR-14/24/25 三行与「容易高估的点」。
+
 ## [2.4.96] - 2026-11-20 — 补 P0 未实现 FR-11/24/25（FR-11 闭环，FR-24/25 部分）
 
 > 按阶段盘点（DOC-28）的建议先补 P0。**FR-11 完全闭环；FR-24/25 只到「本地/组件级」，

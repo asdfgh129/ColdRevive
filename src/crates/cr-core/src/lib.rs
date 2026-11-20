@@ -387,6 +387,12 @@ pub struct Config {
     /// 这里用 `Option` 而不是直接落默认值，是为了让「配置缺省」和「显式配 8」在
     /// 诊断输出里可区分——默认值变更时不会悄悄改变已有部署的行为。
     pub engine_max_active_seeds: Option<usize>,
+    /// FR-14：空闲多久（秒）自动把 HOT 做种任务切回 COLD。`None` = 关闭（默认）。
+    ///
+    /// SRS 写的是「N 分钟」，配置层用秒便于 e2e 用 2 s 复现而不必等 5 min；
+    /// `engine.idle_sleep_minutes` 也接受（正整数，换算成秒），两者同时给时秒优先。
+    /// 0 表示显式关闭；非法值直接报错，避免「以为会休眠其实一直在供片」。
+    pub engine_idle_sleep_secs: Option<u64>,
 }
 
 impl Config {
@@ -568,6 +574,34 @@ impl Config {
                 Some(n)
             }
         };
+        // FR-14 空闲休眠：opt-in，默认关闭。分钟配置也在这里折算成秒，
+        // 这样 /health 只暴露一个口径，不会因为两套单位产生对账歧义。
+        let parse_idle_secs = |key: &str, raw: String| -> Result<u64, String> {
+            let n = raw.trim().parse::<u64>()
+                .map_err(|e| format!("engine.{key} 非法（需要非负整数秒）: {raw}: {e}"))?;
+            Ok(n)
+        };
+        let idle_secs_raw = engine_get("idle_sleep_secs");
+        // DOC-29 建议的顶层 `scheduler.idle_sleep_minutes` 也接受，
+        // 优先级低于 engine 段同名项；两套都写时诊断输出仍只有一个秒数。
+        let scheduler_min_raw = j.get("scheduler")
+            .and_then(|s| s.get("idle_sleep_minutes"))
+            .and_then(Json::as_str).map(str::to_string);
+        let idle_min_raw = engine_get("idle_sleep_minutes").or(scheduler_min_raw);
+        let engine_idle_sleep_secs = match (idle_secs_raw, idle_min_raw) {
+            (Some(s), _) => {
+                let n = parse_idle_secs("idle_sleep_secs", s)?;
+                if n == 0 { None } else { Some(n) }
+            }
+            (None, Some(m)) => {
+                let n = parse_idle_secs("idle_sleep_minutes", m)?;
+                if n == 0 { None } else {
+                    Some(n.checked_mul(60).ok_or_else(||
+                        "engine.idle_sleep_minutes 折算成秒时溢出".to_string())?)
+                }
+            }
+            (None, None) => None,
+        };
         // FR-11 握手拦截：opt-in。engine_get 只取字符串，布尔键单独读——
         // 写成 `"false"` 字符串不生效（不是合法布尔），保持「非法即默认关」。
         let bt_guard_handshake = j.get("engine")
@@ -617,6 +651,7 @@ impl Config {
             engine_dir,
             engine_listen,
             engine_max_active_seeds,
+            engine_idle_sleep_secs,
             bt_guard_handshake,
         })
     }
@@ -940,6 +975,31 @@ mod tests {
         assert!(!mk(r#"{"guard_handshake": false}"#));
         assert!(mk(r#"{"guard_handshake": true}"#));
         assert!(!mk(r#"{"guard_handshake": "true"}"#), "字符串不得被当成布尔 true");
+    }
+
+    /// FR-14：空闲休眠默认关闭；秒与分钟都按整数解析，0 是显式关闭。
+    #[test]
+    fn idle_sleep_is_opt_in_and_units_are_explicit() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {"A": {"host": "127.0.0.1", "http_port": 1, "wake_udp_port": 2, "bt_port": 3}},
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "engine": {ENGINE}
+        }"#;
+        let mk = |engine: &str| {
+            let txt = base.replace("{ENGINE}", engine);
+            let p = std::env::temp_dir().join("cr_core_idle_sleep.json");
+            fs::write(&p, txt).unwrap();
+            let v = Config::load(&p).unwrap().engine_idle_sleep_secs;
+            let _ = fs::remove_file(&p);
+            v
+        };
+        assert_eq!(mk("{}"), None);
+        assert_eq!(mk(r#"{"idle_sleep_secs": "0"}"#), None);
+        assert_eq!(mk(r#"{"idle_sleep_secs": "7"}"#), Some(7));
+        assert_eq!(mk(r#"{"idle_sleep_minutes": "2"}"#), Some(120));
+        assert_eq!(mk(r#"{"idle_sleep_secs": "3", "idle_sleep_minutes": "9"}"#), Some(3));
     }
 
     /// ADR-022：punch_route 默认关闭，显式 true 才开；非布尔不得被当成 true。

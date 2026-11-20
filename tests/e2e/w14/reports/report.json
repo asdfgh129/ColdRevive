@@ -1,0 +1,80 @@
+{
+  "schema": "coldrevive.w14.fr14/v1",
+  "scope": "空闲 N 秒自动 HOT→COLD，影子索引与 KAD 发布 Key 保留；用真实 BT 握手唤醒 + 取片证明休眠前确有活动",
+  "checks": [
+    {
+      "name": "idle_opt_in_enabled",
+      "ok": true,
+      "detail": {
+        "enabled": true,
+        "threshold_secs": 2,
+        "idle_secs": 4,
+        "sleeps": 0,
+        "last_slept": []
+      }
+    },
+    {
+      "name": "starts_cold",
+      "ok": true,
+      "detail": "seed_active=0"
+    },
+    {
+      "name": "real_handshake_woke_seed",
+      "ok": true,
+      "detail": "woken=1 active=1"
+    },
+    {
+      "name": "piece_md5_matches",
+      "ok": true,
+      "detail": "md5=a0099d2a6de6a2845d8e23054bf3cae5"
+    },
+    {
+      "name": "no_early_sleep",
+      "ok": true,
+      "detail": "{'enabled': True, 'threshold_secs': 2, 'idle_secs': 0, 'sleeps': 0, 'last_slept': []}"
+    },
+    {
+      "name": "auto_slept_after_threshold",
+      "ok": true,
+      "detail": "sleeps=1 active=0"
+    },
+    {
+      "name": "idle_clock_reached_threshold",
+      "ok": true,
+      "detail": "idle_secs=2"
+    },
+    {
+      "name": "slept_task_is_reported",
+      "ok": true,
+      "detail": "[1]"
+    },
+    {
+      "name": "shadow_index_kept_but_cold",
+      "ok": true,
+      "detail": "state=COLD transitions=['COLD', 'WAKING', 'HOT', 'COLD']"
+    },
+    {
+      "name": "published_keys_survive_sleep",
+      "ok": true,
+      "detail": "keys=4"
+    },
+    {
+      "name": "kad_find_still_hits",
+      "ok": true,
+      "detail": {
+        "result": {
+          "hit_node": "A",
+          "count": 1
+        }
+      }
+    },
+    {
+      "name": "daemon_log_confirms_sleep",
+      "ok": true,
+      "detail": "守护进程日志有真实休眠动作与索引条数"
+    }
+  ],
+  "passed": 12,
+  "total": 12,
+  "boundary": "本机回环、单样本、threshold=2s（分钟配置亦支持）；不宣称公网 KAD 发布、不宣称 daemon 多任务长稳；g2_claim=false、s6_status=not_run 不变"
+}

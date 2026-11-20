@@ -1,0 +1,10 @@
+[A] 伴随种子 announce: http://127.0.0.1:18600/announce
+[A] 样本登记: sample_idle.bin (65536 B), infohash=7d92a51c7815f2688b0bbc6a94b94d5f28ced82c
+[A] 样本入库: 1 条记录, 主 infohash=7d92a51c7815f2688b0bbc6a94b94d5f28ced82c, keys=4
+[A] 做种任务: infohash=7d92a51c7815f2688b0bbc6a94b94d5f28ced82c 任务 #1, 已核对 65536/65536 B, finished=true, state=cold
+[A] 做种引擎就绪: 请求监听 127.0.0.1:18602 / 实际 Some(127.0.0.1:50417), 任务 1 个, utp_requested=true, utp_udp_port_occupied=true
+[A] FR-11 握手拦截已配置: 外部 127.0.0.1:18602 → 引擎内部 127.0.0.1:50417（代理在共享状态就绪后启动）
+[A] FR-11 guard 代理监听 127.0.0.1:18602（→ 引擎 127.0.0.1:50417）
+[A] UDP 监听 127.0.0.1:18601
+[A] HTTP 监听 127.0.0.1:18600
+[A] FR-14 空闲 2s：1 个任务切回 COLD（影子索引 1 条保留）

@@ -1,0 +1,31 @@
+{
+  "role": "holder",
+  "bind": "127.0.0.1",
+  "nodes": {
+    "A": {
+      "host": "127.0.0.1",
+      "http_port": 18600,
+      "wake_udp_port": 18601,
+      "bt_port": 18602
+    },
+    "B": {
+      "host": "127.0.0.1",
+      "http_port": 18600,
+      "wake_udp_port": 18601,
+      "bt_port": 18602
+    }
+  },
+  "sample_path": "tests/e2e/w14/run/sample_idle.bin",
+  "samples": [
+    "tests/e2e/w14/run/sample_idle.bin"
+  ],
+  "keywords": ["w14", "idle", "sleep"],
+  "workdir": "tests/e2e/w14/run",
+  "golden_req": "tests/e2e/w14/run/golden/req.json",
+  "golden_ack": "tests/e2e/w14/run/golden/ack.json",
+  "downloader": "tests/e2e/w14/run/downloads",
+  "engine": {
+    "guard_handshake": true,
+    "idle_sleep_secs": "2"
+  }
+}

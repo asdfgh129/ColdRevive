@@ -15,6 +15,7 @@
 mod bt;
 mod commands;
 mod data_plane;
+mod idle;
 mod nat_path;
 mod punch_route;
 mod relay_sub;
@@ -36,7 +37,7 @@ use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// T0 golden 的 piece_size（262144 B = 样本大小，1 片）。
 pub const PIECE_SIZE: usize = 262144;
@@ -126,6 +127,15 @@ pub struct NodeState {
     /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
     /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
     pub sched: LruScheduler,
+    /// FR-14：最后一次真实唤醒的时间。只由 wake_seed 成功路径刷新；
+    /// HTTP 健康检查与轮询不算活动，否则节点永远不会休眠。
+    pub last_activity: Instant,
+    /// FR-14：真实发生过的自动休眠次数与任务号（观测用，不参与决策）。
+    pub idle_sleep_count: u64,
+    pub idle_slept_tasks: Vec<cr_engine::TaskId>,
+    /// 上次尝试休眠的时刻；避免 pause 失败时每秒刷同一条错误。
+    /// 只有新的唤醒把 `last_activity` 推到它之后，才会开启下一轮休眠尝试。
+    pub idle_last_attempt: Option<Instant>,
     /// FR-11 握手拦截统计（只有 opt-in 时才非零）：(收到握手数, 命中并唤醒数, 未命中数)。
     pub guard_stats: Arc<Mutex<(u64, u64, u64)>>,
     /// FR-11：引擎内部监听地址。只有 `bt_guard_handshake=true` 时 `Some`；
@@ -239,6 +249,10 @@ fn main() {
         sched: LruScheduler::new(
             cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
         ),
+        last_activity: Instant::now(),
+        idle_sleep_count: 0,
+        idle_slept_tasks: Vec::new(),
+        idle_last_attempt: None,
         guard_stats: Arc::new(Mutex::new((0, 0, 0))),
         guard_internal: None,
         guard_external: None,
@@ -279,7 +293,8 @@ fn main() {
         // FR-11：握手拦截代理必须在共享状态与引擎都就绪后才监听对外口，
         // 否则 seed_tasks 还是空的，pick_seed_task 会拿空映射退化成「唤醒主样本」。
         spawn_handshake_guard(cfg.clone(), shared.clone());
-        spawn_http(cfg.clone(), me.http_port, shared);
+        spawn_http(cfg.clone(), me.http_port, shared.clone());
+        spawn_idle_sleeper(cfg.clone(), shared.clone());
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));
@@ -501,6 +516,41 @@ fn pick_seed_task(
 ///
 /// 负例（非 BT 握手 / 未知 infohash）不唤醒、不断开整个服务：直接关该连接即可，
 /// 让 T0-07 那种「只 connect 不发字节」的健康探测也能安全超时退出。
+/// FR-14：空闲自动休眠。默认不启用；启用后只按**真实唤醒时间**计时，
+/// `/health` 轮询不会续命。每次尝试只做一轮，失败留给下一次成功唤醒再触发，
+/// 不会把同一个引擎错误刷成日志洪泛。
+fn spawn_idle_sleeper(cfg: Config, state: Arc<Mutex<NodeState>>) {
+    let Some(threshold) = cfg.engine_idle_sleep_secs.filter(|n| *n > 0) else { return };
+    let tick = threshold.min(5).max(1);
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(tick));
+        let mut guard = state.lock().unwrap();
+        let st = &mut *guard; // 通过 &mut NodeState 取不相交字段，避免 MutexGuard 整体借用冲突
+        if st.last_activity.elapsed().as_secs() < threshold { continue; }
+        if let Some(attempt) = st.idle_last_attempt {
+            if attempt >= st.last_activity { continue; }
+        }
+        if st.sched.is_empty() { continue; }
+        let engine_slot = st.engine.clone();
+        let mut eg = engine_slot.lock().unwrap();
+        let Some(eng) = eg.as_mut() else { continue; };
+        st.idle_last_attempt = Some(Instant::now());
+        let out = idle::sleep_hot_seeds(&mut st.sched, eng, &mut st.index, &st.seed_tasks);
+        if !out.slept.is_empty() {
+            st.idle_sleep_count += 1;
+            st.idle_slept_tasks = out.slept.clone();
+            if let Err(e) = st.index.save() {
+                eprintln!("[{}] FR-14 影子索引持久化失败: {}", cfg.node_id, e);
+            }
+            println!("[{}] FR-14 空闲 {}s：{} 个任务切回 COLD（影子索引 {} 条保留）",
+                     cfg.node_id, threshold, out.slept.len(), st.index.len());
+        }
+        for e in out.errors {
+            eprintln!("[{}] FR-14 {}", cfg.node_id, e);
+        }
+    });
+}
+
 fn spawn_handshake_guard(cfg: Config, state: Arc<Mutex<NodeState>>) {
     let (external, internal) = {
         let st = state.lock().unwrap();
@@ -563,6 +613,7 @@ fn handle_guard_connection(
             }
             let serving = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
             if serving {
+                st.last_activity = Instant::now();
                 st.guard_stats.lock().unwrap().1 += 1;
                 // 找到该 infohash 对应的索引项做 COLD→HOT；绝不用别的样本顶上。
                 if let Some(fh) = st.index.entries.values()
@@ -667,6 +718,18 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                 ]),
             }
         };
+        // FR-14：只报实测休眠次数与剩余空闲秒数；`/health` 轮询不会重置计时。
+        let idle_json = {
+            let st = state.lock().unwrap();
+            Json::obj(vec![
+                ("enabled", Json::b(cfg.engine_idle_sleep_secs.is_some())),
+                ("threshold_secs", Json::n(cfg.engine_idle_sleep_secs.unwrap_or(0) as f64)),
+                ("idle_secs", Json::n(st.last_activity.elapsed().as_secs() as f64)),
+                ("sleeps", Json::n(st.idle_sleep_count as f64)),
+                ("last_slept", Json::arr(st.idle_slept_tasks.iter()
+                    .map(|t| Json::n(*t as f64)).collect())),
+            ])
+        };
         ("200 OK".into(),
          Json::obj(vec![
              ("status", Json::s("ok")),
@@ -699,6 +762,7 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                      ("missed", Json::n(missed as f64)),
                  ])
              }),
+             ("idle", idle_json),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
@@ -1446,6 +1510,7 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
             }
         }
         st.bt_seeding = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
+        if st.bt_seeding { st.last_activity = Instant::now(); }
         let _ = st.index.save();
         let me = cfg.me().ok()?;
         let url = ack_torrent_url(cfg, &entry.infohash, &src.ip().to_string());
@@ -1533,6 +1598,10 @@ mod rpc_tests {
             seed_task: None,
             seed_tasks: HashMap::new(),
             sched: LruScheduler::new(1),
+            last_activity: Instant::now(),
+            idle_sleep_count: 0,
+            idle_slept_tasks: Vec::new(),
+            idle_last_attempt: None,
             guard_stats: Arc::new(Mutex::new((0, 0, 0))),
             guard_internal: None,
             guard_external: None,

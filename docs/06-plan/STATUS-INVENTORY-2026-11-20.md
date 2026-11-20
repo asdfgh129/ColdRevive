@@ -23,7 +23,7 @@ updated: 2026-11-20
 | 里程碑 | 已完成 | 待完成 / 未达标 |
 | :--- | :--- | :--- |
 | **M0 Spike** | G0 条件冻结；S1/S2/S4/S7/S8=pass，S3/S6=pass（限定口径），S5=fallback；ADR-001/002/005 定稿 | R-02 按运营速率的拒绝率复审、R-11 书面法务意见（均压到 M4 前） |
-| **M1 CLI 闭环** | **G1 已过**：T0 21/21 + T1 双机 11/11，唤醒→magnet→第三方下载闭环；FR-11 握手拦截已 opt-in 落地（W62 11/11） | W2 索引侧仅部分实现（无目录 watcher、无 SQLite 迁移）；FR-14 休眠仍未实现；FR-11 默认关闭、仅回环 TCP |
+| **M1 CLI 闭环** | **G1 已过**：T0 21/21 + T1 双机 11/11，唤醒→magnet→第三方下载闭环；FR-11 握手拦截已 opt-in 落地（W62 11/11）；FR-14 空闲自动休眠 opt-in 落地（W14 12/12） | W2 索引侧仅部分实现（无目录 watcher、无 SQLite 迁移）；FR-11/FR-14 默认关闭、仅回环 TCP |
 | **M2 引擎集成与资源治理** | W5.1～5.2 引擎下载/做种/公网 TCP/µTP；W3.3～W3.17 NAT/中继/DHT/生产化；W59/W60/W61 公网取片；公平性量具 v1；DHT 自有节点 announce 闭环 | **G2 未达标**：`g2_claim=false`、`s6_status=not_run`；公平性量具≠达标、真实 Mainline 未加入、TCP 打洞未接 BT 数据面、守护进程多任务逐出仅组件级、可靠层无拥塞语义 |
 | **M3 兼容与生态** | G3 由所有者**带 6 条例外人工结案**（机器口径仍 `not_run`）；8 行矩阵均有素材；W5.1g aMule 公网 KAD 20/20 | Web UI、WebSocket、`rpc-secret` 鉴权、REST/OpenAPI、三进程托盘（`coldrevive-agent` 仍是骨架）；NFR-04 公网时延未测 |
 | **M4 安全/冷启动/公测** | 未开始 | 安全测试、72 h Soak、安装包 ≤60 MB、R-02/R-11 收口、公测 KPI、G4 |
@@ -33,7 +33,7 @@ updated: 2026-11-20
 
 | 优先级 | 已实现 | 部分实现 | 未实现 |
 | :--- | :--- | :--- | :--- |
-| **P0**（17 行） | FR-03 伴随种子、FR-08 私有唤醒；FR-11 握手拦截（opt-in，W62 11/11，仅回环 TCP） | FR-01 目录监控、FR-02 指纹、FR-04 持久化、FR-05/06/07 KAD 发布查询、FR-09 限流、FR-10 LRU、FR-12 链接生成、FR-13 引擎、FR-14 休眠、FR-15 阈值；FR-24 本地索引→`ed2k://` 已落地（公网词典检索 BLOCKED）；FR-25 栈已生产化但 daemon 未接线（组件级） | — FR-14 休眠仍未实现；FR-24 公网检索、FR-25 公网传输与全量双轨发布仍 BLOCKED |
+| **P0**（17 行） | FR-03 伴随种子、FR-08 私有唤醒；FR-11 握手拦截（opt-in，W62 11/11，仅回环 TCP）；FR-14 空闲自动休眠（opt-in，W14 12/12） | FR-01 目录监控、FR-02 指纹、FR-04 持久化、FR-05/06/07 KAD 发布查询、FR-09 限流、FR-10 LRU、FR-12 链接生成、FR-13 引擎、FR-15 阈值；FR-24 本地索引→`ed2k://` + 真实 aMuleD KAD `0x33` 检索（LAN 12/12，公网词典 BLOCKED）；FR-25 栈生产化 + 真实 aMule 双向互通（LAN 22/22，daemon 未接线） | — FR-24 公网 KAD 检索、FR-25 公网传输与全量双轨发布仍 BLOCKED |
 | **P1**（6 行） | — | FR-16 QoS、FR-17 NAT 打洞/回退、FR-18 Mainline DHT、FR-20 aria2 JSON-RPC | **FR-19 Web UI、FR-21 WebSocket** |
 | **P2**（3 行） | — | FR-22 CLI/REST/插件 | FR-23 跨协议补源、FR-24（重复编号）信誉激励 |
 
@@ -47,30 +47,39 @@ updated: 2026-11-20
 - **部分实现**：M-01 `cr-indexer`（一次性扫描，无 watcher）、M-04 `cr-store`（JSON，无 SQLite 迁移）、
   M-05 `cr-kad`（生产仅 CLI publish/find，无 TTL 续期）、M-06 `cr-dht`（协议栈+工具，daemon 未启用）、
   M-09 `cr-sched`（已接线，守护进程仍单任务）、M-11 `cr-engine`（无完成回流闭环）、
+  M-12 `cr-ed2k`（栈已生产化 + 对真实 aMule 双向互通，但 **daemon 未接线**、无 server 登录/source exchange/credit）、
   M-13 `cr-qos`（令牌桶未接数据面）、M-14 `cr-api`（HTTP/JSON-RPC 子集）
-- **仅骨架**：M-10 `cr-guard`、M-12 `cr-ed2k`、M-15 `cr-reputation`、M-16 `cr-ui`
+- **仅骨架**：M-10 `cr-guard`（实为 opt-in 可用，见 W62）、M-15 `cr-reputation`、M-16 `cr-ui`
   —— 源码注释明确写「G2 前不实现」，不计入成绩。
 
 ## 4. 进度判断（必要提示）
 
 1. **门禁绿 ≠ 需求齐**：G1 已过、G0 条件冻结、G3 人工结案，但 SRS 26 行需求中
-   **3 行完全实现、14 行部分、0 行「完全未实现」**（FR-11 升级为已实现；
-   FR-24/25 从「未实现」升级为部分：本地链接输出 + 生产 eD2k 栈，公网/daemon 全量仍 BLOCKED）。
+   **4 行完全实现、13 行部分、其余为「未实现/重复编号」**（FR-11、FR-14 升级为已实现；
+   FR-24/25 从「未实现」升级为部分：本地链接输出 + 真实 aMuleD KAD 检索 + 生产 eD2k 栈
+   双向互通，公网/daemon 全量仍 BLOCKED）。
    里程碑看起来顺，功能面仍只铺了一层——「部分」不等于「完成」。
 2. **M2 是唯一重心**：所有工程产出集中在 M2，G2 是唯一出口门禁且未过；M3/M4/M5 基本是骨架。
 3. **证据强度必须分层读**：T0/T1/W59/W61 是真机真链路；G2-SPIKE 与 G3 closeout 是**人工判定**；
    骨架 crate 只是占位。三者不能混算为「完成度」。
-4. **容易高估的点**：FR-14 没有 idle 自动休眠；FR-15 只接了 seed cap；
-   FR-20 没有 `rpc-secret`；W61 只覆盖 `119.29.150.254` 一条路径；公平性量具只出原始计数。
-   FR-11 虽已落地但**默认关闭**且只回环 TCP；FR-24 的 `ed2k://` 是本地索引算的，
-   不是公网词典检索结果；FR-25 的栈在生产 crate 里跑通，但 daemon 未接线、公网未测。
+4. **容易高估的点**：FR-14 只有**opt-in** 空闲休眠（默认关闭、判据是「秒」不是「分钟」、
+   休眠后 `seed_active=0` 但影子索引与 KAD Key 保留，所以「KAD 还查得到」不代表还在做种）；
+   FR-15 只接了 seed cap；FR-20 没有 `rpc-secret`；W61 只覆盖 `119.29.150.254` 一条路径；
+   公平性量具只出原始计数。FR-11 **默认关闭**且只回环 TCP；FR-24 的 `ed2k://` 有两条来源
+   （本地索引 / 真实 aMuleD KAD 检索），**只有后者是公共轨**且仅 LAN，公网 KAD 0/5 静默；
+   FR-25 的栈对真实 aMule 双向跑通（LAN 22/22），但 **daemon 未接线**、无 server 登录/
+   source exchange/credit、样本都 < `PARTSIZE`（跨分片与 hashset 校验未覆盖）。
 5. **未定位的体验风险**：W5.1d/f 公网 4 MiB 耗时 143–235 s（LAN 秒级），形态稳定、成因未明；
    按 ADR-012 不折算速率，但这是真实体验问题。
-6. **本轮已补 P0 FR-11/24/25（2026-11-20）**：FR-11 opt-in 握手拦截（W62 11/11）；
-   FR-24 本地 `ed2k://` 输出 + 无前缀 MD4 Key（W24 独立 MD4 复算 2/2）；
-   FR-25 eD2k 栈纳入生产 crate cr-ed2k（33 单测 + W25 三种 PARTSIZE 边界真 TCP 取片）。
-   **仍开放**：FR-24 公网 KAD 0x33 检索（需 G0 `protocol_scope` 放宽）、FR-25 daemon 接线与
-   公网传输、FR-14 休眠；这些不因本轮而算完成。
+6. **本轮已补 P0 FR-11/14/24/25（2026-11-20）**：FR-11 opt-in 握手拦截（W62 11/11）；
+   FR-14 opt-in 空闲自动休眠（W14 12/12，唯一入口 `idle::sleep_hot_seeds` 与 `wake_seed` 对称）；
+   FR-24 本地 `ed2k://` 输出 + 无前缀 MD4 Key（W24 独立 MD4 复算 2/2），并对**真实 aMuleD**
+   的 KAD 做 bootstrap + `0x33` 检索拿到真实 `ed2k://`（W24-pub 12/12，Key 与发布侧逐字节一致）；
+   FR-25 eD2k 栈纳入生产 crate `cr-ed2k`（33 单测 + W25 三种 PARTSIZE 边界真 TCP 取片），
+   并用生产 `stack::download/serve` 与 **aMule 2.3.3** 完成双向互通（W25-live 22/22，
+   两端落地 md5 一致）。
+   **仍开放**：FR-24 公网 KAD `0x33` 检索（需 G0 `protocol_scope` 放宽）、FR-25 daemon 接线、
+   公网 eD2k 传输与全量双轨发布；这些不因本轮而算完成。
 7. **治理债**：SRS 仍 v2.0「待评审」（2026-11-09 起未动）、FR-24 编号重复、
    ROADMAP version/date 未跟上 11-20 更新。
 
@@ -91,7 +100,7 @@ updated: 2026-11-20
 | FR-11 | 已实现（opt-in） | `cr-guard` 握手解析 + `splice_prefaced` 补回已读字节；`engine.guard_handshake` 默认 false；W62 11/11：裸握手只唤醒对应样本、md5 一致、未知 infohash 不唤醒。仅回环 TCP，µTP 不外透 |
 | FR-12 | 部分 | magnet + `/torrent/` 已接线；`ed2k_link` 原语存在但生产未调用 |
 | FR-13 | 部分 | librqbit 下载/暂停/恢复可用；完成产物不回流重建索引（无闭环） |
-| FR-14 | 部分 | ShadowIndex + COLD/HOT 状态存在；无 idle 定时器、无自动 HOT→COLD |
+| FR-14 | 已实现（opt-in） | `ShadowIndex` + `FileState::{Cold,Waking,Hot}` + `LruScheduler`；唯一休眠入口 `idle::sleep_hot_seeds`（与 `wake_seed` 对称），`engine.idle_sleep_secs` / `scheduler.idle_sleep_minutes` 默认关闭、0=关闭、秒优先；`/health.idle` 暴露 enabled/threshold_secs/idle_secs/sleeps/last_slept。W14 12/12：真实唤醒后 2 s 自动 `HOT→COLD`，`seed_active 1→0`、`idle.sleeps=1`、影子索引 `COLD` 且 4 个 `published_keys` 保留、`find` 仍 `hit_node=A`。**无 CPU/内存/带宽触发，仅空闲计时** |
 | FR-15 | 部分 | seed pool cap 与中继令牌桶有；内存/CPU/带宽阈值自动拒绝唤醒未接线 |
 | FR-16 | 部分 | uTP 默认开（W5.1e）；`cr-qos` 令牌桶未接 BT 做种；LEDBAT 被 S5 `fallback` 否证 |
 | FR-17 | 部分 | UPnP/NAT-PMP/PCP/holepunch/relay/reach 有实现与单测；daemon 不自动建映射 |
@@ -101,12 +110,17 @@ updated: 2026-11-20
 | FR-21 | 未实现 | `cr-api` 注释明确未实现；无 WebSocket server/upgrade/push |
 | FR-22 | 部分 | CLI 可用；HTTP 仅少量 ad-hoc 端点、无 OpenAPI；浏览器插件只是测试资产 |
 | FR-23 | 未实现 | `cr-ed2k` 骨架；可用栈仅在 `tests/spikes/s2/ed2k-mini` |
-| FR-24 | 部分实现 | `cr-hash` MD4 已知答案测试；`cr-kad::kad_ed2k` 无前缀 A 轨 Key + 0x33/0x3B 字节编解码；`/cli ed2k` 从真实文件算 `ed2k_hash` 输出标准链接（W24 独立 MD4 复算 2/2）。**公网 KAD 0x33 词典检索 BLOCKED**（需 G0 scope 放宽） |
-| FR-25 | 部分实现 | S2 审计过的 eD2k 栈（sha1/kad wire/ed2k wire/stack）经 `#[path]` 纳入生产 crate `cr-ed2k`，33 单测通过；W25 真 TCP 回环取片三边界（4KiB / ==PARTSIZE / 多分块）全部 hash+content 一致。**daemon 未接线、公网 server/peer 未测、全量双轨发布未做，仍 BLOCKED** |
+| FR-24 | 部分实现 | `cr-hash` MD4 已知答案测试；`cr-kad::kad_ed2k` 无前缀 A 轨 Key + 0x33/0x3B 字节编解码；`/cli ed2k` 从真实文件算 `ed2k_hash` 输出标准链接（W24 独立 MD4 复算 2/2）。**公共轨已打通一半**：`coldrevive-ed2k search` 对真实 aMuleD（`192.168.1.221`）先 `BOOTSTRAP_REQ/RES` 再发 `0x33`，解析 `0x3B` KAD tag 生成标准 `ed2k://`（W24-pub 12/12，`bootstrap_ms=273`、`rtt_ms=6`、Key 与发布侧逐字节一致）。**公网 KAD 0x33 词典检索仍 BLOCKED**：A 主机直连 5 个公网节点全部超时、`answer_count=0`（需 G0 scope 放宽） |
+| FR-25 | 部分实现 | S2 审计过的 eD2k 栈（sha1/kad wire/ed2k wire/stack）经 `#[path]` 纳入生产 crate `cr-ed2k`，33 单测通过；W25 真 TCP 回环取片三边界（4KiB / ==PARTSIZE / 多分块）全部 hash+content 一致。**对真实 aMule 2.3.3 双向互通已实测**（W25-live 22/22，`stack::download` 取 262144 B 25 块 hash+content 一致；`stack::serve` 供片 65536 B 与 262144 B 两样本，对端落地 md5 逐字节一致）。**daemon 未接线、公网 server/peer 未测、全量双轨发布未做，仍 BLOCKED**；无 server 登录/source exchange/credit/AICH；样本均 < `PARTSIZE`，跨分片与 hashset 校验未覆盖 |
 
 > SRS 第 45 行重复占用 FR-24（节点信誉/贡献积分），映射到 `cr-reputation` 骨架，仍未实现。
 
-> FR-11/24/25 本轮升级的证据见 `tests/e2e/w62/`、`tests/e2e/w24/`、`tests/e2e/w25/`。
+> FR-11/14/24/25 本轮升级的证据见 `tests/e2e/w62/`、`tests/e2e/w14/`、`tests/e2e/w24/`、
+> `tests/e2e/w24-pub/`、`tests/e2e/w25/`、`tests/e2e/w25-live/`。
+>
+> **FR-25 的上传方向判据不看 `bytes_sent` 相等**：aMule 会对已收区间重复发 `REQUESTPARTS`，
+> 重复发送会如实计入 `bytes_sent`（多块样本 339968 > 262144）。正确性由**对端落地文件 md5**
+> 判，单块样本才要求字节数精确相等。
 
 ## 6. 复现 / 核对命令
 

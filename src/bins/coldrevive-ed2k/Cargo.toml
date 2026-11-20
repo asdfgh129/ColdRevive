@@ -1,0 +1,11 @@
+[package]
+name = "coldrevive-ed2k"
+version.workspace = true
+edition.workspace = true
+description = "FR-24: 真实 KAD 0x33 关键词检索 + 标准 ed2k:// 链接输出（需显式 --bootstrap）"
+
+[dependencies]
+cr-core = { path = "../../crates/cr-core" }
+cr-hash = { path = "../../crates/cr-hash" }
+cr-kad = { path = "../../crates/cr-kad" }
+cr-ed2k = { path = "../../crates/cr-ed2k" }

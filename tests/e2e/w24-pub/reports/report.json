@@ -1,0 +1,101 @@
+{
+  "schema": "coldrevive.w24.fr24-public-track/v1",
+  "scope": "真实 aMuleD KAD 节点上先确认关键词条目存在，再用生产 coldrevive-ed2k 发 BOOTSTRAP_REQ + 0x33 SEARCH_KEY_REQ 独立读回并生成标准 ed2k:// 链接",
+  "checks": [
+    {
+      "name": "s2_publish_confirmed",
+      "ok": true,
+      "detail": "confirmed_unnamespaced_keyword_publish_then_retrieve"
+    },
+    {
+      "name": "same_term",
+      "ok": true,
+      "detail": "fr24-after-restart"
+    },
+    {
+      "name": "key_matches_s2",
+      "ok": true,
+      "detail": "s2=ad50ee0f06284f630cdf3950a06da42e prod=ad50ee0f06284f630cdf3950a06da42e"
+    },
+    {
+      "name": "key_is_unnamespaced_md4",
+      "ok": true,
+      "detail": "ad50ee0f06284f630cdf3950a06da42e"
+    },
+    {
+      "name": "kad_node_echoes_target",
+      "ok": true,
+      "detail": {
+        "contact": "192.168.1.221:4672",
+        "bootstrap_ms": 273,
+        "sender": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "target": "ad50ee0f06284f630cdf3950a06da42e",
+        "target_matches_key": true,
+        "answers": 1,
+        "rtt_ms": 6
+      }
+    },
+    {
+      "name": "bootstrap_rtt_is_real",
+      "ok": true,
+      "detail": {
+        "contact": "192.168.1.221:4672",
+        "bootstrap_ms": 273,
+        "sender": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "target": "ad50ee0f06284f630cdf3950a06da42e",
+        "target_matches_key": true,
+        "answers": 1,
+        "rtt_ms": 6
+      }
+    },
+    {
+      "name": "answers_returned",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "file_id_matches_published_hash",
+      "ok": true,
+      "detail": "28654c6abc132c91cdcd855084db8e7c vs 28654c6abc132c91cdcd855084db8e7c"
+    },
+    {
+      "name": "ed2k_link_matches_published",
+      "ok": true,
+      "detail": "ed2k://|file|coldrevive-ed2k-probe-1795181883359.txt|63|28654c6abc132c91cdcd855084db8e7c|/"
+    },
+    {
+      "name": "kad_tags_decoded",
+      "ok": true,
+      "detail": [
+        {
+          "name": "\u0001",
+          "type": 2,
+          "value": "coldrevive-ed2k-probe-1795181883359.txt"
+        },
+        {
+          "name": "\u0002",
+          "type": 9,
+          "value": "63"
+        },
+        {
+          "name": "num:0x33",
+          "type": 3,
+          "value": "16843752"
+        }
+      ]
+    },
+    {
+      "name": "evidence_flag_not_faked",
+      "ok": true,
+      "detail": "只在拿到可解析 answer + ed2k link 时为 true"
+    },
+    {
+      "name": "direct_public_attempt_boundary_recorded",
+      "ok": true,
+      "detail": "A 主机直连公共节点未拿到结果；本次通过口径是 221 aMuleD 这个真实 KAD 节点"
+    }
+  ],
+  "passed": 12,
+  "total": 12,
+  "boundary": "查询目标是 192.168.1.221:4672 的 aMuleD（它自身连着公共 KAD）；A 主机直连公网节点未拿到结果，已保留 public-search.json。本证据不宣称下载可用（FR-25 另测），不宣称 credit / 上传队列完成。g2_claim=false、s6_status=not_run 不变"
+}

@@ -385,6 +385,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "coldrevive-ed2k"
+version = "0.1.0"
+dependencies = [
+ "cr-core",
+ "cr-ed2k",
+ "cr-hash",
+ "cr-kad",
+]
+
+[[package]]
 name = "coldrevive-nat"
 version = "0.1.0"
 dependencies = [
