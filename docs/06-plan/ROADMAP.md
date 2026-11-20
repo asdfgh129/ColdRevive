@@ -695,7 +695,11 @@ ColdRevive
     默认 `tcp`、`g2_claim=false`、`s6_status=not_run` 不变。
   - 新增转发层公平性量具 v0：`udp_relay_data_fairness_probe`（`#[ignore]`，4 流抢
     64 KiB/s 令牌桶，份额 21.4–31.6%，只打印 JSON 不判 pass）。
-  - 仍未闭环：可靠层拥塞语义与跨公网公平性、其他 RST 部署外推、公网 DHT announce。
+  - DHT：所有者授权后，在自有公网节点 `82.157.68.159:6881` 上完成
+    `announce_peer` + 异机 `get_peers` 回查（`peers=1`、`112.5.32.34:17200`，
+    证据 `tests/e2e/dht-announce/`）；三个真实 Mainline 引导节点仍 `token_len=0`
+    或超时，**不能称「已加入 Mainline」**。
+  - 仍未闭环：可靠层拥塞语义与跨公网公平性、其他 RST 部署外推、真实 Mainline DHT。
 
 - **2026-11-19 M2 第七轮（v2.4.93）：公网双端中继取片跑通；修掉读帧超时丢半帧**
   - **把 W58 的两个弱条件都换掉**：中继搬到公网 `82.157.68.159:7100`（PSK），

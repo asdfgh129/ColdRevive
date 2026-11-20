@@ -5,8 +5,8 @@
 ## [2.4.95] - 2026-11-20 — W61：在 TCP 被 RST 的公网主机上跑通 UDP 数据面（双 NAT，1 MiB）
 
 > `g2_claim=false`、`s6_status=not_run` 不变；默认承载仍是 `tcp`。
-> 本节只把 v2.4.94 留下的「RST 部署复现」和「UDP 公网双端」两条证据补齐，
-> **公平性/拥塞量具仍未做**。
+> 本节只把 v2.4.94 留下的「RST 部署复现」和「UDP 公网双端」两条证据补齐；
+> 公平性只有转发层量具 v0，**可靠层拥塞语义仍未做**。
 
 - **同一轮对照证据**（`tests/e2e/w61/`，`make_report.py` 12/12）：
   - TCP 对照：本机 A → `119.29.150.254:7100` 纯回显 12 轮，11 轮被
@@ -35,6 +35,11 @@
 - **状态串**：`relay_data_plane_udp` 由 `udp-carrier-implemented-rst-unverified` 改为
   `udp-carrier-implemented-rst-path-verified`。`path` 仅限 W61 这台主机这条路径，
   不扩大成「所有 RST 部署」；`g2_claim`/`s6_status` 不动。
+- **DHT（所有者已授权）**：只读 `walk` 拿到 112 contacts / 17 ping 存活；
+  在自有公网节点 `82.157.68.159:6881` 上以 222 为源宣告已验证可达的
+  `112.5.32.34:17200`，从 A 异机回查 `peers=1`、`peer_list=112.5.32.34:17200`
+  （`tests/e2e/dht-announce/`）。三个真实 Mainline 引导节点 `token_len=0` 或超时，
+  故只记「自有节点闭环」，**不称已加入 Mainline**。
 - 全量回归 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **336 passed / 0 failed**
   （v2.4.94 基线 335 + 本版新增 1 条看板标签单测）。
 
