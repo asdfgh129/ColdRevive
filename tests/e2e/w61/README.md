@@ -54,6 +54,50 @@ W61 在同一台 `119.29.150.254` 上同时量两件事：
 **这不是拥塞控制结论**：量的是中继 DATA 转发公平性，可靠层本身仍没有
 拥塞/退避语义，不能据此宣称「跨公网公平性达标」。
 
+## 公平性量具 v1（两种承载对照 + 可靠层时间序列）
+
+v0 只有 UDP 一侧、也看不到可靠层动态。v1 补两把 `#[ignore]` 探针：
+只打印原始 JSON，**不对公平性做 pass 判定**。`g2_claim=false` 不变。
+
+### 1) `carrier_fairness_tcp_vs_udp_probe` — 同预算的 TCP/UDP 对照
+
+两种承载各自起真中继，都配 64 KiB/s 全局字节桶 + 64 KiB 突发，各跑 4 条等权流。
+样本 `fairness-control-v1.json`（6 s）：
+
+| 承载 | 单流份额 | 帧字节 | 中继 Δ 放行 |
+| :--- | :--- | :--- | :--- |
+| TCP | `19.8% / 26.1% / 32.4% / 21.6%` | 4096+16 | `data_bytes_admitted=456432`、`bandwidth_limited=9465`、`delivered=111` |
+| UDP | `23.1% / 26.8% / 25.9% / 24.3%` | 1024+16 | `data_bytes_in=458640`、`bandwidth_limited=89081`、`deliver_out=441` |
+
+坑（已修）：首版 TCP 用 8192 B 帧 + 8 KiB 突发 → 单帧 8208 B 永远放不进桶，
+`data_bytes_admitted=0`、`delivered=0`，量到的是配置错误而不是公平性。
+突发桶必须大于「单帧 + 16 B 目标 id」。
+
+**口径**：TCP 只给 >4096 B 的帧计费（`SIGNAL_FRAME_MAX`），UDP 帧天然 ≤1152 B，
+所以只比**份额分布**、不比绝对字节；回环、单次 6 s、TCP 仅 111 帧（一份额 ≈0.9%），
+不足以宣称任何公平性达标。
+
+### 2) `reliable_window_rto_timeseries_probe` — 窗口/RTO/重传时间序列
+
+真 `StreamCore` + 虚拟时钟（25 ms/轮），64 KiB 流，注入 5% 丢包 / 2% 乱序 / 1% 重复；
+另加 **ACK 延迟 30 轮 = 750 ms**——ACK 立即回时窗口每轮推进，RTO 永远停在 200 ms，
+量不到退避。样本 `rto-timeseries-v1.json`：
+
+- 122 轮、`delivered=65536` 与 payload 逐字节一致、`inflight ≤ 32`（窗口有界）；
+- `rto_ms` 轨迹 `200 → 400 → 800 → 1600 → 3200`，`retransmits=41`、
+  `fast_retransmits=27`、`dup_dropped=39`；
+- 注入计数 `seen=99 / dropped=4 / reordered=3 / duplicated=2`。
+
+**口径**：这是虚拟时钟下的协议面探针，不是网络实测；退避由延迟触发，
+只证明「实现确实有退避与有界窗口」，**不证明拥塞安全**。可靠层仍无拥塞语义。
+
+复现：
+
+```bash
+CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat carrier_fairness_tcp_vs_udp_probe -- --ignored --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat reliable_window_rto_timeseries_probe -- --ignored --nocapture
+```
+
 ## 本轮抓到并修掉的看板 bug
 
 `/health.holder_data.carrier` 原先把计数器写死标成 `relay-sub-tcp`。UDP 承载实际搬完

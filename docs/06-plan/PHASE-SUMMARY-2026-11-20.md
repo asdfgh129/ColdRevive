@@ -34,11 +34,14 @@ updated: 2026-11-20
 
 1. **G2 门禁未达标**：`g2_claim=false`、`s6_status=not_run`。S3=pass、S5=fallback、
    S6=`closed_with_exceptions`（ADR-016 eMule 式语义），但机器常量未改，不得折算成通过。
-2. **公平性量具只有 v0**（任务 #34/#36）：4 条 UDP DATA 流抢 64 KiB/s 全局令牌桶，
-   样本份额 25.5% / 21.4% / 21.4% / 31.6%（`tests/e2e/w61/fairness-probe.json`），
-   只量转发层、不自动判 pass。缺 TCP/背景流同瓶颈对照，缺丢包与时延注入下的
-   **窗口占用、RTO 退避、重传次数时间序列**。可靠层仍无拥塞语义，
-   **不得读成公平性达标**。
+2. **公平性量具已到 v1（量具 ≠ 达标）**：v0 转发层 4 流份额
+   25.5% / 21.4% / 21.4% / 31.6%（`fairness-probe.json`）；v1 补齐两项——
+   ① 同预算 64 KiB/s 的 TCP/UDP 4 流对照（`fairness-control-v1.json`：
+   TCP 19.8–32.4%、UDP 23.1–26.8%）；② 真 `StreamCore` + 虚拟时钟 +
+   5%/2%/1% 注入 + 750 ms ACK 延迟的窗口/RTO/重传时间序列
+   （`rto-timeseries-v1.json`：`inflight ≤ 32`、`rto 200→400→800→1600→3200 ms`、
+   `retransmits=41`、字节一致）。两者都只打印 JSON、不自动判 pass。
+   **可靠层仍无拥塞语义，跨公网公平性仍未测，不得读成公平性达标**。
 3. **真实 Mainline DHT 未加入**：`dht.transmissionbt.com` 返回 `token_len=0`，
    `router.bittorrent.com` 与 `router.utorrent.com` 查询超时；只证明自有公网节点闭环。
 4. **TCP 打洞**：原语在 Windows + Linux 双端回环通过，但 BT 数据面未接线、公网双侧 BLOCKED。
@@ -49,9 +52,9 @@ updated: 2026-11-20
 
 ## 3. 下一步计划（按依赖顺序）
 
-1. **公平性量具 v1**：加 TCP 承载或背景流同瓶颈对照；在丢包/时延注入下输出
-   窗口占用、RTO 退避、重传次数的时间序列。仍只输出原始计数，**不自动判 pass**；
-   完成后才能谈「公平性达标」（任务 #36）。
+1. **公平性判定阈值与对照扩展**（v1 量具已完成）：补跨公网背景流、丢包/时延梯度
+   的多组样本，再讨论是否有可自动判定的阈值。此前一律只出原始计数，
+   **不宣称公平性达标**（任务 #36 的量具部分已闭环，判定部分仍开）。
 2. **真实 Mainline DHT**：继续找确实签发 token 的引导节点；announce 后用**独立节点**
    `get_peers` 回查；拿不到证据就维持 BLOCKED，不宣称加入 Mainline。
 3. **守护进程多样种任务**：把组件级逐出扩成真引擎 e2e（多 infohash + cap 触发 + 按
@@ -68,7 +71,8 @@ updated: 2026-11-20
 - **路径选择状态机**：补多路径并发探测与切换滞后，避免 RST 单轮偶发成功导致抖动。
 - **工程自动化**：把跨主机部署 / 抓包 / 三方对账 / 判定收拢成可复跑的 e2e 命令，
   减少手工 ssh 步骤与人为漏采。
-- **公平性判定**：待 v1 量具稳定后，再讨论阈值与自动判定；此前一律只出原始计数。
+- **公平性判定**：v1 量具已稳定（转发层对照 + 可靠层时间序列），下一步是跨公网
+  梯度样本与阈值讨论；此前一律只出原始计数，不自动判 pass。
 
 ## 5. 复现命令
 
@@ -79,8 +83,10 @@ CARGO_INCREMENTAL=0 cargo test --workspace --offline
 # W61 证据判定（需按 tests/e2e/w61/README.md 重新采集 reports/）
 python tests/e2e/w61/make_report.py
 
-# 公平性量具 v0（只打印 JSON，不判 pass）
+# 公平性量具 v0/v1（只打印 JSON，不判 pass）
 CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat udp_relay_data_fairness_probe -- --ignored --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat carrier_fairness_tcp_vs_udp_probe -- --ignored --nocapture
+CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat reliable_window_rto_timeseries_probe -- --ignored --nocapture
 
 # DHT 只读回查（写操作需另行授权）
 ./target/release/coldrevive-dht.exe --get-peers 82.157.68.159:6881 <infohash-hex>

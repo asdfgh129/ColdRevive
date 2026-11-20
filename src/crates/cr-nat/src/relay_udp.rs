@@ -1590,4 +1590,175 @@ mod tests {
         );
         h.stop();
     }
+
+    /// 公平性量具 v1-a：**两种承载在同一全局字节预算下的 4 流份额对照**。
+    ///
+    /// v0 只有 UDP 一侧，无法回答「TCP 侧是否同样公平」。本探针在同一进程里分别启动
+    /// 真 TCP 中继（`relay_server::Limits`）与真 UDP 中继（`UdpLimits`），两者都配
+    /// 64 KiB/s 全局桶 + 8 KiB 突发，各跑 4 条等权流，量**每条流实际收到的字节份额**。
+    ///
+    /// 帧大小刻意不同：TCP 只给 >4096 B 的帧计费（`SIGNAL_FRAME_MAX`），取 4096 B
+    /// 消息 + 16 B 目标 id = 4112 B；UDP 单帧 ≤1152 B，取 1024 B。因此**只比份额，
+    /// 不比绝对字节数**——口径写在 JSON 的 `scope` 里。这是 `#[ignore]` 探针，
+    /// 跑约 14 s，只打印 JSON，不对公平性做 pass 判定。
+    ///
+    /// 复现：`cargo test --offline -p cr-nat carrier_fairness_tcp_vs_udp_probe -- --ignored --nocapture`
+    #[test]
+    #[ignore = "fairness control probe; run with --ignored --nocapture"]
+    fn carrier_fairness_tcp_vs_udp_probe() {
+        use crate::relay::{FrameKind, RelayClient};
+        use crate::relay_server::{Limits, RelayServer};
+
+        let secs = 6u64;
+        let budget = 64 * 1024u64;
+        // 突发桶必须容得下「单帧 + 16 B 目标 id」。TCP 帧取 4096+16=4112 B：
+        // 刚好越过 SIGNAL_FRAME_MAX=4096 的计费阈值，又让 6 s 内有足够帧数
+        // （≈90 帧）谈份额分布；8192 B 帧只有 ≈30 帧，一份额 3%，太粗。
+        // 两种承载统一 64 KiB 突发桶。
+        let burst = 64 * 1024u64;
+        let tmo = Duration::from_millis(500);
+
+        // ---------------- TCP 承载：4 条流，>4 KiB 帧才进字节桶 ----------------
+        let tcp_limits = Limits {
+            data_byte_rate: budget,
+            data_burst_bytes: burst,
+            rate_per_sec: 100_000, // 只让字节预算成为瓶颈
+            burst: 200_000,
+            ..Limits::default()
+        };
+        let tcp_srv = RelayServer::bind("127.0.0.1:0").unwrap().with_limits(tcp_limits);
+        let tcp_addr = tcp_srv.local_addr().unwrap().to_string();
+        let tcp_h = tcp_srv.spawn();
+
+        let mut tcp_recvs = Vec::new();
+        for i in 0..4u8 {
+            let mut c = RelayClient::plaintext(tcp_addr.clone())
+                .connect(tmo).unwrap();
+            c.register(&ids(100 + i)).unwrap();
+            c.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
+            tcp_recvs.push(c);
+        }
+        let mut tcp_senders = Vec::new();
+        for i in 0..4u8 {
+            let mut c = RelayClient::plaintext(tcp_addr.clone())
+                .connect(tmo).unwrap();
+            c.register(&ids(200 + i)).unwrap();
+            tcp_senders.push(c);
+        }
+        let tcp_before = tcp_h.stats();
+        let t0 = Instant::now();
+
+        let tcp_recv_jobs: Vec<_> = tcp_recvs.into_iter().map(|mut c| {
+            std::thread::spawn(move || {
+                let mut bytes = 0u64;
+                let deadline = Instant::now() + Duration::from_secs(secs + 1);
+                while Instant::now() < deadline {
+                    if let Ok(f) = c.recv_frame() {
+                        if matches!(f.kind, FrameKind::Delivered) {
+                            bytes += f.payload.len() as u64;
+                        }
+                    }
+                }
+                bytes
+            })
+        }).collect();
+
+        let tcp_frame = vec![0x5au8; 4096];
+        let tcp_send_jobs: Vec<_> = tcp_senders.into_iter().enumerate().map(|(i, mut c)| {
+            let target = ids(100 + i as u8);
+            let frame = tcp_frame.clone();
+            let t0 = t0;
+            std::thread::spawn(move || {
+                while t0.elapsed() < Duration::from_secs(secs) {
+                    let _ = c.send_relay(&target, &frame);
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            })
+        }).collect();
+
+        let tcp_delivered: Vec<u64> = tcp_recv_jobs.into_iter().map(|j| j.join().unwrap()).collect();
+        for j in tcp_send_jobs { j.join().unwrap(); }
+        let tcp_after = tcp_h.stats();
+        tcp_h.stop();
+
+        // ---------------- UDP 承载：同样的 4 流，协议允许的 ~1 KiB 帧 ----------------
+        let mut udp_limits = UdpLimits::default();
+        udp_limits.data_byte_rate = budget;
+        udp_limits.data_burst_bytes = burst;
+        udp_limits.rate_pps = 20_000;
+        let h = start(None, Some(udp_limits));
+        let addr = h.addr.to_string();
+
+        let mut udp_recvs = Vec::new();
+        for i in 0..4u8 {
+            let mut c = UdpRelayClient::connect(&addr, tmo).unwrap();
+            c.hello(ids(100 + i), tmo).unwrap();
+            udp_recvs.push(c);
+        }
+        let udp_before = h.stats();
+        let t0 = Instant::now();
+        let udp_recv_jobs: Vec<_> = udp_recvs.into_iter().map(|mut c| {
+            std::thread::spawn(move || {
+                let mut bytes = 0u64;
+                let deadline = Instant::now() + Duration::from_secs(secs + 1);
+                while Instant::now() < deadline {
+                    if let Ok(Some(f)) = c.recv_frame(Duration::from_millis(100)) {
+                        if matches!(f.kind, UdpKind::Deliver) {
+                            bytes += f.payload.len() as u64;
+                        }
+                    }
+                }
+                bytes
+            })
+        }).collect();
+
+        let udp_frame = vec![0xabu8; 1024];
+        let udp_send_jobs: Vec<_> = (0..4u8).map(|i| {
+            let mut c = UdpRelayClient::connect(&addr, tmo).unwrap();
+            c.hello(ids(200 + i), tmo).unwrap();
+            let target = ids(100 + i);
+            let frame = udp_frame.clone();
+            let t0 = t0;
+            std::thread::spawn(move || {
+                while t0.elapsed() < Duration::from_secs(secs) {
+                    let _ = c.send_data(&target, &frame);
+                    match c.recv_frame(Duration::from_millis(50)) {
+                        Ok(Some(_)) => {}
+                        _ => {}
+                    }
+                }
+            })
+        }).collect();
+
+        let udp_delivered: Vec<u64> = udp_recv_jobs.into_iter().map(|j| j.join().unwrap()).collect();
+        for j in udp_send_jobs { j.join().unwrap(); }
+        let udp_after = h.stats();
+        h.stop();
+
+        // 份额 = 本流交付字节 / 该承载四流总交付字节；只比分布，不比绝对数。
+        let shares = |v: &[u64]| -> Vec<f64> {
+            let total: u64 = v.iter().sum();
+            v.iter().map(|&b| if total == 0 { 0.0 } else { b as f64 / total as f64 }).collect()
+        };
+        println!(
+            "FAIRNESS_CONTROL_PROBE {{\"budget_bytes_per_sec\":{budget},\"burst_bytes\":{burst},\"seconds\":{secs},\
+             \"tcp\":{{\"frame_bytes\":4096,\"delivered_bytes_per_stream\":{tcp_delivered:?},\
+             \"share_per_stream\":{:?},\"relay_delta\":{{\"data_bytes_admitted\":{},\
+             \"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},\"delivered\":{}}}}},\
+             \"udp\":{{\"frame_bytes\":1024,\"delivered_bytes_per_stream\":{udp_delivered:?},\
+             \"share_per_stream\":{:?},\"relay_delta\":{{\"data_bytes_in\":{},\
+             \"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},\"deliver_out\":{}}}}},\
+             \"scope\":\"loopback; TCP charges frames >4096 B, UDP caps at ~1168 B; compare SHARES not absolute bytes; NOT a congestion-safety claim\"}}",
+            shares(&tcp_delivered),
+            tcp_after.data_bytes_admitted - tcp_before.data_bytes_admitted,
+            tcp_after.bandwidth_limited - tcp_before.bandwidth_limited,
+            tcp_after.bandwidth_limited_bytes - tcp_before.bandwidth_limited_bytes,
+            tcp_after.delivered - tcp_before.delivered,
+            shares(&udp_delivered),
+            udp_after.data_bytes_in - udp_before.data_bytes_in,
+            udp_after.bandwidth_limited - udp_before.bandwidth_limited,
+            udp_after.bandwidth_limited_bytes - udp_before.bandwidth_limited_bytes,
+            udp_after.deliver_out - udp_before.deliver_out,
+        );
+    }
 }

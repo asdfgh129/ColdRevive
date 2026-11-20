@@ -2,6 +2,31 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.95a] - 2026-11-20 — 公平性量具 v1：TCP/UDP 同预算对照 + 可靠层 RTO 时间序列
+
+> 只加 `#[ignore]` 量具与证据，**不改协议、不改默认承载、不改门禁**。
+> `g2_claim=false`、`s6_status=not_run` 不变；全量回归仍 336 passed / 0 failed。
+> 量具不等于达标：可靠层仍无拥塞语义，跨公网公平性仍未测。
+
+- **`carrier_fairness_tcp_vs_udp_probe`**（`cr-nat`，回环）：两种承载各起真中继，
+  同为 64 KiB/s 全局字节桶 + 64 KiB 突发，各 4 条等权流，6 s。样本
+  `tests/e2e/w61/fairness-control-v1.json`：TCP 份额
+  `19.8% / 26.1% / 32.4% / 21.6%`（`data_bytes_admitted=456432`、
+  `bandwidth_limited=9465`、`delivered=111`）；UDP 份额
+  `23.1% / 26.8% / 25.9% / 24.3%`（`data_bytes_in=458640`、
+  `bandwidth_limited=89081`、`deliver_out=441`）。TCP 帧 4096+16 B 才越过
+  `SIGNAL_FRAME_MAX`，UDP 帧 1024+16 B，**只比份额不比绝对字节**。
+  - 坑（已修）：首版用 8192 B 帧 + 8 KiB 突发 → 8208 B 单帧永远放不进桶，
+    `data_bytes_admitted=0`；突发桶必须大于「单帧 + 16 B 目标 id」。
+- **`reliable_window_rto_timeseries_probe`**（`cr-nat`，虚拟时钟）：真 `StreamCore`
+  跑 64 KiB，25 ms/轮，5% 丢包 / 2% 乱序 / 1% 重复 + ACK 延迟 30 轮（750 ms，
+  否则 RTO 永远停在 200 ms 量不到退避）。样本 `tests/e2e/w61/rto-timeseries-v1.json`：
+  `delivered=65536` 逐字节一致、`inflight ≤ 32`、`rto 200→400→800→1600→3200 ms`、
+  `retransmits=41`、`fast_retransmits=27`、`dup_dropped=39`、122 轮。
+  **虚拟时钟协议面，不是网络实测；只证明退避与有界窗口确实实现，不证明拥塞安全**。
+- 文档：`tests/e2e/w61/README.md`、DOC-27 阶段小结、ROADMAP 同步；
+  两个探针都只打印 JSON、不自动判 pass。
+
 ## [2.4.95] - 2026-11-20 — W61：在 TCP 被 RST 的公网主机上跑通 UDP 数据面（双 NAT，1 MiB）
 
 > `g2_claim=false`、`s6_status=not_run` 不变；默认承载仍是 `tcp`。

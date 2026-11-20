@@ -1720,4 +1720,129 @@ mod tests {
         assert!(err.contains("不符"), "错误必须说清是「来源不符」而不是笼统失败: {err}");
         h.stop();
     }
+
+    /// 公平性量具 v1-b：**可靠层窗口占用 / RTO 退避 / 重传次数的时间序列**。
+    ///
+    /// v0 只量中继转发层，看不到可靠层的动态；这个探针用真 `StreamCore` 驱动一条
+    /// 64 KiB 流，按虚拟时钟每 25 ms 采一个点，注入 5% 丢包 / 2% 乱序 / 1% 重复
+    /// （`Stage3Injector`，与阶段 3 证据同一个注入器）。输出每条样本：
+    /// `inflight`（窗口占用，上限 WINDOW=32）、`rto_ms`（指数退避轨迹）、
+    /// `retransmits` / `fast_retransmits`（累计）、`bytes_delivered`。
+    ///
+    /// 另注入 **ACK 路径延迟 30 轮 = 750 ms**：ACK 立即回传时窗口每轮都推进，
+    /// RTO 永远停在 200 ms，量不到退避轨迹。750 ms 让同一批段先后在 200 ms
+    /// （RTO→400）与 600 ms（RTO→800）两次超时，退避才真实可见。
+    ///
+    /// 这是 `#[ignore]` 探针：不连网络、不跑时钟 sleep，只打印 JSON 时间序列，
+    /// **不对公平性或拥塞安全做 pass 判定**。可靠层仍无拥塞语义，不得据此宣称达标。
+    ///
+    /// 复现：`cargo test --offline -p cr-nat reliable_window_rto_timeseries_probe -- --ignored --nocapture`
+    #[test]
+    #[ignore = "window/RTO time-series probe; run with --ignored --nocapture"]
+    fn reliable_window_rto_timeseries_probe() {
+        let mut tx = StreamCore::new(0);
+        let mut rx = StreamCore::new(0);
+        let payload: Vec<u8> = (0..64 * 1024).map(|i| (i % 251) as u8).collect();
+        let payload_len = payload.len();
+        let mut written = 0usize;
+        let mut delivered = Vec::with_capacity(payload_len);
+        let mut diag = Stage3Injector::new(0x71_6d_65_31); // 数据面注入
+        let mut deferred: VecDeque<(Segment, bool)> = VecDeque::new();
+        let tick = Duration::from_millis(25);
+        let tick_ms = 25u64;
+        let ack_delay_rounds = 30u64; // 750 ms ACK 路径延迟，逼出 RTO 退避
+        let mut delayed_acks: VecDeque<(u64, u32, u64)> = VecDeque::new(); // (due_round, ack, sack)
+        let start = Instant::now();
+        let mut now = start;
+        let mut rows: Vec<String> = Vec::new();
+        let mut rounds = 0u64;
+        let max_rounds = 20_000u64;
+
+        while (delivered.len() < payload_len || tx.inflight_len() > 0) && rounds < max_rounds {
+            rounds += 1;
+            // 到期的 ACK 先入账：延迟 30 轮让 RTO 真的退避一次再被确认。
+            while matches!(delayed_acks.front(), Some((due, _, _)) if *due <= rounds) {
+                if let Some((_, ack, sack)) = delayed_acks.pop_front() {
+                    tx.on_ack(ack, sack);
+                }
+            }
+            // 上一轮被判乱序的段先发。
+            while let Some((seg, dup)) = deferred.pop_front() {
+                match seg {
+                    Segment::Data { seq, ack, sack, body } => {
+                        if let Some(d) = rx.on_data(seq, body.clone(), ack, sack) {
+                            delivered.extend_from_slice(&d);
+                        }
+                        if dup {
+                            // 真重复只会被接收侧丢弃；若这里返回数据就是重复交付 bug。
+                            let again = rx.on_data(seq, body, ack, sack);
+                            assert!(again.is_none(), "重复段不得产生重复字节");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if written < payload_len {
+                written += tx.write(&payload[written..]);
+            }
+            let segs = tx.take_transmissions(now);
+            for seg in segs {
+                match diag.decide() {
+                    Stage3Decision { action: Stage3Action::Drop, .. } => {}
+                    Stage3Decision { action: Stage3Action::Defer, duplicate } => {
+                        deferred.push_back((seg, duplicate));
+                    }
+                    Stage3Decision { action: Stage3Action::Send, duplicate } => {
+                        let Segment::Data { seq, ack, sack, body } = seg else { continue };
+                        if let Some(d) = rx.on_data(seq, body.clone(), ack, sack) {
+                            delivered.extend_from_slice(&d);
+                        }
+                        if duplicate {
+                            // 同 seq 再投一次：接收侧必须丢弃而不是重复交付。
+                            let _ = rx.on_data(seq, body, ack, sack);
+                        }
+                    }
+                }
+            }
+            // ACK 回传：入延迟队列，不立即滑窗（否则量不到 RTO 退避）。
+            let (ack, sack) = rx.ack_state();
+            delayed_acks.push_back((rounds + ack_delay_rounds, ack, sack));
+            // 每轮采一个点：退避发生在少数几轮，跳采会漏掉。
+            {
+                rows.push(format!(
+                    "{{\"t_ms\":{},\"inflight\":{},\"rto_ms\":{},\"retransmits\":{},\
+                     \"fast_retransmits\":{},\"bytes_delivered\":{},\"dup_dropped\":{}}}",
+                    rounds * tick_ms,
+                    tx.inflight_len(),
+                    tx.rto().as_millis(),
+                    tx.retransmits(),
+                    tx.fast_retransmits(),
+                    delivered.len(),
+                    rx.dup_dropped(),
+                ));
+            }
+            now += tick;
+        }
+        let series = format!("[{}]", rows.join(","));
+        println!(
+            "RTO_TIMESERIES_PROBE {{\"payload_bytes\":{payload_len},\"written\":{written},\
+             \"delivered\":{},\"complete\":{},\"rounds\":{rounds},\"tick_ms\":25,\
+             \"final\":{{\"inflight\":{},\"rto_ms\":{},\"retransmits\":{},\
+             \"fast_retransmits\":{},\"dup_dropped\":{}}},\
+             \"injection\":{{\"seen\":{},\"dropped\":{},\"reordered\":{},\"duplicated\":{}}},\
+             \"ack_delay_rounds\":{ack_delay_rounds},\"series\":{series},\
+             \"scope\":\"virtual-clock StreamCore; NOT a network measurement or congestion-safety claim\"}}",
+            delivered.len(),
+            delivered.len() == payload_len,
+            tx.inflight_len(),
+            tx.rto().as_millis(),
+            tx.retransmits(),
+            tx.fast_retransmits(),
+            rx.dup_dropped(),
+            diag.seen,
+            diag.dropped,
+            diag.reordered,
+            diag.duplicated,
+        );
+    }
 }

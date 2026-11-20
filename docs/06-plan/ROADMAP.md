@@ -78,7 +78,7 @@ ColdRevive
 | **G0** | M0 结束 | [S1–S8](../02-architecture/TECH-STACK.md) 全部有结论，关键技术路线冻结 |
 | **G1** | M1 结束 | T0/T1 全链路闭环成功，受控环境复活成功率 100% |
 | **G2** | M2 结束 | NFR-01/02/03 达标；S6 按 eMule 式可达语义结案（ADR-016：真实设备 + 两台物理主机 + 每条路径 30 次真实 WAKEUP_ACK + HighID/LowID 两半各有证据）。**NAT 类别覆盖是描述性清单，不是 pass 前提**；声明须带已知限制，不得写「矩阵通过」 |
-| **ADR-024 分阶段闸门** | ✅ 阶段 0–3 完成；转发层公平性量具 v0 已落地，可靠层拥塞语义仍缺 | [ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md) v0.3 已接受并实施，默认承载仍 `tcp`。闸门：① ✅ UDP 字节预算对齐 ADR-014（`--udp-data-rate/--udp-data-burst`，按 `UdpKind::Data` 计费）；② ✅ 双向注入 5%/2%/1% 下 1 MiB 字节一致、无重复投递、窗口有界；③ 🟡 有界窗口 + RTO 退避 + opt-in 已满足；v2.4.95 有回环转发层公平性量具 v0（4 流抢 64 KiB/s，份额 21.4–31.6%），但可靠层无拥塞语义、跨公网公平性仍未测；④ ✅ 真引擎 SOCKS5 取片 1 MiB（TCP/UDP 同尺并列）；⑤ ✅ W61 在 `119.29.150.254` 那条 TCP 被 RST 的路径上完成双 NAT 1 MiB 取片（12/12），状态串为 `udp-carrier-implemented-rst-path-verified`——`path` 只指该路径，不外推所有 RST 部署。 |
+| **ADR-024 分阶段闸门** | ✅ 阶段 0–3 完成；公平性量具 v1 已落地（TCP/UDP 同预算对照 + 可靠层 RTO 时间序列），可靠层拥塞语义仍缺、量具不等于达标 | [ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md) v0.3 已接受并实施，默认承载仍 `tcp`。闸门：① ✅ UDP 字节预算对齐 ADR-014（`--udp-data-rate/--udp-data-burst`，按 `UdpKind::Data` 计费）；② ✅ 双向注入 5%/2%/1% 下 1 MiB 字节一致、无重复投递、窗口有界；③ 🟡 有界窗口 + RTO 退避 + opt-in 已满足；v2.4.95 有量具 v0（转发层 4 流份额 21.4–31.6%）与 v1（TCP/UDP 同预算份额对照 + 虚拟时钟 RTO 退避 200–3200 ms 时间序列），但可靠层无拥塞语义、跨公网公平性仍未测，量具不等于达标；④ ✅ 真引擎 SOCKS5 取片 1 MiB（TCP/UDP 同尺并列）；⑤ ✅ W61 在 `119.29.150.254` 那条 TCP 被 RST 的路径上完成双 NAT 1 MiB 取片（12/12），状态串为 `udp-carrier-implemented-rst-path-verified`——`path` 只指该路径，不外推所有 RST 部署。 |
 | **G3** | M3 结束 | [兼容性矩阵](../05-quality/TEST.md) 全绿，NFR-04 达标 |
 | **G4** | M4 结束 | 安全测试全通过，公测 KPI 达标，法务评审通过 |
 
@@ -695,6 +695,12 @@ ColdRevive
     默认 `tcp`、`g2_claim=false`、`s6_status=not_run` 不变。
   - 新增转发层公平性量具 v0：`udp_relay_data_fairness_probe`（`#[ignore]`，4 流抢
     64 KiB/s 令牌桶，份额 21.4–31.6%，只打印 JSON 不判 pass）。
+  - **v1 量具（2026-11-20 同版补）**：`carrier_fairness_tcp_vs_udp_probe`
+    在同样 64 KiB/s + 64 KiB 突发下对照两种承载 4 流份额（TCP 19.8–32.4%、
+    UDP 23.1–26.8%，只比份额）；`reliable_window_rto_timeseries_probe`
+    用真 `StreamCore` + 虚拟时钟 + 5%/2%/1% 注入 + 750 ms ACK 延迟得到
+    `inflight ≤ 32`、`rto 200→400→800→1600→3200 ms`、`retransmits=41`、
+    64 KiB 逐字节一致。两者只打印 JSON 不判 pass，**不是拥塞达标证据**。
   - DHT：所有者授权后，在自有公网节点 `82.157.68.159:6881` 上完成
     `announce_peer` + 异机 `get_peers` 回查（`peers=1`、`112.5.32.34:17200`，
     证据 `tests/e2e/dht-announce/`）；三个真实 Mainline 引导节点仍 `token_len=0`
