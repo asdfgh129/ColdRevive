@@ -1,0 +1,32 @@
+{
+  "role": "member",
+  "bind": "0.0.0.0",
+  "nodes": {
+    "222": {
+      "host": "192.168.34.222",
+      "http_port": 17900,
+      "wake_udp_port": 17901,
+      "bt_port": 17902
+    },
+    "A": {
+      "host": "192.168.1.210",
+      "http_port": 17800,
+      "wake_udp_port": 17801,
+      "bt_port": 17802
+    }
+  },
+  "sample_path": "C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w61/run-member/sample_placeholder.bin",
+  "keywords": ["coldrevive", "w59", "public-relay"],
+  "workdir": "C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w61/run-member",
+  "golden_req": "C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w61/run-member/golden/req.json",
+  "golden_ack": "C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w61/run-member/golden/ack.json",
+  "downloader": "C:/Users/bemin/WorkBuddy/ColdRevive/tests/e2e/w61/run-member/downloader",
+  "nat": {
+    "enabled": true,
+    "stun_servers": ["119.29.150.254:3478", "119.29.150.254:3479"],
+    "relay_udp": "119.29.150.254:7101",
+    "relay_key": "file:C:/Users/bemin/AppData/Local/Temp/crkeys/psk.txt",
+    "punch_route": true,
+    "data_plane_carrier": "udp"
+  }
+}

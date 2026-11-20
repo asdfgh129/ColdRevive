@@ -7,9 +7,11 @@
 //! 1. 只做判据和交接：是否打通由 `tcp_punch` 的 `poll+SO_ERROR` 决定。
 //! 2. `Route::Relay` 只表示不登记 punched socket。**v2.4.92 起** TCP 中继上确实有
 //!    BT 数据面（`relay_sub` 的 OPEN/splice + `data_plane` 的 OPENED/桥接）；UDP 承载
-//!    v2.4.94 起也有有界可靠层 + 真引擎证据，但**未在 TCP 入向被 RST 的部署上复现**，
-//!    所以 `relay_data_plane_udp` 标 `udp-carrier-implemented-rst-unverified`——
-//!    两种承载的结论、以及「能走」与「解决 RST 场景」不能混着读。
+//!    v2.4.94 起也有有界可靠层 + 真引擎证据，v2.4.95 在 `119.29.150.254` 那条
+//!    「非 22 入向 TCP 被注入 RST、UDP 7101 可用」的路径上完成 1 MiB 双端取片。
+//!    因此 `relay_data_plane_udp` 标 `udp-carrier-implemented-rst-path-verified`：
+//!    `path` 只指该台主机该路径（W61），不外推成所有 RST 部署；两种承载的
+//!    结论、以及「能走」与「解决特定 RST 场景」仍不能混着读。
 //! 3. 默认关闭：`nat.punch_route=false` 时 `proxy_url` 保持 None，既有部署不变。
 
 pub use cr_nat::punch_wire::{
@@ -64,7 +66,7 @@ impl PunchRouteState {
             // UDP 仍未在 ADR-020 那类 TCP 被 RST 的部署上复现，状态串里显式写死。
             // 合成一个字段会让人把「有一条通了」读成「随便哪条都通」。
             ("relay_data_plane", Json::s("tcp-carrier-implemented")),
-            ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-unverified")),
+            ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-path-verified")),
             ("is_s6_evidence", Json::b(false)),
             ("g2_claim", Json::b(false)),
             ("s6_status", Json::s("not_run")),
@@ -100,6 +102,6 @@ mod tests {
         assert_eq!(j.get("relay_data_plane").and_then(Json::as_str),
                    Some("tcp-carrier-implemented"));
         assert_eq!(j.get("relay_data_plane_udp").and_then(Json::as_str),
-                   Some("udp-carrier-implemented-rst-unverified"));
+                   Some("udp-carrier-implemented-rst-path-verified"));
     }
 }

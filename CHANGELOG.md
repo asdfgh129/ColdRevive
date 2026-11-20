@@ -2,6 +2,42 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.95] - 2026-11-20 — W61：在 TCP 被 RST 的公网主机上跑通 UDP 数据面（双 NAT，1 MiB）
+
+> `g2_claim=false`、`s6_status=not_run` 不变；默认承载仍是 `tcp`。
+> 本节只把 v2.4.94 留下的「RST 部署复现」和「UDP 公网双端」两条证据补齐，
+> **公平性/拥塞量具仍未做**。
+
+- **同一轮对照证据**（`tests/e2e/w61/`，`make_report.py` 12/12）：
+  - TCP 对照：本机 A → `119.29.150.254:7100` 纯回显 12 轮，11 轮被
+    `ConnectionResetError` 强制断开（历史 run1 是 0/12；其中一次偶发成功不推翻结论，
+    ADR-020 §复盘已有同现象）；服务端读到 `Connection reset by peer`，
+    抓包见伪造 RST 与无关 ack 号。**这不是协议问题，回显服务也会中招**。
+  - NAT：同轮 `nat probe dedicated` 得到 A `port-restricted-cone`（`112.5.60.4`）、
+    222 `symmetric`（`112.5.32.34`），两个不同出口。
+  - UDP 数据面：`wake.path=relay-udp`、`ack_status=OK`、备注含
+    `OPEN/OPENED 双向握手完成`；中途 `/health` 见
+    `udp_tunnels_alive=1`、`holder_data.carrier=relay-sub-udp`；
+    结束后 `opens=1 / splices_done=1 / ←引擎 1,049,585 B`、
+    下载端 `bytes_relayed=1,050,872`，链路两端 md5 同为 `b0e93e82…0559e`。
+  - 中继三方对账（Δ）：`data_in=4219`、`deliver_out=4214`、`status_out=4219`、
+    `data_bytes_in=2,623,138`、`bandwidth_limited=0`、`replay=0`、`mac_fail=0`。
+  - 222 管理口 `tcpdump -ni ens192` 捕获 50 包，**全部是 17900 控制面 HTTP，
+    17902/BT 端口 0 包**——BT 字节没有走 A↔222 的 L2 近路。
+- **公平性量具 v0（只量转发层，不宣称拥塞安全）**：新增 `#[ignore]` 量具
+  `udp_relay_data_fairness_probe`（4 条 UDP DATA 流抢 64 KiB/s 全局令牌桶，3 s，
+  只打印 JSON 不自动判 pass）。一次实测 `tests/e2e/w61/fairness-probe.json`：
+  四条流份额 `25.5% / 21.4% / 21.4% / 31.6%`、`deliver_out=196`、
+  `bandwidth_limited=44259`。**没有**可靠层拥塞控制，不能读成公平性达标。
+- **可观测性修正**：`/health.holder_data.carrier` 此前写死 `relay-sub-tcp`，
+  UDP 承载搬完 1 MiB 后看板仍指向 TCP 那条路。现按 `nat.data_plane_carrier`
+  标 `relay-sub-udp`，单测 `holder_carrier_label_follows_opt_in_carrier` 钉住。
+- **状态串**：`relay_data_plane_udp` 由 `udp-carrier-implemented-rst-unverified` 改为
+  `udp-carrier-implemented-rst-path-verified`。`path` 仅限 W61 这台主机这条路径，
+  不扩大成「所有 RST 部署」；`g2_claim`/`s6_status` 不动。
+- 全量回归 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **336 passed / 0 failed**
+  （v2.4.94 基线 335 + 本版新增 1 条看板标签单测）。
+
 ## [2.4.94] - 2026-11-19 — ADR-024 落地：UDP 承载上的 BT 数据面（opt-in，默认仍 TCP）
 
 > `g2_claim=false`、`s6_status=not_run` 不变；**默认承载仍是 `tcp`**，W58/W59/W60 的结论
@@ -50,11 +86,13 @@
   `downloaded=1048576 finished=true`；持有者 `→引擎 1,264 B / ←引擎 1,049,586 B`；
   中继 `deliver_out=1940`、`data_bytes_in=1,120,714`、`bandwidth_limited=0`。
   与同文件里的 TCP 对照用例并列跑，同一把尺。
-- **状态串**：`punch_route.relay_data_plane_udp` 由 `not_implemented` 改为
-  `udp-carrier-implemented-rst-unverified`。**`rst-unverified` 不可省略**：没有在
-  ADR-020 §3.1 那类机器上复现，不得据此宣称覆盖那类部署。
-- **仍未完成**：TCP 入向被 RST 的部署复现；跨公网吞吐/公平性（无拥塞控制，不宣称）；
-  UDP 数据面的公网双端实测。
+- **状态串（v2.4.94 当时）**：`punch_route.relay_data_plane_udp` 由 `not_implemented`
+  改为 `udp-carrier-implemented-rst-unverified`。**当时 `rst-unverified` 不可省略**：
+  还没有在 ADR-020 §3.1 那类机器上复现，不得据此宣称覆盖那类部署。
+  v2.4.95 已用 W61 证据把后缀改为 `rst-path-verified`。
+- **仍未完成（v2.4.94 当时）**：TCP 入向被 RST 的部署复现；跨公网吞吐/公平性
+  （无拥塞控制，不宣称）；UDP 数据面的公网双端实测。前两项中的 RST 复现与双端
+  实测由 v2.4.95 / W61 补齐，公平性仍缺。
 - 全量回归：`cargo test --workspace --offline` **335 passed / 0 failed**。
 
 ## [2.4.93] - 2026-11-19 — 公网双端中继取片成功；修掉 v2.4.92 的数据面静默断流

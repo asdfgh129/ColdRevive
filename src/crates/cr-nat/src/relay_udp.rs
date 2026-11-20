@@ -1481,4 +1481,113 @@ mod tests {
         assert_eq!(h.stats().bandwidth_limited, 0, "信令按帧类型豁免，不看大小");
         h.stop();
     }
+
+    /// ADR-024 阶段 3 缺口的第一把量具：**全局预算下的多流公平性**。
+    ///
+    /// 这是 `#[ignore]` 的量具而不是常规测试：它跑 3 s、只打印 JSON，不自动判 pass。
+    /// 4 条 UDP DATA 流争抢同一个 64 KiB/s 令牌桶；输出每条流实际收到的字节、
+    /// 份额、以及中继的 `bandwidth_limited` 计数。它量的是**转发层公平性**，
+    /// 不替代可靠层的拥塞语义（后者仍未实现），不要据此宣称「拥塞安全」。
+    ///
+    /// 复现：`cargo test --offline -p cr-nat udp_relay_data_fairness_probe -- --ignored --nocapture`
+    #[test]
+    #[ignore = "fairness probe; run with --ignored --nocapture"]
+    fn udp_relay_data_fairness_probe() {
+        let mut limits = UdpLimits::default();
+        limits.data_byte_rate = 64 * 1024;
+        limits.data_burst_bytes = 8 * 1024;
+        limits.rate_pps = 20_000; // 只让字节预算成为瓶颈，排除 pps 干扰
+        let h = start(None, Some(limits));
+        let addr = h.addr.to_string();
+        let tmo = Duration::from_millis(500);
+        let streams = 4usize;
+        let secs = 3u64;
+        let frame = vec![0xabu8; 1024];
+
+        let mut receivers = Vec::new();
+        for i in 0..streams {
+            let mut c = UdpRelayClient::connect(&addr, tmo).unwrap();
+            c.hello(ids(100 + i as u8), tmo).unwrap();
+            receivers.push(c);
+        }
+        let before = h.stats();
+        let t0 = std::time::Instant::now();
+
+        let recvs: Vec<_> = receivers
+            .into_iter()
+            .map(|mut c| {
+                std::thread::spawn(move || {
+                    let mut bytes = 0u64;
+                    let deadline = std::time::Instant::now() + Duration::from_secs(secs + 1);
+                    while std::time::Instant::now() < deadline {
+                        match c.recv_frame(Duration::from_millis(100)) {
+                            Ok(Some(f)) if matches!(f.kind, UdpKind::Deliver) => {
+                                bytes += f.payload.len() as u64;
+                            }
+                            _ => {}
+                        }
+                    }
+                    bytes
+                })
+            })
+            .collect();
+
+        let sends: Vec<_> = (0..streams)
+            .map(|i| {
+                let mut c = UdpRelayClient::connect(&addr, tmo).unwrap();
+                c.hello(ids(200 + i as u8), tmo).unwrap();
+                let target = ids(100 + i as u8);
+                let frame = frame.clone();
+                let t0 = t0;
+                std::thread::spawn(move || {
+                    let (mut forwarded, mut limited) = (0u64, 0u64);
+                    while t0.elapsed() < Duration::from_secs(secs) {
+                        c.send_data(&target, &frame).unwrap();
+                        match c.recv_frame(Duration::from_millis(50)) {
+                            Ok(Some(f)) if matches!(f.kind, UdpKind::Status) => {
+                                match f.payload.first().and_then(|&x| UdpStatus::from_code(x)) {
+                                    Some(UdpStatus::BandwidthLimited) => limited += 1,
+                                    Some(_) => forwarded += 1,
+                                    None => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    (forwarded, limited)
+                })
+            })
+            .collect();
+
+        let delivered: Vec<u64> = recvs.into_iter().map(|j| j.join().unwrap()).collect();
+        let statuses: Vec<(u64, u64)> = sends.into_iter().map(|j| j.join().unwrap()).collect();
+        let after = h.stats();
+        let total: u64 = delivered.iter().sum();
+        let shares: Vec<f64> = delivered
+            .iter()
+            .map(|&b| if total == 0 { 0.0 } else { b as f64 / total as f64 })
+            .collect();
+        let forwarded: Vec<u64> = statuses.iter().map(|x| x.0).collect();
+        let limited: Vec<u64> = statuses.iter().map(|x| x.1).collect();
+        // cr-nat 保持 std-only：手写 JSON（数组 Debug 输出本身就是合法 JSON）。
+        println!(
+            "FAIRNESS_PROBE {{\"streams\":{streams},\"seconds\":{secs},\
+             \"budget_bytes_per_sec\":{},\"burst_bytes\":{},\
+             \"delivered_bytes_per_stream\":{delivered:?},\"share_per_stream\":{shares:?},\
+             \"forwarded_status_per_stream\":{forwarded:?},\
+             \"bandwidth_limited_status_per_stream\":{limited:?},\
+             \"relay_delta\":{{\"data_in\":{},\"deliver_out\":{},\
+             \"data_bytes_in\":{},\"bandwidth_limited\":{},\
+             \"bandwidth_limited_bytes\":{}}},\
+             \"scope\":\"loopback relay DATA forwarding; NOT a congestion-control claim\"}}",
+            limits.data_byte_rate,
+            limits.data_burst_bytes,
+            after.data_in - before.data_in,
+            after.deliver_out - before.deliver_out,
+            after.data_bytes_in - before.data_bytes_in,
+            after.bandwidth_limited - before.bandwidth_limited,
+            after.bandwidth_limited_bytes - before.bandwidth_limited_bytes,
+        );
+        h.stop();
+    }
 }

@@ -1,0 +1,26 @@
+tcpdump: verbose output suppressed, use -v[v]... for full protocol decode
+listening on ens192, link-type EN10MB (Ethernet), snapshot length 262144 bytes
+00:40:15.635903 IP 192.168.1.210.56919 > 192.168.1.222.17900: Flags [S], seq 1295145836, win 65535, options [mss 1460,nop,wscale 8,nop,nop,sackOK], length 0
+00:40:15.635953 IP 192.168.1.222.17900 > 192.168.1.210.56919: Flags [S.], seq 3986796328, ack 1295145837, win 64240, options [mss 1460,nop,nop,sackOK,nop,wscale 7], length 0
+00:40:15.636152 IP 192.168.1.210.56919 > 192.168.1.222.17900: Flags [.], ack 1, win 255, length 0
+00:40:15.636206 IP 192.168.1.210.56919 > 192.168.1.222.17900: Flags [P.], seq 1:107, ack 1, win 255, length 106
+00:40:15.636224 IP 192.168.1.222.17900 > 192.168.1.210.56919: Flags [.], ack 107, win 502, length 0
+00:40:15.636473 IP 192.168.1.222.17900 > 192.168.1.210.56919: Flags [P.], seq 1:100, ack 107, win 502, length 99
+00:40:15.636516 IP 192.168.1.222.17900 > 192.168.1.210.56919: Flags [FP.], seq 100:309, ack 107, win 502, length 209
+00:40:15.636730 IP 192.168.1.210.56919 > 192.168.1.222.17900: Flags [.], ack 310, win 254, length 0
+00:40:15.636759 IP 192.168.1.210.56919 > 192.168.1.222.17900: Flags [F.], seq 107, ack 310, win 254, length 0
+00:40:15.636778 IP 192.168.1.222.17900 > 192.168.1.210.56919: Flags [.], ack 108, win 502, length 0
+00:41:01.690850 IP 192.168.1.210.56960 > 192.168.1.222.17900: Flags [S], seq 2682962404, win 65535, options [mss 1460,nop,wscale 8,nop,nop,sackOK], length 0
+00:41:01.690886 IP 192.168.1.222.17900 > 192.168.1.210.56960: Flags [S.], seq 2259810623, ack 2682962405, win 64240, options [mss 1460,nop,nop,sackOK,nop,wscale 7], length 0
+00:41:01.691052 IP 192.168.1.210.56960 > 192.168.1.222.17900: Flags [.], ack 1, win 255, length 0
+00:41:01.691102 IP 192.168.1.210.56960 > 192.168.1.222.17900: Flags [P.], seq 1:90, ack 1, win 255, length 89
+00:41:01.691121 IP 192.168.1.222.17900 > 192.168.1.210.56960: Flags [.], ack 90, win 502, length 0
+00:41:01.691428 IP 192.168.1.222.17900 > 192.168.1.210.56960: Flags [P.], seq 1:92, ack 90, win 502, length 91
+00:41:01.691470 IP 192.168.1.222.17900 > 192.168.1.210.56960: Flags [FP.], seq 92:933, ack 90, win 502, length 841
+00:41:01.691757 IP 192.168.1.210.56960 > 192.168.1.222.17900: Flags [.], ack 934, win 252, length 0
+00:41:01.691789 IP 192.168.1.210.56960 > 192.168.1.222.17900: Flags [F.], seq 90, ack 934, win 252, length 0
+00:41:01.691807 IP 192.168.1.222.17900 > 192.168.1.210.56960: Flags [.], ack 91, win 502, length 0
+
+20 packets captured
+20 packets received by filter
+0 packets dropped by kernel

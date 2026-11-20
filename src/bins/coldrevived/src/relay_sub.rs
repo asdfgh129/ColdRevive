@@ -109,14 +109,31 @@ static HOLDER: HolderStats = HolderStats::new();
 /// splice 是否启用（只有 holder 且开了 `nat.punch_route`）。`/health` 据此区分
 /// 「没配」和「配了但没人来过」。
 static HOLDER_ENABLED: Mutex<Option<bool>> = Mutex::new(None);
+/// ADR-024：`/health.holder_data.carrier` 必须反映**实际 opt-in 的数据面承载**。
+/// 两个承载共用 `HolderStats` 计数器，但标签不能跟着 TCP 写死——否则 UDP 服务
+/// 明明搬了 1 MiB，看板还报 `relay-sub-tcp`，排障会去查错的那条路。
+static HOLDER_CARRIER: Mutex<&'static str> = Mutex::new("relay-sub-tcp");
+
+fn holder_carrier_label(carrier: &str) -> &'static str {
+    if carrier.eq_ignore_ascii_case("udp") {
+        "relay-sub-udp"
+    } else {
+        "relay-sub-tcp"
+    }
+}
 
 pub fn holder_stats_json() -> cr_core::Json {
     use cr_core::Json;
     let get = |a: &AtomicU64| Json::n(a.load(Ordering::Relaxed) as f64);
     let enabled = HOLDER_ENABLED.lock().unwrap().unwrap_or(false);
+    let carrier = if enabled {
+        *HOLDER_CARRIER.lock().unwrap()
+    } else {
+        "none"
+    };
     Json::obj(vec![
         ("enabled", Json::b(enabled)),
-        ("carrier", Json::s(if enabled { "relay-sub-tcp" } else { "none" })),
+        ("carrier", Json::s(carrier)),
         ("opens", get(&HOLDER.opens)),
         ("accepted", get(&HOLDER.accepted)),
         ("rejected", get(&HOLDER.rejected)),
@@ -213,6 +230,7 @@ pub fn spawn(cfg: &Config) {
     // 给它们算出地址只会让对端收到 OPENED 后才发现没有数据。
     let dial = holder_dial_target(cfg);
     *HOLDER_ENABLED.lock().unwrap() = Some(dial.is_some());
+    *HOLDER_CARRIER.lock().unwrap() = holder_carrier_label(&cfg.nat_data_plane_carrier);
     if let Some(a) = dial {
         eprintln!("[relay-sub] 持有者数据面已启用: 隧道 → 本地引擎 {a}（TCP 承载）");
     }
@@ -615,6 +633,15 @@ mod tests {
     fn concrete_bind_is_used_verbatim() {
         assert_eq!(local_wake_host("192.168.1.210"), "192.168.1.210");
         assert_eq!(local_wake_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    /// ADR-024：UDP 承载搬的字节不能在看板上被标成 TCP，否则排障会查错路。
+    #[test]
+    fn holder_carrier_label_follows_opt_in_carrier() {
+        assert_eq!(holder_carrier_label("udp"), "relay-sub-udp");
+        assert_eq!(holder_carrier_label("UDP"), "relay-sub-udp");
+        assert_eq!(holder_carrier_label("tcp"), "relay-sub-tcp");
+        assert_eq!(holder_carrier_label(""), "relay-sub-tcp");
     }
 
     /// 拨号目标只对「持有者 + 显式开 punch_route」成立，且三种监听写法都要归一成能连上的地址。

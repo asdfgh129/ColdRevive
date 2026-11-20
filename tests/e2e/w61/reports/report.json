@@ -1,0 +1,89 @@
+{
+  "result": "PASS",
+  "scope": "two-home-NAT (A cone / 222 symmetric), public UDP relay 119.29.150.254:7101, TCP control path on same host still RSTed",
+  "checks": [
+    {
+      "name": "tcp_control_multi_round",
+      "ok": true,
+      "detail": "passed=1/12, resets=11"
+    },
+    {
+      "name": "two_nat_classification",
+      "ok": true,
+      "detail": "A=port-restricted-cone, 222=symmetric"
+    },
+    {
+      "name": "wake_via_udp_relay",
+      "ok": true,
+      "detail": "path=relay-udp ack=OK"
+    },
+    {
+      "name": "piece_download_complete",
+      "ok": true,
+      "detail": "status=complete bytes=1048576"
+    },
+    {
+      "name": "md5_identical",
+      "ok": true,
+      "detail": "member=b0e93e825f86000e5341cf4aecb0559e holder=b0e93e825f86000e5341cf4aecb0559e"
+    },
+    {
+      "name": "member_udp_tunnel_alive_during_transfer",
+      "ok": true,
+      "detail": "mid carrier=relay-udp alive=1"
+    },
+    {
+      "name": "holder_carrier_label_is_udp",
+      "ok": true,
+      "detail": "mid=relay-sub-udp end=relay-sub-udp"
+    },
+    {
+      "name": "holder_spliced_bt_bytes",
+      "ok": true,
+      "detail": "opens=1 splices=1 from_engine=1049585"
+    },
+    {
+      "name": "member_counted_relayed_bytes",
+      "ok": true,
+      "detail": "bytes_relayed=1050872"
+    },
+    {
+      "name": "relay_three_way_accounting",
+      "ok": true,
+      "detail": "{\"data_in\": 4219, \"deliver_out\": 4214, \"status_out\": 4219, \"data_bytes_in\": 2623138, \"bandwidth_limited\": 0, \"bandwidth_limited_bytes\": 0, \"replay\": 0, \"mac_fail\": 0, \"too_big\": 0, \"bad_format\": 0, \"not_registered\": 0}"
+    },
+    {
+      "name": "relay_no_silent_drop",
+      "ok": true,
+      "detail": "{\"data_in\": 4219, \"deliver_out\": 4214, \"status_out\": 4219, \"data_bytes_in\": 2623138, \"bandwidth_limited\": 0, \"bandwidth_limited_bytes\": 0, \"replay\": 0, \"mac_fail\": 0, \"too_big\": 0, \"bad_format\": 0, \"not_registered\": 0}"
+    },
+    {
+      "name": "no_l2_bt_shortcut",
+      "ok": true,
+      "detail": "bt_lines=0 non_control_lines=0"
+    }
+  ],
+  "relay_delta": {
+    "data_in": 4219,
+    "deliver_out": 4214,
+    "status_out": 4219,
+    "data_bytes_in": 2623138,
+    "bandwidth_limited": 0,
+    "bandwidth_limited_bytes": 0,
+    "replay": 0,
+    "mac_fail": 0,
+    "too_big": 0,
+    "bad_format": 0,
+    "not_registered": 0
+  },
+  "rst": {
+    "passed": 1,
+    "rounds": 12,
+    "resets": 11
+  },
+  "boundaries": [
+    "control plane via LAN 192.168.1.222:17900; L2 capture shows no BT bytes",
+    "single 1 MiB run; no congestion/fairness conclusion",
+    "g2_claim=false, s6_status=not_run"
+  ]
+}

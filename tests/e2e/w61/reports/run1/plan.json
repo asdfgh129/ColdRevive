@@ -1,0 +1,1 @@
+{"strategy":"none","needs_relay":false,"candidates":[{"kind":"private-lan","ip":"192.168.34.222","port":17901,"internal_port":17901,"evidence":"configured-private-host"}],"tracker_public":null,"notes":["对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明"],"s6_status":"not_run","evidence_valid_for_pass":false}

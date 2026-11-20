@@ -2,10 +2,10 @@
 doc_id: ADR-024
 title: ADR-024 中继 UDP 承载上的 BT 数据面
 category: 架构决策
-version: 0.2
-status: 已接受（2026-11-19 所有者「按建议执行」；阶段 0–2 实施完成，阶段 3 前两条有证据、第三条未做）
+version: 0.3
+status: 已接受（2026-11-19 所有者「按建议执行」；阶段 0–3 均完成，RST 路径证据限于 119.29.150.254）
 owner: 架构组
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # ADR-024 中继 UDP 承载上的 BT 数据面
@@ -14,11 +14,14 @@ updated: 2026-11-19
 
 **已接受，按建议执行。** 2026-11-19 所有者先选「先出设计再实现」，随后确认「按建议执行」，
 即采用方案 B（std-only 有界可靠层）并按本文闸门分阶段实施。
-v0.2 记录实施结果：阶段 0（UDP 字节治理）、阶段 1（`cr_nat::relay_udp_stream`）、
-阶段 2（opt-in 数据面接线）与阶段 3 前两条证据均已完成；状态串为
-`relay_data_plane_udp="udp-carrier-implemented-rst-unverified"`。
-**阶段 3 第三条未完成**：没有在 ADR-020 那类「入向 TCP 被边缘注入 RST」的部署上复现，
-因此不宣称解决那类机器；默认承载仍是 TCP。
+v0.3 记录实施结果：阶段 0（UDP 字节治理）、阶段 1（`cr_nat::relay_udp_stream`）、
+阶段 2（opt-in 数据面接线）与阶段 3 三条证据均已完成；状态串为
+`relay_data_plane_udp="udp-carrier-implemented-rst-path-verified"`。
+
+**第三条证据的严格边界**：W61 是在 ADR-020 §3.1 那台 `119.29.150.254` 上，
+同一轮同时证明「非 22 入向 TCP 仍被注入 RST」与「UDP 7101 承载 1 MiB 双 NAT 取片成功」。
+状态串里的 `path` **只指这台主机这条路径**，不外推成所有 RST 部署；默认承载仍是 TCP。
+跨公网公平性/拥塞量具仍未做，不能把「跑通」读成「拥塞安全」。
 
 ## 背景：为什么还要考虑 UDP 数据面
 
@@ -136,7 +139,7 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
 - 看板：`/health.data_plane` 新增 `carrier`、`udp_tunnels`、`udp_tunnels_alive`；
   沿用 `tunnels_alive` 语义（登记数不等于活着）。
 - 阶段 3 证据出现后，`relay_data_plane_udp` 才从 `not_implemented` 改为
-  `udp-carrier-implemented-rst-unverified`。
+  `udp-carrier-implemented-rst-path-verified`。
 
 ### 阶段 3：证据（没有证据就不改状态字符串）
 
@@ -144,9 +147,12 @@ W58（LAN 中继）、W59（公网中继）、W60（真 STUN 分类 + 强制打�
    断言无损坏、无重复投递、窗口有界（实测数字见下节）。
 2. ✅ 与 TCP 数据面同一把尺：真引擎 librqbit 经 SOCKS5 取片，`1048576 B`、`finished=true`，
    两端一致；同一测试文件里 TCP 与 UDP 两条用例并列跑。
-3. ❌ **未完成**：只有在**确有 TCP 入向被 RST 的部署**上复现成功，才宣称解决 ADR-020 场景。
-   本轮只在 `127.0.0.1` 中继与真实 librqbit 上验证，**没有**在腾讯云轻量那类机器上复测；
-   因此状态串保留 `rst-unverified`，`relay_data_plane_udp` 的「已实现」只指承载本身能跑通。
+3. ✅ **W61（2026-11-20）**：在 ADR-020 §3.1 那台 `119.29.150.254` 上，同轮做两件事：
+   ① A → `7100/TCP` 纯回显 12 轮，11 轮被强制断开（另一轮偶发成功，ADR-020 已记录同现象）；
+   ② A（`112.5.60.4`, cone）与 222（`112.5.32.34`, symmetric）经 `7101/UDP` 中继完成
+   1 MiB 取片，md5 两端一致、`wake.path=relay-udp`、`holder.udp_tunnels_alive=1`、
+   `splices_done=1`、中继 `Δdata_bytes_in=2,623,138`、`bandwidth_limited=0`。
+   因此后缀从 `rst-unverified` 改为 `rst-path-verified`；`path` 只指该主机该路径。
 
 ## 与现有 ADR 的关系
 
@@ -175,6 +181,9 @@ cargo test --offline -p cr-nat real_udp_relay_carries_1mib -- --nocapture
 # 阶段 3-2：真引擎 librqbit 经 SOCKS5 取片（同文件另有一条 TCP 对照）
 cargo test --offline -p cr-engine --test relay_data_e2e -- --nocapture
 
+# 阶段 3-3：RST 部署上的公网双端（详见 tests/e2e/w61/README.md）
+python tests/e2e/w61/make_report.py        # 12/12，失败即非零退出
+
 # UDP 承载上限与 MTU
 cargo test --offline -p cr-nat max_datagram_fits_ipv6_min_mtu
 ```
@@ -190,12 +199,23 @@ ACK 方向注入 `seen=1175 / dropped=57 / reordered=20 / duplicated=14`；结�
 `downloaded=1048576 finished=true`，持有者 `→引擎 1264 B / ←引擎 1,049,586 B`，
 中继 `deliver_out=1940`、`data_bytes_in=1,120,714`、`bandwidth_limited=0`。
 
+**阶段 3-3 实测（W61，`tests/e2e/w61/reports/report.json`）**：12/12 断言通过。
+TCP 对照 11/12 重置；A/222 的 STUN 分类分别是 cone / symmetric；
+`wake.path=relay-udp`；中途 `udp_tunnels_alive=1`；结束后两端 md5 一致、
+持有者 `splices_done=1 / ←引擎 1,049,585 B`、下载端 `bytes_relayed=1,050,872`；
+中继 Δ`data_in=4219 / deliver_out=4214 / status_out=4219 / data_bytes_in=2,623,138 /
+bandwidth_limited=0 / replay=0 / mac_fail=0`；222 管理口 50 包全是 17900 控制面，
+BT 端口 0 包。
+
 **证据边界（照写，不许放宽）**
 
-1. 两条证据都在 `127.0.0.1` 上，**不是**公网/跨 NAT 证据；跨公网吞吐、RTT 敏感性与公平性
-   一律未测，不得从本 ADR 推出性能结论。
-2. 没有在 ADR-020 §3.1 那类「入向 TCP 被边缘注入 RST」的机器上复现，
-   故 `relay_data_plane_udp="udp-carrier-implemented-rst-unverified"` 的
-   `rst-unverified` **不可省略**。
-3. 默认承载仍是 `tcp`；W58/W59/W60 的全部结论不受影响。
-4. `g2_claim=false`、`s6_status=not_run` 不变；UDP 数据面不是 NAT 可达性证据。
+1. 证据 3-1/3-2 在 `127.0.0.1`；证据 3-3 是**公网 UDP 中继 + 两个不同 NAT 出口**，
+   但只有单次 1 MiB、约 32 s 的样本。**跨公网吞吐与 RTT 敏感性仍未测**；
+   v2.4.95 新增的 `udp_relay_data_fairness_probe` 只是回环转发层量具
+   （4 流抢 64 KiB/s 令牌桶，份额 21.4–31.6%），**不是**可靠层拥塞控制结论。
+2. `rst-path-verified` 只覆盖 `119.29.150.254` 这条被注入 RST 的路径，
+   不外推成「所有 RST 部署都能用」，也不代表 ADR-020 的其他约束被改掉。
+3. W61 的控制面经 `192.168.1.222:17900`（LAN），只有 BT 字节进公网 UDP 中继；
+   L2 抓包证明没有 BT 近路，但这仍**不是**「两个 NAT 直接可达」的证据。
+4. 默认承载仍是 `tcp`；W58/W59/W60 的全部结论不受影响。
+5. `g2_claim=false`、`s6_status=not_run` 不变；UDP 数据面不是 NAT 可达性证据。

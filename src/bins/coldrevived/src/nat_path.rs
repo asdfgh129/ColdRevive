@@ -858,7 +858,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     ("local_ok", Json::b(local_ok)),
                     ("route", Json::s(route.label())),
                     ("relay_data_plane", Json::s("tcp-carrier-implemented")),
-                    ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-unverified")),
+                    ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-path-verified")),
                     ("s6_status", Json::s("not_run")),
                 ]),
                 Err(e) => Json::obj(vec![
@@ -971,7 +971,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("peer", Json::s(&peer_label)),
                 ("tcp_punch_established", Json::b(true)),
                 ("relay_data_plane", Json::s("tcp-carrier-implemented")),
-                ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-unverified")),
+                ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-path-verified")),
                 ("is_s6_evidence", Json::b(false)),
                 ("g2_claim", Json::b(false)),
                 ("s6_status", Json::s("not_run")),
