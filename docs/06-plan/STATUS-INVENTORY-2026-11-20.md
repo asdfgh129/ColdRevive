@@ -11,7 +11,8 @@ updated: 2026-11-20
 # 阶段状态盘点：各优先级 P / 各里程碑 M 的完成与待办（2026-11-20）
 
 > 编号 DOC-28 · 版本 1.0 · 状态 **有效** · 责任人 架构组 · 更新 2026-11-20
-> 口径基准：仓库 commit `e1bb4e6`（公平性量具 v1），全量回归 336 passed / 0 failed。
+> 口径基准：本文初版为 `e1bb4e6`（336 passed）；2026-11-21 复核基线为 `5e3e17f`，
+> 全量回归 384 passed / 0 failed / 3 ignored，详见 [DOC-29](STAGE-DEBT-AUDIT-2026-11-21.md)。
 > 本文是横向盘点，不改任何门禁口径：**`g2_claim=false`、`s6_status=not_run`，默认承载仍 `tcp`**。
 > 命名约定：**P = 需求优先级 P0/P1/P2（[SRS](../01-product/SRS.md)）**；
 > **M = 里程碑 M0–M5（[ROADMAP](ROADMAP.md)）**；另有架构模块 M-01～M-16（[ARCH](../02-architecture/ARCH.md)）。

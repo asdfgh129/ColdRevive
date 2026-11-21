@@ -2,10 +2,10 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 2.9
+version: 3.0
 status: 有效
 owner: 架构组
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # 文档体系说明与导航
@@ -67,6 +67,7 @@ updated: 2026-11-20
 | DOC-23 | S3 / S5 / S6 判据判定记录 | [06-plan/G2-SPIKE-VERDICT-2026-11-17.md](06-plan/G2-SPIKE-VERDICT-2026-11-17.md) | 已定稿 |
 | DOC-27 | M2 阶段小结（2026-11-20，v2.4.95） | [06-plan/PHASE-SUMMARY-2026-11-20.md](06-plan/PHASE-SUMMARY-2026-11-20.md) | 有效 |
 | DOC-28 | 阶段状态盘点：P/M 完成与待办（2026-11-20） | [06-plan/STATUS-INVENTORY-2026-11-20.md](06-plan/STATUS-INVENTORY-2026-11-20.md) | 有效 |
+| DOC-29 | P0/P1/P2 与 M1/M2 欠账复核（2026-11-21） | [06-plan/STAGE-DEBT-AUDIT-2026-11-21.md](06-plan/STAGE-DEBT-AUDIT-2026-11-21.md) | 有效 |
 
 ## 4. Front Matter 规范
 

@@ -1,0 +1,27 @@
+{
+  "schema": "coldrevive.homeprobe.dht-targets/v1",
+  "note": "只读目标清单。82.157.68.159:6881 是项目自有公网节点；其余是公共引导节点。infohash 来自 tests/e2e/dht-announce/verify.json（2026-11-20 自有节点宣告）。不得给这些目标发送 announce_peer。",
+  "targets": [
+    {
+      "label": "own-public-node",
+      "host": "82.157.68.159",
+      "port": 6881,
+      "infohash": "6d20782655acfb074d7e518c50fc99a8a7482e37"
+    },
+    {
+      "label": "transmissionbt",
+      "host": "dht.transmissionbt.com",
+      "port": 6881
+    },
+    {
+      "label": "router.bittorrent.com",
+      "host": "router.bittorrent.com",
+      "port": 6881
+    },
+    {
+      "label": "router.utorrent.com",
+      "host": "router.utorrent.com",
+      "port": 6881
+    }
+  ]
+}

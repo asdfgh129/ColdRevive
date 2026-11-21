@@ -2,6 +2,26 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.98] - 2026-11-21 — P0/P1/P2 与 M1/M2 欠账复核 + macOS 家宽取证 kit
+
+> 本轮不改产品代码与门禁口径：`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`。
+> 复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **384 passed / 0 failed / 3 ignored**。
+
+- 新增 [DOC-29 阶段欠账复核](docs/06-plan/STAGE-DEBT-AUDIT-2026-11-21.md)：逐项核对 P0/P1/P2、M1/M2，
+  结论是**欠账主要在代码/授权**（FR-25 daemon 与跨分片、FR-10 守护进程多任务、G0 `protocol_scope`、
+  SRS 评审与 FR-24 重号、公平性阈值/拥塞语义），换网络只能补环境类描述性证据。
+- 纠正陈旧事实：W62 报告实际 **11/11**（PHASE-SUMMARY/ROADMAP 原写 12/12）；DOC-28 基线补注
+  2026-11-21 复核值；ROADMAP §6 标题日期更新至 11-20。另在 DOC-29 登记 `spikes.json`
+  里 `57100→7100`「可用」与骨架清单两处历史表述与现行证据不符，未改机器文件。
+- 新增 `tests/e2e/homeprobe-macos/`：macOS Ventura / Intel 家宽取证 kit（仅 Python 标准库）。
+  `run_all.sh` 跑离线自检、平台信息、STUN/NAT 行为、只读 DHT（ping/get_peers，无 announce）、
+  KAD `0xE401` bootstrap 与汇总；输出 `results/summary.json`，缺失记 `missing`，
+  恒定 `g2_claim=false` / `s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false`。
+- 新增 `scripts/package_homeprobe.py` 与分发包 `dist/coldrevive-homeprobe-macos-intel-v1.zip`
+  （11 文件 + `MANIFEST.json`，含逐文件 sha256，保留 .sh/.py 可执行位）。
+  离线自检：DHT 4/4、NAT 判据 14/14；真机回环烟测：自有公网节点 `ping=OK`、`get_peers`
+  `token_len=8 / peers=1 / peer_list=112.5.32.34:17200`，与既有 `verify.json` 一致。
+
 ## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
 
 > 承接 v2.4.96「FR-24/25 只到本地/组件级」。本轮把三项 P0 都推到**真实对端**：

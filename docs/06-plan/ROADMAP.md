@@ -102,7 +102,7 @@ ColdRevive
 | 安全 / 测试工程师 | 威胁建模、故障注入、压测 | M2–M4 |
 | 法务 / 合规顾问 | P2P 工具合规边界 | M0、M4 |
 
-## 6. 当前状态（起始 2026-11-09，更新至 2026-11-14）
+## 6. 当前状态（起始 2026-11-09，更新至 2026-11-20）
 
 > 本节按时间追加观测，**较早条目保留当时口径**，最新状态以本节末尾条目与
 > `spikes.json` 为准。截至 **2026-11-14**：**G0 条件冻结（conditional pass）**，
@@ -824,7 +824,7 @@ ColdRevive
 - **2026-11-20 补三项 P0（v2.4.96 → v2.4.97，从「组件级」推到「真实对端」）**：
   按 [STATUS-INVENTORY](STATUS-INVENTORY-2026-11-20.md) 的盘点结论先补 P0 未实现项。
   **未宣称 G2 达标**：`g2_claim=false`、`s6_status=not_run`、默认承载仍 `tcp`。
-  - **FR-11 握手拦截（W62，12/12）✅**：`engine.guard_handshake` opt-in，`cr-guard` 与引擎
+  - **FR-11 握手拦截（W62，11/11）✅**：`engine.guard_handshake` opt-in，`cr-guard` 与引擎
     分端口，按 infohash 走唯一入口 `wake_seed`。坑：`read_handshake` 读走的 68 B 必须
     `splice_prefaced` 补回，否则唤醒成功但 0 字节。仅回环 TCP。
   - **FR-14 空闲自动休眠（W14，12/12）✅ opt-in**：唯一入口 `idle::sleep_hot_seeds`
