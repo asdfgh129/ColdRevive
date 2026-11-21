@@ -96,7 +96,7 @@ updated: 2026-11-21
 **可推进（环境类证据）**：第二个真实 NAT 出口样本、公网 DHT 只读可达性、KAD 专用 UDP 出口、首个 macOS Intel 平台样本。
 **不可推进（代码/授权类）**：第 2–4 节所列绝大多数欠账，尤其 G0 scope、SRS 评审、FR-25 daemon 接线、拥塞语义、`g2_claim`/`s6_status` 常量。
 
-交付 kit：`tests/e2e/homeprobe-macos/`（源）+ `dist/coldrevive-homeprobe-macos-intel-v1.zip`（分发包）。
+交付 kit：`tests/e2e/homeprobe-macos/`（源）+ `dist/coldrevive-homeprobe-macos-intel-v1.4.zip`（分发包）。
 只用 Python 标准库，兼容 macOS Ventura 13.x / Sequoia 15.x，x86_64 与 arm64 均可；
 **不绑定本机 IP**（UDP 全部绑 `0.0.0.0` 临时端口，公网 IP 运行时观测），家宽动态 IP 换址后直接重跑即可；
 配置中的固定地址都是远端目标（自有 STUN/DHT 与 KAD 联系人），不是本地绑定。
@@ -122,6 +122,13 @@ kit v1.3 已从真 aMuleD 的 2026-11-21T12:29:40Z LAN BOOTSTRAP_RES 取 20 个�
 收到 `0x09 BOOTSTRAP_RES`（明文与 zlib 打包两种帧），排除清单失效/字节序错误。
 原始回传含用户内网地址与主机名，未进入公开仓库；以上仅为脱敏后的描述性结论，
 `g2_claim` / `s6_status` 机器常量不变。
+**第二轮（v1.4）回传是正例**：同一家宽用 10 个新鲜目标、0.2 pps 实跑，
+KAD **8/10** 收到 `0x09 BOOTSTRAP_RES`（`kad_plaintext`），`summary.json` 正常生成；
+DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT / 疑似双层 NAT
+出口具备 KAD 专用 UDP 出/回程能力，与 Windows 主机 8–9/10 的正例对照一致，
+排除了首轮 `0/5` 的“联系人失效/字节序”混淆；但探针只发 `BOOTSTRAP_REQ`，
+**仍不计 S2 / FR-24 公网检索**，也不改任何机器常量。分发包自此带版本后缀
+（`...-v1.4.zip`，`MANIFEST.json` 含 `kit_version`），避免误用旧包。
 
 ## 7. 建议顺序（不因新增环境而重排）
 

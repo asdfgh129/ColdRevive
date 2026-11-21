@@ -18,7 +18,7 @@
   `run_all.sh` 跑离线自检、平台信息、STUN/NAT 行为、只读 DHT（ping/get_peers，无 announce）、
   KAD `0xE401` bootstrap 与汇总；输出 `results/summary.json`，缺失记 `missing`，
   恒定 `g2_claim=false` / `s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false`。
-- 新增 `scripts/package_homeprobe.py` 与分发包 `dist/coldrevive-homeprobe-macos-intel-v1.zip`
+- 新增 `scripts/package_homeprobe.py` 与分发包 `dist/coldrevive-homeprobe-macos-intel-v1.4.zip`
   （11 文件 + `MANIFEST.json`，含逐文件 sha256，保留 .sh/.py 可执行位）。
   离线自检：DHT 4/4、NAT 判据 14/14；真机回环烟测：自有公网节点 `ping=OK`、`get_peers`
   `token_len=8 / peers=1 / peer_list=112.5.32.34:17200`，与既有 `verify.json` 一致。
@@ -41,6 +41,16 @@
   `~/.Trash/` 运行后在别处找不到 `results/`。`run_all.sh` 现在启动与结束都打印
   **绝对路径** `results: ...`，所有探针 `--out` / `report.py --results` 也改用绝对路径，
   README 增加“如何识别旧包”与“不要放在废纸篓运行”的说明。
+- **第二轮家宽回传（v1.4，正例）**：同一台 macOS 15.5 / x86_64 家宽（对称型 NAT，
+  默认网关与第 2 跳均为私有地址，疑似双层/CGNAT）用新清单 **8/10** 收到真实
+  `0x09 BOOTSTRAP_RES`（`kad_plaintext`，0.2 pps / 10 目标），`results/summary.json`
+  正常产出；DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这是家宽出口具备
+  KAD 专用 UDP 出/回程能力的描述性正例，与 Windows 主机 8–9/10 正例对照一致，
+  **但只发 BOOTSTRAP_REQ，仍不计 S2 / FR-24 公网检索**，机器常量不变。
+- **分发包改名**：`scripts/package_homeprobe.py` 输出
+  `dist/coldrevive-homeprobe-macos-intel-v1.4.zip`（内部目录同名），旧的无版本后缀
+  同名文件从 `dist/` 移除；`MANIFEST.json` 新增 `kit_version` 字段，README/CHANGELOG/
+  DOC-29/主 README 的引用同步更新，避免新旧副本混淆。
 
 ## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
 

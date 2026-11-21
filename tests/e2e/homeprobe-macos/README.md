@@ -19,10 +19,10 @@
 
 ## 2. 运行步骤
 
-1. 解压得到的目录，例如 `coldrevive-homeprobe-macos-intel-v1/`。
+1. 解压得到的目录，例如 `coldrevive-homeprobe-macos-intel-v1.4/`（分发包名带版本号，如 `coldrevive-homeprobe-macos-intel-v1.4.zip`；始终用最新版，不要混用旧副本）。
 2. 打开“终端”，进入该目录：
    ```bash
-   cd ~/Downloads/coldrevive-homeprobe-macos-intel-v1
+   cd ~/Downloads/coldrevive-homeprobe-macos-intel-v1.4
    bash run_all.sh
    ```
    **优先用 `bash run_all.sh`**：它直接把脚本交给 bash 读取，不需要可执行位，也不会被下载 ZIP 的 macOS 隔离属性（quarantine）拦住。若你更想用 `./run_all.sh`，先按下面的排障步骤处理。
@@ -75,7 +75,8 @@ xattr -l run_all.sh
 - v1.3 已用**新鲜 BOOTSTRAP_RES** 重建 `config/kad-targets.json`：2026-11-21T12:29:40Z 从真 aMuleD 的 LAN `0xE4/0xE5` BOOTSTRAP_RES 解出 20 个联系人，经 `tests/spikes/s2/bootstrap_res_to_targets.py` 按 **KAD host-order LE 反序**解码（该脚本 `--selftest` 通过），取前 10 个公网可路由目标。
 - **正例对照**：同一份清单在 Windows 主机上以 `--sample-size 10 --rate-limit 0.2` 实跑，**8/10** 收到真实 `0x09 BOOTSTRAP_RES`（明文 523 B 与 zlib 打包 520–521 B 两种帧都出现），证明清单本身有效、字节序正确。
 - 因此请**重新下载 v1.3+ 包再跑一次**（`run_all.sh` 已改为 `--sample-size 10`）。若这次仍是 `0/10`，可以和上面的正例直接对照，排除“联系人失效”这个混淆项；但 `0/10` 依然只是诊断，不能自动写成 S2 结论。
-- **怎么判断你跑的是不是旧包**：控制台 KAD 段落若列出 **5 个**目标、或出现 `run_all.sh: line 30: code?: unbound variable`、或 `kit:` 路径在 `~/.Trash/`，都是 v1.2 或更早的副本。新包控制台会打印 `results: .../results` 绝对路径，KAD 列出 **10 个**目标，且最后生成 `results/summary.json`。可用 `shasum -a 256 coldrevive-homeprobe-macos-intel-v1.zip` 校验你下载的文件。
+- **v1.4 家宽重跑结果**：同一台家宽（对称型 NAT，疑似双层/CGNAT）用新清单 **`8/10`** 收到真实 `0x09 BOOTSTRAP_RES`（明文 `kad_plaintext`），`results/summary.json` 正常产出。这是「家宽出口具备 KAD 专用 UDP 出/回程能力」的**正例**，与 Windows 主机 8–9/10 的正例对照一致；但它只发 `BOOTSTRAP_REQ`，**仍不计 S2 / FR-24 公网检索**，也不改 `g2_claim`、`s6_status`。
+- **怎么判断你跑的是不是旧包**：控制台 KAD 段落若列出 **5 个**目标、或出现 `run_all.sh: line 30: code?: unbound variable`、或 `kit:` 路径在 `~/.Trash/`，都是 v1.2 或更早的副本。新包控制台会打印 `results: .../results` 绝对路径，KAD 列出 **10 个**目标，且最后生成 `results/summary.json`。可用 `shasum -a 256 coldrevive-homeprobe-macos-intel-v1.4.zip` 校验你下载的文件；`MANIFEST.json` 里也带 `kit_version` 字段。
 
 ## 3. 退出码口径
 

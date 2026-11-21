@@ -4,8 +4,9 @@
 用法：
   python3 scripts/package_homeprobe.py
 输出：
-  dist/coldrevive-homeprobe-macos-intel-v1.zip
-zip 内含 MANIFEST.json（逐文件 sha256），并要求 .sh / .py 保留可执行位。
+  dist/coldrevive-homeprobe-macos-intel-v<KIT_VERSION>.zip
+（例如 v1.4；文件名带版本，避免新旧副本混淆。）
+zip 内含 MANIFEST.json（逐文件 sha256 与 kit 版本），并要求 .sh / .py 保留可执行位。
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ from typing import Dict, List
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "tests" / "e2e" / "homeprobe-macos"
-OUT = ROOT / "dist" / "coldrevive-homeprobe-macos-intel-v1.zip"
-BASE = "coldrevive-homeprobe-macos-intel-v1"
+KIT_VERSION = "1.4"
+BASE = "coldrevive-homeprobe-macos-intel-v" + KIT_VERSION
+OUT = ROOT / "dist" / (BASE + ".zip")
 SKIP_DIRS = {"results", "reports", "__pycache__"}
 SKIP_SUFFIXES = (".pyc", ".pyo")
 
@@ -49,6 +51,7 @@ def main() -> int:
 
     manifest: Dict = {
         "schema": "coldrevive.homeprobe.kit-manifest/v1",
+        "kit_version": KIT_VERSION,
         "built_at": datetime.now(timezone.utc).isoformat(),
         "target": "macOS Ventura 13.x / x86_64 (Intel), Python 3.8+",
         "base_dir": BASE,
