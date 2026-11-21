@@ -109,7 +109,7 @@ updated: 2026-11-21
 python3 scripts/package_homeprobe.py                    # 重建 zip 与 MANIFEST
 python3 probes/dht_readonly_probe.py --self-test        # 离线编解码自检
 python3 probes/nat_behavior.py --self-test              # 离线判据自检
-./run_all.sh                                            # macOS 上跑全量取证
+bash run_all.sh                                         # macOS 上跑全量取证（避开 quarantine 执行位问题）
 ```
 
 ## 7. 建议顺序（不因新增环境而重排）

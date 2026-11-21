@@ -22,6 +22,10 @@
   （11 文件 + `MANIFEST.json`，含逐文件 sha256，保留 .sh/.py 可执行位）。
   离线自检：DHT 4/4、NAT 判据 14/14；真机回环烟测：自有公网节点 `ping=OK`、`get_peers`
   `token_len=8 / peers=1 / peer_list=112.5.32.34:17200`，与既有 `verify.json` 一致。
+- kit README 升到 v1.2：针对 macOS 下载 ZIP 的 `com.apple.quarantine` 导致
+  `chmod +x` 后仍报 `operation not permitted`，把 `bash run_all.sh` 定为首选运行方式，
+  并补充 `xattr -dr com.apple.quarantine .` 排障命令（探针始终由 `python3` 解释执行，
+  不需要 probe 文件自身可执行）。
 
 ## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
 

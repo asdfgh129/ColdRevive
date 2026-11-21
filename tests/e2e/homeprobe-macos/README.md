@@ -1,6 +1,6 @@
 # ColdRevive 家宽取证 kit（macOS Ventura / Sequoia）
 
-> 版本 1.1 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
+> 版本 1.2 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
 > （分发包名保留 `intel` 只是沿用首版命名，脚本是纯 Python，不含架构相关代码）。
 > 依赖：**只要 macOS 自带的 Python 3**（或任意 Python 3.8+）；不需要 Rust、Homebrew、管理员权限。
 > 本 kit 只采集证据，**不会自动判 pass**，也不会修改项目门禁常量：
@@ -23,9 +23,9 @@
 2. 打开“终端”，进入该目录：
    ```bash
    cd ~/Downloads/coldrevive-homeprobe-macos-intel-v1
-   chmod +x run_all.sh            # 若提示无执行权限
-   ./run_all.sh
+   bash run_all.sh
    ```
+   **优先用 `bash run_all.sh`**：它直接把脚本交给 bash 读取，不需要可执行位，也不会被下载 ZIP 的 macOS 隔离属性（quarantine）拦住。若你更想用 `./run_all.sh`，先按下面的排障步骤处理。
    如果没有 Python 3，先执行一次 `xcode-select --install`（只装命令行工具，不需要完整 Xcode）。
 3. 全程约 1–2 分钟。它只发低速、只读的标准 STUN / KRPC / KAD bootstrap 报文，不下载文件、不安装软件、不发布任何 Key。
 4. 结束后把整个 `results/` 目录压缩回传（里面有 `summary.json`、各探针 JSON、以及记录退出码的 `.exit` 文件）。
@@ -43,6 +43,31 @@
 - **配置里出现的 IP 是目标端，不是本地绑定**：`119.29.150.254:3478`（自有 STUN）、`82.157.68.159:6881`（自有 DHT）、`config/kad-targets.json` 的 5 个 KAD 联系人，以及脚本自检里 `127.0.0.1` / 示例 IP，都不是要求家宽具备的地址。
 - **Sequoia 可用**：macOS 15 的 Command Line Tools 自带 Python 3.9.6，本 kit 已按 Python 3.9 语法自检通过；Apple Silicon 上 `platform.machine()` 会记成 `arm64`，不影响判据。
 - **Sequoia 的本地网络权限**：若首次运行弹出“本地网络”授权，请允许“终端”；否则只影响 SSDP 发现 UPnP IGD 与 NAT-PMP 这类**局域网**探测，会把相应项如实记为不可用，不影响 STUN / DHT / KAD 的出向取证。若没弹窗无需处理。
+
+## 2.2 排障：`operation not permitted` / `permission denied`
+
+从浏览器或聊天工具下载的 ZIP 解压后，macOS 会给文件加 `com.apple.quarantine` 扩展属性。表现是即使 `chmod +x` 已把权限改成 `-rwxr-xr-x`，执行仍报：
+
+```
+zsh: operation not permitted: ./run_all.sh
+```
+
+任选一种办法：
+
+```bash
+# 办法 A（最省事，推荐）：绕过执行位，直接让 bash 读取脚本
+bash run_all.sh
+
+# 办法 B：先去掉隔离属性，再正常执行
+xattr -dr com.apple.quarantine .
+chmod +x run_all.sh
+./run_all.sh
+
+# 想先确认是不是隔离属性：
+xattr -l run_all.sh
+```
+
+注意：`run_all.sh` 内部对每个探针都是 `"$python3" probes/xxx.py`，**不会直接执行 `probes/*.py`**，所以探针文件带 quarantine 也不影响 `bash run_all.sh`。若执行时弹出“本地网络”权限请求，请允许终端访问（只影响局域网发现项，不影响 STUN/DHT/KAD 出向证据）。
 
 ## 3. 退出码口径
 
