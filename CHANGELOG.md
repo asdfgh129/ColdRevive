@@ -13,7 +13,8 @@
 - 纠正陈旧事实：W62 报告实际 **11/11**（PHASE-SUMMARY/ROADMAP 原写 12/12）；DOC-28 基线补注
   2026-11-21 复核值；ROADMAP §6 标题日期更新至 11-20。另在 DOC-29 登记 `spikes.json`
   里 `57100→7100`「可用」与骨架清单两处历史表述与现行证据不符，未改机器文件。
-- 新增 `tests/e2e/homeprobe-macos/`：macOS Ventura / Intel 家宽取证 kit（仅 Python 标准库）。
+- 新增 `tests/e2e/homeprobe-macos/`：macOS 家宽取证 kit（仅 Python 标准库，Ventura/Sequoia、
+  Intel/Apple Silicon 均可；**不绑定本机 IP，动态公网 IP 换址后直接重跑**）。
   `run_all.sh` 跑离线自检、平台信息、STUN/NAT 行为、只读 DHT（ping/get_peers，无 announce）、
   KAD `0xE401` bootstrap 与汇总；输出 `results/summary.json`，缺失记 `missing`，
   恒定 `g2_claim=false` / `s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false`。

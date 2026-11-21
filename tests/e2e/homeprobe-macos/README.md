@@ -1,6 +1,7 @@
-# ColdRevive 家宽取证 kit（macOS Ventura / Intel）
+# ColdRevive 家宽取证 kit（macOS Ventura / Sequoia）
 
-> 版本 1.0 · 2026-11-21 · 目标机器：macOS Ventura 13.x，x86_64（Intel）
+> 版本 1.1 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
+> （分发包名保留 `intel` 只是沿用首版命名，脚本是纯 Python，不含架构相关代码）。
 > 依赖：**只要 macOS 自带的 Python 3**（或任意 Python 3.8+）；不需要 Rust、Homebrew、管理员权限。
 > 本 kit 只采集证据，**不会自动判 pass**，也不会修改项目门禁常量：
 > `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`。
@@ -34,6 +35,14 @@
    python3 probes/platform_info.py --out results/platform.json
    python3 probes/dht_readonly_probe.py --self-test
    ```
+
+## 2.1 IP 绑定、动态 IP 与 Sequoia
+
+- **不绑定本机 IP**：所有 UDP 套接字都绑 `0.0.0.0`（或 `""`）的**临时端口**，由系统按当前默认路由选出口。`run_all.sh` 不给 KAD 探针传 `--source-port`，所以也没有固定源端口。
+- **公网 IP 是运行时观测值**：`platform_info.py` 通过 HTTP 尽力查询，`stun_probe.py` / `nat_behavior.py` 用 STUN 映射地址交叉确认，结果写进 JSON。家里拨号换 IP 不需要改配置；换 IP 后重跑即可，报告里带 `recorded_at` 便于区分场次。
+- **配置里出现的 IP 是目标端，不是本地绑定**：`119.29.150.254:3478`（自有 STUN）、`82.157.68.159:6881`（自有 DHT）、`config/kad-targets.json` 的 5 个 KAD 联系人，以及脚本自检里 `127.0.0.1` / 示例 IP，都不是要求家宽具备的地址。
+- **Sequoia 可用**：macOS 15 的 Command Line Tools 自带 Python 3.9.6，本 kit 已按 Python 3.9 语法自检通过；Apple Silicon 上 `platform.machine()` 会记成 `arm64`，不影响判据。
+- **Sequoia 的本地网络权限**：若首次运行弹出“本地网络”授权，请允许“终端”；否则只影响 SSDP 发现 UPnP IGD 与 NAT-PMP 这类**局域网**探测，会把相应项如实记为不可用，不影响 STUN / DHT / KAD 的出向取证。若没弹窗无需处理。
 
 ## 3. 退出码口径
 

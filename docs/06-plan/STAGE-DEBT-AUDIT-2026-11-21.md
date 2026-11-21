@@ -97,7 +97,9 @@ updated: 2026-11-21
 **不可推进（代码/授权类）**：第 2–4 节所列绝大多数欠账，尤其 G0 scope、SRS 评审、FR-25 daemon 接线、拥塞语义、`g2_claim`/`s6_status` 常量。
 
 交付 kit：`tests/e2e/homeprobe-macos/`（源）+ `dist/coldrevive-homeprobe-macos-intel-v1.zip`（分发包）。
-只用 Python 标准库，兼容 macOS Ventura 13.x / Intel x86_64 自带 Python 3；
+只用 Python 标准库，兼容 macOS Ventura 13.x / Sequoia 15.x，x86_64 与 arm64 均可；
+**不绑定本机 IP**（UDP 全部绑 `0.0.0.0` 临时端口，公网 IP 运行时观测），家宽动态 IP 换址后直接重跑即可；
+配置中的固定地址都是远端目标（自有 STUN/DHT 与 KAD 联系人），不是本地绑定。
 `run_all.sh` 依次跑离线自检、平台信息、STUN、NAT 行为、只读 DHT、KAD bootstrap 与汇总，
 输出 `results/summary.json` 及各探针 JSON。脚本恒定写
 `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false`；
