@@ -19,15 +19,15 @@ mkdir -p results
 LABEL="home-$(hostname)"
 
 run_step() {
-  name="$1"
+  local name="$1"
   shift
+  local code=0
   echo
   echo "=== $name ==="
-  "$PY" "$@"
-  code=$?
+  "$PY" "$@" || code=$?
   echo "$code" > "results/${name}.exit"
   if [ "$code" -gt 1 ]; then
-    echo "WARN: $name 退出码 $code（资料缺失照记，不补默认值）" >&2
+    printf 'WARN: %s 退出码 %s（资料缺失照记，不补默认值）\n' "$name" "$code" >&2
   fi
   return 0
 }
@@ -64,7 +64,7 @@ run_step dht probes/dht_readonly_probe.py \
 
 # 5) KAD 专用 UDP 出口（只发 0xE401 BOOTSTRAP_REQ，频率 0.2 pps）
 run_step kad_egress probes/kad_egress_probe.py \
-  --targets config/kad-targets.json --sample-size 5 --rate-limit 0.2 --timeout 3.0 \
+  --targets config/kad-targets.json --sample-size 10 --rate-limit 0.2 --timeout 3.0 \
   --attest-i-am-the-experiment-operator --out results/kad_egress.json
 
 # 6) 汇总

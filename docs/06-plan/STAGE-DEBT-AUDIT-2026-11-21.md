@@ -112,6 +112,17 @@ python3 probes/nat_behavior.py --self-test              # 离线判据自检
 bash run_all.sh                                         # macOS 上跑全量取证（避开 quarantine 执行位问题）
 ```
 
+**首轮回传与修订（2026-11-21 晚）**：kit v1.2 在 macOS 15.5 / x86_64 / Python 3.14.5 上完成
+STUN/NAT/DHT 取证：第二个真实家宽出口为对称型 NAT（映射与过滤均 address-and-port
+dependent；UPnP 可用、NAT-PMP 不可用），自有 DHT 节点 `ping` 44.6 ms 且 `get_peers`
+`token_len=8 / peers=1`，public transmissionbt 节点 `ping` 通。KAD `0/5 NO_REPLY`
+使用的是 2026-11-20 W24-pub 的过期联系人，**不计 S2、也不构成出口被过滤的证据**。
+kit v1.3 已从真 aMuleD 的 2026-11-21T12:29:40Z LAN BOOTSTRAP_RES 取 20 个联系人，
+按 KAD host-order LE 反序解码取前 10 个；同清单在 Windows 主机正例对照 **8/10**
+收到 `0x09 BOOTSTRAP_RES`（明文与 zlib 打包两种帧），排除清单失效/字节序错误。
+原始回传含用户内网地址与主机名，未进入公开仓库；以上仅为脱敏后的描述性结论，
+`g2_claim` / `s6_status` 机器常量不变。
+
 ## 7. 建议顺序（不因新增环境而重排）
 
 1. **先补代码债的头部**：FR-25 接 daemon + >`PARTSIZE` 跨分片；FR-10 守护进程多样种；FR-11/14 的默认策略与 µTP 覆盖。

@@ -26,6 +26,17 @@
   `chmod +x` 后仍报 `operation not permitted`，把 `bash run_all.sh` 定为首选运行方式，
   并补充 `xattr -dr com.apple.quarantine .` 排障命令（探针始终由 `python3` 解释执行，
   不需要 probe 文件自身可执行）。
+- **首轮家宽回传已判读**：macOS 15.5/x86_64、Python 3.14.5 实跑完成 STUN/NAT/DHT；
+  STUN 给出第二个真实家宽出口（对称型 NAT，映射与过滤均 address-and-port dependent，
+  UPnP=true / NAT-PMP=false），DHT 自有节点 `ping` 44.6 ms、`get_peers token_len=8 / peers=1`，
+  transmissionbt `ping` 通；KAD 首轮 `0/5 NO_REPLY` 用的是 2026-11-20 过期联系人，**不计 S2**。
+  原始回传含本机内网地址与主机名，未提交公开仓库，只留本地归档与脱敏结论。
+- kit README 升 v1.3、目标清单重建：`config/kad-targets.json` 改用 2026-11-21T12:29:40Z
+  真 aMuleD LAN BOOTSTRAP_RES 解出的 20 个联系人中前 10 个，`bootstrap_res_to_targets.py`
+  按 KAD host-order LE 反序解码（`--selftest` OK）；同清单在 Windows 主机正例对照
+  **8/10** 收到 `0x09 BOOTSTRAP_RES`（明文与 zlib 打包两种帧），排除清单/字节序问题。
+  `run_all.sh` 的 KAD 采样升至 10，并把 `run_step` 改为 `local code=0` + `|| code=$?`
+  （消除 `set -u` 下 `code?: unbound variable` 导致汇总步骤被跳过的隐患）。
 
 ## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
 

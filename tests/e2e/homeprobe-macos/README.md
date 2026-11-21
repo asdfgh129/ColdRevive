@@ -1,6 +1,6 @@
 # ColdRevive 家宽取证 kit（macOS Ventura / Sequoia）
 
-> 版本 1.2 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
+> 版本 1.3 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
 > （分发包名保留 `intel` 只是沿用首版命名，脚本是纯 Python，不含架构相关代码）。
 > 依赖：**只要 macOS 自带的 Python 3**（或任意 Python 3.8+）；不需要 Rust、Homebrew、管理员权限。
 > 本 kit 只采集证据，**不会自动判 pass**，也不会修改项目门禁常量：
@@ -12,7 +12,7 @@
 | :--- | :--- | :--- |
 | S6 / FR-17：新的真实 NAT 出口样本 | 家宽出口的映射行为、过滤行为、NAT 子型、UPnP/NAT-PMP 可用性、是否疑似 CGNAT | 单个出口不是 NAT 矩阵；不能折算可达率，不能翻转 `s6_status` |
 | FR-18：公网 DHT 只读可达性 | 家宽能否与自有公网 DHT 节点和公共引导节点完成 KRPC ping / get_peers；`token_len` 与 peers | 不发 `announce_peer`，不能宣称加入 Mainline；不启用 daemon DHT |
-| FR-24：KAD 专用 UDP 出口 | 家宽能否让真实 KAD `0xE401 BOOTSTRAP_REQ` 得到公网节点应答 | 不发 SEARCH / PUBLISH，无法解除 G0 `protocol_scope` 限制；0/5 不能区分“被过滤”与“联系人失效” |
+| FR-24：KAD 专用 UDP 出口 | 家宽能否让真实 KAD `0xE401 BOOTSTRAP_REQ` 得到公网节点应答 | 不发 SEARCH / PUBLISH，无法解除 G0 `protocol_scope` 限制；0/10 不能区分“被过滤”与“联系人失效”，需与正例对照 |
 | 平台覆盖 | 首个 macOS Intel 真实运行样本（OS/CPU/Python/公网出口） | 不等于全平台兼容认证 |
 
 **代码/授权类欠账不靠换网络解决**：FR-01 目录监控、FR-04 SQLite、FR-05 TTL、FR-09 限流、FR-10 守护进程多样种、FR-25 daemon 接线与跨分片、FR-19/20/21 Web UI/`rpc-secret`/WebSocket、可靠层拥塞语义、TCP 打洞接 BT 数据面、G0 scope 放宽、SRS 评审与 FR-24 编号重复等，仍按原状开放。详见仓库 `docs/06-plan/STAGE-DEBT-AUDIT-2026-11-21.md`。
@@ -40,8 +40,8 @@
 
 - **不绑定本机 IP**：所有 UDP 套接字都绑 `0.0.0.0`（或 `""`）的**临时端口**，由系统按当前默认路由选出口。`run_all.sh` 不给 KAD 探针传 `--source-port`，所以也没有固定源端口。
 - **公网 IP 是运行时观测值**：`platform_info.py` 通过 HTTP 尽力查询，`stun_probe.py` / `nat_behavior.py` 用 STUN 映射地址交叉确认，结果写进 JSON。家里拨号换 IP 不需要改配置；换 IP 后重跑即可，报告里带 `recorded_at` 便于区分场次。
-- **配置里出现的 IP 是目标端，不是本地绑定**：`119.29.150.254:3478`（自有 STUN）、`82.157.68.159:6881`（自有 DHT）、`config/kad-targets.json` 的 5 个 KAD 联系人，以及脚本自检里 `127.0.0.1` / 示例 IP，都不是要求家宽具备的地址。
-- **Sequoia 可用**：macOS 15 的 Command Line Tools 自带 Python 3.9.6，本 kit 已按 Python 3.9 语法自检通过；Apple Silicon 上 `platform.machine()` 会记成 `arm64`，不影响判据。
+- **配置里出现的 IP 是目标端，不是本地绑定**：`119.29.150.254:3478`（自有 STUN）、`82.157.68.159:6881`（自有 DHT）、`config/kad-targets.json` 的 10 个 KAD 联系人，以及脚本自检里 `127.0.0.1` / 示例 IP，都不是要求家宽具备的地址。
+- **Sequoia 可用且不限于系统 Python**：Command Line Tools 自带 Python 3.9.6；用户实跑的 macOS 15.5 / x86_64 上是 Python 3.14.5，本 kit 两种都跑通。Apple Silicon 上 `platform.machine()` 会记成 `arm64`，不影响判据。
 - **Sequoia 的本地网络权限**：若首次运行弹出“本地网络”授权，请允许“终端”；否则只影响 SSDP 发现 UPnP IGD 与 NAT-PMP 这类**局域网**探测，会把相应项如实记为不可用，不影响 STUN / DHT / KAD 的出向取证。若没弹窗无需处理。
 
 ## 2.2 排障：`operation not permitted` / `permission denied`
@@ -68,6 +68,13 @@ xattr -l run_all.sh
 ```
 
 注意：`run_all.sh` 内部对每个探针都是 `"$python3" probes/xxx.py`，**不会直接执行 `probes/*.py`**，所以探针文件带 quarantine 也不影响 `bash run_all.sh`。若执行时弹出“本地网络”权限请求，请允许终端访问（只影响局域网发现项，不影响 STUN/DHT/KAD 出向证据）。
+
+## 2.3 KAD 联系人清单（v1.3 已换掉失效联系人）
+
+- 首轮家宽回传的 `NO_REPLY (0/5)` **不计入 S2 证据**：那 5 个目标来自 2026-11-20 的 `tests/e2e/w24-pub/reports/public-search.json`，本身就是过期联系人（原运行中也只有 1/5 拿到 BOOTSTRAP_RES），且 KAD 探针的 `0/N` 无法区分“出口被过滤”和“联系人已死”。
+- v1.3 已用**新鲜 BOOTSTRAP_RES** 重建 `config/kad-targets.json`：2026-11-21T12:29:40Z 从真 aMuleD 的 LAN `0xE4/0xE5` BOOTSTRAP_RES 解出 20 个联系人，经 `tests/spikes/s2/bootstrap_res_to_targets.py` 按 **KAD host-order LE 反序**解码（该脚本 `--selftest` 通过），取前 10 个公网可路由目标。
+- **正例对照**：同一份清单在 Windows 主机上以 `--sample-size 10 --rate-limit 0.2` 实跑，**8/10** 收到真实 `0x09 BOOTSTRAP_RES`（明文 523 B 与 zlib 打包 520–521 B 两种帧都出现），证明清单本身有效、字节序正确。
+- 因此请**重新下载 v1.3 包再跑一次**（`run_all.sh` 已改为 `--sample-size 10`）。若这次仍是 `0/10`，可以和上面的正例直接对照，排除“联系人失效”这个混淆项；但 `0/10` 依然只是诊断，不能自动写成 S2 结论。
 
 ## 3. 退出码口径
 
