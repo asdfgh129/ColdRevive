@@ -1,6 +1,6 @@
 # ColdRevive 家宽取证 kit（macOS Ventura / Sequoia）
 
-> 版本 1.3 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
+> 版本 1.4 · 2026-11-21 · 目标机器：macOS 13 Ventura / 15 Sequoia；x86_64（Intel）与 arm64 均可
 > （分发包名保留 `intel` 只是沿用首版命名，脚本是纯 Python，不含架构相关代码）。
 > 依赖：**只要 macOS 自带的 Python 3**（或任意 Python 3.8+）；不需要 Rust、Homebrew、管理员权限。
 > 本 kit 只采集证据，**不会自动判 pass**，也不会修改项目门禁常量：
@@ -28,7 +28,7 @@
    **优先用 `bash run_all.sh`**：它直接把脚本交给 bash 读取，不需要可执行位，也不会被下载 ZIP 的 macOS 隔离属性（quarantine）拦住。若你更想用 `./run_all.sh`，先按下面的排障步骤处理。
    如果没有 Python 3，先执行一次 `xcode-select --install`（只装命令行工具，不需要完整 Xcode）。
 3. 全程约 1–2 分钟。它只发低速、只读的标准 STUN / KRPC / KAD bootstrap 报文，不下载文件、不安装软件、不发布任何 Key。
-4. 结束后把整个 `results/` 目录压缩回传（里面有 `summary.json`、各探针 JSON、以及记录退出码的 `.exit` 文件）。
+4. 结束后回传整个 `results/` 目录（里面有 `summary.json`、各探针 JSON、以及记录退出码的 `.exit` 文件）。**脚本启动和结束都会打印 `results:` 的绝对路径**，按那个路径找，不要去 Downloads 或其他目录找。**不要把 kit 放在“废纸篓/.Trash”里跑**（可能被清空）；解压到 `~/Downloads` 或桌面固定目录。
 5. 想单独跑某一项：
    ```bash
    python3 probes/nat_behavior.py --self-test
@@ -74,7 +74,8 @@ xattr -l run_all.sh
 - 首轮家宽回传的 `NO_REPLY (0/5)` **不计入 S2 证据**：那 5 个目标来自 2026-11-20 的 `tests/e2e/w24-pub/reports/public-search.json`，本身就是过期联系人（原运行中也只有 1/5 拿到 BOOTSTRAP_RES），且 KAD 探针的 `0/N` 无法区分“出口被过滤”和“联系人已死”。
 - v1.3 已用**新鲜 BOOTSTRAP_RES** 重建 `config/kad-targets.json`：2026-11-21T12:29:40Z 从真 aMuleD 的 LAN `0xE4/0xE5` BOOTSTRAP_RES 解出 20 个联系人，经 `tests/spikes/s2/bootstrap_res_to_targets.py` 按 **KAD host-order LE 反序**解码（该脚本 `--selftest` 通过），取前 10 个公网可路由目标。
 - **正例对照**：同一份清单在 Windows 主机上以 `--sample-size 10 --rate-limit 0.2` 实跑，**8/10** 收到真实 `0x09 BOOTSTRAP_RES`（明文 523 B 与 zlib 打包 520–521 B 两种帧都出现），证明清单本身有效、字节序正确。
-- 因此请**重新下载 v1.3 包再跑一次**（`run_all.sh` 已改为 `--sample-size 10`）。若这次仍是 `0/10`，可以和上面的正例直接对照，排除“联系人失效”这个混淆项；但 `0/10` 依然只是诊断，不能自动写成 S2 结论。
+- 因此请**重新下载 v1.3+ 包再跑一次**（`run_all.sh` 已改为 `--sample-size 10`）。若这次仍是 `0/10`，可以和上面的正例直接对照，排除“联系人失效”这个混淆项；但 `0/10` 依然只是诊断，不能自动写成 S2 结论。
+- **怎么判断你跑的是不是旧包**：控制台 KAD 段落若列出 **5 个**目标、或出现 `run_all.sh: line 30: code?: unbound variable`、或 `kit:` 路径在 `~/.Trash/`，都是 v1.2 或更早的副本。新包控制台会打印 `results: .../results` 绝对路径，KAD 列出 **10 个**目标，且最后生成 `results/summary.json`。可用 `shasum -a 256 coldrevive-homeprobe-macos-intel-v1.zip` 校验你下载的文件。
 
 ## 3. 退出码口径
 

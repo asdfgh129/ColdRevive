@@ -37,6 +37,10 @@
   **8/10** 收到 `0x09 BOOTSTRAP_RES`（明文与 zlib 打包两种帧），排除清单/字节序问题。
   `run_all.sh` 的 KAD 采样升至 10，并把 `run_step` 改为 `local code=0` + `|| code=$?`
   （消除 `set -u` 下 `code?: unbound variable` 导致汇总步骤被跳过的隐患）。
+- kit README 升 v1.4：用户重跑时误用了旧包（KAD 仍 5 目标、旧 shell 报错），且从
+  `~/.Trash/` 运行后在别处找不到 `results/`。`run_all.sh` 现在启动与结束都打印
+  **绝对路径** `results: ...`，所有探针 `--out` / `report.py --results` 也改用绝对路径，
+  README 增加“如何识别旧包”与“不要放在废纸篓运行”的说明。
 
 ## [2.4.97] - 2026-11-20 — FR-14 空闲自动休眠 / FR-24 真实 aMuleD KAD 检索 / FR-25 与真实 aMule 双向互通
 
