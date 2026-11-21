@@ -16,6 +16,7 @@
 use std::collections::HashSet;
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::kad::{ed2k_hash, ed2k_part_hashes, ED2K_PART_SIZE};
@@ -117,11 +118,12 @@ pub struct LogEntry {
 pub struct Link {
     pub stream: TcpStream,
     pub log: Vec<LogEntry>,
+    pending: Vec<u8>,
 }
 
 impl Link {
     pub fn new(stream: TcpStream) -> Self {
-        Link { stream, log: Vec::new() }
+        Link { stream, log: Vec::new(), pending: Vec::new() }
     }
     pub fn send(&mut self, protocol: u8, opcode: u8, payload: &[u8]) -> Result<(), String> {
         self.log.push(LogEntry {
@@ -140,7 +142,7 @@ impl Link {
         self.send(p.protocol, p.opcode, &p.payload)
     }
     pub fn recv(&mut self) -> Result<w::Packet, String> {
-        let p = w::read_packet(&mut self.stream)?;
+        let p = w::read_packet_pending(&mut self.stream, &mut self.pending)?;
         self.log.push(LogEntry {
             at_ms: 0,
             direction: "recv",
@@ -177,6 +179,8 @@ pub struct DownloadResult {
 pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, timeout: Duration) -> DownloadResult {
     let mut out = DownloadResult::default();
     let deadline = Instant::now() + timeout;
+    // 读超时只用于轮询上传队列；半帧由 Link.pending 保留，不会再错位。
+    // 5s 足够宽松，避免对真实 aMule 的慢速应答发重复 REQUESTPARTS。
     let mut link = match stream.set_read_timeout(Some(Duration::from_secs(5))) {
         Ok(()) => Link::new(stream),
         Err(e) => {
@@ -192,6 +196,7 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
     let mut in_flight: Vec<(u32, u32)> = Vec::new();
     let mut handshake_done = false;
     let mut upload_accepted = false;
+    let mut last_progress = Instant::now();
 
     let run = (|| -> Result<(), String> {
         link.send_frame(&w::hello_frame(our_hello))?;
@@ -204,6 +209,13 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
                     // bounds the spin; a clean peer close looks the same here,
                     // so report it as a timeout rather than inventing a cause.
                     if e.contains("read eD2k") && Instant::now() < deadline {
+                        // 上传端可能只发送本批请求的一部分（aMule 的流水线会
+                        // 边收边追加请求，真实 eMule 也会因磁盘 I/O 拆回应）。
+                        // 静默等待会永远卡住已 in_flight 的区间；按批重发。
+                        if !in_flight.is_empty() && last_progress.elapsed() >= Duration::from_secs(4) {
+                            link.send_frame(&w::request_parts(&hash, &in_flight))?;
+                            last_progress = Instant::now();
+                        }
                         continue;
                     }
                     return Err(e);
@@ -269,6 +281,7 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
                     buffer[s..e].copy_from_slice(&data);
                     out.bytes_received += data.len();
                     out.blocks_received += 1;
+                    last_progress = Instant::now();
                     // 真实 aMule 可能把请求的某一块拆成更小的 SENDINGPART 返回；
                     // 按覆盖范围清除，而不是要求起止完全相同（loopback 自己两端相同所以没暴露）。
                     let covered = |r: &(u32, u32)| r.0 >= start && r.1 <= end;
@@ -344,19 +357,29 @@ pub struct UploadResult {
 pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: &Arc<Mutex<UploadQueue>>, timeout: Duration) -> UploadResult {
     let mut out = UploadResult::default();
     let deadline = Instant::now() + timeout;
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    // 真实客户端在多条连接之间可能短暂停顿；5s 会把仍有用的连接误关。
+    // 但仍受整次任务 timeout 约束，不能无限等。
+    let _ = stream.set_read_timeout(Some(timeout.min(Duration::from_secs(15))));
     let mut link = Link::new(stream);
     let peer_id = queue.lock().map(|mut q| q.new_peer()).unwrap_or(0);
     let mut held_slot = false;
     let mut current_file: Option<SharedFile> = None;
+    // aMule 每收一块就重发「仍 pending 的区间 + 一个新区间」。逐条照单全送
+    // 会把 3 块放大成 9 块，>PARTSIZE 实测停在 64.5%；按区间只送一次时
+    // 实测推进到 85.3%，重复放大是主要瓶颈。
+    let mut sent_ranges: HashSet<(u32, u32)> = HashSet::new();
 
     let run = (|| -> Result<(), String> {
         while Instant::now() < deadline {
-            let packet = match link.recv() {
-                Ok(p) => p,
-                Err(e) if e.contains("read eD2k header") => return Ok(()), // peer closed
-                Err(e) => return Err(e),
-            };
+            let packet =                 match link.recv() {
+                    Ok(p) => p,
+                    // 读超时只表示「本轮没凑齐」，pending 里已有字节要留着；
+                    // 不能当作对端关闭，也不能 fallthrough 去解半帧。
+                    Err(e) if e.contains("timed out") || e.contains("WouldBlock")
+                        || e.contains("resource temporarily unavailable") => continue,
+                    Err(e) if e.contains("read eD2k") => return Ok(()), // peer closed
+                    Err(e) => return Err(e),
+                };
             match packet.opcode {
                 w::op::HELLO => {
                     out.peer_hello = Some(w::parse_hello(&packet.payload, true)?);
@@ -372,6 +395,23 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
                         Some(f) => {
                             current_file = Some(f.clone());
                             link.send_frame(&w::file_name_answer(&h, &f.name))?;
+                        }
+                        None => link.send_frame(&w::no_such_file(&h))?,
+                    }
+                }
+                w::op::SETREQFILEID => {
+                    // 真实 aMule 对 >= PARTSIZE 的文件用 0x4F 选文件并等 0x50。
+                    // 缺这一支时它收到 REQFILENAMEANSWER 后就停住，不继续
+                    // HASHSETREQUEST / STARTUPLOADREQ（W25-daemon 实测）。
+                    if packet.payload.len() < 16 {
+                        return Err("short OP_SETREQFILEID".into());
+                    }
+                    let mut h = [0u8; 16];
+                    h.copy_from_slice(&packet.payload[..16]);
+                    match files.iter().find(|f| f.hash() == h) {
+                        Some(f) => {
+                            current_file = Some(f.clone());
+                            link.send_frame(&w::file_status(&h))?;
                         }
                         None => link.send_frame(&w::no_such_file(&h))?,
                     }
@@ -407,14 +447,22 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
                         return Err("REQUESTPARTS carried a different fileID".into());
                     }
                     for (start, end) in ranges {
-                        let s = start as usize;
-                        let e = end as usize;
-                        if e > f.data.len() || e <= s {
+                        if end <= start || end as usize > f.data.len() {
                             continue;
                         }
+                        if sent_ranges.contains(&(start, end)) {
+                            continue;
+                        }
+                        sent_ranges.insert((start, end));
+                        let s = start as usize;
+                        let e = end as usize;
                         link.send_frame(&w::sending_part(&h, start, end, &f.data[s..e]))?;
                         out.blocks_sent += 1;
                         out.bytes_sent += e - s;
+                        // 真实上传端受磁盘 I/O 限速；LAN 上无节流时 aMule 会在
+                        // 同一毫秒收到整批帧，部分块还没进 pending 就被当重复
+                        // 丢弃，进而停止追加请求。每块留 10ms 让它处理完。
+                        thread::sleep(Duration::from_millis(10));
                     }
                 }
                 w::op::END_OF_DOWNLOAD | w::op::CANCELTRANSFER | w::op::OUTOFPARTREQS => return Ok(()),

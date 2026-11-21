@@ -15,6 +15,7 @@
 mod bt;
 mod commands;
 mod data_plane;
+mod ed2k_tasks;
 mod idle;
 mod nat_path;
 mod punch_route;
@@ -115,6 +116,9 @@ pub struct NodeState {
     pub nat: nat_path::NatContext,
     pub hub: UdpHub,
     pub rpc_tasks: Vec<RpcTask>,
+    /// FR-25：daemon eD2k 任务注册表（link/serve/download）。用独立 Arc<Mutex<_>>
+    /// 是为了让后台供片/取片线程能在不持有 NodeState 锁的情况下回写真实结果。
+    pub ed2k_tasks: ed2k_tasks::SharedEd2kTasks,
     /// BT 引擎。B 侧惰性创建（`/jsonrpc` 收到可解析种子时）；A 侧**启动即创建**，
     /// 因为持有者要监听 `bt_port` 做种，而 T0-07 的 `bt_port_listening` 是真实 TCP 连接探测。
     pub engine: SharedEngine,
@@ -242,6 +246,7 @@ fn main() {
         nat: nat_path::NatContext::from_config(&cfg),
         hub: hub.clone(),
         rpc_tasks: Vec::new(),
+        ed2k_tasks: ed2k_tasks::registry(),
         engine: Arc::new(Mutex::new(None)),
         seed_task: None,
         seed_tasks: HashMap::new(),
@@ -1104,6 +1109,17 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
             ("version", Json::s("ColdRevive/2.4.68 (aria2-compatible subset)")),
             ("enabledFeatures", Json::arr(vec![Json::s("BitTorrent"), Json::s("JSON-RPC")])),
         ])),
+        "coldrevive.ed2kStatus" => {
+            // FR-25 daemon 侧只读监控：gid 省略时列全部任务，否则查单条真实结果。
+            let tasks = { state.lock().unwrap().ed2k_tasks.clone() };
+            let gid = arg(0).as_str().unwrap_or("").to_string();
+            let out = if gid.is_empty() {
+                ed2k_tasks::list_cmd(&tasks)
+            } else {
+                ed2k_tasks::status_cmd(&tasks, &[gid])
+            };
+            ok(&id, out)
+        }
         _ => rpc_err(id, -32601, &format!("不支持的方法 {method}")),
     }
 }
@@ -1594,6 +1610,7 @@ mod rpc_tests {
             nat: nat_path::NatContext::from_config(&cfg),
             hub,
             rpc_tasks: Vec::new(),
+            ed2k_tasks: ed2k_tasks::registry(),
             engine: Arc::new(Mutex::new(None)),
             seed_task: None,
             seed_tasks: HashMap::new(),

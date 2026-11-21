@@ -422,6 +422,7 @@ dependencies = [
  "cr-api",
  "cr-bridge",
  "cr-core",
+ "cr-ed2k",
  "cr-engine",
  "cr-guard",
  "cr-hash",

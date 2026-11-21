@@ -27,7 +27,7 @@ updated: 2026-11-21
 | P1 | 6 行全部部分/未实现：QoS 未接数据面、daemon 不自动映射、DHT 未启用、`rpc-secret` 缺失、Web UI/WebSocket 未实现 |
 | P2 | 3 行：CLI/REST 子集可用但无 OpenAPI；跨协议补源、信誉行仍骨架 |
 | M1 | G1 已过（T0 21/21 + T1 11/11），但 W2 索引侧无 watcher/SQLite 迁移；FR-11/14 默认关闭、仅回环证据；S3/S5/S6 的人工判定未回填机器常量 |
-| M2 | G2 **未达标**，是全部阶段的唯一出口欠账：公平性只有量具、Mainline 未加入、TCP 打洞未接 BT 数据面、守护进程仍单任务、可靠层无拥塞语义、FR-24 公网 KAD 与 FR-25 daemon 接线仍 BLOCKED |
+| M2 | G2 **未达标**，是全部阶段的唯一出口欠账：公平性只有量具、Mainline 未加入、TCP 打洞未接 BT 数据面、守护进程仍单任务、可靠层无拥塞语义、FR-24 公网 KAD 与 FR-25 跨分片仍 BLOCKED（FR-25 daemon 接线已于 2026-11-22 补上，见 §8） |
 
 ## 2. P0 欠账明细（按优先级）
 
@@ -45,7 +45,7 @@ updated: 2026-11-21
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
 | FR-15 资源阈值 | 部分 | seed cap + 中继令牌桶；阈值自动拒绝唤醒未接线 | 否（代码） |
 | FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
-| FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 未接线，无 server 登录/source exchange/credit/AICH，样本均 < `PARTSIZE` | 部分：公网 eD2k 传输可补证据，但 daemon 接线/跨分片是代码债 |
+| FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` 双向仍未闭环 | 部分：公网 eD2k 传输可补证据，但跨分片闭环是代码债 |
 
 治理债：SRS 仍 v2.0「待评审」；FR-24 在 SRS 第 43/45 行重复编号（信誉行未实现）。
 
@@ -78,7 +78,7 @@ updated: 2026-11-21
 | TCP 打洞 | 原语通过，BT 数据面未接线，公网双侧 BLOCKED | 先解决公网双侧，再谈接线；symmetric 不可直连保留为正确结论 |
 | 守护进程多样种 | 组件级 `Cold→Hot→Cold→Hot` 已证；daemon 仍单任务 | 多 infohash + cap 触发 e2e |
 | FR-24 公网 | 5 节点全超时 | G0 `protocol_scope` 书面放宽 |
-| FR-25 daemon/公网 | CLI 组件级对真实 aMule 双向；daemon 未接线 | 接 `serve`/`download` → 双轨发布 → >`PARTSIZE` 跨分片与 hashset |
+| FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 上传推进到 39.8%–85.3% 后静置，下载只到 hashset 交换 | 查 aMule 重叠 `REQUESTPARTS` 的应答节奏 → 双轨发布 → 公网证据 |
 | 外推边界 | W61 的 `rst-path-verified` 只指 `119.29.150.254` 这一条路径 | 不得写成“所有 RST 部署已验证” |
 | 性能 | 跨公网只有单次 1 MiB 样本；4 MiB 公网 143–235 s 成因未定位 | 多组样本，按 ADR-012 不折算速率 |
 
@@ -94,7 +94,7 @@ updated: 2026-11-21
 ## 6. 家宽可参与的范围与交付物
 
 **可推进（环境类证据）**：第二个真实 NAT 出口样本、公网 DHT 只读可达性、KAD 专用 UDP 出口、首个 macOS Intel 平台样本。
-**不可推进（代码/授权类）**：第 2–4 节所列绝大多数欠账，尤其 G0 scope、SRS 评审、FR-25 daemon 接线、拥塞语义、`g2_claim`/`s6_status` 常量。
+**不可推进（代码/授权类）**：第 2–4 节所列绝大多数欠账，尤其 G0 scope、SRS 评审、FR-25 跨分片闭环、拥塞语义、`g2_claim`/`s6_status` 常量（daemon 接线已于 §8 补上）。
 
 交付 kit：`tests/e2e/homeprobe-macos/`（源）+ `dist/coldrevive-homeprobe-macos-intel-v1.4.zip`（分发包）。
 只用 Python 标准库，兼容 macOS Ventura 13.x / Sequoia 15.x，x86_64 与 arm64 均可；
@@ -132,7 +132,32 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
 
 ## 7. 建议顺序（不因新增环境而重排）
 
-1. **先补代码债的头部**：FR-25 接 daemon + >`PARTSIZE` 跨分片；FR-10 守护进程多样种；FR-11/14 的默认策略与 µTP 覆盖。
+1. **先补代码债的头部**：FR-25 的 >`PARTSIZE` 跨分片闭环（daemon 接线已完成）；FR-10 守护进程多样种；FR-11/14 的默认策略与 µTP 覆盖。
 2. **再补授权/治理**：G0 `protocol_scope` 书面决定是否允许公共 KAD `0x33`；SRS v2.0 评审与 FR-24 编号去重；R-02/R-11（M4 前）。
 3. **最后用家宽样本补环境面**：把新 NAT 分类、DHT/KAD 只读结果作为描述性证据归档；即使结果理想也不改 `g2_claim`、`s6_status`。
 4. 公平性阈值、Mainline 邻居发现、TCP 打洞接数据面继续按 DOC-27 的下一步执行，不因为 kit 有输出就提前宣称达标。
+
+## 8. FR-25 daemon 接线复核（2026-11-22，v2.4.99）
+
+**结论：daemon 接线已补齐；`>PARTSIZE` 跨分片仍未闭环，不构成 FR-25 完成。**
+
+- 代码：`coldrevived` 新增 `ed2k_tasks.rs`，`/cli` 接 `ed2k-link` /
+  `ed2k-serve` / `ed2k-download` / `ed2k-status` / `ed2k-list`，`/jsonrpc`
+  新增只读 `coldrevive.ed2kStatus`。任务结果只在生产 `cr_ed2k::stack`
+  真正返回时写入，`download` 仍需本地参考文件导出真实 fileID。
+- 真实 aMule 2.3.3 暴露的缺口已修：`OP_SETREQFILEID(0x4F)` →
+  `OP_FILESTATUS(0x50)`；大文件多 TCP 连接由每连接线程 + 共享 `UploadQueue`
+  承载并在收尾 `shutdown` 排队连接；`wire::read_packet_pending` 保留半帧，
+  消除 `invalid eD2k packet length 2655250573`；上传侧对 aMule 重叠的
+  `REQUESTPARTS` 做区间去重和 10ms 轻节流，下载侧在无进展时重发
+  `in_flight`。
+- 证据边界：全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
+  **388 passed / 0 failed / 3 ignored**。真 aMule RFC1918 LAN 上，`>PARTSIZE`
+  (`9,736,192 B`) 上传多轮推进到 **39.8%–85.3%** 后转 `Waiting`，未取得
+  对端完整文件/md5；下载方向完成到 `OP_HASHSETANSWER`
+  （`hashset_verified=true`），但随后连接关闭或只收到少量块，
+  `completed/hash_matches/content_matches` 仍为 false。帧级 trace 与报告
+  留在 gitignored 的 `tests/e2e/w25-daemon/{run,reports}/`。
+- 因此本轮只销掉“daemon 未接线”这一条；FR-25 的跨分片闭环、公网
+  server/peer、双轨发布、source exchange/credit/AICH 仍开放。
+  `g2_claim` / `s6_status` / `evidence_valid_for_pass` / `auto_pass` 常量不变。

@@ -4,7 +4,7 @@
 //! 真实第三方下载器进程 / 真实 golden 文件解析。失败时返回 false 或错误码，
 //! **绝不返回「看起来像通过」的默认常量**。
 
-use crate::{http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
+use crate::{ed2k_tasks, http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
 use cr_engine::Engine;
 use cr_hash::sha256_hex;
@@ -63,6 +63,25 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "seed" => seed_stats(state),
         "ed2k" => ed2k_links(state, &arg(&args, 0)),
+        // FR-25 daemon 接线：三条命令都走生产 cr-ed2k::stack，后台任务结果由
+        // `ed2k-status` 从真实栈返回值读取，不编造完成状态。
+        "ed2k-link" => ed2k_tasks::link_cmd(&args),
+        "ed2k-serve" => {
+            let tasks = state.lock().unwrap().ed2k_tasks.clone();
+            ed2k_tasks::serve_cmd(&tasks, &args)
+        }
+        "ed2k-download" => {
+            let tasks = state.lock().unwrap().ed2k_tasks.clone();
+            ed2k_tasks::download_cmd(&tasks, &args)
+        }
+        "ed2k-status" => {
+            let tasks = state.lock().unwrap().ed2k_tasks.clone();
+            ed2k_tasks::status_cmd(&tasks, &args)
+        }
+        "ed2k-list" => {
+            let tasks = state.lock().unwrap().ed2k_tasks.clone();
+            ed2k_tasks::list_cmd(&tasks)
+        }
         "download" => download(state, &cfg, &arg(&args, 0)),
         "golden" => golden(&cfg),
         "env" => env_defaults(state),

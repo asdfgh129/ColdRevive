@@ -146,15 +146,39 @@ pub fn send_packet<S: Write>(stream: &mut S, protocol: u8, opcode: u8, payload: 
 }
 
 pub fn read_packet<S: Read>(stream: &mut S) -> Result<Packet, String> {
-    let mut header = [0u8; 6];
-    stream.read_exact(&mut header).map_err(|e| format!("read eD2k header: {e}"))?;
-    let len = u32::from_le_bytes([header[1], header[2], header[3], header[4]]) as usize;
+    let mut pending = Vec::new();
+    read_packet_pending(stream, &mut pending)
+}
+
+/// 带读超时的连接必须用这个版本：`pending` 在超时后保留半帧字节，下一次
+/// 调用接着读。`read_exact` 会在超时前消费掉半帧却把这些字节丢掉，之后
+/// 永远解出错误的长度（实测 aMule >PARTSIZE 下载报
+/// `invalid eD2k packet length 2655250573`）。
+fn fill_pending<S: Read>(stream: &mut S, pending: &mut Vec<u8>, want: usize, label: &'static str) -> Result<(), String> {
+    while pending.len() < want {
+        let mut buf = [0u8; 8192];
+        let n = match stream.read(&mut buf) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(format!("read eD2k {label}: {e}")),
+        };
+        if n == 0 {
+            return Err(format!("read eD2k {label}: connection closed"));
+        }
+        pending.extend_from_slice(&buf[..n]);
+    }
+    Ok(())
+}
+
+pub fn read_packet_pending<S: Read>(stream: &mut S, pending: &mut Vec<u8>) -> Result<Packet, String> {
+    fill_pending(stream, pending, 6, "header")?;
+    let len = u32::from_le_bytes([pending[1], pending[2], pending[3], pending[4]]) as usize;
     if len < 1 || len >= 0x7fff_fff0 || len > 16 * 1024 * 1024 {
         return Err(format!("invalid eD2k packet length {len}"));
     }
-    let mut payload = vec![0u8; len - 1];
-    stream.read_exact(&mut payload).map_err(|e| format!("read eD2k body: {e}"))?;
-    Ok(Packet { protocol: header[0], opcode: header[5], payload })
+    fill_pending(stream, pending, len + 5, "body")?;
+    let frame: Vec<u8> = pending.drain(..len + 5).collect();
+    Ok(Packet { protocol: frame[0], opcode: frame[5], payload: frame[6..].to_vec() })
 }
 
 // ------------------------------------------------------------------- tags --
@@ -361,6 +385,19 @@ pub fn parse_file_name_answer(payload: &[u8]) -> Result<(Hash16, String), String
 
 pub fn no_such_file(hash: &Hash16) -> Vec<u8> {
     frame(PROT_EDONKEY, op::FILEREQANSNOFIL, hash)
+}
+
+/// `OP_FILESTATUS` (0x50): aMule 的 OP_SETREQFILEID (0x4F) 应答。
+///
+/// 源码（`ClientTCPSocket.cpp`，`case OP_SETREQFILEID`）对完整共享文件是
+/// `<filehash 16><u16 part_status=0>`；只有 PartFile 才写 `WritePartStatus`。
+/// 真实 aMule 2.3.3 对 >= PARTSIZE 的文件会先发 0x4F 选文件，收不到 0x50
+/// 就不会发 STARTUPLOADREQ / HASHSETREQUEST，表现为「连上后停在文件名应答」。
+pub fn file_status(hash: &Hash16) -> Vec<u8> {
+    let mut b = Buf::new();
+    b.id(hash);
+    b.u16(0);
+    frame(PROT_EDONKEY, op::FILESTATUS, &b.0)
 }
 
 /// `OP_ASKSHAREDFILES` is a null-payload request; the answer starts with a
@@ -575,6 +612,16 @@ mod tests {
         let parts = vec![[1u8; 16], [2u8; 16]];
         let p2 = parse_frame(&hashset_answer(&h, &parts)).unwrap();
         assert_eq!(parse_hashset_answer(&p2.payload).unwrap(), (h, parts));
+    }
+
+    #[test]
+    fn file_status_answer_is_hash_plus_zero_part_status() {
+        let h = [7u8; 16];
+        let p = parse_frame(&file_status(&h)).unwrap();
+        assert_eq!(p.opcode, op::FILESTATUS);
+        assert_eq!(p.payload.len(), 18);
+        assert_eq!(&p.payload[..16], &h);
+        assert_eq!(&p.payload[16..], &[0, 0]);
     }
 
     #[test]

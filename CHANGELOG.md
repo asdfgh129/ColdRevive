@@ -2,6 +2,39 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.99] - 2026-11-22 — FR-25 接进守护进程；跨分片仍未闭环
+
+> 本轮补上 FR-25 的 daemon 接线并修掉真实 aMule 暴露的协议/状态机缺口，
+> 但 **`>PARTSIZE` 双向跨分片没有拿到完整 PASS 证据**，不升级门禁：
+> `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false`。
+> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **388 passed / 0 failed / 3 ignored**。
+
+- **daemon 接线完成**：`coldrevived` 新增 `ed2k_tasks.rs`，`/cli` 增加
+  `ed2k-link` / `ed2k-serve` / `ed2k-download` / `ed2k-status` / `ed2k-list`，
+  `/jsonrpc` 增加只读 `coldrevive.ed2kStatus`。三条命令都调用生产
+  `cr_ed2k::stack`；任务结果只在栈真正返回时写入，失败如实记 `error`。
+  `ed2k-download` 仍需本地参考文件导出真实 fileID，未实现“无参考盲下载”。
+- **真实 aMule 暴露并修复的缺口**：
+  - `>= PARTSIZE` 的文件选择走 `OP_SETREQFILEID(0x4F)`，服务端此前只认
+    `OP_REQUESTFILENAME`，对端停在握手后；现补 `OP_FILESTATUS(0x50)` 应答。
+  - 大文件会同时开多条 TCP 连接；`serve_cmd` 改为每连接独立线程、共享
+    `UploadQueue` 与聚合计数，收尾主动 `shutdown` 排队连接，避免拖到整体超时；
+    新增 `serve_accepts_parallel_connections_and_reaps_queued_peers` 回归测试。
+  - **读超时半帧错位**：`read_exact` 在超时前消费半帧却丢字节，真 aMule
+    `>PARTSIZE` 下载报 `invalid eD2k packet length 2655250573`。新增
+    `wire::read_packet_pending`，`Link` 保留 `pending` 缓冲，超时后接着读。
+  - aMule 每收一块就把“仍 pending 的区间 + 一个新区间”重发，3 块会被放大成
+    9 块；上传侧按 `(start,end)` 抑制重复并做 10ms 轻节流。下载侧在长时间
+    无进展时重发 `in_flight` 区间，避免把部分应答误判为完成。
+- **跨分片证据仍 BLOCKED**：真 aMule 2.3.3 / RFC1918 LAN 上，`>PARTSIZE`
+  (`9,736,192 B`) 的上传推进到 **39.8%–85.3%** 后转 `Waiting`，没有拿到
+  对端落地文件与 md5；下载方向能完成 `HELLO`/文件选择/`OP_HASHSETANSWER`
+  （`hashset_verified=true`），但连接随后关闭或只收到 3 块，
+  `completed/hash_matches/content_matches` 均为 false。原始帧级 trace 与
+  报告在 gitignored 的 `tests/e2e/w25-daemon/{run,reports}/`，不宣称 PASS。
+- 新增本地复核入口 `tests/e2e/w25-daemon/daemon_cross_chunk.py`（双向）与
+  `daemon_download_cross_chunk.py`（仅下载方向）；运行产物不入库。
+
 ## [2.4.98] - 2026-11-21 — P0/P1/P2 与 M1/M2 欠账复核 + macOS 家宽取证 kit
 
 > 本轮不改产品代码与门禁口径：`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`。
