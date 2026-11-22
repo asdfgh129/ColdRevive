@@ -2,7 +2,7 @@
 doc_id: DOC-29
 title: P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 category: 计划
-version: 1.1
+version: 1.2
 status: 有效
 owner: 架构组
 updated: 2026-11-22
@@ -10,7 +10,7 @@ updated: 2026-11-22
 
 # P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 
-> 编号 DOC-29 · 版本 1.1 · 状态 **有效** · 更新 2026-11-22
+> 编号 DOC-29 · 版本 1.2 · 状态 **有效** · 更新 2026-11-22
 > 基线：仓库 HEAD `5e3e17f`；本日复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（12:00 GMT+8 左右，停止本地守护进程后执行）。
 > 口径不变：**`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`**。
@@ -36,14 +36,14 @@ updated: 2026-11-22
 | FR-01 目录监控 | **已接线（有边界）** | `watch.rs` + `cr_indexer::PollWatcher` 运行期增量（新增/修改/删除入库出库），`indexer.watch_secs` opt-in；后端是**轮询快照**，Windows `ReadDirectoryChangesW` 未接入（§9） | 否（代码） |
 | FR-02 指纹多哈希联动 | **已接线** | 一次读盘产出 SHA-256 / SHA-1 / eD2k fileID，三者落索引（v2）；fileID 由独立纯 Python MD4 复算一致（§9） | 否（代码） |
 | FR-04 持久化 | **已接线（JSON，非 SQLite）** | 原子落盘（tmp→fsync→`.bak`→rename）、`OpenStatus` 五态、v1→v2 迁移；重启 e2e 断言 `loaded_v2`（§9）。仍用 JSON 而非 SQLite，规模上限未验证 | 否（代码） |
-| FR-05/06/07 KAD 发布/查询 | 部分 | daemon 现已**周期重发布**已发布 key（`kad.republish_secs`，`/health.kad_publish`），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；仍无 TTL 数值维护、关键词不分词、无去重健康度；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
+| FR-05/06/07 KAD 发布/查询 | **部分（本地侧齐活）** | 周期重发布改为**到期才发**（`kad.ttl_secs`，刷新窗口 `ttl/3`；成功前推截止、失败不前推），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；文件名分词（`cr_kad::tokenize_keywords`）+ `/cli kad-health` 去重健康度已接入（§10）。**TTL 是本机记账，不是协议 TTL**；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
 | FR-09 限流 | **已接线** | `ratelimit.rs` 令牌桶（按来源 IP，表上限 4096），超限 429 + `reason=rate_limited` + `retry_after_ms`；`/health`、`/nat/*` 不参与限流（§9） | 否（代码） |
 | FR-10 LRU 逐出 | **已闭环（多种子任务）** | 多样本 + `engine.max_active_seeds=1`，真实 BT 握手唤醒两个 infohash → `evictions=1`、`scheduled<=1`、`seed_active<=cap`（§9） | 否（代码） |
 | FR-11 握手拦截 | 已实现但有边界 | opt-in 默认 false，仅回环 TCP；µTP 不外透；W62 报告是 **11/11**（`tests/e2e/w62/reports/report.json`），不是 12/12 | 否（代码/默认策略） |
 | FR-12 链接生成 | **已闭环（本地）** | `/cli ed2k` 优先用索引里的 fileID（`link_source=index`、`backfilled_from_disk=0`），v1 条目读盘后回填；链接形状与文件名/大小/哈希逐段校验（§9） | 否（代码） |
 | FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
-| FR-15 资源阈值 | **部分（HOT 阈值已接线）** | `limits.max_hot_seeds`：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit/current`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，两者语义分开。**内存/带宽/造种 CPU 阈值仍未接线** | 否（代码） |
+| FR-15 资源阈值 | **部分（四条阈值已接线）** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽是滞后指标；RSS 读不到的平台显式 `unavailable` 而非按 0 处理（§10）。**造种 CPU 阈值未接线** | 否（代码） |
 | FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
 | FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
@@ -225,3 +225,55 @@ FR-25 上传方向、FR-24 公网检索不受本轮影响，仍 BLOCKED。**
   - FR-25 上传方向 `>PARTSIZE` 仍 BLOCKED（见 §8）。
   - `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
     `auto_pass=false` 全部不变。
+
+## 10. FR-15 剩余阈值 / FR-05-07 TTL 与分词 / FR-25 上传侧定位（2026-11-22，v2.4.101）
+
+**结论：FR-15 已有四条真实阈值（HOT 数 / 对端连接数 / 上行带宽 / 进程 RSS），
+FR-05/07 的本地侧（TTL 维护、文件名分词、去重健康度）已接线；
+FR-25 上传方向仍 BLOCKED，但停顿位置已定位到对端而不是我们。**
+
+- 可复跑证据：`python tests/e2e/p0/run_p0.py` → `tests/e2e/p0/reports/report.json`
+  **62/62**（v2.4.100 为 48/48；新增 D 段分词+去重、E 段 RSS 阈值）。
+- 全量回归：**419 passed / 0 failed / 3 ignored**（v2.4.100 为 406）。
+- **FR-15（四条阈值）**：`sysres.rs` 每秒采样一次真实读数（`EngineProgress.peers`
+  之和、累计 `uploaded_bytes` 差分、平台 RSS），准入判定只读采样结果。
+  - 语义分工：`limits.max_*` 是**阈值**（超限拒绝新唤醒，已供片的不动）；
+    `engine.max_active_seeds` 是**容量**（满了逐出最久未用者继续服务）。
+  - 已在 HOT 的条目重复唤醒不按新占用计（否则客户端重连一次就被自己的历史判成超限）。
+  - 多条同时超限时顺序固定 hot → peers → bandwidth → rss，便于断言「是哪条拦的」。
+  - **读不到 ≠ 0**：RSS 拿不到的平台 `/health.limits.max_rss_mb` 报
+    `enabled=false` + `unavailable`，该条不参与判定。
+  - 证据（E 段）：`limits.max_rss_mb=1` → `max_rss_mb.enabled=true`、
+    `current=17 MiB`；唤醒被 `REJECT_RESOURCE_LIMIT` 拒，`limit_name=max_rss_mb`、
+    `limit=1`、`current=17`、`limit_unit=MiB`，且 `hot` 与 `seed_active` 都保持 0。
+  - **未销账**：造种 CPU 阈值仍未接线，故 FR-15 整体仍记「部分」。
+- **FR-05（TTL）**：`kad.ttl_secs`（缺省 3600）定义本机刷新周期，刷新窗口在 `ttl/3`。
+  成功才前推 `kad_expires_at`，**失败只累加 `kad_refresh_failures`**——否则连续失败
+  会把自己无限延期。空转周期报 `due=0`，不会伪造「发了 N 个 key」。
+  **边界**：这是本机记账，不是协议 TTL；对端只回 `KAD_PUBLISH_ACK`，不带过期时间。
+- **FR-07（分词）**：`cr_kad::tokenize_keywords` 是**确定性**变换（同一名字永远同一组词，
+  可复算）：非字母数字处切分、ASCII 小写、去纯数字与 <3 字符 ASCII 词、
+  去容器/编码噪声词、去重保序、上限 8。CJK 连续串整体保留。
+  `/cli index` 只在配置没给 `keywords` 时分词，并回报 `keywords_source`。
+- **FR-05/07（去重健康度）**：`/cli kad-health` 给出
+  `keys_total / keys_unique / duplicate_keys`（逐 key 列出被几条条目发出）、
+  `keywords_total|unique`、`tokenized_entries`、`due / expired / expiring_soon`、
+  `refresh_failures`。D 段实测：两条共享 `cold`/`revive` 的条目 →
+  `keys_total=10`、`keys_unique=8`、`duplicate_keys=2`。
+- **FR-25 上传方向（仍 BLOCKED，但已定位）**：新增
+  `tests/e2e/w25-daemon/diag_upload.py`（透明 TCP 代理 + 旁路重放 aMule 自己的块记账）。
+  一次典型停顿的读数：aMule 停在 38.6%，`requests=7`（21 对区间）、`sends=145`、
+  完成 24 块、`dropped_exceeds_boundaries=0`、`dropped_no_pending_block=0`；
+  aMule 侧 `ss` 显示内核 Recv-Q 留 ~493 KB 不动、状态仍是 `Downloading`，
+  约 100 s 后 `DOWNLOADTIMEOUT` 才把它打回 `Waiting`。
+  - **我们的帧没有一处违反它的边界规则**（0 越界、0 无主），所以问题不在帧格式。
+  - aMule 停止读取后我们阻塞在 `send_frame` 的写里，看门狗轮不到执行 → 就此冻结。
+  - 对端无法进一步取证：`AddDebugLogLineN` 在 release 构建里是空宏，
+    `VerboseDebug=1` 产不出帧级日志（二进制里 `exceeds requested` 字符串计数为 0）。
+    不重建 debug 版——那会换掉被测客户端。
+  - 据此修了两处真实缺陷（见 CHANGELOG）：写操作 10 s 上限（不再钉死线程）、
+    idle 重传看门狗（对端静默 ≥3 s 重发它最后请求的区间，封顶 2× 文件大小）。
+    实测同一链路 10.1% → 38.6%（1.48 MB → 4.25 MB、完成块 9 → 24），
+    **能缩短停顿，不能阻止对端再次停读**，所以上传方向仍是 BLOCKED。
+- 口径未变：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+  `auto_pass=false`；FR-24 公网检索仍等 G0 `protocol_scope` 书面放宽。

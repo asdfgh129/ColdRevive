@@ -41,6 +41,116 @@ pub fn publish_keys(namespace: &str, file_hash: &str, keywords: &[String]) -> Ve
     keys
 }
 
+/// 文件名里常见的「容器/编码/来源」噪声词。它们在任何检索里都命中一片、
+/// 却不指向任何具体内容，发上去只会稀释关键词质量。
+pub const NOISE_TOKENS: &[&str] = &[
+    "mkv", "mp4", "avi", "wmv", "flv", "mov", "mpg", "mpeg", "iso", "rar", "zip", "7z",
+    "x264", "x265", "h264", "h265", "hevc", "avc", "aac", "ac3", "dts", "flac", "mp3",
+    "1080p", "720p", "480p", "2160p", "4k", "webrip", "webdl", "bluray", "bdrip", "hdtv",
+    "remux", "repack", "proper", "internal", "hdr", "sdr", "yify", "rarbg",
+];
+
+/// FR-07：把文件名切成 KAD 关键词。
+///
+/// 规则刻意保守，且**只做确定性变换**（同一个名字永远切出同一组词，便于复算）：
+/// - 只在「非字母数字」处切分；CJK 连续串会成为一个词——中文没有空格，
+///   按「每字一词」切会让一个四字标题变成四条互不相干的 key；
+/// - ASCII 转小写；纯数字丢掉（`2024`、`01` 这类不带内容信息）；
+/// - ASCII 词短于 3 个字符丢掉，CJK 词短于 2 个字符丢掉；
+/// - 命中 [`NOISE_TOKENS`] 的丢掉；
+/// - 去重保持首次出现顺序，最多 `limit` 个（与 [`publish_keys`] 的 8 个上限对齐）。
+///
+/// 不做的：不分词性、不做同义词扩展、不做语言识别。这些都会引入不可复算的
+/// 结果，而 KAD 关键词一旦错了就是「发出去也查不到」，比少发几个更糟。
+pub fn tokenize_keywords(name: &str, limit: usize) -> Vec<String> {
+    fn keep(tok: &str) -> bool {
+        if tok.is_empty() {
+            return false;
+        }
+        if tok.chars().all(|c| c.is_ascii_digit()) {
+            return false;
+        }
+        let ascii_only = tok.is_ascii();
+        if ascii_only && tok.len() < 3 {
+            return false;
+        }
+        if !ascii_only && tok.chars().count() < 2 {
+            return false;
+        }
+        if ascii_only && NOISE_TOKENS.contains(&tok) {
+            return false;
+        }
+        true
+    }
+
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let push = |cur: &mut String, out: &mut Vec<String>| {
+        if cur.is_empty() {
+            return;
+        }
+        let low = cur.to_lowercase();
+        cur.clear();
+        if keep(&low) && !out.iter().any(|x| x == &low) && out.len() < limit {
+            out.push(low);
+        }
+    };
+    for ch in name.chars() {
+        if ch.is_alphanumeric() {
+            cur.push(ch);
+        } else {
+            push(&mut cur, &mut out);
+        }
+    }
+    push(&mut cur, &mut out);
+    out
+}
+
+#[cfg(test)]
+mod tokenizer_tests {
+    use super::*;
+
+    #[test]
+    fn tokenizer_is_deterministic_and_lowercases() {
+        let a = tokenize_keywords("Cold.Revive_Sample-2024.MKV", 8);
+        let b = tokenize_keywords("Cold.Revive_Sample-2024.MKV", 8);
+        assert_eq!(a, b, "同一名字必须切出同一组词");
+        assert_eq!(a, vec!["cold", "revive", "sample"]);
+    }
+
+    #[test]
+    fn tokenizer_drops_noise_digits_and_short_tokens() {
+        let t = tokenize_keywords("Movie.1080p.x265.AAC-GROUP.2024.mkv", 8);
+        assert!(!t.iter().any(|x| x == "mkv"), "容器名不该成为关键词: {t:?}");
+        assert!(!t.iter().any(|x| x == "2024"), "纯数字不该成为关键词: {t:?}");
+        assert!(!t.iter().any(|x| x == "hd"), "两字母 ASCII 词要丢掉: {t:?}");
+        assert!(t.contains(&"movie".to_string()));
+        assert!(t.contains(&"group".to_string()));
+    }
+
+    #[test]
+    fn tokenizer_keeps_cjk_runs_whole() {
+        let t = tokenize_keywords("冷启动复活-测试样本.bin", 8);
+        assert!(t.contains(&"冷启动复活".to_string()), "CJK 连续串应整体保留: {t:?}");
+        assert!(t.contains(&"测试样本".to_string()), "CJK 连续串应整体保留: {t:?}");
+    }
+
+    #[test]
+    fn tokenizer_dedupes_and_honours_limit() {
+        let t = tokenize_keywords("alpha beta alpha gamma delta epsilon zeta eta theta", 4);
+        assert_eq!(t.len(), 4, "必须尊重上限");
+        assert_eq!(t.iter().filter(|x| *x == "alpha").count(), 1, "必须去重");
+        assert_eq!(t[0], "alpha", "去重应保留首次出现顺序");
+    }
+
+    #[test]
+    fn tokenizer_handles_degenerate_input() {
+        assert!(tokenize_keywords("", 8).is_empty());
+        assert!(tokenize_keywords("---___...", 8).is_empty());
+        assert!(tokenize_keywords("ab cd", 8).is_empty(), "全是短词时应为空");
+    }
+}
+
 pub fn find_frame(key: &str) -> Json {
     Json::obj(vec![("t", Json::s("KAD_FIND")), ("key", Json::s(key))])
 }

@@ -83,6 +83,16 @@ pub struct FileEntry {
     pub ed2k_hash: String,
     /// FR-02：SHA-1 十六进制（BT v1 infohash 的原料，也是跨协议补源的索引键）
     pub sha1: String,
+    /// FR-05：最近一次**成功**的 KAD 发布时刻（Unix 秒）。0 = 从未成功发布。
+    pub published_at: u64,
+    /// FR-05：本机记账的 KAD 刷新截止（Unix 秒）。0 = 未登记。
+    ///
+    /// 这是**本地承诺**，不是协议 TTL：对端只回 `KAD_PUBLISH_ACK`，不带任何
+    /// 过期时间。所以它表示「本机承诺在此时刻前重发一次」，绝不表示
+    /// 「KAD 网络会在此之前保留该条目」。
+    pub kad_expires_at: u64,
+    /// FR-05：连续刷新失败次数。成功一次即清零，用来区分「一直在试」与「一直成功」。
+    pub kad_refresh_failures: u32,
 }
 
 impl FileEntry {
@@ -102,6 +112,9 @@ impl FileEntry {
             kad_published: false,
             ed2k_hash: String::new(),
             sha1: String::new(),
+            published_at: 0,
+            kad_expires_at: 0,
+            kad_refresh_failures: 0,
         }
     }
     pub fn transition(&mut self, to: FileState) {
@@ -112,6 +125,36 @@ impl FileEntry {
     /// FR-12：能否在不重新读盘的前提下给出 ed2k link 的三个要素。
     pub fn can_link_ed2k(&self) -> bool {
         self.ed2k_hash.len() == 32 && self.size > 0 && !self.name.is_empty()
+    }
+    /// FR-05：现在是否该为这个条目重发 KAD 帧。
+    ///
+    /// 语义是「刷新窗口」而不是「过期即失效」：在 `ttl/3` 处就开始续，
+    /// 这样单次失败还有两次机会，不会因为一次超时就让条目掉出可检索状态。
+    /// `kad_expires_at == 0`（从未登记）视为到期待发。
+    pub fn kad_due(&self, now: u64, ttl: u64) -> bool {
+        if !self.kad_published {
+            return false;
+        }
+        if self.kad_expires_at == 0 {
+            return true;
+        }
+        now + ttl / 3 >= self.kad_expires_at
+    }
+    /// FR-05：记一次成功发布，把刷新截止推到 `now + ttl`。
+    pub fn mark_published(&mut self, now: u64, ttl: u64) {
+        self.kad_published = true;
+        self.published_at = now;
+        self.kad_expires_at = now.saturating_add(ttl);
+        self.kad_refresh_failures = 0;
+    }
+    /// FR-05：记一次失败。**不动** `kad_expires_at`：截止时间是过去的承诺，
+    /// 失败不改变「本该在什么时候续」，否则连续的失败会把自己无限延期。
+    pub fn mark_refresh_failed(&mut self) {
+        self.kad_refresh_failures = self.kad_refresh_failures.saturating_add(1);
+    }
+    /// FR-05：是否已经越过刷新截止（用于 `/health` 的 `expired` 计数）。
+    pub fn kad_expired(&self, now: u64) -> bool {
+        self.kad_published && self.kad_expires_at != 0 && now >= self.kad_expires_at
     }
     fn to_json(&self) -> Json {
         Json::obj(vec![
@@ -129,6 +172,9 @@ impl FileEntry {
             ("kad_published", Json::b(self.kad_published)),
             ("ed2k_hash", Json::s(&self.ed2k_hash)),
             ("sha1", Json::s(&self.sha1)),
+            ("published_at", Json::n(self.published_at as f64)),
+            ("kad_expires_at", Json::n(self.kad_expires_at as f64)),
+            ("kad_refresh_failures", Json::n(self.kad_refresh_failures as f64)),
         ])
     }
     fn from_json(j: &Json) -> Option<FileEntry> {
@@ -151,6 +197,13 @@ impl FileEntry {
             kad_published: j.get("kad_published").and_then(Json::as_bool).unwrap_or(false),
             ed2k_hash: s("ed2k_hash"),
             sha1: s("sha1"),
+            // 这三个字段是**新增可选**字段：旧 v2 文件里没有它们，缺省为 0 表示
+            // 「还没发布过」，语义正好等于「下次重发布时该发一次」。
+            // 因为追加可选字段不改变既有字段的含义，`SCHEMA_VERSION` 不因此递增。
+            published_at: j.get("published_at").and_then(Json::as_i64).unwrap_or(0).max(0) as u64,
+            kad_expires_at: j.get("kad_expires_at").and_then(Json::as_i64).unwrap_or(0).max(0) as u64,
+            kad_refresh_failures: j.get("kad_refresh_failures").and_then(Json::as_i64)
+                .unwrap_or(0).max(0) as u32,
         })
     }
 }
@@ -399,6 +452,80 @@ mod tests {
         assert_eq!(e.ed2k_hash, "00112233445566778899aabbccddeeff");
         assert_eq!(e.sha1, "a9993e364706816aba3e25717850c26c9cd0d89d");
         assert!(e.can_link_ed2k());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn kad_refresh_window_opens_at_one_third_of_ttl() {
+        let mut e = FileEntry::new("h", Path::new("a.bin"), "a.bin", 9);
+        e.published_keys = vec!["k".into()];
+        // 从未发布过：不算「到期」，因为根本没发过；但登记之后必须立刻可发。
+        assert!(!e.kad_due(1_000, 300));
+        e.kad_published = true;
+        assert!(e.kad_due(1_000, 300), "expires_at 还是 0 时应立即视为到期");
+
+        e.mark_published(1_000, 300);
+        assert_eq!(e.published_at, 1_000);
+        assert_eq!(e.kad_expires_at, 1_300);
+        // 窗口在 ttl/3 处打开：1300-100=1200 之前不该重发。
+        assert!(!e.kad_due(1_199, 300), "刷新窗口尚未打开就不该发");
+        assert!(e.kad_due(1_200, 300), "到 ttl/3 处必须可重发");
+        assert!(!e.kad_expired(1_299), "未到截止时间不算过期");
+        assert!(e.kad_expired(1_300), "到截止时间才算过期");
+    }
+
+    #[test]
+    fn failed_refresh_does_not_postpone_the_deadline() {
+        let mut e = FileEntry::new("h", Path::new("a.bin"), "a.bin", 9);
+        e.kad_published = true;
+        e.mark_published(1_000, 300);
+        let deadline = e.kad_expires_at;
+        e.mark_refresh_failed();
+        e.mark_refresh_failed();
+        assert_eq!(e.kad_refresh_failures, 2);
+        assert_eq!(e.kad_expires_at, deadline,
+                   "失败不能把截止时间往后推，否则连续失败会把自己无限延期");
+        // 成功一次即清零并重新计时
+        e.mark_published(2_000, 300);
+        assert_eq!(e.kad_refresh_failures, 0);
+        assert_eq!(e.kad_expires_at, 2_300);
+    }
+
+    #[test]
+    fn kad_ttl_fields_survive_restart() {
+        let dir = temp_dir("kad-ttl");
+        let p = dir.join("state.json");
+        let mut idx = ShadowIndex::open(&p);
+        let mut e = FileEntry::new("h", Path::new("a.bin"), "a.bin", 9);
+        e.published_keys = vec!["k1".into()];
+        e.kad_published = true;
+        e.mark_published(1_234, 600);
+        e.mark_refresh_failed();
+        idx.insert(e);
+        idx.save().unwrap();
+
+        let back = ShadowIndex::open(&p);
+        let e = back.get("h").unwrap();
+        assert_eq!(e.published_at, 1_234);
+        assert_eq!(e.kad_expires_at, 1_834);
+        assert_eq!(e.kad_refresh_failures, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_v2_entry_without_ttl_fields_loads_as_never_published() {
+        // 追加可选字段不递增 SCHEMA_VERSION；旧文件必须照样能读，
+        // 且缺省值要在语义上等于「还没发布过」（expires_at=0 -> 立刻可发）。
+        let dir = temp_dir("kad-legacy");
+        let p = dir.join("state.json");
+        fs::write(&p, r#"{"schema":2,"entries":[{"file_hash":"h","path":"/tmp/a.bin","name":"a.bin","size":7,"state":"COLD","transitions":["COLD"],"published_keys":["pk"],"kad_published":true}]}"#).unwrap();
+        let idx = ShadowIndex::open(&p);
+        assert_eq!(idx.status, OpenStatus::LoadedV2);
+        let e = idx.get("h").unwrap();
+        assert_eq!(e.published_at, 0);
+        assert_eq!(e.kad_expires_at, 0);
+        assert_eq!(e.kad_refresh_failures, 0);
+        assert!(e.kad_due(1, 3_600), "缺省值必须让条目立刻可（重）发");
         let _ = fs::remove_dir_all(&dir);
     }
 }

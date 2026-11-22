@@ -23,6 +23,7 @@ mod punch_route;
 mod ratelimit;
 mod relay_sub;
 mod sched;
+mod sysres;
 mod watch;
 
 use cr_core::{Config, Json};
@@ -156,6 +157,9 @@ pub struct NodeState {
     pub punch_route: punch_route::PunchRouteState,
     /// ADR-023：opt-in 的中继数据面。None 时引擎 proxy_url 保持 None。
     pub data_plane: Option<std::sync::Arc<data_plane::DataPlane>>,
+    /// FR-15：真实资源采样（RSS / 对端连接数 / 上行速率）。
+    /// 只由采样线程写入，准入判定只读；未配置任何采样阈值时保持 unknown。
+    pub res: sysres::Meter,
 }
 
 fn main() {
@@ -270,6 +274,7 @@ fn main() {
         guard_external: None,
         punch_route: punch_route::PunchRouteState::from_config(&cfg),
         data_plane,
+        res: sysres::Meter::new(),
     };
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
@@ -311,12 +316,15 @@ fn main() {
         spawn_idle_sleeper(cfg.clone(), shared.clone());
         // FR-05/06：KAD 周期重发布（只对已发布条目重发，不新增关键词）。
         kad_republish::spawn(shared.clone());
+        // FR-15：真实资源采样（peers / 上行速率 / RSS）。没配阈值就不起线程。
+        sysres::spawn(shared.clone());
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));
         spawn_udp(hub.clone(), cfg.clone(), shared.clone());
         watch::spawn(shared.clone());
         kad_republish::spawn(shared.clone());
+        sysres::spawn(shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
     }
@@ -608,26 +616,71 @@ fn spawn_handshake_guard(cfg: Config, state: Arc<Mutex<NodeState>>) {
     });
 }
 
-/// FR-15：资源阈值准入。返回 `Some((上限, 当前 HOT 数))` 表示**应当拒绝**这次唤醒。
+/// FR-15：一次拒绝的完整理由。**必须**带上 `limit_name/limit/current`——
+/// 只说「资源不足」会让运维无法区分「HOT 满了」和「内存超了」。
+pub(crate) struct Refusal {
+    pub name: &'static str,
+    pub limit: u64,
+    pub current: u64,
+    pub unit: &'static str,
+}
+
+/// FR-15：资源阈值准入。返回 `Some(..)` 表示**应当拒绝**这次唤醒。
 ///
-/// 两个刻意的选择：
+/// 刻意的选择：
 /// - 计数取索引里真实的 `HOT` 条目，不取「配置里登记了几个样本」——空载节点一个 HOT
 ///   都没有，按配置数算会在第一个请求就误拒；
 /// - 已经在 HOT 的那一个不拒（幂等重复唤醒），否则同一个客户端重连一次就被自己的
-///   历史记成「超限」。
+///   历史记成「超限」；
+/// - **一条阈值读不到（如平台拿不到 RSS）时，那条不参与判定**，且 `/health` 会把它
+///   标成 `enabled=false/unavailable`。宁可承认没生效，也不假装生效。
+/// - 多条阈值同时超限时按固定顺序取第一条：hot → peers → bandwidth → rss。
+///   顺序固定才能让 e2e 断言「是哪条拦的」。
 ///
 /// 与 `engine.max_active_seeds` 的分工：那个是容量（满了逐出最久未用者继续服务），
 /// 这个是阈值（超了直接拒绝新唤醒，已在供片的不动）。
-fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<(usize, usize)> {
-    let limit = cfg.limits_max_hot_seeds?;
+fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<Refusal> {
     let already_hot = st.index.get(file_hash)
-        .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
-    if already_hot {
-        return None;
-    }
+        .map(|e| e.state == cr_store::FileState::Hot)
+        .unwrap_or(false);
     let hot = st.index.entries.values()
         .filter(|e| e.state == cr_store::FileState::Hot).count();
-    if hot >= limit { Some((limit, hot)) } else { None }
+
+    if let Some(limit) = cfg.limits_max_hot_seeds {
+        // 已在 HOT 的重复唤醒不算新增占用。
+        if !already_hot && hot >= limit {
+            return Some(Refusal { name: "max_hot_seeds", limit: limit as u64,
+                                  current: hot as u64, unit: "entries" });
+        }
+    }
+    if already_hot {
+        // 同一个条目重复唤醒：它已经在占资源，再按 peers/带宽/内存拦一次没有任何收益，
+        // 只会让本来就该成功的重连变成拒绝。
+        return None;
+    }
+    if let Some(limit) = cfg.limits_max_peers {
+        let current = st.res.sample.peers as u64;
+        if current >= limit as u64 {
+            return Some(Refusal { name: "max_peers", limit: limit as u64,
+                                  current, unit: "peers" });
+        }
+    }
+    if let Some(limit) = cfg.limits_max_upload_bytes_per_sec {
+        let current = st.res.sample.up_bps;
+        if current >= limit {
+            return Some(Refusal { name: "max_upload_bytes_per_sec", limit,
+                                  current, unit: "B/s" });
+        }
+    }
+    if let Some(limit) = cfg.limits_max_rss_mb {
+        // 读不到 RSS 就**不判定**（见函数文档）；`/health` 会显式标 unavailable。
+        if let Some(current) = st.res.sample.rss_mb {
+            if current >= limit {
+                return Some(Refusal { name: "max_rss_mb", limit, current, unit: "MiB" });
+            }
+        }
+    }
+    None
 }
 
 fn handle_guard_connection(
@@ -652,9 +705,9 @@ fn handle_guard_connection(
         let over = st.index.entries.values()
             .find(|e| e.infohash == ih)
             .and_then(|e| hot_admission(&cfg, &st, &e.file_hash));
-        if let Some((limit, hot)) = over {
-            eprintln!("[{}] FR-15 拒绝握手唤醒: HOT {} 已达上限 {}（infohash={}）",
-                      cfg.node_id, hot, limit, ih);
+        if let Some(over) = over {
+            eprintln!("[{}] FR-15 拒绝握手唤醒: {} {} 已达上限 {}（infohash={}）",
+                      cfg.node_id, over.name, over.current, over.limit, ih);
             st.guard_stats.lock().unwrap().2 += 1;
             return;
         }
@@ -794,16 +847,57 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         };
         // FR-15：阈值与「现在有几个真的 HOT」同屏。只报 `max_hot_seeds` 而不报 `hot`
         // 的话，「被拒了」和「没被拒但也没热起来」在运维眼里长得一样。
+        // 新增三条（peers/带宽/RSS）各自带 `enabled` 与实测 `current`：
+        // RSS 在某些平台读不到时 `enabled=false` + `unavailable`，不写 0 冒充。
         let limits_json = {
             let st = state.lock().unwrap();
             let hot = st.index.entries.values()
                 .filter(|e| e.state == cr_store::FileState::Hot).count();
+            let res = &st.res.sample;
+            let rss_json = match (cfg.limits_max_rss_mb, res.rss_mb) {
+                (Some(limit), Some(cur)) => Json::obj(vec![
+                    ("enabled", Json::b(true)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::n(cur as f64)),
+                    ("unit", Json::s("MiB")),
+                ]),
+                (Some(limit), None) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::Null),
+                    ("unit", Json::s("MiB")),
+                    ("unavailable", Json::s("本平台未实现 RSS 读取；该阈值未生效")),
+                ]),
+                (None, cur) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::Null),
+                    ("current", match cur { Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("unit", Json::s("MiB")),
+                ]),
+            };
             Json::obj(vec![
                 ("max_hot_seeds", match cfg.limits_max_hot_seeds {
                     Some(v) => Json::n(v as f64),
                     None => Json::Null,
                 }),
                 ("hot", Json::n(hot as f64)),
+                ("max_peers", Json::obj(vec![
+                    ("enabled", Json::b(cfg.limits_max_peers.is_some())),
+                    ("limit", match cfg.limits_max_peers {
+                        Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("current", Json::n(res.peers as f64)),
+                    ("unit", Json::s("peers")),
+                ])),
+                ("max_upload_bytes_per_sec", Json::obj(vec![
+                    ("enabled", Json::b(cfg.limits_max_upload_bytes_per_sec.is_some())),
+                    ("limit", match cfg.limits_max_upload_bytes_per_sec {
+                        Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("current", Json::n(res.up_bps as f64)),
+                    ("unit", Json::s("B/s")),
+                ])),
+                ("max_rss_mb", rss_json),
+                // 采样时刻（相对进程启动的秒数），用来判断读数是否新鲜。
+                ("sample_at_secs", Json::n(res.at_secs as f64)),
             ])
         };
         let (seed_count, seed_active, served_bytes, punch_route_json) = {
@@ -1604,14 +1698,15 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
         // 幂等激活：已处于 HOT 的持有者不因重复唤醒再次跃迁（PROTO §3.1 / T0-17）。
         // 这样 COLD → WAKING → HOT 每个激活周期只记录一次，也不会重复拉起做种。
         // FR-15 的阈值检查放在状态跃迁**之前**：先拒绝就不该留 WAKING/HOT 痕迹。
-        if let Some((limit, hot)) = hot_admission(cfg, &st, &file_hash) {
-            eprintln!("[{}] FR-15 拒绝唤醒 {}: HOT {} 已达上限 {}",
-                      cfg.node_id, entry.name, hot, limit);
+        if let Some(over) = hot_admission(cfg, &st, &file_hash) {
+            eprintln!("[{}] FR-15 拒绝唤醒 {}: {} {} 已达上限 {}（单位 {}）",
+                      cfg.node_id, entry.name, over.name, over.current, over.limit, over.unit);
             let mut r = reject(&trace, "REJECT_RESOURCE_LIMIT");
             if let Json::Obj(ref mut p) = r {
-                p.push(("limit_name".into(), Json::s("max_hot_seeds")));
-                p.push(("limit".into(), Json::n(limit as f64)));
-                p.push(("current".into(), Json::n(hot as f64)));
+                p.push(("limit_name".into(), Json::s(over.name)));
+                p.push(("limit".into(), Json::n(over.limit as f64)));
+                p.push(("current".into(), Json::n(over.current as f64)));
+                p.push(("limit_unit".into(), Json::s(over.unit)));
             }
             return Some(r);
         }
@@ -1753,6 +1848,7 @@ mod rpc_tests {
             guard_external: None,
             punch_route: punch_route::PunchRouteState::from_config(&cfg),
             data_plane: data_plane::DataPlane::new().ok(),
+            res: sysres::Meter::new(),
         };
         assert!(st.data_plane.is_some(), "本用例的前提就是数据面已开启");
         assert!(st.punch_route.enabled);

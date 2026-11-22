@@ -65,6 +65,8 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         "seed" => seed_stats(state),
         "ed2k" => ed2k_links(state, &arg(&args, 0)),
+        // FR-05/07：KAD 关键词去重健康度 + 刷新状态（只读）。
+        "kad-health" => kad_health(state),
         // FR-25 daemon 接线：三条命令都走生产 cr-ed2k::stack，后台任务结果由
         // `ed2k-status` 从真实栈返回值读取，不编造完成状态。
         "ed2k-link" => ed2k_tasks::link_cmd(&args),
@@ -231,7 +233,14 @@ pub(crate) fn index_path(state: &Shared, path: &str) -> Json {
     };
     let mut st = state.lock().unwrap();
     let namespace = st.cfg.namespace.clone();
-    let keywords = st.cfg.keywords.clone();
+    // FR-07：配置里给了关键词就用配置的；没给才从文件名切。
+    // 顺序不能反：配置的关键词是运营者显式意图，文件名分词只是兜底。
+    let mut keywords = st.cfg.keywords.clone();
+    let mut keywords_source = "config";
+    if keywords.is_empty() {
+        keywords = cr_kad::tokenize_keywords(&facts.name, 8);
+        keywords_source = "tokenized";
+    }
     let mut e = FileEntry::new(&facts.file_hash, &p, &facts.name, facts.size);
     e.sha1 = facts.sha1.clone();
     e.ed2k_hash = facts.ed2k_hash.clone();
@@ -247,6 +256,8 @@ pub(crate) fn index_path(state: &Shared, path: &str) -> Json {
         ("sha1", Json::s(&facts.sha1)),
         ("ed2k_hash", Json::s(&facts.ed2k_hash)),
         ("size", Json::n(facts.size as f64)),
+        ("keywords", Json::arr(keywords.iter().map(|k| Json::s(k)).collect())),
+        ("keywords_source", Json::s(keywords_source)),
         ("entries", Json::n(st.index.len() as f64)),
         ("index_status", Json::s(st.index.status.as_str())),
         ("error", Json::s(saved.err().unwrap_or_default())),
@@ -509,55 +520,185 @@ fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
     ])
 }
 
-/// FR-05/06：把**已发布**条目的关键词重发布一次（周期任务调用）。
+/// FR-05/06：把**到期**的已发布条目重发布一次（周期任务调用）。
 ///
-/// 口径纪律：只重发 `kad_published=true` 的条目已有的 key，不新增关键词、
-/// 不把「发过帧」写成「公网可检索」（后者需要 S2 证据，仍是 BLOCKED）。
+/// 与「每 N 秒无脑重发」的区别：这里按每条自己的 `kad_expires_at` 判断是否进入
+/// 刷新窗口（`ttl/3` 处开始续），所以：
+/// - 空转周期只报 `due=0`，不会伪造「发了 N 个 key」；
+/// - 单次失败不会自我延期——`kad_expires_at` 只在成功时前推。
+///
+/// 口径纪律：只重发 `kad_published=true` 的条目已有的 key，不新增关键词；
+/// 不把「发过帧 + 收到 ACK」写成「公网可检索」（后者仍需 S2/G0 证据）。
 pub(crate) fn republish_published_keys(state: &Shared) -> Json {
-    let (cfg, keys) = {
+    let ttl = {
         let st = match state.lock() {
             Ok(s) => s,
             Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
         };
-        (st.cfg.clone(), st.index.all_published_keys())
+        st.cfg.kad_ttl_secs.unwrap_or(cr_core::DEFAULT_KAD_TTL_SECS).max(3)
     };
-    if keys.is_empty() {
+    let now = cr_core::unix_ts().max(0) as u64;
+    let (cfg, due) = {
+        let st = match state.lock() {
+            Ok(s) => s,
+            Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
+        };
+        let due: Vec<(String, Vec<String>)> = st.index.entries.values()
+            .filter(|e| e.kad_due(now, ttl))
+            .map(|e| (e.file_hash.clone(), e.published_keys.clone()))
+            .collect();
+        (st.cfg.clone(), due)
+    };
+    if due.is_empty() {
         return Json::obj(vec![
             ("sent", Json::b(false)),
-            ("keys", Json::n(0.0)),
-            ("note", Json::s("没有已发布条目，未发帧")),
+            ("due", Json::n(0.0)),
+            ("ttl_secs", Json::n(ttl as f64)),
+            ("note", Json::s("没有进入刷新窗口的条目，未发帧")),
         ]);
     }
+    let mut keys: Vec<String> = due.iter().flat_map(|(_, k)| k.iter().cloned()).collect();
+    keys.sort();
+    keys.dedup();
     let frame = Json::obj(vec![
         ("t", Json::s("KAD_PUBLISH")),
         ("node", Json::s(&cfg.node_id)),
         ("keys", Json::arr(keys.iter().map(|k| Json::s(k)).collect())),
     ]);
-    match send_wake(state, &cfg, &frame, 800) {
+    let outcome = send_wake(state, &cfg, &frame, 800);
+    let (acked, extra) = match outcome {
         Ok((ack, elapsed)) => {
             // `sent=true` 只认**对端明确回了 KAD_PUBLISH_ACK**。任何别的应答
             // （旧版本对端的空对象、串到别的帧上的结果）都算未确认——否则
             // 「发出去一帧」会被读成「对端已收下关键词」。
             let ack_t = ack.get("t").and_then(Json::as_str).unwrap_or("");
-            let acked = ack_t == "KAD_PUBLISH_ACK";
-            Json::obj(vec![
-                ("sent", Json::b(acked)),
-                ("keys", Json::n(keys.len() as f64)),
+            (ack_t == "KAD_PUBLISH_ACK", vec![
                 ("elapsed_ms", Json::n(elapsed as f64)),
                 ("ack_t", Json::s(ack_t)),
                 ("ack_status", Json::s(ack.get("status").and_then(Json::as_str).unwrap_or(""))),
             ])
         }
-        Err(e) => Json::obj(vec![
-            ("sent", Json::b(false)),
-            ("keys", Json::n(keys.len() as f64)),
-            ("error", Json::s(e)),
-        ]),
+        Err(e) => (false, vec![("error", Json::s(e))]),
+    };
+    // 成败都落盘：成功前推截止时间，失败只累加计数。
+    let mut failures = 0usize;
+    {
+        let mut st = match state.lock() {
+            Ok(s) => s,
+            Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
+        };
+        for (fh, _) in &due {
+            if let Some(e) = st.index.get_mut(fh) {
+                if acked {
+                    e.mark_published(now, ttl);
+                } else {
+                    e.mark_refresh_failed();
+                    failures += 1;
+                }
+            }
+        }
+        let _ = st.index.save();
     }
+    let mut fields = vec![
+        ("sent", Json::b(acked)),
+        ("due", Json::n(due.len() as f64)),
+        ("keys", Json::n(keys.len() as f64)),
+        ("ttl_secs", Json::n(ttl as f64)),
+        ("refresh_failed", Json::n(failures as f64)),
+    ];
+    fields.extend(extra);
+    Json::obj(fields)
 }
 
-fn golden(cfg: &Config) -> Json {
-    let req = Json::load(&cfg.golden_req).unwrap_or(Json::Null);
+/// FR-05/07：KAD 关键词的**去重健康度**与刷新状态。
+///
+/// 只报可复算的量：key 集合是从索引里现算的，`duplicate_keys` 就是
+/// 「多发了一次也只会命中同一个 key」的条数。这样「发布了很多 key」与
+/// 「发布了很多**不同**的 key」能分开看——后者才决定能不能被搜到。
+pub(crate) fn kad_health(state: &Shared) -> Json {
+    let st = match state.lock() {
+        Ok(s) => s,
+        Err(_) => return Json::obj(vec![("error", Json::s("状态锁中毒"))]),
+    };
+    let ttl = st.cfg.kad_ttl_secs.unwrap_or(cr_core::DEFAULT_KAD_TTL_SECS).max(3);
+    let now = cr_core::unix_ts().max(0) as u64;
+
+    let mut keys_all: Vec<String> = Vec::new();
+    let mut kw_all: Vec<String> = Vec::new();
+    let mut published = 0usize;
+    let mut due = 0usize;
+    let mut expired = 0usize;
+    let mut expiring_soon = 0usize;
+    let mut tokenized = 0usize;
+    let mut failures = 0u64;
+    let mut by_state: std::collections::BTreeMap<&'static str, usize> = Default::default();
+
+    for e in st.index.entries.values() {
+        *by_state.entry(e.state.as_str()).or_insert(0) += 1;
+        kw_all.extend(e.keywords.iter().cloned());
+        // key 集合按「会发出去的 key」统计，不按「已成功发过的」统计：
+        // 后者在还没发布过的节点上恒为 0，去重健康度就看不出来了。
+        keys_all.extend(e.published_keys.iter().cloned());
+        if e.kad_published {
+            published += 1;
+            failures += e.kad_refresh_failures as u64;
+            if e.kad_due(now, ttl) {
+                due += 1;
+            }
+            if e.kad_expired(now) {
+                expired += 1;
+            } else if e.kad_expires_at != 0 && e.kad_expires_at <= now + ttl / 3 {
+                expiring_soon += 1;
+            }
+        }
+        // 「关键词是不是切出来的」用现算结果比对，不额外存标记：
+        // 存了标记就会和真实分词逻辑脱节，比对是精确的。
+        if !e.keywords.is_empty() && cr_kad::tokenize_keywords(&e.name, 8) == e.keywords {
+            tokenized += 1;
+        }
+    }
+
+    let mut keys_sorted = keys_all.clone();
+    keys_sorted.sort();
+    keys_sorted.dedup();
+    let mut kw_sorted = kw_all.clone();
+    kw_sorted.sort();
+    kw_sorted.dedup();
+
+    // 每个 key 被多少条条目发出：>1 就是重复，发多次只会命中同一条 KAD 记录。
+    let mut per_key: std::collections::BTreeMap<&str, usize> = Default::default();
+    for k in &keys_all {
+        *per_key.entry(k.as_str()).or_insert(0) += 1;
+    }
+    let dup_detail: Vec<Json> = per_key.iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(k, n)| Json::obj(vec![
+            ("key", Json::s(*k)),
+            ("entries", Json::n(*n as f64)),
+        ]))
+        .collect();
+
+    Json::obj(vec![
+        ("entries", Json::n(st.index.entries.len() as f64)),
+        ("by_state", Json::obj(by_state.iter().map(|(k, v)| (*k, Json::n(*v as f64))).collect())),
+        ("published_entries", Json::n(published as f64)),
+        ("ttl_secs", Json::n(ttl as f64)),
+        ("due", Json::n(due as f64)),
+        ("expired", Json::n(expired as f64)),
+        ("expiring_soon", Json::n(expiring_soon as f64)),
+        ("keys_total", Json::n(keys_all.len() as f64)),
+        ("keys_unique", Json::n(keys_sorted.len() as f64)),
+        ("duplicate_keys", Json::n(dup_detail.len() as f64)),
+        ("duplicates", Json::arr(dup_detail)),
+        ("keywords_total", Json::n(kw_all.len() as f64)),
+        ("keywords_unique", Json::n(kw_sorted.len() as f64)),
+        ("tokenized_entries", Json::n(tokenized as f64)),
+        ("refresh_failures", Json::n(failures as f64)),
+        ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽")),
+    ])
+}
+
+fn golden(cfg: &Config) -> Json {    let req = Json::load(&cfg.golden_req).unwrap_or(Json::Null);
     let ack = Json::load(&cfg.golden_ack).unwrap_or(Json::Null);
     let req_ok = has_exact_fields(&req, &cr_wake::REQ_FIELDS)
         && req.get("v").and_then(Json::as_i64) == Some(1)

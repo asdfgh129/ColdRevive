@@ -418,7 +418,34 @@ pub struct Config {
     /// 最久未用者），这个是阈值（超了就**拒绝新的唤醒**，已供片的保持不动）。
     /// 计数取自索引里真实的 HOT 条目，不拿「配置了几个样本」充数。
     pub limits_max_hot_seeds: Option<usize>,
+    /// FR-15：做种任务的**真实对端连接数**上限（`limits.max_peers`）。0/缺省 = 关闭。
+    ///
+    /// 取引擎 `EngineProgress.peers` 的实测和，不取「登记了几个任务」。
+    /// 与 `max_hot_seeds` 同样是**拒绝新唤醒**，不是断开已有连接——已连上的
+    /// 对端被我们单方面踢掉，比拒绝一个新唤醒对网络更糟。
+    pub limits_max_peers: Option<usize>,
+    /// FR-15：出向带宽上限（`limits.max_upload_bytes_per_sec`）。0/缺省 = 关闭。
+    ///
+    /// 由守护进程每秒采样引擎累计 `uploaded_bytes` 的差分得到，单位 byte/s。
+    /// 带宽是**滞后**指标：它描述「已经在上传」，所以只可能是拒绝新唤醒的理由，
+    /// 不能用来承诺「不会超过这条线」。
+    pub limits_max_upload_bytes_per_sec: Option<u64>,
+    /// FR-15：进程常驻内存上限（`limits.max_rss_mb`）。0/缺省 = 关闭。
+    ///
+    /// 读平台真实 RSS：Linux 用 `/proc/self/status` 的 `VmRSS`，Windows 用
+    /// `GetProcessMemoryInfo`。**读不到的平台（如 macOS）不当作 0**，
+    /// 而是显式报 `unavailable` —— 阈值没生效必须能看出没生效。
+    pub limits_max_rss_mb: Option<u64>,
+    /// FR-05：本机记账的 KAD 刷新周期（`kad.ttl_secs`，秒）。0/缺省 = 3600。
+    ///
+    /// **这是本地承诺，不是协议 TTL**：对端只回 `KAD_PUBLISH_ACK`，不带过期时间。
+    /// 它决定「什么时候重发一次」，不决定「KAD 网络会保留多久」。
+    /// 重发窗口取 `ttl/3`：留两次补救机会，单次超时不会让条目直接掉出可检索状态。
+    pub kad_ttl_secs: Option<u64>,
 }
+
+/// FR-05：没有显式配置时的 KAD 本地刷新周期。
+pub const DEFAULT_KAD_TTL_SECS: u64 = 3600;
 
 impl Config {
     /// 要做种的样本清单。`samples` 为空时退回单一的 `sample_path`（旧配置口径）。
@@ -671,6 +698,10 @@ impl Config {
         // FR-15：阈值。0/缺省 = 关闭；缺省时既有部署的准入行为完全不变。
         // 注意不能把 0 夹成 1——那会让「没配」表现成「配了 1，一个都不许热」。
         let limits_max_hot_seeds = opt_num("limits", "max_hot_seeds")?.map(|n| n as usize);
+        let limits_max_peers = opt_num("limits", "max_peers")?.map(|n| n as usize);
+        let limits_max_upload_bytes_per_sec = opt_num("limits", "max_upload_bytes_per_sec")?;
+        let limits_max_rss_mb = opt_num("limits", "max_rss_mb")?;
+        let kad_ttl_secs = opt_num("kad", "ttl_secs")?;
         Ok(Config {
             node_id: String::new(),
             role,
@@ -710,6 +741,10 @@ impl Config {
             indexer_watch_secs,
             kad_republish_secs,
             limits_max_hot_seeds,
+            limits_max_peers,
+            limits_max_upload_bytes_per_sec,
+            limits_max_rss_mb,
+            kad_ttl_secs,
             bt_guard_handshake,
         })
     }

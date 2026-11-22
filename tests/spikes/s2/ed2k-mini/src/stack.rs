@@ -133,7 +133,8 @@ impl Link {
             opcode_name: w::opcode_name(opcode).into(),
             payload_len: payload.len(),
         });
-        w::send_packet(&mut self.stream, protocol, opcode, payload)?;
+        w::send_packet(&mut self.stream, protocol, opcode, payload)
+            .map_err(|e| format!("write eD2k frame (peer stopped reading?): {e}"))?;
         Ok(())
     }
     pub fn send_frame(&mut self, f: &[u8]) -> Result<(), String> {
@@ -333,6 +334,14 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
 }
 
 /// Per-requested-range upload bookkeeping for one connection.
+/// 单帧写入的上限。对端不读时不能无限阻塞：见 `serve` 里的说明。
+const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// 对端静默多久之后认为「上一批数据被困住了」，触发一次自愈重发。
+/// 取 3 s：远小于 aMule 自己的 `DOWNLOADTIMEOUT`(100 s)，也大于 LAN 上一个
+/// 180 KiB 块的传输时间，不会把正常的流水线停顿误判成丢包。
+const IDLE_RESEND: Duration = Duration::from_secs(3);
+
 struct SentRange {
     sent_at: Instant,
     sent_req: u64,
@@ -400,6 +409,9 @@ pub struct UploadResult {
     pub peer_hello: Option<Hello>,
     pub blocks_sent: usize,
     pub bytes_sent: usize,
+    /// 对端停手后触发的自愈重发次数（见 `serve` 的 idle watchdog）。
+    /// 这些字节会计入 `bytes_sent`，所以「发送量 > 文件大小」不一定是 bug。
+    pub idle_resends: usize,
     pub queue_granted: bool,
     pub queue_rank_sent: Option<u16>,
     pub log: Vec<LogEntry>,
@@ -414,7 +426,14 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
     let deadline = Instant::now() + timeout;
     // 真实客户端在多条连接之间可能短暂停顿；5s 会把仍有用的连接误关。
     // 但仍受整次任务 timeout 约束，不能无限等。
-    let _ = stream.set_read_timeout(Some(timeout.min(Duration::from_secs(15))));
+    // 1 s 的读超时不是为了「判定断开」，而是给 idle watchdog 一个时间刻度：
+    // `wire::read_packet_pending` 会把半帧留在 pending 里，超时本身不丢字节。
+    let _ = stream.set_read_timeout(Some(timeout.min(Duration::from_secs(1))));
+    // 写操作也必须有上限。W25 实测：aMule 2.3.3 在 6%–38% 之间会**停止读取自己的
+    // socket**（内核 Recv-Q 里留着几百 KB 不动，客户端状态仍是 Downloading），
+    // 这时我们会在 `send_frame` 里阻塞写，连 idle 重传的看门狗都轮不到执行，
+    // 线程与连接一起被钉死。宁可 10s 后如实报错、让客户端重连换一条连接。
+    let _ = stream.set_write_timeout(Some(WRITE_TIMEOUT));
     let mut link = Link::new(stream);
     let peer_id = queue.lock().map(|mut q| q.new_peer()).unwrap_or(0);
     let mut held_slot = false;
@@ -426,6 +445,12 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
     // 仍在 pending 里，就按重传再发一次（eD2k 无块级 ACK，只能这样自愈）。
     let mut sent_ranges: HashMap<(u32, u32), SentRange> = HashMap::new();
     let mut request_seq: u64 = 0;
+    // 对端停手时的自愈（W25 实测 aMule 2.3.3 停在 10.1% 不动：窗口填满后
+    // 既不确认也不再请求，eD2k 又没有块级 ACK）。读超时不再意味着「没事发生」，
+    // 而是检查「上一批请求的数据是不是被困住了」。
+    let mut last_request_at = Instant::now();
+    let mut last_ranges: Vec<(u32, u32)> = Vec::new();
+    let mut idle_resend_bytes: usize = 0;
 
     let run = (|| -> Result<(), String> {
         while Instant::now() < deadline {
@@ -434,7 +459,38 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
                     // 读超时只表示「本轮没凑齐」，pending 里已有字节要留着；
                     // 不能当作对端关闭，也不能 fallthrough 去解半帧。
                     Err(e) if e.contains("timed out") || e.contains("WouldBlock")
-                        || e.contains("resource temporarily unavailable") => continue,
+                        || e.contains("resource temporarily unavailable") => {
+                        // 对端静默 ≥IDLE_RESEND：把它最后请求过的区间再发一遍。
+                        // 只发「最后一批请求」，且总重发量封顶 2× 文件大小，
+                        // 这样重传是自愈手段，不会退化成灌包。
+                        if last_request_at.elapsed() >= IDLE_RESEND && !last_ranges.is_empty() {
+                            if let Some(f) = current_file.clone() {
+                                let cap = f.data.len().saturating_mul(2);
+                                if idle_resend_bytes < cap {
+                                    for (start, end) in last_ranges.clone() {
+                                        if end <= start || end as usize > f.data.len() {
+                                            continue;
+                                        }
+                                        sent_ranges.insert((start, end), SentRange {
+                                            sent_at: Instant::now(),
+                                            sent_req: request_seq,
+                                            last_req: request_seq,
+                                        });
+                                        for (cs, ce) in chunk_range(start, end, w::UPLOAD_CHUNK) {
+                                            let (s, e) = (cs as usize, ce as usize);
+                                            link.send_frame(&w::sending_part(&f.hash(), cs, ce, &f.data[s..e]))?;
+                                            out.blocks_sent += 1;
+                                            out.bytes_sent += e - s;
+                                            idle_resend_bytes += e - s;
+                                        }
+                                    }
+                                    out.idle_resends += 1;
+                                }
+                            }
+                            last_request_at = Instant::now();
+                        }
+                        continue;
+                    }
                     Err(e) if e.contains("read eD2k") => return Ok(()), // peer closed
                     Err(e) => return Err(e),
                 };
@@ -505,6 +561,8 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
                         return Err("REQUESTPARTS carried a different fileID".into());
                     }
                     request_seq += 1;
+                    last_request_at = Instant::now();
+                    last_ranges = ranges.clone();
                     for (start, end) in ranges {
                         if end <= start || end as usize > f.data.len() {
                             continue;

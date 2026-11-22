@@ -2,6 +2,62 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.101] - 2026-11-22 — FR-15 四条阈值齐活；FR-05/07 TTL+分词+去重；FR-25 上传侧定位到对端
+
+> 三条并进：① 把 FR-15 剩下的 peers / 带宽 / RSS 阈值接上真实读数；② 把 FR-05/07 的
+> TTL 维护、文件名分词、关键词去重健康度补齐；③ 用帧级代理把 FR-25 上传方向的停顿
+> 定位到**对端停止读取**，并据此修了两处真实的守护进程缺陷。
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+> `auto_pass=false`。全量 `cargo test --workspace --offline` **419 passed / 0 failed / 3 ignored**
+> （v2.4.100 为 406）；P0 运行期 e2e **62/62**（原 48）。
+
+- **FR-15 补齐三条阈值**：新增 `src/bins/coldrevived/src/sysres.rs`。
+  `limits.max_peers`（取 `EngineProgress.peers` 实测和）、
+  `limits.max_upload_bytes_per_sec`（累计 `uploaded_bytes` 的 1s 差分）、
+  `limits.max_rss_mb`（Linux `/proc/self/status` 的 `VmRSS`；Windows
+  `GetProcessMemoryInfo`）。三条与 `max_hot_seeds` 共用一套准入：超限
+  **拒绝新唤醒**，`REJECT_RESOURCE_LIMIT` 带 `limit_name/limit/current/limit_unit`。
+  带宽是**滞后**指标，只能作为拒绝理由，不能承诺「不超过这条线」；
+  读不到 RSS 的平台**不当作 0**，`/health.limits.max_rss_mb` 显式
+  `enabled=false` + `unavailable`，宁可承认没生效。
+- **FR-05 TTL 维护**：`FileEntry` 新增 `published_at` / `kad_expires_at` /
+  `kad_refresh_failures`（追加可选字段，不递增 `schema_version`）。
+  重发布从「每周期无脑发」改为**到期才发**：刷新窗口在 `ttl/3` 处打开
+  （`kad.ttl_secs`，缺省 3600）。成功前推截止时间并清零失败计数，
+  **失败不前推**——否则连续失败会把自己无限延期。这是本机记账，不是协议 TTL：
+  对端只回 `KAD_PUBLISH_ACK`，不带过期时间。
+- **FR-07 关键词分词**：`cr_kad::tokenize_keywords` 从文件名切词（确定性变换）：
+  非字母数字处分词、ASCII 小写、去纯数字与 <3 字符 ASCII 词、去容器/编码噪声词
+  （`NOISE_TOKENS`）、去重保序、上限 8。CJK 连续串整体保留（按字切会把标题切碎）。
+  `/cli index` 在配置没给 `keywords` 时才分词，并回报 `keywords_source=tokenized|config`。
+- **FR-05/07 去重健康度**：新增 `/cli kad-health`：`keys_total` / `keys_unique` /
+  `duplicate_keys`（逐 key 列出被几条条目发出）、`keywords_total|unique`、
+  `tokenized_entries`、`due` / `expired` / `expiring_soon`、`refresh_failures`。
+  `keys_unique + duplicate_keys == keys_total` 可当自检。
+- **FR-25 上传方向：定位到对端**。新增 `tests/e2e/w25-daemon/diag_upload.py`：
+  透明 TCP 代理记录双向每一帧，并在旁路**重放 aMule 自己的块记账**
+  （`CUpDownClient::ProcessBlockPacket` 的边界规则）。结论：
+  - 所有 SENDINGPART 都落在 pending 块内，**0 帧越界、0 帧无主**；
+  - aMule 在 6%–38% 之间**停止读取自己的 socket**（内核 Recv-Q 里留 ~493 KB 不动，
+    客户端状态仍是 `Downloading`），约 100 s 后 `DOWNLOADTIMEOUT` 把它打回 `Waiting`；
+  - 它停读时我们正好阻塞在 `send_frame` 的写里，**连 idle 重传的看门狗都轮不到执行**。
+  - aMule 侧无法进一步取证：`AddDebugLogLineN` 在 release 构建里被 `#define` 成
+    `do {} while(false)`，`VerboseDebug=1` 不会产生任何帧级日志
+    （`strings /usr/bin/amuled | grep -c "exceeds requested"` = 0）。故不重建 debug 版，
+    因为那会换掉被测客户端。
+- **两处真实守护进程修复**（都由上面的量具暴露）：
+  1. `serve` 的写操作加 10 s 上限：对端不读时不再把 serve 线程连同看门狗一起钉死，
+     而是如实报 `write eD2k frame (peer stopped reading?)` 并放掉连接，让客户端重连；
+  2. `serve` 加 idle 重传看门狗：对端静默 ≥3 s 就把「它最后请求过的那批区间」再发一次，
+     总量封顶 2× 文件大小。实测把同一条链路的进度从 10.1% 推到 38.6%
+     （`bytes_sent` 1.48 MB → 4.25 MB、完成块 9 → 24）。eD2k 没有块级 ACK，
+     这是唯一能自愈的手段；仍**不足以**闭环，见下。
+- **FR-25 上传仍 BLOCKED**：上表第 2 条是对端行为，我们无法从服务端纠正；
+  重传只能缩短停顿、不能阻止对端再次停读。下载方向仍是 10/10 PASS，判据不变
+  （只看对端落地 md5）。
+- `tests/e2e/p0/` 新增两段：D 段（分词 + 去重健康度，`keywords: []` 配置）、
+  E 段（`limits.max_rss_mb=1` 下真实唤醒被拒且不留 HOT 痕迹）。
+
 ## [2.4.100] - 2026-11-22 — P0 运行期欠账批量落地（FR-01/02/04/05/06/09/10/12/13/15）
 
 > 本轮把「只有组件、没有运行期行为」的 P0 项接进守护进程，并用一条可复跑的本机回环

@@ -268,7 +268,8 @@ def phase_a(prep: dict) -> dict:
     a, b = ports["A"], ports["B"]
     cfg_a = write_config(RUN / "config-a.json", ports, {
         "indexer": {"watch_secs": 2},
-        "kad": {"republish_secs": 3},
+        # ttl 取 9s：刷新窗口在 ttl/3=3s 处打开，3s 的检查周期能在 20s 内命中
+        "kad": {"republish_secs": 3, "ttl_secs": 9},
     })
     cfg_b = write_config(RUN / "config-b.json", ports, {"role": "member"})
     # B 是「发现方」：只负责接 KAD_PUBLISH 并回 ACK，不做种、不限流。
@@ -377,6 +378,19 @@ def phase_a(prep: dict) -> dict:
         check("kad_republish_frame_acked",
               (kp.get("last") or {}).get("sent") is True and (kp.get("last") or {}).get("keys", 0) > 0,
               kp.get("last"))
+        # FR-05：刷新是「到期才发」，不是「每周期无脑发」；上报的 ttl 必须是配置值。
+        last_rep = kp.get("last") or {}
+        check("kad_republish_is_ttl_driven",
+              last_rep.get("ttl_secs") == 9 and last_rep.get("due", 0) >= 1
+              and last_rep.get("refresh_failed", 0) == 0,
+              {k: last_rep.get(k) for k in ("ttl_secs", "due", "refresh_failed")})
+        st_h, kad_h = cli(a["http_port"], "kad-health")
+        check("kad_health_readable",
+              st_h == 200 and kad_h.get("ttl_secs") == 9
+              and kad_h.get("published_entries", 0) >= 2
+              and kad_h.get("keys_unique", 0) <= kad_h.get("keys_total", 0),
+              {k: kad_h.get(k) for k in ("ttl_secs", "published_entries",
+                                         "keys_total", "keys_unique")})
 
         # ---- FR-10：多任务做种，容量 1 下真实逐出
         e_a = next(x for x in entries(a["http_port"])["entries"] if x["name"] == "sample_primary.bin")
@@ -506,6 +520,13 @@ def phase_c(prep: dict) -> dict:
               h0["limits"]["max_hot_seeds"] == 1 and h0["limits"]["hot"] == 0
               and h0["seeding"]["cap"] == 2,
               f"limits={h0['limits']} cap={h0['seeding']['cap']}")
+        # 没配的阈值必须显式 enabled=false，而不是「字段缺失」或「假装是 0」
+        check("unconfigured_thresholds_report_disabled",
+              h0["limits"]["max_peers"]["enabled"] is False
+              and h0["limits"]["max_upload_bytes_per_sec"]["enabled"] is False
+              and h0["limits"]["max_rss_mb"]["enabled"] is False,
+              {k: h0["limits"][k].get("enabled")
+               for k in ("max_peers", "max_upload_bytes_per_sec", "max_rss_mb")})
 
         es = {x["name"]: x for x in entries(a["http_port"])["entries"]}
         prim, sec = es["sample_primary.bin"], es["sample_second.bin"]
@@ -555,12 +576,118 @@ def phase_c(prep: dict) -> dict:
     return out
 
 
+# --------------------------------------------------------------------------- D 段
+def phase_d(prep: dict) -> dict:
+    """FR-07：配置没给关键词时按文件名分词；以及 KAD 关键词的去重健康度。"""
+    ports = prep["ports"]
+    a = ports["A"]
+    cfg = write_config(RUN / "config-token.json", ports, {
+        "keywords": [],
+        "kad": {"republish_secs": 3, "ttl_secs": 9},
+    })
+    # 两个名字共享 cold/revive 两个词：去重后才能看出「发了 6 个 key、只有 4 个不同」。
+    f1 = SHARE / "Cold.Revive.Alpha.2024.mkv"
+    f2 = SHARE / "Cold.Revive.Beta.x265.mkv"
+    f1.write_bytes(make_bytes("p0-token-a", 8192))
+    f2.write_bytes(make_bytes("p0-token-b", 8192))
+    proc = None
+    out: dict = {}
+    try:
+        proc = spawn("A4", cfg, "A")
+        wait_health(a["http_port"])
+        st1, r1 = cli(a["http_port"], "index", str(f1))
+        kws = r1.get("keywords") or []
+        check("tokenizer_used_when_config_has_no_keywords",
+              st1 == 200 and r1.get("keywords_source") == "tokenized" and kws,
+              f"source={r1.get('keywords_source')} keywords={kws}")
+        check("tokenizer_drops_noise_and_digits",
+              "mkv" not in kws and "2024" not in kws and "revive" in kws,
+              kws)
+        st2, r2 = cli(a["http_port"], "index", str(f2))
+        check("second_file_indexed",
+              st2 == 200 and r2.get("file_hash") and r2.get("file_hash") != r1.get("file_hash"),
+              f"{r1.get('file_hash')} vs {r2.get('file_hash')}")
+
+        st3, h = cli(a["http_port"], "kad-health")
+        save("kad-health.json", h)
+        out["kad_health"] = h
+        check("kad_health_counts_tokens",
+              h.get("tokenized_entries", 0) >= 2
+              and h.get("keywords_unique", 0) < h.get("keywords_total", 0),
+              {k: h.get(k) for k in ("tokenized_entries", "keywords_total", "keywords_unique")})
+        # 两条条目共享 cold/revive，所以这两个 key 各被发两次 -> 去重后少 2 个
+        check("kad_health_reports_duplicate_keys",
+              h.get("duplicate_keys", 0) >= 2
+              and h.get("keys_unique", 0) + h.get("duplicate_keys", 0) == h.get("keys_total", -1),
+              {k: h.get(k) for k in ("keys_total", "keys_unique", "duplicate_keys")})
+        check("kad_health_does_not_claim_public_search",
+              "BLOCKED" in (h.get("public_search") or ""),
+              h.get("public_search"))
+    finally:
+        stop(proc)
+    return out
+
+
+# --------------------------------------------------------------------------- E 段
+def phase_e(prep: dict) -> dict:
+    """FR-15：内存阈值**真实生效**（RSS 读得到 -> 超限即拒绝），不是只报字段。"""
+    ports = prep["ports"]
+    a, b = ports["A"], ports["B"]
+    cfg = write_config(RUN / "config-rss.json", ports, {
+        "engine": {"guard_handshake": True, "max_active_seeds": "2"},
+        # 1 MiB：任何真实守护进程都超，所以这条阈值必然触发；它不是「大概会触发」。
+        "limits": {"max_rss_mb": "1"},
+    })
+    cfg_b = RUN / "config-b.json"
+    proc_a = proc_b = None
+    out: dict = {}
+    try:
+        proc_b = spawn("B5", cfg_b, "B")
+        wait_health(b["http_port"])
+        proc_a = spawn("A5", cfg, "A")
+        wait_health(a["http_port"])
+        # 采样线程 1s 一次；等到真的读到 RSS 再断言，避免拿「还没采样」当 0。
+        ok, _ = wait_until(
+            lambda: (health(a["http_port"])["limits"]["max_rss_mb"].get("current") or 0) >= 1, 10)
+        h0 = health(a["http_port"])
+        save("health_a_rss_limit.json", h0)
+        rss = h0["limits"]["max_rss_mb"]
+        check("rss_threshold_reads_real_process_memory",
+              ok and rss.get("enabled") is True and rss.get("limit") == 1
+              and (rss.get("current") or 0) >= 1,
+              rss)
+
+        es = {x["name"]: x for x in entries(a["http_port"])["entries"]}
+        prim = es["sample_primary.bin"]
+        st, r = cli(b["http_port"], "wake", "raw", prim["file_hash"], prim["infohash"])
+        ack = (r or {}).get("ack") or {}
+        out["ack"] = ack
+        check("rss_threshold_refuses_wake",
+              st == 200 and ack.get("status") == "REJECT_RESOURCE_LIMIT",
+              ack.get("status"))
+        check("rss_refusal_names_limit_and_numbers",
+              ack.get("limit_name") == "max_rss_mb" and ack.get("limit") == 1
+              and (ack.get("current") or 0) >= 1 and ack.get("limit_unit") == "MiB",
+              {k: ack.get(k) for k in ("limit_name", "limit", "current", "limit_unit")})
+        h1 = health(a["http_port"])
+        save("health_a_after_rss_refusal.json", h1)
+        check("rss_refusal_leaves_no_hot_state",
+              h1["limits"]["hot"] == 0 and h1["seed_active"] == 0,
+              f"hot={h1['limits']['hot']} seed_active={h1['seed_active']}")
+    finally:
+        stop(proc_a)
+        stop(proc_b)
+    return out
+
+
 def main() -> int:
     prep = prepare()
     log_total = time.time()
     a_out = phase_a(prep)
     b_out = phase_b(prep)
     c_out = phase_c(prep)
+    d_out = phase_d(prep)
+    e_out = phase_e(prep)
 
     # 日志证据：守护进程真的打印过入库/出库/重发布，而不只是状态字段变了
     log_a = (RUN / "node-A.log").read_text(encoding="utf-8", errors="replace")
@@ -571,11 +698,13 @@ def main() -> int:
     log_c = (RUN / "node-A3.log").read_text(encoding="utf-8", errors="replace")
     check("log_shows_wake_refusal", "FR-15 拒绝唤醒" in log_c, "node-A3.log")
     check("log_shows_guard_refusal", "FR-15 拒绝握手唤醒" in log_c, "node-A3.log")
+    log_e = (RUN / "node-A5.log").read_text(encoding="utf-8", errors="replace")
+    check("log_shows_rss_refusal", "max_rss_mb" in log_e, "node-A5.log")
 
     passed = sum(1 for _, ok, _ in checks if ok)
     report = {
         "schema": "coldrevive.p0.e2e/v1",
-        "scope": "FR-01/02/04/05/06/09/10/12/13 运行期行为，本机回环双进程，真实文件/HTTP/BT 握手",
+        "scope": ("FR-01/02/04/05/06/07/09/10/12/13/15 运行期行为，本机回环双进程，真实文件/HTTP/BT 握手/进程 RSS"),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "elapsed_sec": round(time.time() - log_total, 1),
         "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks],
@@ -585,7 +714,7 @@ def main() -> int:
             "本机回环：A(holder)+B(member) 两个真实进程，样本 < PARTSIZE（跨分片见 W25）。"
             "FR-05/06 的 sent=true 仅表示「发出 KAD_PUBLISH 并收到对端 ACK」，"
             "**不等于公网可 KAD 检索**（FR-24 仍 BLOCKED，受 G0 protocol_scope 约束）。"
-            "FR-09 只覆盖按来源 IP 的令牌桶，不含分布式/全局配额。"
+            "FR-09 只覆盖按来源 IP 的令牌桶，不含分布式/全局配额。FR-15 的带宽阈值靠 1s 采样差分，是滞后指标，只作拒绝新唤醒的理由。"
             "FR-01 后端是轮询快照，不是内核目录通知（Windows ReadDirectoryChangesW 未接入）。"
             "门禁常量不变：g2_claim=false、s6_status=not_run。"
         ),
@@ -593,6 +722,8 @@ def main() -> int:
                     "health": a_out.get("health_after_a")},
         "phase_b": b_out,
         "phase_c": c_out,
+        "phase_d": d_out,
+        "phase_e": e_out,
     }
     save("report.json", report)
     print(f"\npassed={passed}/{len(checks)}  elapsed={report['elapsed_sec']}s")
