@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""P0 e2e：FR-01/02/04/05/06/09/10/12/13 的运行期证据（本机回环，双进程）。
+"""P0 e2e：FR-01/02/04/05/06/07/09/10/12/13/15 的运行期证据（本机回环，双进程）。
 
 只驱动真实守护进程的 HTTP `/cli` 与 `/health`，以及真实 BT 握手/真实文件读写。
 所有断言读的都是运行期 JSON、真实磁盘内容或守护进程日志；脚本不写任何
@@ -13,6 +13,7 @@
                    + FR-10 多任务做种容量/逐出
   B 段（限流开启，同一 workdir 重启）：FR-04 索引重启存活（loaded_v2）
                    + FR-09 控制面按 IP 限流（429 语义，/health 不被限）
+  C–G 段：FR-15 HOT/RSS/CPU 阈值、FR-07 分词/同义词/语言识别与 publish ACK。
 """
 from __future__ import annotations
 
@@ -524,9 +525,11 @@ def phase_c(prep: dict) -> dict:
         check("unconfigured_thresholds_report_disabled",
               h0["limits"]["max_peers"]["enabled"] is False
               and h0["limits"]["max_upload_bytes_per_sec"]["enabled"] is False
-              and h0["limits"]["max_rss_mb"]["enabled"] is False,
+              and h0["limits"]["max_rss_mb"]["enabled"] is False
+              and h0["limits"]["max_seeding_cpu_millipct"]["enabled"] is False,
               {k: h0["limits"][k].get("enabled")
-               for k in ("max_peers", "max_upload_bytes_per_sec", "max_rss_mb")})
+               for k in ("max_peers", "max_upload_bytes_per_sec", "max_rss_mb",
+                         "max_seeding_cpu_millipct")})
 
         es = {x["name"]: x for x in entries(a["http_port"])["entries"]}
         prim, sec = es["sample_primary.bin"], es["sample_second.bin"]
@@ -680,6 +683,157 @@ def phase_e(prep: dict) -> dict:
     return out
 
 
+
+# --------------------------------------------------------------------------- F 段
+def phase_f(prep: dict) -> dict:
+    """FR-15：造种 CPU 阈值读到真实进程 CPU 并拒绝新唤醒（1 毫百分点即可触发）。"""
+    ports = prep["ports"]
+    a, b = ports["A"], ports["B"]
+    cfg = write_config(RUN / "config-cpu.json", ports, {
+        "engine": {"guard_handshake": True, "max_active_seeds": "2"},
+        # 1 milli-percent = 0.001% 单核：任何真实 CPU 采样都能越过，
+        # 避免为了测阈值去人为烧 CPU（那会让被测进程的读数变成测试自己造的）。
+        "limits": {"max_seeding_cpu_millipct": "1"},
+    })
+    cfg_b = RUN / "config-b.json"
+    proc_a = proc_b = None
+    out: dict = {}
+    try:
+        proc_b = spawn("B6", cfg_b, "B")
+        wait_health(b["http_port"])
+        proc_a = spawn("A6", cfg, "A")
+        wait_health(a["http_port"])
+        ok, _ = wait_until(
+            lambda: (health(a["http_port"])["limits"]["max_seeding_cpu_millipct"]
+                     .get("current") or 0) >= 1, 12)
+        h0 = health(a["http_port"])
+        save("health_a_cpu_limit.json", h0)
+        cpu = h0["limits"]["max_seeding_cpu_millipct"]
+        out["health"] = cpu
+        check("cpu_threshold_reads_real_process_cpu",
+              ok and cpu.get("enabled") is True and cpu.get("limit") == 1
+              and (cpu.get("current") or 0) >= 1
+              and (cpu.get("current_percent") or 0) > 0,
+              cpu)
+        check("cpu_threshold_reports_percent_and_millipct_consistently",
+              abs((cpu.get("current_percent") or -1) - (cpu.get("current") or 0) / 1000.0)
+              < 1e-6,
+              {k: cpu.get(k) for k in ("current", "current_percent", "unit")})
+
+        es = {x["name"]: x for x in entries(a["http_port"])["entries"]}
+        prim = es["sample_primary.bin"]
+        st, r = cli(b["http_port"], "wake", "raw", prim["file_hash"], prim["infohash"])
+        ack = (r or {}).get("ack") or {}
+        out["ack"] = ack
+        check("cpu_threshold_refuses_wake",
+              st == 200 and ack.get("status") == "REJECT_RESOURCE_LIMIT",
+              ack.get("status"))
+        check("cpu_refusal_names_limit_and_numbers",
+              ack.get("limit_name") == "max_seeding_cpu_millipct"
+              and ack.get("limit") == 1 and (ack.get("current") or 0) >= 1
+              and ack.get("limit_unit") == "milli-percent",
+              {k: ack.get(k) for k in ("limit_name", "limit", "current", "limit_unit")})
+        h1 = health(a["http_port"])
+        save("health_a_after_cpu_refusal.json", h1)
+        check("cpu_refusal_leaves_no_hot_state",
+              h1["limits"]["hot"] == 0 and h1["seed_active"] == 0,
+              f"hot={h1['limits']['hot']} seed_active={h1['seed_active']}")
+        log_f = (RUN / "node-A6.log").read_text(encoding="utf-8", errors="replace")
+        log_f = log_f + (RUN / "node-B6.log").read_text(encoding="utf-8", errors="replace")
+        check("log_shows_cpu_refusal", "max_seeding_cpu_millipct" in log_f,
+              "node-A6.log / node-B6.log")
+    finally:
+        stop(proc_a)
+        stop(proc_b)
+    return out
+
+
+# --------------------------------------------------------------------------- G 段
+def phase_g(prep: dict) -> dict:
+    """FR-07：确定性同义词 + Unicode 脚本语言识别，且扩展只进 KAD key、不污染原词。"""
+    ports = prep["ports"]
+    a, b = ports["A"], ports["B"]
+    ns = "ColdRevive_P0_Syn:"
+    cfg = write_config(RUN / "config-syn.json", ports, {
+        "namespace": ns,
+        "keywords": [],
+        "kad": {"republish_secs": 3, "ttl_secs": 9},
+    })
+    f_en = SHARE / "Movie.Film.Collection.2024.mkv"
+    f_zh = SHARE / "冷启动复活.电影.测试样本.bin"
+    f_en.write_bytes(make_bytes("p0-syn-en", 8192))
+    f_zh.write_bytes(make_bytes("p0-syn-zh", 8192))
+    proc = proc_b = None
+    out: dict = {}
+    try:
+        # publish 会把 KAD_PUBLISH 真发给对端并等 ACK，所以 B 必须在场。
+        proc_b = spawn("B7", RUN / "config-b.json", "B")
+        wait_health(b["http_port"])
+        proc = spawn("A7", cfg, "A")
+        wait_health(a["http_port"])
+        st1, r1 = cli(a["http_port"], "index", str(f_en))
+        exp1 = r1.get("keywords_expanded") or []
+        check("latin_synonyms_are_deterministic",
+              st1 == 200 and r1.get("language") == "en"
+              and "film" in exp1 and "cinema" in exp1
+              # movie/film 已经在原词里，同组只新增 cinema 一个 -> 至少 1 个。
+              and (r1.get("synonym_added") or 0) >= 1,
+              {k: r1.get(k) for k in ("language", "keywords", "keywords_expanded",
+                                      "synonym_added")})
+        check("synonyms_do_not_pollute_source_keywords",
+              "cinema" not in (r1.get("keywords") or [])
+              and r1.get("keywords_source") == "tokenized",
+              r1.get("keywords"))
+
+        st2, r2 = cli(a["http_port"], "index", str(f_zh))
+        exp2 = r2.get("keywords_expanded") or []
+        check("cjk_synonyms_use_cjk_table",
+              st2 == 200 and r2.get("language") == "zh"
+              and "影片" in exp2 and "片子" in exp2
+              and "movie" not in exp2,
+              {k: r2.get(k) for k in ("language", "keywords", "keywords_expanded")})
+        check("cjk_run_is_not_split_per_character",
+              "冷启动复活" in (r2.get("keywords") or [])
+              and "测试样本" in (r2.get("keywords") or []),
+              r2.get("keywords"))
+
+        # 重新索引同一文件：原词、扩展词、发布 key 必须逐项相同（可复算）。
+        st3, r3 = cli(a["http_port"], "index", str(f_en))
+        check("reindex_is_byte_for_byte_deterministic",
+              st3 == 200 and r3.get("keywords_expanded") == exp1,
+              f"{r1.get('keywords_expanded')} vs {r3.get('keywords_expanded')}")
+        stp, pub = cli(a["http_port"], "publish", str(f_en))
+        out["publish"] = pub
+        check("publish_requires_real_kad_publish_ack",
+              stp == 200 and pub.get("published") is True
+              and pub.get("ack_t") == "KAD_PUBLISH_ACK"
+              and (pub.get("keys") or 0) > len(exp1),
+              {k: pub.get(k) for k in ("published", "ack_t", "keys")})
+        # inspect entries 只给每条的 key **数量**；逐 key 清单在 inspect kad。
+        st5, ik = cli(a["http_port"], "inspect", "kad")
+        cinema_key = hashlib.sha1((ns + "kw:cinema").encode("utf-8")).hexdigest()
+        check("synonym_reaches_published_kad_keys",
+              st5 == 200 and cinema_key in ((ik.get("kad") or {}).get("published_keys") or []),
+              {"expected": cinema_key,
+               "keys": (ik.get("kad") or {}).get("published_keys")})
+
+        st4, h = cli(a["http_port"], "kad-health")
+        save("kad-health-synonyms.json", h)
+        out["kad_health"] = h
+        check("kad_health_reports_languages_and_synonyms",
+              st4 == 200 and (h.get("languages") or {}).get("zh", 0) >= 1
+              and (h.get("synonym_added") or 0) >= 3
+              and (h.get("published_entries") or 0) >= 1,
+              {k: h.get(k) for k in ("languages", "synonym_added")})
+        check("synonym_expansion_keeps_public_search_blocked",
+              "BLOCKED" in (h.get("public_search") or ""),
+              h.get("public_search"))
+    finally:
+        stop(proc)
+        stop(proc_b)
+    return out
+
+
 def main() -> int:
     prep = prepare()
     log_total = time.time()
@@ -688,6 +842,8 @@ def main() -> int:
     c_out = phase_c(prep)
     d_out = phase_d(prep)
     e_out = phase_e(prep)
+    f_out = phase_f(prep)
+    g_out = phase_g(prep)
 
     # 日志证据：守护进程真的打印过入库/出库/重发布，而不只是状态字段变了
     log_a = (RUN / "node-A.log").read_text(encoding="utf-8", errors="replace")
@@ -704,7 +860,8 @@ def main() -> int:
     passed = sum(1 for _, ok, _ in checks if ok)
     report = {
         "schema": "coldrevive.p0.e2e/v1",
-        "scope": ("FR-01/02/04/05/06/07/09/10/12/13/15 运行期行为，本机回环双进程，真实文件/HTTP/BT 握手/进程 RSS"),
+        "scope": ("FR-01/02/04/05/06/07/09/10/12/13/15 运行期行为，本机回环双进程，"
+                  "真实文件/HTTP/BT 握手/进程 RSS/进程 CPU/Unicode 脚本判定"),
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "elapsed_sec": round(time.time() - log_total, 1),
         "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in checks],
@@ -724,6 +881,8 @@ def main() -> int:
         "phase_c": c_out,
         "phase_d": d_out,
         "phase_e": e_out,
+        "phase_f": f_out,
+        "phase_g": g_out,
     }
     save("report.json", report)
     print(f"\npassed={passed}/{len(checks)}  elapsed={report['elapsed_sec']}s")

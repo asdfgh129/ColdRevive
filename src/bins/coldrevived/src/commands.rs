@@ -8,7 +8,8 @@ use crate::{ed2k_tasks, http_get, http_post_json, nat_path, DownloadRecord, Node
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
 use cr_engine::Engine;
 use cr_hash::sha256_hex;
-use cr_kad::{find_frame, kad_id_128, keyword_key, publish_keys, socket_addr, udp_roundtrip, dht_id_160};
+use cr_kad::{detect_language, expand_keywords, find_frame, kad_id_128, keyword_key,
+             publish_keys, socket_addr, udp_roundtrip, dht_id_160, MAX_KEYWORD_KEYS};
 use cr_store::FileEntry;
 use cr_wake::{ack_infohash, ack_is_ok, build_req, challenge, has_exact_fields, REQ_FIELDS};
 use std::fs;
@@ -59,6 +60,8 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "inspect" => inspect(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
         // FR-01 / FR-13 共用入口：把一个真实文件按多哈希入库（不发布、不判 pass）。
         "index" => index_path(state, &arg(&args, 0)),
+        // FR-05/07：把**已入库**文件的 key 真发出去；只有收到 ACK 才记账为已发布。
+        "publish" => publish_path(state, &arg(&args, 0)),
         "find" => find(state, &cfg, &arg(&args, 0)),
         "wake" => wake(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
@@ -244,6 +247,10 @@ pub(crate) fn index_path(state: &Shared, path: &str) -> Json {
     let mut e = FileEntry::new(&facts.file_hash, &p, &facts.name, facts.size);
     e.sha1 = facts.sha1.clone();
     e.ed2k_hash = facts.ed2k_hash.clone();
+    // 语言标签和同义词扩展都只从**实际采用的关键词**推导：
+    // 文件名里的容器标记（.mkv）已被分词器丢掉，不该污染语言判定。
+    let language = detect_language(&keywords.join(" "));
+    let expanded = expand_keywords(&keywords, MAX_KEYWORD_KEYS);
     e.keywords = keywords.clone();
     e.published_keys = publish_keys(&namespace, &facts.file_hash, &keywords);
     let already_known = st.index.get(&facts.file_hash).is_some();
@@ -258,6 +265,9 @@ pub(crate) fn index_path(state: &Shared, path: &str) -> Json {
         ("size", Json::n(facts.size as f64)),
         ("keywords", Json::arr(keywords.iter().map(|k| Json::s(k)).collect())),
         ("keywords_source", Json::s(keywords_source)),
+        ("language", Json::s(language)),
+        ("keywords_expanded", Json::arr(expanded.iter().map(|k| Json::s(k)).collect())),
+        ("synonym_added", Json::n(expanded.len().saturating_sub(keywords.len()) as f64)),
         ("entries", Json::n(st.index.len() as f64)),
         ("index_status", Json::s(st.index.status.as_str())),
         ("error", Json::s(saved.err().unwrap_or_default())),
@@ -632,10 +642,18 @@ pub(crate) fn kad_health(state: &Shared) -> Json {
     let mut tokenized = 0usize;
     let mut failures = 0u64;
     let mut by_state: std::collections::BTreeMap<&'static str, usize> = Default::default();
+    let mut languages: std::collections::BTreeMap<&'static str, usize> = Default::default();
+    let mut synonym_added = 0usize;
 
     for e in st.index.entries.values() {
         *by_state.entry(e.state.as_str()).or_insert(0) += 1;
         kw_all.extend(e.keywords.iter().cloned());
+        if !e.keywords.is_empty() {
+            *languages.entry(cr_kad::detect_language(&e.keywords.join(" ")))
+                .or_insert(0) += 1;
+            synonym_added += cr_kad::expand_keywords(&e.keywords, MAX_KEYWORD_KEYS)
+                .len().saturating_sub(e.keywords.len());
+        }
         // key 集合按「会发出去的 key」统计，不按「已成功发过的」统计：
         // 后者在还没发布过的节点上恒为 0，去重健康度就看不出来了。
         keys_all.extend(e.published_keys.iter().cloned());
@@ -693,9 +711,76 @@ pub(crate) fn kad_health(state: &Shared) -> Json {
         ("keywords_total", Json::n(kw_all.len() as f64)),
         ("keywords_unique", Json::n(kw_sorted.len() as f64)),
         ("tokenized_entries", Json::n(tokenized as f64)),
+        ("languages", Json::obj(languages.iter().map(|(k, v)| (*k, Json::n(*v as f64))).collect())),
+        ("synonym_added", Json::n(synonym_added as f64)),
         ("refresh_failures", Json::n(failures as f64)),
         ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽")),
     ])
+}
+
+/// FR-05/07：把已入库条目的 `published_keys` 真发出去。
+///
+/// 与 `/cli index` 刻意分开：入库只是本地事实，不能因为写了 key 就宣称「已发布」。
+/// 这里也**只认对端明确的 `KAD_PUBLISH_ACK`**：收到一帧别的应答不算发布成功。
+/// 这个 ACK 表示「对端节点收下了 key」，不表示公网 KAD 可检索（FR-24 仍 BLOCKED）。
+pub(crate) fn publish_path(state: &Shared, path: &str) -> Json {
+    if path.is_empty() {
+        return Json::obj(vec![("error", Json::s("用法: publish <路径>"))]);
+    }
+    let p = canonical_or(PathBuf::from(path));
+    let facts = match cr_indexer::inspect(&p) {
+        Ok(f) => f,
+        Err(e) => return Json::obj(vec![("published", Json::b(false)), ("error", Json::s(e))]),
+    };
+    let (cfg, keys) = {
+        let st = match state.lock() {
+            Ok(s) => s,
+            Err(_) => return Json::obj(vec![("published", Json::b(false)),
+                                           ("error", Json::s("状态锁中毒"))]),
+        };
+        let Some(e) = st.index.get(&facts.file_hash) else {
+            return Json::obj(vec![("published", Json::b(false)),
+                                  ("error", Json::s("文件未入库，先执行 index"))]);
+        };
+        (st.cfg.clone(), e.published_keys.clone())
+    };
+    let frame = Json::obj(vec![
+        ("t", Json::s("KAD_PUBLISH")),
+        ("node", Json::s(&cfg.node_id)),
+        ("keys", Json::arr(keys.iter().map(|k| Json::s(k)).collect())),
+    ]);
+    let now = unix_ts().max(0) as u64;
+    let ttl = cfg.kad_ttl_secs.unwrap_or(cr_core::DEFAULT_KAD_TTL_SECS);
+    let outcome = send_wake(state, &cfg, &frame, 800);
+    let (acked, mut extra) = match outcome {
+        Ok((ack, elapsed)) => {
+            let ack_t = ack.get("t").and_then(Json::as_str).unwrap_or("").to_string();
+            let ok = ack_t == "KAD_PUBLISH_ACK";
+            (ok, vec![
+                ("elapsed_ms", Json::n(elapsed as f64)),
+                ("ack_t", Json::s(&ack_t)),
+            ])
+        }
+        Err(e) => (false, vec![("error", Json::s(e))]),
+    };
+    if acked {
+        let mut st = match state.lock() {
+            Ok(s) => s,
+            Err(_) => return Json::obj(vec![("published", Json::b(false)),
+                                           ("error", Json::s("状态锁中毒"))]),
+        };
+        if let Some(e) = st.index.get_mut(&facts.file_hash) {
+            e.mark_published(now, ttl);
+        }
+        extra.push(("saved", Json::b(st.index.save().is_ok())));
+    }
+    let mut fields = vec![
+        ("published", Json::b(acked)),
+        ("file_hash", Json::s(&facts.file_hash)),
+        ("keys", Json::n(keys.len() as f64)),
+    ];
+    fields.append(&mut extra);
+    Json::obj(fields)
 }
 
 fn golden(cfg: &Config) -> Json {    let req = Json::load(&cfg.golden_req).unwrap_or(Json::Null);

@@ -2,6 +2,49 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.102] - 2026-11-22 — FR-15 五条阈值齐活；FR-07 同义词与语言识别保持可复算
+
+> 补上此前唯一没接的造种 CPU 阈值，并给 KAD 关键词加**确定性**同义词扩展与
+> Unicode 脚本语言识别。门禁常量仍不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+> `cargo test --workspace --offline` **426 passed / 0 failed / 3 ignored**（v2.4.101 为 419）；
+> P0 运行期 e2e **77/77**（v2.4.101 为 62）。
+
+- **FR-15 第五条阈值：`limits.max_seeding_cpu_millipct`**。单位是千分百分点
+  （1000 = 单核 1%），0/缺省 = 关闭；Linux 读 `/proc/self/stat` 的 `utime+stime`
+  并用 `sysconf(_SC_CLK_TCK)` 换算，Windows 读 `GetProcessTimes`，其它平台如实报
+  `unavailable`。与其余四条共用准入：**超限拒绝新唤醒**
+  （`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），
+  拒绝顺序固定为 hot → peers → bandwidth → rss → cpu。
+  - 这是**整个守护进程**的 CPU（含 HTTP/CLI），多线程求和可超过 100%；
+    它是**滞后指标**，只能当拒绝理由，不承诺「做种永不超线」。
+  - 读不到 CPU 时**不当作 0**，该条不参与判定；`/health` 同时给出原始
+    milli-percent 与人类可读的 `current_percent`。
+  - e2e F 段用 `1` 毫百分点（0.001%）触发：实测 `current=1600`（1.6%），
+    真实唤醒被拒，`hot` 与 `seed_active` 都保持 0。
+- **FR-07 同义词与语言识别（保持可复算）**：
+  - `LATIN_SYNONYM_GROUPS` / `CJK_SYNONYM_GROUPS` 是**手写封闭表**，
+    不用通用词库/模型/随机数；同名字在任何机器、任何版本都得到同一组词。
+  - `expand_keywords` 按**每个词自己的 Unicode 脚本**选表：原文全部保留且排最前，
+    同义词追加在后，去重保序，硬截 8 个。不认识的词原样保留——
+    「没扩展」比「扩展错」好。
+  - `detect_language` 只做展示/审计：多种脚本报 `mixed` 而不是硬挑一个「主要语言」。
+    纯汉字（无假名）判 `zh`；这点在文档里写明，不假装能区分中文/日文汉字。
+  - 扩展**只作用于发布出去的 KAD key**，`FileEntry.keywords` 仍保留原文，
+    所以能分清「文件名里真有的词」和「我们补的词」。
+  - `/cli index` 新增 `language` / `keywords_expanded` / `synonym_added`；
+    `/cli kad-health` 新增 `languages` / `synonym_added`。
+  - `.bin/.dat/.txt` 等通用扩展名加入 `NOISE_TOKENS`：它们不是内容词，
+    还会让「中文标题 + .bin」被误判成 `mixed`。
+- **新增 `/cli publish <路径>`**：此前 `/cli index` 只写 key 却从不标记已发布，
+  `inspect kad` 看不到新入库条目。现在 publish 真发 `KAD_PUBLISH`，
+  **只有收到 `KAD_PUBLISH_ACK` 才**置 `kad_published` 并前推 TTL。
+  这个 ACK 只表示对端节点收下 key，不表示公网 KAD 可检索。
+- **e2e 新增 F/G 两段**：F = CPU 真实读数与拒绝（含未配置阈值显式 `enabled=false`）；
+  G = 拉丁/中文同义词、语言判定、重索引逐项一致、`cinema` 的 key 真出现在
+  `inspect kad` 的已发布 key 里，且 `public_search` 仍标 BLOCKED。
+  C 段另加断言：未配置的 CPU 阈值也报 `enabled=false` 而不是字段缺失。
+
 ## [2.4.101] - 2026-11-22 — FR-15 四条阈值齐活；FR-05/07 TTL+分词+去重；FR-25 上传侧定位到对端
 
 > 三条并进：① 把 FR-15 剩下的 peers / 带宽 / RSS 阈值接上真实读数；② 把 FR-05/07 的

@@ -1,4 +1,4 @@
-# P0 运行期 e2e（FR-01/02/04/05/06/09/10/12/13）
+# P0 运行期 e2e（FR-01/02/04/05/06/07/09/10/12/13/15）
 
 一条命令跑完，产出 `reports/report.json`（逐条 check + 边界声明）。
 
@@ -31,17 +31,24 @@ python tests/e2e/p0/run_p0.py
 - **FR-01 后端是轮询快照**（`cr_indexer::PollWatcher`），语义与内核通知一致但延迟 ≤ 周期；
   Windows `ReadDirectoryChangesW` 尚未接入，不得宣称已用内核通知。
 - **FR-09 只覆盖按来源 IP 的令牌桶**，不含全局/分布式配额，也不覆盖数据面。
-- **FR-15 已落地四条阈值**：`limits.max_hot_seeds` / `max_peers` /
-  `max_upload_bytes_per_sec` / `max_rss_mb`。C 段测 HOT 数，E 段测 RSS（`max_rss_mb=1`
-  必然触发），并断言**没配的阈值显式 `enabled=false`** 而不是字段缺失。
-  **造种 CPU 阈值仍未接线**，所以 FR-15 整体仍记「部分」。
+- **FR-15 五条阈值全部接线**：`limits.max_hot_seeds` / `max_peers` /
+  `max_upload_bytes_per_sec` / `max_rss_mb` / `max_seeding_cpu_millipct`。
+  C 段测 HOT 数，E 段测 RSS（`max_rss_mb=1` 必然触发），F 段测 CPU
+  （`max_seeding_cpu_millipct=1` = 0.001%，任何真实采样都会越过）；
+  并断言**没配的阈值显式 `enabled=false`** 而不是字段缺失。
+  这里只说「接线齐」，不宣称公网性能或自动通过。
   阈值的语义是「拒绝新唤醒」，与 `engine.max_active_seeds` 的「逐出后续服务」是两件事，
   两者可同时配置（C 段就是 `cap=2` + `limit=1`）。
-- **RSS 读不到的平台**（非 Linux/Windows）该条不参与判定，`/health` 报
-  `enabled=false` + `unavailable`；E 段只在能读到 RSS 的平台断言，
+- **RSS/CPU 读不到的平台**（非 Linux/Windows）该条不参与判定，`/health` 报
+  `enabled=false` + `unavailable`；E/F 段只在能读到的平台断言，
   读不到时会失败而不是静默通过。
-- **带宽阈值是滞后指标**：由累计上传字节的 1 s 差分得到，只能当拒绝理由，
-  不能读成「保证不超线」。
+- **带宽与 CPU 阈值是滞后指标**：带宽来自累计上传字节的 1 s 差分，CPU 来自进程
+  CPU 时间的 1 s 差分（进程级、多线程求和可超过 100%，含 HTTP/CLI）；
+  只能当拒绝理由，不能读成「保证不超线」。
+- **FR-07 同义词是手写封闭表**，不用词库/模型，同一文件名永远同一组词；
+  扩展只进发布 key，不改 `FileEntry.keywords`。`detect_language` 只做展示，
+  多脚本报 `mixed`，不假装能区分中日汉字。
+- **`/cli publish` 的 ACK 只表示对端节点收下 key**，不表示公网 KAD 可检索。
 - **FR-10 的「多任务」指多种子任务 + 容量约束**；不宣称跨主机长期做种稳定性。
 - 样本均 < `PARTSIZE`：跨分片（`>PARTSIZE`）由 `tests/e2e/w25*` 覆盖。
 - 门禁常量不变：`g2_claim=false`、`s6_status=not_run`。
@@ -54,6 +61,10 @@ python tests/e2e/p0/run_p0.py
    条目永远留在索引里。现在入库 `canonicalize`、出库按「规范化父目录 + 文件名」比较。
 3. **`sent` 可以假 true**：重发布只看到「收到一帧应答」就把 `sent` 置真；
    现在要求 `t=KAD_PUBLISH_ACK`，`/health` 里带 `ack_t`。
+4. **`.bin` 被当成内容关键词**：中文标题 + `.bin` 被判成 `mixed`，
+   同义词表也选不对；通用扩展名现列入 `NOISE_TOKENS`。
+5. **`index` 写了 key 却永不标记已发布**：`inspect kad` 看不到新入库条目；
+   新增 `/cli publish`，只有真 ACK 才置 `kad_published`。
 
 ## 分段一览
 
@@ -64,5 +75,7 @@ python tests/e2e/p0/run_p0.py
 | C | FR-15 HOT 阈值：拒绝而非逐出，裸 BT 握手同判据 |
 | D | FR-07 文件名分词（配置无 `keywords` 时）+ `/cli kad-health` 去重健康度 |
 | E | FR-15 `max_rss_mb` 真实生效：读到 RSS → 超限拒绝 → 不留 HOT 痕迹 |
+| F | FR-15 `max_seeding_cpu_millipct` 真实生效：读到进程 CPU → 拒绝 → 不留 HOT 痕迹；日志带阈值名 |
+| G | FR-07 确定性同义词/语言识别 + `/cli publish` 真 ACK 后 key 才出现在 `inspect kad` |
 
 `run/`、`reports/` 全部在 `.gitignore` 内：这里只留脚本与说明，运行产物不进公开仓库。

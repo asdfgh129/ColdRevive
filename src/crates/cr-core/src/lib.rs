@@ -436,6 +436,16 @@ pub struct Config {
     /// `GetProcessMemoryInfo`。**读不到的平台（如 macOS）不当作 0**，
     /// 而是显式报 `unavailable` —— 阈值没生效必须能看出没生效。
     pub limits_max_rss_mb: Option<u64>,
+    /// FR-15：做种进程 CPU 上限（`limits.max_seeding_cpu_millipct`）。
+    /// 单位 **千分百分点**：1000 = 单核 1%，0/缺省 = 关闭。用千分位是为了让
+    /// 「极低阈值」也能被真实触发，而不必靠人为制造 1% 以上的 CPU 负载。
+    ///
+    /// 读的是**整个守护进程**的 CPU 时间差分（Linux `/proc/self/stat` 的
+    /// utime+stime；Windows `GetProcessTimes`），多线程求和后可以超过 100%。
+    /// 它不是「某个种子的独占 CPU」：HTTP/CLI/日志也计入，所以只能当
+    /// **拒绝新唤醒的滞后指标**，不能承诺「做种永不超线」。
+    /// 读不到的平台**不当作 0**，而是显式 `unavailable`。
+    pub limits_max_seeding_cpu_millipct: Option<u64>,
     /// FR-05：本机记账的 KAD 刷新周期（`kad.ttl_secs`，秒）。0/缺省 = 3600。
     ///
     /// **这是本地承诺，不是协议 TTL**：对端只回 `KAD_PUBLISH_ACK`，不带过期时间。
@@ -701,6 +711,7 @@ impl Config {
         let limits_max_peers = opt_num("limits", "max_peers")?.map(|n| n as usize);
         let limits_max_upload_bytes_per_sec = opt_num("limits", "max_upload_bytes_per_sec")?;
         let limits_max_rss_mb = opt_num("limits", "max_rss_mb")?;
+        let limits_max_seeding_cpu_millipct = opt_num("limits", "max_seeding_cpu_millipct")?;
         let kad_ttl_secs = opt_num("kad", "ttl_secs")?;
         Ok(Config {
             node_id: String::new(),
@@ -744,6 +755,7 @@ impl Config {
             limits_max_peers,
             limits_max_upload_bytes_per_sec,
             limits_max_rss_mb,
+            limits_max_seeding_cpu_millipct,
             kad_ttl_secs,
             bt_guard_handshake,
         })

@@ -29,11 +29,15 @@ pub struct Sample {
     pub up_bps: u64,
     /// 累计上传字节（差分基准，也用于排错）。
     pub uploaded_bytes: u64,
+    /// 进程 CPU 占用（千分百分点：1000 = 单核 1%）。`None` = 本平台拿不到，
+    /// **不是 0**。多线程 CPU 时间求和，因此可以超过 100_000。
+    pub cpu_millipct: Option<u64>,
 }
 
 impl Sample {
     pub fn unknown() -> Self {
-        Sample { at_secs: 0, rss_mb: None, peers: 0, up_bps: 0, uploaded_bytes: 0 }
+        Sample { at_secs: 0, rss_mb: None, peers: 0, up_bps: 0,
+                 uploaded_bytes: 0, cpu_millipct: None }
     }
 }
 
@@ -59,6 +63,71 @@ pub fn rss_mb() -> Option<u64> {
     {
         // macOS 等平台没有 std-only 的读法。如实返回 None，由上层报 unavailable。
         None
+    }
+}
+
+/// 进程累计 CPU 时间（毫秒）。拿不到返回 `None`，**绝不返回 0 冒充**。
+///
+/// Linux 的 `utime+stime` 单位是 clock tick，必须用 `sysconf(_SC_CLK_TCK)`
+/// 换算；写死 100 会在非标准 tick 的机器上把一个阈值变成另一个阈值。
+/// Windows 的 `FILETIME` 单位是 100 ns。macOS 没有 std-only 的读法，如实返回 None。
+#[cfg(target_os = "linux")]
+extern "C" {
+    fn sysconf(name: i32) -> i64;
+}
+
+#[cfg(target_os = "linux")]
+pub fn cpu_ms() -> Option<u64> {
+    const SC_CLK_TCK: i32 = 2;
+    let text = std::fs::read_to_string("/proc/self/stat").ok()?;
+    // comm 字段可能带空格和括号，必须以**最后一个** ')' 为界。
+    let rest = &text[text.rfind(')')? + 1..];
+    let fields: Vec<&str> = rest.split_whitespace().collect();
+    // ')' 之后第一个是 state（第 3 字段），所以 utime（第 14）在下标 11。
+    let utime: u64 = fields.get(11)?.parse().ok()?;
+    let stime: u64 = fields.get(12)?.parse().ok()?;
+    let hz = unsafe { sysconf(SC_CLK_TCK) };
+    let hz = if hz > 0 { hz as u64 } else { 100 };
+    Some(utime.saturating_add(stime).saturating_mul(1000) / hz)
+}
+
+#[cfg(windows)]
+pub fn cpu_ms() -> Option<u64> {
+    win::cpu_ms()
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+pub fn cpu_ms() -> Option<u64> {
+    None
+}
+
+/// CPU 速率的差分记账。与上传字节分开：`None` 表示这次没读到，不清空基线，
+/// 下次读到时用「两次成功读数」之间的间隔计算，避免短暂失败造出假尖峰。
+#[derive(Clone, Debug)]
+struct CpuClock {
+    prev: Option<(Instant, u64)>,
+}
+
+impl CpuClock {
+    fn new() -> Self {
+        CpuClock { prev: None }
+    }
+
+    fn observe(&mut self, now: Instant, cpu_ms: Option<u64>) -> Option<u64> {
+        let Some(raw) = cpu_ms else { return None };
+        let Some((t0, c0)) = self.prev else {
+            self.prev = Some((now, raw));
+            return None;
+        };
+        self.prev = Some((now, raw));
+        let dt_ms = now.saturating_duration_since(t0).as_millis();
+        if dt_ms < 200 {
+            return None;
+        }
+        let delta = raw.saturating_sub(c0) as u128;
+        // CPU 毫秒 / 墙上毫秒 = 核数占比；*100000 换算成千分百分点。
+        let v = delta.saturating_mul(100_000) / dt_ms as u128;
+        Some(u64::try_from(v).unwrap_or(u64::MAX))
     }
 }
 
@@ -103,6 +172,43 @@ mod win {
             Some((c.working_set_size as u64) / (1024 * 1024))
         }
     }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct FileTime {
+        low: u32,
+        high: u32,
+    }
+
+    impl FileTime {
+        fn ticks(self) -> u64 {
+            ((self.high as u64) << 32) | self.low as u64
+        }
+    }
+
+    extern "system" {
+        fn GetProcessTimes(
+            process: *mut core::ffi::c_void,
+            creation: *mut FileTime,
+            exit: *mut FileTime,
+            kernel: *mut FileTime,
+            user: *mut FileTime,
+        ) -> i32;
+    }
+
+    pub fn cpu_ms() -> Option<u64> {
+        unsafe {
+            let zero = FileTime { low: 0, high: 0 };
+            let (mut creation, mut exit, mut kernel, mut user) = (zero, zero, zero, zero);
+            let ok = GetProcessTimes(GetCurrentProcess(), &mut creation, &mut exit,
+                                     &mut kernel, &mut user);
+            if ok == 0 {
+                return None;
+            }
+            // 100 ns -> 1 ms
+            Some(kernel.ticks().saturating_add(user.ticks()) / 10_000)
+        }
+    }
 }
 
 /// 采样线程的记账。放在 `NodeState` 里，准入判定只是读它。
@@ -110,19 +216,24 @@ mod win {
 pub struct Meter {
     pub sample: Sample,
     prev: Option<(Instant, u64)>,
+    cpu_prev: CpuClock,
     started: Instant,
 }
 
 impl Meter {
     pub fn new() -> Self {
-        Meter { sample: Sample::unknown(), prev: None, started: Instant::now() }
+        Meter { sample: Sample::unknown(), prev: None,
+                cpu_prev: CpuClock::new(), started: Instant::now() }
     }
 
     /// 用累计上传字节推进一次采样。
     ///
     /// 第一次调用只建立基准（`up_bps` 记 0），因为「从 0 到某个值」的差分
     /// 会把进程启动以来的全部流量算进一个间隔，得到一个假的尖峰。
-    pub fn observe(&mut self, uploaded_bytes: u64, peers: usize, rss: Option<u64>, now: Instant) {
+    pub fn observe(&mut self, uploaded_bytes: u64, peers: usize, rss: Option<u64>,
+                   cpu_ms: Option<u64>, now: Instant) {
+        // 先推进 CPU 基线：即使这一轮上传间隔太短而提前返回，CPU 基线也不能丢。
+        let cpu = self.cpu_prev.observe(now, cpu_ms).or(self.sample.cpu_millipct);
         let bps = match self.prev {
             None => 0,
             Some((t0, b0)) => {
@@ -136,6 +247,7 @@ impl Meter {
                     if rss.is_some() {
                         self.sample.rss_mb = rss;
                     }
+                    self.sample.cpu_millipct = cpu;
                     return;
                 }
                 let delta = uploaded_bytes.saturating_sub(b0) as f64;
@@ -149,6 +261,7 @@ impl Meter {
             peers,
             up_bps: bps,
             uploaded_bytes,
+            cpu_millipct: cpu,
         };
     }
 }
@@ -158,6 +271,7 @@ pub fn needed(cfg: &cr_core::Config) -> bool {
     cfg.limits_max_peers.is_some()
         || cfg.limits_max_upload_bytes_per_sec.is_some()
         || cfg.limits_max_rss_mb.is_some()
+        || cfg.limits_max_seeding_cpu_millipct.is_some()
 }
 
 /// 每秒采样一次真实读数写入 `NodeState::res`。返回是否真的起了线程。
@@ -187,8 +301,9 @@ pub fn spawn(state: Arc<Mutex<NodeState>>) -> bool {
                 (sum, n)
             };
             let rss = rss_mb();
+            let cpu = cpu_ms();
             let now = Instant::now();
-            st.res.observe(uploaded, peers, rss, now);
+            st.res.observe(uploaded, peers, rss, cpu, now);
         }
         std::thread::sleep(Duration::from_millis(1000));
     });
@@ -203,7 +318,7 @@ mod tests {
     fn first_observe_only_sets_baseline() {
         let mut m = Meter::new();
         let t0 = Instant::now();
-        m.observe(1_000, 3, Some(64), t0);
+        m.observe(1_000, 3, Some(64), Some(0), t0);
         assert_eq!(m.sample.up_bps, 0, "第一次采样不能把累计量当成速率");
         assert_eq!(m.sample.peers, 3);
         assert_eq!(m.sample.rss_mb, Some(64));
@@ -213,8 +328,8 @@ mod tests {
     fn rate_is_delta_over_elapsed() {
         let mut m = Meter::new();
         let t0 = Instant::now();
-        m.observe(0, 0, Some(10), t0);
-        m.observe(2_000, 1, Some(11), t0 + Duration::from_secs(2));
+        m.observe(0, 0, Some(10), Some(0), t0);
+        m.observe(2_000, 1, Some(11), Some(20), t0 + Duration::from_secs(2));
         // 2000 B / 2 s = 1000 B/s（允许 1 B 的取整误差）
         assert!((999..=1001).contains(&m.sample.up_bps), "got {}", m.sample.up_bps);
         assert_eq!(m.sample.peers, 1);
@@ -224,22 +339,47 @@ mod tests {
     fn too_short_interval_does_not_fabricate_spike() {
         let mut m = Meter::new();
         let t0 = Instant::now();
-        m.observe(0, 0, None, t0);
-        m.observe(5_000, 0, None, t0 + Duration::from_secs(1));
+        m.observe(0, 0, None, Some(0), t0);
+        m.observe(5_000, 0, None, Some(1), t0 + Duration::from_secs(1));
         let steady = m.sample.up_bps;
         // 同一个字节量、间隔 0 ms：不能算出「无穷大」。
-        m.observe(10_000, 0, None, t0 + Duration::from_secs(1));
+        m.observe(10_000, 0, None, Some(1), t0 + Duration::from_secs(1));
         assert!(m.sample.up_bps <= steady.max(1), "短间隔放大了瞬时抖动");
+    }
+
+    #[test]
+    fn cpu_rate_is_cpu_delta_over_wall_delta() {
+        let mut m = Meter::new();
+        let t0 = Instant::now();
+        m.observe(0, 0, Some(10), Some(0), t0);
+        assert_eq!(m.sample.cpu_millipct, None, "第一次只建基线");
+        // 25 ms CPU / 1000 ms 墙上时间 = 2.5% = 2500 千分百分点。
+        m.observe(0, 0, Some(10), Some(25), t0 + Duration::from_secs(1));
+        assert_eq!(m.sample.cpu_millipct, Some(2500));
+    }
+
+    #[test]
+    fn cpu_unavailable_is_not_zero_and_keeps_last_known_value() {
+        let mut m = Meter::new();
+        let t0 = Instant::now();
+        m.observe(0, 0, None, None, t0);
+        m.observe(0, 0, None, None, t0 + Duration::from_secs(1));
+        assert_eq!(m.sample.cpu_millipct, None, "读不到 CPU 不能写成 0");
+        m.observe(0, 0, None, Some(0), t0 + Duration::from_secs(2));
+        m.observe(0, 0, None, Some(10), t0 + Duration::from_secs(3));
+        assert_eq!(m.sample.cpu_millipct, Some(1000));
+        m.observe(0, 0, None, None, t0 + Duration::from_secs(4));
+        assert_eq!(m.sample.cpu_millipct, Some(1000), "短暂读失败不能抹掉已知值");
     }
 
     #[test]
     fn missing_rss_stays_none_and_is_not_zeroed() {
         let mut m = Meter::new();
-        m.observe(0, 0, None, Instant::now());
+        m.observe(0, 0, None, None, Instant::now());
         assert_eq!(m.sample.rss_mb, None, "读不到 RSS 不能写成 0");
         // 一旦读到过，后续某次读失败也不该把已知值抹成 0。
-        m.observe(0, 0, Some(123), Instant::now() + Duration::from_secs(1));
-        m.observe(0, 0, None, Instant::now() + Duration::from_secs(2));
+        m.observe(0, 0, Some(123), None, Instant::now() + Duration::from_secs(1));
+        m.observe(0, 0, None, None, Instant::now() + Duration::from_secs(2));
         assert_eq!(m.sample.rss_mb, Some(123));
     }
 }

@@ -634,7 +634,7 @@ pub(crate) struct Refusal {
 ///   历史记成「超限」；
 /// - **一条阈值读不到（如平台拿不到 RSS）时，那条不参与判定**，且 `/health` 会把它
 ///   标成 `enabled=false/unavailable`。宁可承认没生效，也不假装生效。
-/// - 多条阈值同时超限时按固定顺序取第一条：hot → peers → bandwidth → rss。
+/// - 多条阈值同时超限时按固定顺序取第一条：hot → peers → bandwidth → rss → cpu。
 ///   顺序固定才能让 e2e 断言「是哪条拦的」。
 ///
 /// 与 `engine.max_active_seeds` 的分工：那个是容量（满了逐出最久未用者继续服务），
@@ -677,6 +677,16 @@ fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<Refusa
         if let Some(current) = st.res.sample.rss_mb {
             if current >= limit {
                 return Some(Refusal { name: "max_rss_mb", limit, current, unit: "MiB" });
+            }
+        }
+    }
+    if let Some(limit) = cfg.limits_max_seeding_cpu_millipct {
+        // 与 RSS 同理：读不到就不判定，绝不把「没读到」当成 0 让阈值假生效。
+        // 单位是千分百分点（1000 = 单核 1%），是**滞后**指标，只拒绝新唤醒。
+        if let Some(current) = st.res.sample.cpu_millipct {
+            if current >= limit {
+                return Some(Refusal { name: "max_seeding_cpu_millipct", limit, current,
+                                      unit: "milli-percent" });
             }
         }
     }
@@ -875,6 +885,32 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                     ("unit", Json::s("MiB")),
                 ]),
             };
+            let cpu_json = match (cfg.limits_max_seeding_cpu_millipct, res.cpu_millipct) {
+                (Some(limit), Some(cur)) => Json::obj(vec![
+                    ("enabled", Json::b(true)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::n(cur as f64)),
+                    ("unit", Json::s("milli-percent")),
+                    ("limit_percent", Json::n(limit as f64 / 1000.0)),
+                    ("current_percent", Json::n(cur as f64 / 1000.0)),
+                ]),
+                (Some(limit), None) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::Null),
+                    ("unit", Json::s("milli-percent")),
+                    ("limit_percent", Json::n(limit as f64 / 1000.0)),
+                    ("unavailable", Json::s("本平台未实现进程 CPU 读取；该阈值未生效")),
+                ]),
+                (None, cur) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::Null),
+                    ("current", match cur { Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("unit", Json::s("milli-percent")),
+                    ("current_percent", match cur {
+                        Some(v) => Json::n(v as f64 / 1000.0), None => Json::Null }),
+                ]),
+            };
             Json::obj(vec![
                 ("max_hot_seeds", match cfg.limits_max_hot_seeds {
                     Some(v) => Json::n(v as f64),
@@ -896,6 +932,7 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                     ("unit", Json::s("B/s")),
                 ])),
                 ("max_rss_mb", rss_json),
+                ("max_seeding_cpu_millipct", cpu_json),
                 // 采样时刻（相对进程启动的秒数），用来判断读数是否新鲜。
                 ("sample_at_secs", Json::n(res.at_secs as f64)),
             ])

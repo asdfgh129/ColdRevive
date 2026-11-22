@@ -2,7 +2,7 @@
 doc_id: DOC-29
 title: P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 category: 计划
-version: 1.2
+version: 1.3
 status: 有效
 owner: 架构组
 updated: 2026-11-22
@@ -10,7 +10,7 @@ updated: 2026-11-22
 
 # P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 
-> 编号 DOC-29 · 版本 1.2 · 状态 **有效** · 更新 2026-11-22
+> 编号 DOC-29 · 版本 1.3 · 状态 **有效** · 更新 2026-11-22
 > 基线：仓库 HEAD `5e3e17f`；本日复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（12:00 GMT+8 左右，停止本地守护进程后执行）。
 > 口径不变：**`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`**。
@@ -36,14 +36,14 @@ updated: 2026-11-22
 | FR-01 目录监控 | **已接线（有边界）** | `watch.rs` + `cr_indexer::PollWatcher` 运行期增量（新增/修改/删除入库出库），`indexer.watch_secs` opt-in；后端是**轮询快照**，Windows `ReadDirectoryChangesW` 未接入（§9） | 否（代码） |
 | FR-02 指纹多哈希联动 | **已接线** | 一次读盘产出 SHA-256 / SHA-1 / eD2k fileID，三者落索引（v2）；fileID 由独立纯 Python MD4 复算一致（§9） | 否（代码） |
 | FR-04 持久化 | **已接线（JSON，非 SQLite）** | 原子落盘（tmp→fsync→`.bak`→rename）、`OpenStatus` 五态、v1→v2 迁移；重启 e2e 断言 `loaded_v2`（§9）。仍用 JSON 而非 SQLite，规模上限未验证 | 否（代码） |
-| FR-05/06/07 KAD 发布/查询 | **部分（本地侧齐活）** | 周期重发布改为**到期才发**（`kad.ttl_secs`，刷新窗口 `ttl/3`；成功前推截止、失败不前推），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；文件名分词（`cr_kad::tokenize_keywords`）+ `/cli kad-health` 去重健康度已接入（§10）。**TTL 是本机记账，不是协议 TTL**；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
+| FR-05/06/07 KAD 发布/查询 | **部分（本地侧齐活，含同义词）** | 周期重发布改为**到期才发**（`kad.ttl_secs`，刷新窗口 `ttl/3`；成功前推截止、失败不前推），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；文件名分词 + **确定性同义词扩展**（手写封闭表、按每词 Unicode 脚本选表）+ `detect_language` 展示标签 + `/cli kad-health` 去重健康度已接入；新增 `/cli publish` 把已入库 key 真发出去（§10/§11）。**TTL 是本机记账，不是协议 TTL**；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
 | FR-09 限流 | **已接线** | `ratelimit.rs` 令牌桶（按来源 IP，表上限 4096），超限 429 + `reason=rate_limited` + `retry_after_ms`；`/health`、`/nat/*` 不参与限流（§9） | 否（代码） |
 | FR-10 LRU 逐出 | **已闭环（多种子任务）** | 多样本 + `engine.max_active_seeds=1`，真实 BT 握手唤醒两个 infohash → `evictions=1`、`scheduled<=1`、`seed_active<=cap`（§9） | 否（代码） |
 | FR-11 握手拦截 | 已实现但有边界 | opt-in 默认 false，仅回环 TCP；µTP 不外透；W62 报告是 **11/11**（`tests/e2e/w62/reports/report.json`），不是 12/12 | 否（代码/默认策略） |
 | FR-12 链接生成 | **已闭环（本地）** | `/cli ed2k` 优先用索引里的 fileID（`link_source=index`、`backfilled_from_disk=0`），v1 条目读盘后回填；链接形状与文件名/大小/哈希逐段校验（§9） | 否（代码） |
 | FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
-| FR-15 资源阈值 | **部分（四条阈值已接线）** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽是滞后指标；RSS 读不到的平台显式 `unavailable` 而非按 0 处理（§10）。**造种 CPU 阈值未接线** | 否（代码） |
+| FR-15 资源阈值 | **五条阈值全部接线** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` / `max_seeding_cpu_millipct` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽与 CPU 是滞后指标；RSS/CPU 读不到的平台显式 `unavailable` 而非按 0 处理（§10/§11）。这里只说**接线齐**，不承诺公网性能或自动通过 | 否（代码） |
 | FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
 | FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
@@ -275,5 +275,50 @@ FR-25 上传方向仍 BLOCKED，但停顿位置已定位到对端而不是我们
     idle 重传看门狗（对端静默 ≥3 s 重发它最后请求的区间，封顶 2× 文件大小）。
     实测同一链路 10.1% → 38.6%（1.48 MB → 4.25 MB、完成块 9 → 24），
     **能缩短停顿，不能阻止对端再次停读**，所以上传方向仍是 BLOCKED。
+- 口径未变：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+  `auto_pass=false`；FR-24 公网检索仍等 G0 `protocol_scope` 书面放宽。
+
+## 11. FR-15 第五条阈值 / FR-07 可复算同义词与语言识别（2026-11-22，v2.4.102）
+
+**结论：FR-15 五条阈值全部接线；FR-07 的同义词与语言识别在不牺牲可复算性的前提下补齐。
+门禁常量与公网口径不变。**
+
+- 证据：`python tests/e2e/p0/run_p0.py` → `tests/e2e/p0/reports/report.json`
+  **77/77**（v2.4.101 为 62/62；新增 F 段 CPU、G 段同义词/语言/publish）。
+  全量回归 **426 passed / 0 failed / 3 ignored**（原 419）。
+- **FR-15 CPU 阈值**：`limits.max_seeding_cpu_millipct`，单位千分百分点
+  （1000 = 单核 1%），0/缺省关闭。Linux `/proc/self/stat` 的 `utime+stime`
+  除以 `sysconf(_SC_CLK_TCK)`；Windows `GetProcessTimes`；其它平台 `None`。
+  - **读不到 ≠ 0**：`/health.limits.max_seeding_cpu_millipct` 报
+    `enabled=false` + `unavailable`，该条不参与准入。已知值在短暂读失败时保留。
+  - 进程级、多线程求和可超过 100%，包含 HTTP/CLI 的 CPU；因此只当
+    **拒绝新唤醒的滞后理由**，不承诺「做种永不超线」。
+  - 拒绝顺序固定：hot → peers → bandwidth → rss → cpu。ACK 带
+    `limit_name=max_seeding_cpu_millipct`、`limit`、`current`（均为 milli-percent）、
+    `limit_unit=milli-percent`。
+  - e2e F 段：`limit=1`（0.001%）、实测 `current=1600`（1.6%）→
+    `REJECT_RESOURCE_LIMIT`，`hot=0`、`seed_active=0`；不配的阈值仍显式
+    `enabled=false`，不是字段缺失。
+- **FR-07 确定性同义词**：
+  - `LATIN_SYNONYM_GROUPS` / `CJK_SYNONYM_GROUPS` 是封闭手写表；不用词库/模型/随机数，
+    所以同一名字永远得到同一组词，可直接复算。
+  - `expand_keywords` 用 `token_language` 按**每个词自己的脚本**选表，
+    避免「中文标题 + 英文标记」被整体判成一种语言后选错表。
+    原文全保留且排最前，同义词按组内固定顺序追加，去重保序，硬截 8。
+  - 扩展只进 `published_keys`；`FileEntry.keywords` 原样保留，区分
+    「文件名真有的词」和「系统补的词」。
+  - `detect_language` 仅展示/审计：多脚本报 `mixed`；纯汉字（无假名）判 `zh`，
+    不假装能区分中日汉字。
+  - `.bin/.dat/.txt` 等扩展名加入 `NOISE_TOKENS`，否则「中文标题 + .bin」
+    会把语言判定污染成 `mixed`。
+- **`/cli publish`**：补上此前「index 写了 key 却永远不标记已发布」的缺口。
+  真发 `KAD_PUBLISH`，**只有 `KAD_PUBLISH_ACK` 才**置 `kad_published`
+  并调用 `mark_published` 前推 TTL；失败只累加刷新失败计数。
+  ACK 只表示对端节点收下 key，**不表示公网 KAD 可检索**。
+- e2e G 段实测：英文条目 `keywords=[movie, film, collection]` →
+  `keywords_expanded=[..., cinema]`、`language=en`；中文条目
+  `keywords=[冷启动复活, 电影, 测试样本]` → 扩展出 `影片/片子`、`language=zh`；
+  重索引逐项一致；`cinema` 的 SHA-1 key 出现在 `inspect kad` 已发布列表里；
+  `public_search` 仍为 BLOCKED。
 - 口径未变：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
   `auto_pass=false`；FR-24 公网检索仍等 G0 `protocol_scope` 书面放宽。

@@ -33,12 +33,118 @@ pub fn dht_id_160(namespace: &str, seed: &str) -> String {
     sha1_hex(format!("{}{}", namespace, seed).as_bytes())
 }
 
+/// 生成要发布的 KAD key：目标 key + 每个（**扩展后**）关键词一个 key。
+///
+/// 同义词扩展只作用于「发出去的 key」，`FileEntry.keywords` 仍保留原始词，
+/// 这样 `/cli inspect entries` 能分清「文件名里真有的词」和「我们补的词」。
 pub fn publish_keys(namespace: &str, file_hash: &str, keywords: &[String]) -> Vec<String> {
+    let expanded = expand_keywords(keywords, MAX_KEYWORD_KEYS);
     let mut keys = vec![target_key(namespace, file_hash)];
-    for kw in keywords.iter().take(8) {
+    for kw in &expanded {
         keys.push(keyword_key(namespace, kw));
     }
     keys
+}
+
+/// 手写、封闭的同义词组。**刻意不用**通用词库或模型：那会让同一个文件名在
+/// 不同机器/不同版本切出不同 key，而 KAD 的 key 一旦不可复算就等于发了个黑洞。
+/// 每组第一个词是规范词；扩展时把同组其它词追加在原文之后，去重保序并封顶。
+pub const LATIN_SYNONYM_GROUPS: &[&[&str]] = &[
+    &["movie", "film", "cinema"],
+    &["music", "song", "audio"],
+    &["book", "novel", "ebook"],
+    &["photo", "picture", "image"],
+    &["video", "clip"],
+    &["game", "gaming"],
+    &["software", "program", "app"],
+];
+
+/// 中文同义词组。与拉丁组分开，由**每个词自己的字符脚本**选择，
+/// 不靠整个文件名的语言标签——混名文件（中文标题 + 英文编码标记）很常见。
+pub const CJK_SYNONYM_GROUPS: &[&[&str]] = &[
+    &["电影", "影片", "片子"],
+    &["音乐", "歌曲"],
+    &["小说", "书籍"],
+    &["图片", "照片"],
+    &["视频", "录像"],
+];
+
+/// 单个 Unicode 字符的脚本标签。只认与检索有关的几种，其余统一 `unknown`。
+pub fn char_script(ch: char) -> &'static str {
+    let u = ch as u32;
+    if matches!(u, 0x3040..=0x30ff) { return "ja" }   // 平假名/片假名
+    if matches!(u, 0xac00..=0xd7af) { return "ko" }   // 韩文音节
+    if matches!(u, 0x0400..=0x04ff) { return "ru" }   // 西里尔
+    if matches!(u, 0x0370..=0x03ff) { return "el" }   // 希腊
+    if matches!(u, 0x3400..=0x4dbf | 0x4e00..=0x9fff | 0xf900..=0xfaff) { return "zh" }
+    if ch.is_ascii_alphabetic() { return "en" }
+    "unknown"
+}
+
+/// 一个词的语言：按出现的字母脚本计数，取最多的那个；
+/// 平局按 ja > ko > ru > el > zh > en 的固定顺序，保证可复算。
+pub fn token_language(tok: &str) -> &'static str {
+    const PRIORITY: &[&str] = &["ja", "ko", "ru", "el", "zh", "en"];
+    let mut best = "unknown";
+    let mut best_n = 0usize;
+    for lang in PRIORITY {
+        let n = tok.chars().filter(|c| char_script(*c) == *lang).count();
+        if n > best_n {
+            best = lang;
+            best_n = n;
+        }
+    }
+    best
+}
+
+/// 整段文本的语言：**只用于展示与审计**，不参与 key 生成。
+/// 出现多种脚本就报 `mixed`——这比挑一个「主要语言」更诚实。
+pub fn detect_language(text: &str) -> &'static str {
+    let mut found: Vec<&str> = Vec::new();
+    for ch in text.chars() {
+        let s = char_script(ch);
+        if s != "unknown" && !found.iter().any(|x| *x == s) {
+            found.push(s);
+        }
+    }
+    match found.len() {
+        0 => "unknown",
+        1 => found[0],
+        _ => "mixed",
+    }
+}
+
+/// FR-07：在原有关键词之后追加**确定性**同义词。
+///
+/// 规则：原文全部保留且排在最前（运营者显式给的关键词永远优先）；
+/// 每个原词按它自己的脚本选同义词组；同组成员按组内固定顺序追加；
+/// 全程去重保序，最后硬截到 `limit`（与 key 数上限对齐）。
+/// 不认识的词原样保留——「没扩展」比「扩展错」好。
+pub fn expand_keywords(keywords: &[String], limit: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: &str| {
+        if out.len() < limit && !out.iter().any(|x| x == s) {
+            out.push(s.to_string());
+        }
+    };
+    for kw in keywords.iter().take(limit) {
+        push(kw);
+    }
+    for kw in keywords.iter().take(limit) {
+        let low = kw.to_lowercase();
+        let groups = match token_language(&low) {
+            "ja" | "ko" | "zh" => CJK_SYNONYM_GROUPS,
+            _ => LATIN_SYNONYM_GROUPS,
+        };
+        for group in groups {
+            if group.iter().any(|x| *x == low) {
+                for syn in *group {
+                    push(syn);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// 文件名里常见的「容器/编码/来源」噪声词。它们在任何检索里都命中一片、
@@ -48,6 +154,10 @@ pub const NOISE_TOKENS: &[&str] = &[
     "x264", "x265", "h264", "h265", "hevc", "avc", "aac", "ac3", "dts", "flac", "mp3",
     "1080p", "720p", "480p", "2160p", "4k", "webrip", "webdl", "bluray", "bdrip", "hdtv",
     "remux", "repack", "proper", "internal", "hdr", "sdr", "yify", "rarbg",
+    // 通用二进制/文本扩展名：它们不是内容词，混进关键词还会把整段文本的语言
+    // 判成 mixed（中文标题 + .bin 就是这么被误判的）。
+    "bin", "dat", "exe", "dll", "so", "dylib", "txt", "log", "csv", "json",
+    "tar", "gz", "bz2", "xz",
 ];
 
 /// FR-07：把文件名切成 KAD 关键词。
@@ -60,8 +170,9 @@ pub const NOISE_TOKENS: &[&str] = &[
 /// - 命中 [`NOISE_TOKENS`] 的丢掉；
 /// - 去重保持首次出现顺序，最多 `limit` 个（与 [`publish_keys`] 的 8 个上限对齐）。
 ///
-/// 不做的：不分词性、不做同义词扩展、不做语言识别。这些都会引入不可复算的
-/// 结果，而 KAD 关键词一旦错了就是「发出去也查不到」，比少发几个更糟。
+/// 本函数**只切词**：同义词扩展在 [`expand_keywords`] 里单独做，语言识别在
+/// [`detect_language`] 里单独做。两者都是封闭表 + Unicode 脚本判定的确定性变换，
+/// 不引入词库版本/模型版本这种「同一输入不同机器不同结果」的来源。
 pub fn tokenize_keywords(name: &str, limit: usize) -> Vec<String> {
     fn keep(tok: &str) -> bool {
         if tok.is_empty() {
@@ -148,6 +259,55 @@ mod tokenizer_tests {
         assert!(tokenize_keywords("", 8).is_empty());
         assert!(tokenize_keywords("---___...", 8).is_empty());
         assert!(tokenize_keywords("ab cd", 8).is_empty(), "全是短词时应为空");
+    }
+
+    #[test]
+    fn synonym_expansion_is_deterministic_and_keeps_originals_first() {
+        let a = expand_keywords(&["Movie".into(), "collection".into()], 8);
+        let b = expand_keywords(&["Movie".into(), "collection".into()], 8);
+        assert_eq!(a, b);
+        assert_eq!(a[0], "Movie", "原始关键词不能被同义词顶掉");
+        assert!(a.contains(&"film".to_string()) && a.contains(&"cinema".to_string()));
+        // 同组两个原词同时出现时也不能重复追加。
+        let c = expand_keywords(&["movie".into(), "film".into()], 8);
+        assert_eq!(c.iter().filter(|x| *x == "cinema").count(), 1);
+    }
+
+    #[test]
+    fn cjk_synonyms_use_cjk_table_not_latin_table() {
+        let out = expand_keywords(&["电影".into()], 8);
+        assert!(out.contains(&"影片".to_string()) && out.contains(&"片子".to_string()));
+        assert!(!out.iter().any(|x| x == "movie"));
+        assert_eq!(token_language("电影"), "zh");
+        assert_eq!(token_language("カタカナ"), "ja");
+    }
+
+    #[test]
+    fn expansion_honours_limit_and_leaves_unknown_words_alone() {
+        let many: Vec<String> = (0..20).map(|i| format!("word{i}")).collect();
+        let out = expand_keywords(&many, 8);
+        assert_eq!(out.len(), 8);
+        assert_eq!(out, many[..8]);
+        assert_eq!(expand_keywords(&["zzzzunknown".into()], 8), vec!["zzzzunknown"]);
+    }
+
+    #[test]
+    fn language_detection_is_explicit_about_mixed_scripts() {
+        assert_eq!(detect_language("cold revive sample"), "en");
+        assert_eq!(detect_language("冷启动复活测试样本"), "zh");
+        assert_eq!(detect_language("Привет"), "ru");
+        assert_eq!(detect_language("冷启动 sample"), "mixed");
+        assert_eq!(detect_language("2024---"), "unknown");
+    }
+
+    #[test]
+    fn published_keys_include_expansion_but_stay_capped() {
+        let kws = vec!["movie".to_string(), "book".to_string()];
+        let keys = publish_keys("ns:", "h", &kws);
+        // 1 个 target + 若干关键词 key：不超过上限即可（不该为了凑满而灌水）。
+        assert!(keys.len() <= 1 + MAX_KEYWORD_KEYS && keys.len() > 3);
+        assert!(keys.contains(&keyword_key("ns:", "cinema")));
+        assert!(keys.contains(&keyword_key("ns:", "novel")));
     }
 }
 
