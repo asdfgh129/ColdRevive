@@ -13,10 +13,9 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::kad::{ed2k_hash, ed2k_part_hashes, ED2K_PART_SIZE};
@@ -194,6 +193,9 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
     let mut buffer = vec![0u8; expected.data.len()];
     let mut pending = expected.blocks();
     let mut in_flight: Vec<(u32, u32)> = Vec::new();
+    // 已收到的字节区间（合并后）。真实客户端的回帧粒度与请求粒度不一致，
+    // 只能用「请求区间是否已被已收区间完全覆盖」来判断进度。
+    let mut received: Vec<(u32, u32)> = Vec::new();
     let mut handshake_done = false;
     let mut upload_accepted = false;
     let mut last_progress = Instant::now();
@@ -282,14 +284,16 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
                     out.bytes_received += data.len();
                     out.blocks_received += 1;
                     last_progress = Instant::now();
-                    // 真实 aMule 可能把请求的某一块拆成更小的 SENDINGPART 返回；
-                    // 按覆盖范围清除，而不是要求起止完全相同（loopback 自己两端相同所以没暴露）。
-                    let covered = |r: &(u32, u32)| r.0 >= start && r.1 <= end;
-                    in_flight.retain(|r| !covered(r));
-                    pending.retain(|r| !covered(r));
-                    // 真实 aMule 的分片边界可能与请求不同；以实际字节是否等于期望为准，
-                    // 不能只看 pending 记账是否清空（同一文件可有多种合法切片方式）。
-                    if buffer == *expected.data || pending.is_empty() {
+                    // 真实 aMule 会把一个 184320 的请求拆成多条 10240 字节的
+                    // SENDINGPART 送回（实测 `len=10264 range=0..10240`×18）。
+                    // 覆盖判定必须是「区间 r 已被已收区间包含」，写成
+                    // `r.0 >= start && r.1 <= end` 会把方向弄反，碎片永远清不掉
+                    // in_flight，于是 4s 后重发同一批请求、对端最终断开。
+                    merge_interval(&mut received, start, end);
+                    let done = |r: &(u32, u32)| covered_by(&received, r.0, r.1);
+                    in_flight.retain(|r| !done(r));
+                    pending.retain(|r| !done(r));
+                    if covered_by(&received, 0, buffer.len() as u32) {
                         out.data = buffer.clone();
                         out.hash_matches = ed2k_hash(&buffer) == hash;
                         out.content_matches = buffer == *expected.data;
@@ -328,6 +332,57 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
     out
 }
 
+/// Per-requested-range upload bookkeeping for one connection.
+struct SentRange {
+    sent_at: Instant,
+    sent_req: u64,
+    last_req: u64,
+}
+
+/// Split one requested block into wire frames of `chunk` bytes. Real eMule/aMule
+/// uploaders send 10 KiB frames even when the peer requested a whole 180 KiB
+/// block, so a compliant client must accept that granularity.
+fn chunk_range(start: u32, end: u32, chunk: u32) -> Vec<(u32, u32)> {
+    let mut out = Vec::new();
+    let mut at = start;
+    while at < end {
+        let stop = (at + chunk).min(end);
+        out.push((at, stop));
+        at = stop;
+    }
+    out
+}
+
+/// Insert `[start,end)` and coalesce with neighbours so coverage checks stay O(n)
+/// on a merged list instead of a growing pile of fragments.
+fn merge_interval(list: &mut Vec<(u32, u32)>, start: u32, end: u32) {
+    if end <= start {
+        return;
+    }
+    list.push((start, end));
+    list.sort_unstable();
+    let mut merged: Vec<(u32, u32)> = Vec::with_capacity(list.len());
+    for (s, e) in list.drain(..) {
+        match merged.last_mut() {
+            Some(last) if s <= last.1 => {
+                if e > last.1 {
+                    last.1 = e;
+                }
+            }
+            _ => merged.push((s, e)),
+        }
+    }
+    *list = merged;
+}
+
+/// True when `[start,end)` is fully inside one merged received interval.
+fn covered_by(list: &[(u32, u32)], start: u32, end: u32) -> bool {
+    if end <= start {
+        return true;
+    }
+    list.iter().any(|&(s, e)| s <= start && end <= e)
+}
+
 fn send_next_batch(link: &mut Link, pending: &mut Vec<(u32, u32)>, in_flight: &mut Vec<(u32, u32)>, hash: &Hash16) -> Result<(), String> {
     if !in_flight.is_empty() || pending.is_empty() {
         return Ok(());
@@ -364,10 +419,13 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
     let peer_id = queue.lock().map(|mut q| q.new_peer()).unwrap_or(0);
     let mut held_slot = false;
     let mut current_file: Option<SharedFile> = None;
-    // aMule 每收一块就重发「仍 pending 的区间 + 一个新区间」。逐条照单全送
-    // 会把 3 块放大成 9 块，>PARTSIZE 实测停在 64.5%；按区间只送一次时
-    // 实测推进到 85.3%，重复放大是主要瓶颈。
-    let mut sent_ranges: HashSet<(u32, u32)> = HashSet::new();
+    // aMule 自己上传时按 10240 字节一帧发（W25-daemon 抓包 950 帧收完
+    // 9,736,192 字节）；照它的粒度回帧才和真实客户端同构。整块 184320 一帧
+    // 在 LAN 上会让它收几十块后停住（实测 36%–85% 间随机停）。
+    // 记账按「请求区间」而不是帧：同一区间重复请求多是流水线，但若连续多轮
+    // 仍在 pending 里，就按重传再发一次（eD2k 无块级 ACK，只能这样自愈）。
+    let mut sent_ranges: HashMap<(u32, u32), SentRange> = HashMap::new();
+    let mut request_seq: u64 = 0;
 
     let run = (|| -> Result<(), String> {
         while Instant::now() < deadline {
@@ -446,23 +504,35 @@ pub fn serve(stream: TcpStream, files: &[SharedFile], our_hello: &Hello, queue: 
                     if f.hash() != h {
                         return Err("REQUESTPARTS carried a different fileID".into());
                     }
+                    request_seq += 1;
                     for (start, end) in ranges {
                         if end <= start || end as usize > f.data.len() {
                             continue;
                         }
-                        if sent_ranges.contains(&(start, end)) {
+                        let send_now = match sent_ranges.get_mut(&(start, end)) {
+                            None => true,
+                            Some(s) => {
+                                s.last_req = request_seq;
+                                // 连续 3 轮仍在 pending 且距上次发送 ≥2s：
+                                // 对端确实没收到，重传一次，避免永久饿死。
+                                request_seq >= s.sent_req + 3
+                                    && s.sent_at.elapsed() >= Duration::from_secs(2)
+                            }
+                        };
+                        if !send_now {
                             continue;
                         }
-                        sent_ranges.insert((start, end));
-                        let s = start as usize;
-                        let e = end as usize;
-                        link.send_frame(&w::sending_part(&h, start, end, &f.data[s..e]))?;
-                        out.blocks_sent += 1;
-                        out.bytes_sent += e - s;
-                        // 真实上传端受磁盘 I/O 限速；LAN 上无节流时 aMule 会在
-                        // 同一毫秒收到整批帧，部分块还没进 pending 就被当重复
-                        // 丢弃，进而停止追加请求。每块留 10ms 让它处理完。
-                        thread::sleep(Duration::from_millis(10));
+                        sent_ranges.insert(
+                            (start, end),
+                            SentRange { sent_at: Instant::now(), sent_req: request_seq, last_req: request_seq },
+                        );
+                        for (cs, ce) in chunk_range(start, end, w::UPLOAD_CHUNK) {
+                            let s = cs as usize;
+                            let e = ce as usize;
+                            link.send_frame(&w::sending_part(&h, cs, ce, &f.data[s..e]))?;
+                            out.blocks_sent += 1;
+                            out.bytes_sent += e - s;
+                        }
                     }
                 }
                 w::op::END_OF_DOWNLOAD | w::op::CANCELTRANSFER | w::op::OUTOFPARTREQS => return Ok(()),
@@ -522,6 +592,22 @@ mod tests {
         q.release(a);
         assert_eq!(q.acquire(b), None); // FIFO: b, not c
         assert_eq!(q.acquire(c), Some(1));
+    }
+
+    #[test]
+    fn upload_frames_follow_real_client_chunking() {
+        // aMule 请求 184320 的一整块，自己上传时却按 10240 一帧发。
+        let chunks = chunk_range(0, w::BLOCKSIZE, w::UPLOAD_CHUNK);
+        assert_eq!(chunks.len(), 18);
+        assert_eq!(chunks.first().unwrap(), &(0, 10_240));
+        assert_eq!(chunks.last().unwrap(), &(174_080, 184_320));
+        let mut at = 0;
+        for (s, e) in &chunks {
+            assert_eq!(*s, at);
+            assert!(e > s);
+            at = *e;
+        }
+        assert_eq!(chunk_range(5, 7, w::UPLOAD_CHUNK), vec![(5, 7)]);
     }
 
     #[test]

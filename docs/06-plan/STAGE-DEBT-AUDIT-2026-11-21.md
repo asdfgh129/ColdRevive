@@ -45,7 +45,7 @@ updated: 2026-11-21
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
 | FR-15 资源阈值 | 部分 | seed cap + 中继令牌桶；阈值自动拒绝唤醒未接线 | 否（代码） |
 | FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
-| FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` 双向仍未闭环 | 部分：公网 eD2k 传输可补证据，但跨分片闭环是代码债 |
+| FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
 治理债：SRS 仍 v2.0「待评审」；FR-24 在 SRS 第 43/45 行重复编号（信誉行未实现）。
 
@@ -78,7 +78,7 @@ updated: 2026-11-21
 | TCP 打洞 | 原语通过，BT 数据面未接线，公网双侧 BLOCKED | 先解决公网双侧，再谈接线；symmetric 不可直连保留为正确结论 |
 | 守护进程多样种 | 组件级 `Cold→Hot→Cold→Hot` 已证；daemon 仍单任务 | 多 infohash + cap 触发 e2e |
 | FR-24 公网 | 5 节点全超时 | G0 `protocol_scope` 书面放宽 |
-| FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 上传推进到 39.8%–85.3% 后静置，下载只到 hashset 交换 | 查 aMule 重叠 `REQUESTPARTS` 的应答节奏 → 双轨发布 → 公网证据 |
+| FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 下载方向 10/10 闭环，上传方向推进到 19.2%–85.3% 后静置 | 定位 aMule 上传侧停止追加请求的判据 → 双轨发布 → 公网证据 |
 | 外推边界 | W61 的 `rst-path-verified` 只指 `119.29.150.254` 这一条路径 | 不得写成“所有 RST 部署已验证” |
 | 性能 | 跨公网只有单次 1 MiB 样本；4 MiB 公网 143–235 s 成因未定位 | 多组样本，按 ADR-012 不折算速率 |
 
@@ -151,13 +151,29 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
   消除 `invalid eD2k packet length 2655250573`；上传侧对 aMule 重叠的
   `REQUESTPARTS` 做区间去重和 10ms 轻节流，下载侧在无进展时重发
   `in_flight`。
+- 第二轮（同日）又修三处，均带回归测试：
+  1. **上传帧粒度**：对端请求 `184320 B` 整块，自己上传却按 `10240 B` 一帧。
+     改为 `wire::UPLOAD_CHUNK` 同粒度（`upload_frames_follow_real_client_chunking`）。
+  2. **`OP_REQUESTPARTS` 短帧容忍**：原解析固定读 3 组区间，只带 1–2 组的
+     合法帧被当错误帧丢弃（`request_parts_accepts_fewer_than_three_pairs`）。
+  3. **下载侧覆盖判定写反**：对端把 `184320 B` 请求拆成 10 帧 `10240 B` 应答，
+     旧判据 `r.0 >= start && r.1 <= end` 认为“没覆盖”，`in_flight` 永不清空。
+     改按字节覆盖判定后，下载方向闭环。
+  另加 `server_satisfies_amule_style_sliding_window`，在本机复刻 aMule 的
+  「3 个 pending 块 + 每完成一块补一个新块」滑窗，把这类上传侧回归钉在 CI 里。
 - 证据边界：全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
-  **388 passed / 0 failed / 3 ignored**。真 aMule RFC1918 LAN 上，`>PARTSIZE`
-  (`9,736,192 B`) 上传多轮推进到 **39.8%–85.3%** 后转 `Waiting`，未取得
-  对端完整文件/md5；下载方向完成到 `OP_HASHSETANSWER`
-  （`hashset_verified=true`），但随后连接关闭或只收到少量块，
-  `completed/hash_matches/content_matches` 仍为 false。帧级 trace 与报告
-  留在 gitignored 的 `tests/e2e/w25-daemon/{run,reports}/`。
-- 因此本轮只销掉“daemon 未接线”这一条；FR-25 的跨分片闭环、公网
-  server/peer、双轨发布、source exchange/credit/AICH 仍开放。
+  **392 passed / 0 failed / 3 ignored**。
+- 真 aMule RFC1918 LAN 上，`>PARTSIZE`（`9,736,192 B`）：
+  - **下载方向（aMule → coldrevived）PASS 10/10**：`bytes_received=9736192`、
+    950 个 `OP_SENDINGPART`（每帧约 `10240 B`）、`hashset_verified=true`、
+    `completed/hash_matches/content_matches=true`，10 项 checks 全通过。
+  - **上传方向（coldrevived → aMule）仍 BLOCKED**：多轮推进到
+    **19.2%–85.3%** 后转 `Waiting`；对端 `Recv-Q` 积压约 416 KB 却不再消费，
+    未取得对端落地文件/md5。最近的复跑（`10 KiB` 分帧 + 短帧容忍后）停在
+    `19.2%`（`Temp/001.part` 已分配 1,871,872 B），说明**不是帧粒度问题**，
+    更可能是 aMule 对重叠请求之外的情形（如 pending 列表与已收块的账目）停止
+    追加请求。帧级 trace 与报告留在 gitignored 的
+    `tests/e2e/w25-daemon/{run,reports}/`。
+- 因此本轮销掉“daemon 未接线”和“下载方向跨分片”两条；FR-25 仍开放：
+  上传方向跨分片闭环、公网 server/peer、双轨发布、source exchange/credit/AICH。
   `g2_claim` / `s6_status` / `evidence_valid_for_pass` / `auto_pass` 常量不变。

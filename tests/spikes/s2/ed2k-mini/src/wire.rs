@@ -477,6 +477,8 @@ pub fn parse_hashset_answer(payload: &[u8]) -> Result<(Hash16, Vec<Hash16>), Str
 // src/UploadDiskIOThread.cpp `CreateNormalPackets`:
 //   OP_SENDINGPART <filehash 16><start u32><end u32><data[end-start]>.
 pub const WIRE_BLOCKS: usize = 3;
+/// 真实 eMule/aMule 上传端的回帧粒度（10 KiB），不是 184320。
+pub const UPLOAD_CHUNK: u32 = 10_240;
 
 pub fn request_parts(hash: &Hash16, ranges: &[(u32, u32)]) -> Vec<u8> {
     let mut b = Buf::new();
@@ -493,15 +495,22 @@ pub fn request_parts(hash: &Hash16, ranges: &[(u32, u32)]) -> Vec<u8> {
 pub fn parse_request_parts(payload: &[u8]) -> Result<(Hash16, Vec<(u32, u32)>), String> {
     let mut c = Cur::new(payload);
     let hash = c.id()?;
+    // 经典布局是「hash + N 个 start + N 个 end」。eMule 通常补满 3 组，
+    // 但不能假定对端一定发 40 字节：pending 少于 3 块时可能只发 1–2 组。
+    // 按可用字节数推导组数，超出的按 3 组截断。
+    let count = ((payload.len().saturating_sub(16)) / 8).min(WIRE_BLOCKS);
+    if count == 0 {
+        return Err("OP_REQUESTPARTS without any range".into());
+    }
     let mut starts = [0u32; WIRE_BLOCKS];
     let mut ends = [0u32; WIRE_BLOCKS];
-    for s in &mut starts {
+    for s in starts.iter_mut().take(count) {
         *s = c.u32()?;
     }
-    for e in &mut ends {
+    for e in ends.iter_mut().take(count) {
         *e = c.u32()?;
     }
-    let ranges = (0..WIRE_BLOCKS)
+    let ranges = (0..count)
         .filter(|&i| ends[i] > starts[i])
         .map(|i| (starts[i], ends[i]))
         .collect();
@@ -612,6 +621,31 @@ mod tests {
         let parts = vec![[1u8; 16], [2u8; 16]];
         let p2 = parse_frame(&hashset_answer(&h, &parts)).unwrap();
         assert_eq!(parse_hashset_answer(&p2.payload).unwrap(), (h, parts));
+    }
+
+    #[test]
+    fn request_parts_accepts_fewer_than_three_pairs() {
+        // eMule 补满 3 组；但只发 1–2 组的对端不能被当成错误帧。
+        let h = [3u8; 16];
+        let mut one = Vec::new();
+        one.extend_from_slice(&h);
+        one.extend_from_slice(&0u32.to_le_bytes());
+        one.extend_from_slice(&184_320u32.to_le_bytes());
+        assert_eq!(parse_request_parts(&one).unwrap().1, vec![(0, 184_320)]);
+
+        let mut two = Vec::new();
+        two.extend_from_slice(&h);
+        for v in [0u32, 184_320] {
+            two.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in [184_320u32, 368_640] {
+            two.extend_from_slice(&v.to_le_bytes());
+        }
+        assert_eq!(
+            parse_request_parts(&two).unwrap().1,
+            vec![(0, 184_320), (184_320, 368_640)]
+        );
+        assert!(parse_request_parts(&h).is_err());
     }
 
     #[test]

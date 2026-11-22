@@ -7,7 +7,7 @@
 > 本轮补上 FR-25 的 daemon 接线并修掉真实 aMule 暴露的协议/状态机缺口，
 > 但 **`>PARTSIZE` 双向跨分片没有拿到完整 PASS 证据**，不升级门禁：
 > `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false`。
-> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **388 passed / 0 failed / 3 ignored**。
+> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **392 passed / 0 failed / 3 ignored**。
 
 - **daemon 接线完成**：`coldrevived` 新增 `ed2k_tasks.rs`，`/cli` 增加
   `ed2k-link` / `ed2k-serve` / `ed2k-download` / `ed2k-status` / `ed2k-list`，
@@ -26,12 +26,25 @@
   - aMule 每收一块就把“仍 pending 的区间 + 一个新区间”重发，3 块会被放大成
     9 块；上传侧按 `(start,end)` 抑制重复并做 10ms 轻节流。下载侧在长时间
     无进展时重发 `in_flight` 区间，避免把部分应答误判为完成。
-- **跨分片证据仍 BLOCKED**：真 aMule 2.3.3 / RFC1918 LAN 上，`>PARTSIZE`
-  (`9,736,192 B`) 的上传推进到 **39.8%–85.3%** 后转 `Waiting`，没有拿到
-  对端落地文件与 md5；下载方向能完成 `HELLO`/文件选择/`OP_HASHSETANSWER`
-  （`hashset_verified=true`），但连接随后关闭或只收到 3 块，
-  `completed/hash_matches/content_matches` 均为 false。原始帧级 trace 与
-  报告在 gitignored 的 `tests/e2e/w25-daemon/{run,reports}/`，不宣称 PASS。
+  - **上传帧粒度**：真 aMule 请求一整块 `184320 B`，自己上传时按 `10240 B`
+    一帧发。上传侧改为同样粒度（`wire::UPLOAD_CHUNK`），并接受
+    `OP_REQUESTPARTS` 只带 1–2 组区间（原先固定读 3 组，短帧被判错帧）。
+    新增 `upload_frames_follow_real_client_chunking`、
+    `request_parts_accepts_fewer_than_three_pairs` 与
+    `server_satisfies_amule_style_sliding_window`（复刻 aMule 滑窗取片的回归测试）。
+  - **下载侧覆盖判定写反**：真 aMule 把 `184320 B` 的请求拆成 10 帧 `10240 B`
+    应答，旧的 `r.0 >= start && r.1 <= end` 认为“分片没有覆盖请求”，
+    `in_flight` 永不清空，进度停在少数块。改为按字节覆盖判定后，
+    `>PARTSIZE` 从真 aMule 下载 **10/10 PASS**（`bytes_received=9736192`、
+    950 个 `OP_SENDINGPART` 分片、`hashset_verified=true`、
+    `completed/hash_matches/content_matches=true`）。
+- **跨分片证据半闭环**：真 aMule 2.3.3 / RFC1918 LAN 上，`>PARTSIZE`
+  (`9,736,192 B`)：
+  - **下载方向（aMule → coldrevived）PASS 10/10**，落地字节与 ed2k_hash 一致。
+  - **上传方向（coldrevived → aMule）仍 BLOCKED**：多轮推进到
+    **19.2%–85.3%** 后转 `Waiting`，对端 `Recv-Q` 积压约 416 KB 却不再消费，
+    没有拿到对端落地文件与 md5。因此不宣称 FR-25 跨分片闭环。
+  - 原始帧级 trace 与报告在 gitignored 的 `tests/e2e/w25-daemon/{run,reports}/`。
 - 新增本地复核入口 `tests/e2e/w25-daemon/daemon_cross_chunk.py`（双向）与
   `daemon_download_cross_chunk.py`（仅下载方向）；运行产物不入库。
 
