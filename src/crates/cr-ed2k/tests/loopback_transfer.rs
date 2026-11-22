@@ -157,7 +157,7 @@ fn server_satisfies_amule_style_sliding_window() {
 
     link.send_frame(&wire::hello_frame(&hello(0))).unwrap();
     let mut accepted = false;
-    let mut request = |link: &mut stack::Link, window: &[(u32, u32)]| {
+    let request = |link: &mut stack::Link, window: &[(u32, u32)]| {
         link.send_frame(&wire::request_parts(&hash, window)).unwrap();
     };
 
@@ -227,6 +227,102 @@ fn server_satisfies_amule_style_sliding_window() {
         }
     }
     assert_eq!(got.as_slice(), file.data.as_slice(), "滑窗客户端没有收到完整内容");
+    let up = server.join().unwrap();
+    assert!(up.error.is_none(), "serve 报错: {:?}", up.error);
+}
+
+/// 真 aMule 的 `SendBlockRequests` 不是「问一批、等一批」：它维持 3 个 pending
+/// 块，每完成一块就把「仍未完成的块 + 一个新块」重发一次（DownloadClient.cpp）。
+/// 这里按 aMule 的**账目**复刻：只有收到某块的**末尾字节**才算完成（源码里
+/// `nEndPos == cur_block->block->EndOffset` 才 RemoveBlockFromList），完成一块
+/// 才补一块并重发请求。上传端若少送、重送错位或把 pending 区间当成永久去重，
+/// 这个用例会停在半路——它比「收到全部字节」更接近真实对端判据。
+#[test]
+fn server_satisfies_amule_block_accounting() {
+    let file = deterministic_file(ED2K_PART_SIZE + 8192, 21);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let served = file.clone();
+    let queue = Arc::new(Mutex::new(UploadQueue::new(1)));
+    let server = thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        stack::serve(stream, &[served], &hello(addr.port()), &queue, Duration::from_secs(60))
+    });
+
+    let stream = std::net::TcpStream::connect(addr).unwrap();
+    stream.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+    let mut link = stack::Link::new(stream);
+    let hash = file.hash();
+    let size = file.data.len();
+
+    link.send_frame(&wire::hello_frame(&hello(0))).unwrap();
+    let mut accepted = false;
+    while !accepted {
+        let p = link.recv().expect("handshake");
+        match p.opcode {
+            wire::op::HELLOANSWER => link.send_frame(&wire::file_request(&hash)).unwrap(),
+            wire::op::REQFILENAMEANSWER => link.send_frame(&wire::hashset_request(&hash)).unwrap(),
+            wire::op::HASHSETANSWER => link.send_frame(&wire::start_upload_req(&hash)).unwrap(),
+            wire::op::ACCEPTUPLOADREQ => accepted = true,
+            _ => {}
+        }
+    }
+
+    // aMule 先要末尾小块，再从 0 顺序取整块。
+    let mut rest: Vec<(u32, u32)> = file.blocks();
+    let tail = rest.pop().unwrap();
+    let mut pending: Vec<(u32, u32)> = vec![tail];
+    let mut complete = vec![false; size];
+    let mut blocks_done = 0usize;
+    let total_blocks = file.blocks().len();
+
+    let fill = |pending: &mut Vec<(u32, u32)>, rest: &mut Vec<(u32, u32)>| {
+        while pending.len() < 3 && !rest.is_empty() {
+            pending.push(rest.remove(0));
+        }
+    };
+    fill(&mut pending, &mut rest);
+    link.send_frame(&wire::request_parts(&hash, &pending)).unwrap();
+
+    let mut frames = 0usize;
+    while blocks_done < total_blocks {
+        let p = match link.recv() {
+            Ok(p) => p,
+            Err(e) => panic!(
+                "上传端在第 {} 帧后停住（完成 {}/{} 块，pending={:?}）：{}",
+                frames, blocks_done, total_blocks, pending, e
+            ),
+        };
+        if p.opcode != wire::op::SENDINGPART {
+            continue;
+        }
+        let (h, start, end, data) = wire::parse_sending_part(&p.payload).unwrap();
+        assert_eq!(h, hash);
+        assert_eq!(data.len(), (end - start) as usize, "帧长度与区间不符");
+        frames += 1;
+
+        // 与 aMule 一致：帧的起点必须落在某个 pending 块内，且不得越过块尾。
+        let idx = pending.iter().position(|(s, e)| *s <= start && start < *e);
+        let idx = match idx {
+            Some(i) => i,
+            None => continue, // aMule 收到窗口外的帧会静默丢弃
+        };
+        let (bs, be) = pending[idx];
+        assert!(end <= be, "帧 {:?} 越过 pending 块尾 {:?}（aMule 会移除该块）", (start, end), (bs, be));
+        for i in start as usize..end as usize {
+            complete[i] = true;
+        }
+        if end == be {
+            let done = pending.remove(idx);
+            assert!(complete[done.0 as usize..done.1 as usize].iter().all(|v| *v));
+            blocks_done += 1;
+            fill(&mut pending, &mut rest);
+            if !pending.is_empty() {
+                link.send_frame(&wire::request_parts(&hash, &pending)).unwrap();
+            }
+        }
+    }
+    assert!(complete.iter().all(|v| *v), "有字节没送到");
     let up = server.join().unwrap();
     assert!(up.error.is_none(), "serve 报错: {:?}", up.error);
 }

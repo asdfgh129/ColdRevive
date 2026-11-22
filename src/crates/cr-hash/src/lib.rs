@@ -13,6 +13,29 @@ pub fn hex(bytes: &[u8]) -> String {
     s
 }
 
+/// 十六进制 → 字节。长度必须是偶数且只含 0-9a-fA-F，否则返回 None。
+/// 供「索引里存的是 hex、用的时候要 16 字节数组」的场景（ed2k link）。
+pub fn unhex(s: &str) -> Option<Vec<u8>> {
+    if s.len() % 2 != 0 { return None; }
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(s.len() / 2);
+    for i in (0..b.len()).step_by(2) {
+        let hi = (b[i] as char).to_digit(16)?;
+        let lo = (b[i + 1] as char).to_digit(16)?;
+        out.push((hi * 16 + lo) as u8);
+    }
+    Some(out)
+}
+
+/// 十六进制 → 16 字节（eD2k fileID / KAD key）。长度不是 32 时返回 None。
+pub fn unhex16(s: &str) -> Option<[u8; 16]> {
+    let v = unhex(s)?;
+    if v.len() != 16 { return None; }
+    let mut out = [0u8; 16];
+    out.copy_from_slice(&v);
+    Some(out)
+}
+
 pub fn sha256_hex(data: &[u8]) -> String { hex(&sha256(data)) }
 pub fn sha1_hex(data: &[u8]) -> String { hex(&sha1(data)) }
 
@@ -218,6 +241,18 @@ mod tests {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
         assert_eq!(sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    }
+
+    #[test]
+    fn unhex_roundtrips_and_rejects_garbage() {
+        let bytes = ed2k_hash(b"abc");
+        assert_eq!(unhex16(&hex(&bytes)), Some(bytes));
+        assert_eq!(unhex16("00112233445566778899aabbccddeeff"),
+                   Some([0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff]));
+        assert_eq!(unhex16("0011"), None);            // 长度不对
+        assert_eq!(unhex16("zz112233445566778899aabbccddeeff"), None); // 非十六进制
+        assert_eq!(unhex("abc"), None);               // 奇数长度
     }
 
     #[test]

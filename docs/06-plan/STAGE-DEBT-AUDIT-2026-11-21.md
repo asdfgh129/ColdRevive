@@ -2,15 +2,15 @@
 doc_id: DOC-29
 title: P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 category: 计划
-version: 1.0
+version: 1.1
 status: 有效
 owner: 架构组
-updated: 2026-11-21
+updated: 2026-11-22
 ---
 
 # P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 
-> 编号 DOC-29 · 版本 1.0 · 状态 **有效** · 更新 2026-11-21
+> 编号 DOC-29 · 版本 1.1 · 状态 **有效** · 更新 2026-11-22
 > 基线：仓库 HEAD `5e3e17f`；本日复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（12:00 GMT+8 左右，停止本地守护进程后执行）。
 > 口径不变：**`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`**。
@@ -33,17 +33,17 @@ updated: 2026-11-21
 
 | 欠账 | 当前状态 | 证据 / 说明 | 家宽能否推进 |
 | :--- | :--- | :--- | :--- |
-| FR-01 目录监控 | 部分 | `cr-indexer::inspect()` 一次性扫描；无 FSEvents/ReadDirectoryChangesW | 否（代码） |
-| FR-02 指纹多哈希联动 | 部分 | `cr-hash` 齐备，索引只接 SHA-256/BT SHA-1 | 否（代码） |
-| FR-04 持久化 | 部分 | JSON roundtrip；无 SQLite 迁移、无重启 e2e | 否（代码） |
-| FR-05/06/07 KAD 发布/查询 | 部分 | CLI publish/find；daemon 无周期发布/TTL，关键词未分词，无去重健康度 | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
-| FR-09 限流 | 部分 | Challenge + nonce 去重；生产路径无按 IP 限流 | 否（代码） |
-| FR-10 LRU 逐出 | 部分 | 组件级真引擎逐出已证；守护进程仍单任务 | 否（代码） |
+| FR-01 目录监控 | **已接线（有边界）** | `watch.rs` + `cr_indexer::PollWatcher` 运行期增量（新增/修改/删除入库出库），`indexer.watch_secs` opt-in；后端是**轮询快照**，Windows `ReadDirectoryChangesW` 未接入（§9） | 否（代码） |
+| FR-02 指纹多哈希联动 | **已接线** | 一次读盘产出 SHA-256 / SHA-1 / eD2k fileID，三者落索引（v2）；fileID 由独立纯 Python MD4 复算一致（§9） | 否（代码） |
+| FR-04 持久化 | **已接线（JSON，非 SQLite）** | 原子落盘（tmp→fsync→`.bak`→rename）、`OpenStatus` 五态、v1→v2 迁移；重启 e2e 断言 `loaded_v2`（§9）。仍用 JSON 而非 SQLite，规模上限未验证 | 否（代码） |
+| FR-05/06/07 KAD 发布/查询 | 部分 | daemon 现已**周期重发布**已发布 key（`kad.republish_secs`，`/health.kad_publish`），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；仍无 TTL 数值维护、关键词不分词、无去重健康度；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
+| FR-09 限流 | **已接线** | `ratelimit.rs` 令牌桶（按来源 IP，表上限 4096），超限 429 + `reason=rate_limited` + `retry_after_ms`；`/health`、`/nat/*` 不参与限流（§9） | 否（代码） |
+| FR-10 LRU 逐出 | **已闭环（多种子任务）** | 多样本 + `engine.max_active_seeds=1`，真实 BT 握手唤醒两个 infohash → `evictions=1`、`scheduled<=1`、`seed_active<=cap`（§9） | 否（代码） |
 | FR-11 握手拦截 | 已实现但有边界 | opt-in 默认 false，仅回环 TCP；µTP 不外透；W62 报告是 **11/11**（`tests/e2e/w62/reports/report.json`），不是 12/12 | 否（代码/默认策略） |
-| FR-12 链接生成 | 部分 | magnet + `/torrent/` 已接线；`ed2k_link` 原语未被生产调用 | 否（代码） |
-| FR-13 引擎完成回流 | 部分 | 下载/暂停/恢复可用，完成产物不回流重建索引 | 否（代码） |
+| FR-12 链接生成 | **已闭环（本地）** | `/cli ed2k` 优先用索引里的 fileID（`link_source=index`、`backfilled_from_disk=0`），v1 条目读盘后回填；链接形状与文件名/大小/哈希逐段校验（§9） | 否（代码） |
+| FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
-| FR-15 资源阈值 | 部分 | seed cap + 中继令牌桶；阈值自动拒绝唤醒未接线 | 否（代码） |
+| FR-15 资源阈值 | **部分（HOT 阈值已接线）** | `limits.max_hot_seeds`：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit/current`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，两者语义分开。**内存/带宽/造种 CPU 阈值仍未接线** | 否（代码） |
 | FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
 | FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
@@ -177,3 +177,51 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
 - 因此本轮销掉“daemon 未接线”和“下载方向跨分片”两条；FR-25 仍开放：
   上传方向跨分片闭环、公网 server/peer、双轨发布、source exchange/credit/AICH。
   `g2_claim` / `s6_status` / `evidence_valid_for_pass` / `auto_pass` 常量不变。
+
+## 9. P0 运行期欠账批量落地复核（2026-11-22，v2.4.100）
+
+**结论：FR-01/02/04/09/10/12/13 的运行期行为已接线并取得本机回环 e2e 证据；
+FR-05/06 只做到「周期重发布 + 真实 ACK」；FR-15 只落地 HOT 阈值一条。
+FR-25 上传方向、FR-24 公网检索不受本轮影响，仍 BLOCKED。**
+
+- 可复跑证据：`tests/e2e/p0/run_p0.py` → `tests/e2e/p0/reports/report.json`，
+  **48/48** check（A 段功能、B 段重启+限流、C 段阈值拒绝）。该目录只入库脚本与 README，
+  `run/`、`reports/` 在 `.gitignore` 内。
+- 全量回归：`CARGO_INCREMENTAL=0 cargo test --workspace --offline`
+  **406 passed / 0 failed / 3 ignored**（v2.4.99 为 392 passed）。
+- 逐项证据（全部读运行期 JSON / 真实文件 / 真实 BT 握手 / 守护进程日志）：
+  - **FR-01**：往共享目录丢文件 → 不重启、不手工 index，`/cli inspect entries` 多一条，
+    `sha1`/`size` 与脚本独立复算一致，日志有 `FR-01 入库`；删除后条目消失并有
+    `FR-01 出库`。后端是**轮询快照**（延迟 ≤ 周期），不是内核目录通知。
+  - **FR-02**：同一条目同时有 40 位 SHA-1 与 32 位 eD2k fileID；fileID 用
+    `tests/e2e/w24/verify_ed2k.py` 的纯 Python MD4 **独立复算**一致，
+    并与 `ed2k://` 链接里的哈希段逐字相等。
+  - **FR-04**：同一 `workdir` 重启 → `open_status=loaded_v2`、`schema_version=2`、
+    两个样本条目与多哈希原样回来、已删文件不复活。
+  - **FR-05/06**：`kad.republish_secs=3` → `/health.kad_publish.cycles` 增长，
+    `last.sent=true` 且 `last.ack_t=KAD_PUBLISH_ACK`（对端是真实第二个进程）。
+    **边界**：这只证明「发出帧并收到 ACK」，不证明公网 KAD 可检索。
+  - **FR-09**：`api.rate_per_sec=4/burst=4` 连发 24 次 → 19 次 `429`，
+    全部带 `reason=rate_limited`、`retry_after_ms>0`、`limit_per_sec=4`；
+    同一时段 4 次 `/health` 全部 200；等待后恢复放行。
+  - **FR-10**：两个样本 + `engine.max_active_seeds=1`，两次真实 BT 握手 →
+    `seeding.evictions=1`、`scheduled=1`、`seed_active=1`，上限从未被突破。
+  - **FR-12**：`/cli ed2k` 报 `link_source=index`、`backfilled_from_disk=0`。
+  - **FR-13**：下载完成产物写回索引（本轮以入库入口收敛，未在回环下重复一次真实
+    外部下载——该行为由 W25 的真实 aMule 取片覆盖）。
+  - **FR-15**：`limits.max_hot_seeds=1` + `engine.max_active_seeds=2`：
+    首个唤醒 `OK`；同一样本重复唤醒仍 `OK`（幂等）；第二个样本
+    `REJECT_RESOURCE_LIMIT`（`limit_name=max_hot_seeds`、`limit=1`、`current=1`）；
+    `evictions=0`（是拒绝，不是逐出）；裸 BT 握手同样被拒（`guard.missed` 增长、
+    `hot` 不变）。
+- 本轮 e2e **抓到的三个真实缺陷**（都已修，写进 CHANGELOG）：
+  1. 共享目录里「只登记、无伴随种子」的条目会让下次重启 `fs::read("")` 失败退出；
+  2. 同一文件相对/绝对路径入库时身份不一致，删除事件匹配不上，条目永久残留；
+  3. `fresh` 索引在 `/cli inspect` 上显示 `schema_version=0`，像「格式未知」。
+- **未销账（口径不许放宽）**：
+  - FR-15 的内存/带宽/造种 CPU 阈值仍未接线 → 整体仍记「部分」；
+  - FR-05/06/07 仍无 TTL 数值维护、关键词分词、去重健康度；
+  - FR-24 公网 KAD 检索仍 BLOCKED（G0 `protocol_scope`，需所有者书面放宽）；
+  - FR-25 上传方向 `>PARTSIZE` 仍 BLOCKED（见 §8）。
+  - `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+    `auto_pass=false` 全部不变。

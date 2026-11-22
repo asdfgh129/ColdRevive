@@ -55,12 +55,20 @@ def ed2k(path):
     if len(data)%PART==0: parts+=md4(b'')
     return md4(parts).hex()
 
-d=json.load(open('tests/e2e/w24/ed2k_links.json'))
-ok=0
-for l in d['links']:
-    want=ed2k('tests/e2e/w62/run/'+l['name'])
-    got=l['ed2k_link'].split('|')[4]
-    print(l['name'],'independent=',want,'daemon=',got,'match=',want==got)
-    ok += (want==got)
-print('verified=',ok,'/',len(d['links']))
-sys.exit(0 if ok==len(d['links']) else 1)
+
+def main():
+    d=json.load(open('tests/e2e/w24/ed2k_links.json'))
+    ok=0
+    for l in d['links']:
+        want=ed2k('tests/e2e/w62/run/'+l['name'])
+        got=l['ed2k_link'].split('|')[4]
+        print(l['name'],'independent=',want,'daemon=',got,'match=',want==got)
+        ok += (want==got)
+    print('verified=',ok,'/',len(d['links']))
+    return 0 if ok==len(d['links']) else 1
+
+
+# `md4` / `ed2k` 也被 P0 e2e（tests/e2e/p0/run_p0.py）当独立实现引用：
+# 它们只做纯计算，读数据文件的逻辑留在 `main()` 里，import 不产生副作用。
+if __name__ == '__main__':
+    sys.exit(main())

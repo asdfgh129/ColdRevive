@@ -17,10 +17,13 @@ mod commands;
 mod data_plane;
 mod ed2k_tasks;
 mod idle;
+mod kad_republish;
 mod nat_path;
 mod punch_route;
+mod ratelimit;
 mod relay_sub;
 mod sched;
+mod watch;
 
 use cr_core::{Config, Json};
 use cr_engine::{Engine, EngineOptions, RqbitEngine, TorrentSpec};
@@ -103,6 +106,8 @@ pub type SharedEngine = Arc<Mutex<Option<RqbitEngine>>>;
 pub struct NodeState {
     pub cfg: Config,
     pub index: ShadowIndex,
+    /// FR-09：控制面按来源 IP 的令牌桶（`api.rate_per_sec` 缺省 = None = 关闭）。
+    pub api_limiter: Option<std::sync::Arc<std::sync::Mutex<ratelimit::IpLimiter>>>,
     pub nonces: HashSet<String>,
     pub remote_keys: HashMap<String, String>,
     pub last_ack: Option<Json>,
@@ -232,6 +237,8 @@ fn main() {
 
     let mut st = NodeState {
         index: ShadowIndex::open(&state_path),
+        api_limiter: cfg.api_rate_per_sec.map(|r| std::sync::Arc::new(std::sync::Mutex::new(
+            ratelimit::IpLimiter::new(r, cfg.api_rate_burst)))),
         cfg: cfg.clone(),
         nonces: HashSet::new(),
         remote_keys: HashMap::new(),
@@ -298,12 +305,18 @@ fn main() {
         // FR-11：握手拦截代理必须在共享状态与引擎都就绪后才监听对外口，
         // 否则 seed_tasks 还是空的，pick_seed_task 会拿空映射退化成「唤醒主样本」。
         spawn_handshake_guard(cfg.clone(), shared.clone());
+        // FR-01：配置了 indexer.watch_secs 才起监听线程；未配置时逐字节保持旧行为。
+        watch::spawn(shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared.clone());
         spawn_idle_sleeper(cfg.clone(), shared.clone());
+        // FR-05/06：KAD 周期重发布（只对已发布条目重发，不新增关键词）。
+        kad_republish::spawn(shared.clone());
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));
         spawn_udp(hub.clone(), cfg.clone(), shared.clone());
+        watch::spawn(shared.clone());
+        kad_republish::spawn(shared.clone());
         spawn_http(cfg.clone(), me.http_port, shared);
         loop { thread::sleep(Duration::from_secs(3600)); }
     }
@@ -337,7 +350,11 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
         let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
         torrent.write_to(&torrent_path)?;
 
-        let mut e = FileEntry::new(&facts.file_hash, path, &facts.name, facts.size);
+        let mut e = FileEntry::new(&facts.file_hash, &commands::canonical_or(path.clone()),
+                                   &facts.name, facts.size);
+        // FR-02：多哈希一次算全，后续生成 ed2k link / 跨协议补源不再重扫磁盘。
+        e.sha1 = facts.sha1.clone();
+        e.ed2k_hash = facts.ed2k_hash.clone();
         e.torrent_path = torrent_path;
         e.infohash = torrent.info_hash.clone();
         e.piece_size = PIECE_SIZE;
@@ -431,6 +448,15 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
     let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
     let mut primary: Option<cr_engine::TaskId> = None;
     for e in &entries {
+        // 索引里可能有「只有文件、没有伴随种子」的条目：目录监听（FR-01）登记的
+        // 新文件就是这种。以前这里直接 `fs::read(torrent_path)` → 空路径 error 3，
+        // 于是**往共享目录丢一个文件就会让下次重启起不来**（e2e 抓到过）。
+        // 这类条目跳过并如实打印，不静默、也不拖垮整个节点。
+        if e.torrent_path.as_os_str().is_empty() || !e.torrent_path.is_file() {
+            eprintln!("[{}] 跳过无伴随种子的索引条目: {}（只登记未生成种子）",
+                      cfg.node_id, e.name);
+            continue;
+        }
         let bytes = fs::read(&e.torrent_path)
             .map_err(|e2| format!("读取伴随种子 {} 失败: {e2}", e.torrent_path.display()))?;
         // 每个样本的落盘目录取它自己所在目录：多样本可能来自不同目录，
@@ -582,6 +608,28 @@ fn spawn_handshake_guard(cfg: Config, state: Arc<Mutex<NodeState>>) {
     });
 }
 
+/// FR-15：资源阈值准入。返回 `Some((上限, 当前 HOT 数))` 表示**应当拒绝**这次唤醒。
+///
+/// 两个刻意的选择：
+/// - 计数取索引里真实的 `HOT` 条目，不取「配置里登记了几个样本」——空载节点一个 HOT
+///   都没有，按配置数算会在第一个请求就误拒；
+/// - 已经在 HOT 的那一个不拒（幂等重复唤醒），否则同一个客户端重连一次就被自己的
+///   历史记成「超限」。
+///
+/// 与 `engine.max_active_seeds` 的分工：那个是容量（满了逐出最久未用者继续服务），
+/// 这个是阈值（超了直接拒绝新唤醒，已在供片的不动）。
+fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<(usize, usize)> {
+    let limit = cfg.limits_max_hot_seeds?;
+    let already_hot = st.index.get(file_hash)
+        .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
+    if already_hot {
+        return None;
+    }
+    let hot = st.index.entries.values()
+        .filter(|e| e.state == cr_store::FileState::Hot).count();
+    if hot >= limit { Some((limit, hot)) } else { None }
+}
+
 fn handle_guard_connection(
     mut client: TcpStream,
     cfg: Config,
@@ -599,6 +647,17 @@ fn handle_guard_connection(
     let hit = {
         let mut st = state.lock().unwrap();
         st.guard_stats.lock().unwrap().0 += 1;
+        // FR-15：阈值同样约束「被动唤醒」。只拦 UDP 唤醒的话，任何客户端裸连
+        // bt_port 就能绕过阈值把热任务数顶上去，那条阈值就成了摆设。
+        let over = st.index.entries.values()
+            .find(|e| e.infohash == ih)
+            .and_then(|e| hot_admission(&cfg, &st, &e.file_hash));
+        if let Some((limit, hot)) = over {
+            eprintln!("[{}] FR-15 拒绝握手唤醒: HOT {} 已达上限 {}（infohash={}）",
+                      cfg.node_id, hot, limit, ih);
+            st.guard_stats.lock().unwrap().2 += 1;
+            return;
+        }
         if let Some(task) = seed_task_for(&st, &ih) {
             // 与 UDP 唤醒同一套状态跃迁与记账：唯一合法 activate 入口是 wake_seed。
             let engine_slot = st.engine.clone();
@@ -681,6 +740,32 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         Err(_) => return,
     };
     let (method, path, body) = req;
+    // FR-09：控制面按来源 IP 限流。`/health` 与 `/nat/*` 是探活/诊断面，
+    // 参与限流会让「机器忙」被读成「服务挂了」；`/cli`、`/jsonrpc`、`/inject`
+    // 走同一处判断，换个路径绕不过去。
+    if !(path.starts_with("/health") || path.starts_with("/nat/")) {
+        let limiter = state.lock().ok().and_then(|st| st.api_limiter.clone());
+        if let Some(lim) = limiter {
+            let (verdict, per_sec) = match lim.lock() {
+                Ok(mut g) => {
+                    let per_sec = g.per_sec();
+                    (g.check(&requester_ip), per_sec)
+                }
+                Err(_) => (Ok(()), 0.0),
+            };
+            if let Err(wait) = verdict {
+                let payload = Json::obj(vec![
+                    ("status", Json::s("rate_limited")),
+                    ("reason", Json::s("rate_limited")),
+                    ("retry_after_ms", Json::n(wait.as_millis() as f64)),
+                    ("limit_per_sec", Json::n(per_sec)),
+                    ("remote_ip", Json::s(&requester_ip)),
+                ]).dump().into_bytes();
+                write_http(&mut stream, "429 Too Many Requests", "application/json", &payload);
+                return;
+            }
+        }
+    }
     let mut cors = false;
     let response: (String, Vec<u8>, &'static str) = if path.starts_with("/health") {
         // T1 双机取证：host / machine_id / pid 均取自运行环境，不接受配置伪造。
@@ -696,6 +781,31 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         // 语句结束，于是同一线程第二次 `lock()` 就把自己锁死：表现是 `/health`
         // 永远超时，而 `/nat/public`（不碰 state）正常，看起来像「数据面把进程搞挂了」。
         // 同一个坑在 punch_route 打开时最容易撞上，所以它长期被记成「punch_route 的 bug」。
+        // FR-10：容量与逐出必须同屏可见。`seed_active` 只说明当下有几个热任务，
+        // 不说明「上限是多少」「有没有真的逐出过」；把 cap/evictions 一起报出来，
+        // 才可能区分「没触发」和「触发了但逐出没生效」。
+        let seeding_json = {
+            let st = state.lock().unwrap();
+            Json::obj(vec![
+                ("cap", Json::n(st.sched.cap() as f64)),
+                ("scheduled", Json::n(st.sched.len() as f64)),
+                ("evictions", Json::n(st.sched.evictions() as f64)),
+            ])
+        };
+        // FR-15：阈值与「现在有几个真的 HOT」同屏。只报 `max_hot_seeds` 而不报 `hot`
+        // 的话，「被拒了」和「没被拒但也没热起来」在运维眼里长得一样。
+        let limits_json = {
+            let st = state.lock().unwrap();
+            let hot = st.index.entries.values()
+                .filter(|e| e.state == cr_store::FileState::Hot).count();
+            Json::obj(vec![
+                ("max_hot_seeds", match cfg.limits_max_hot_seeds {
+                    Some(v) => Json::n(v as f64),
+                    None => Json::Null,
+                }),
+                ("hot", Json::n(hot as f64)),
+            ])
+        };
         let (seed_count, seed_active, served_bytes, punch_route_json) = {
             let st = state.lock().unwrap();
             let mut active = 0usize;
@@ -747,6 +857,10 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              // 冷/热与真实供片量：`seed_active < seed_tasks` 就是「有任务但没供片」。
              ("seed_active", Json::n(seed_active as f64)),
              ("served_bytes", Json::n(served_bytes as f64)),
+             // FR-10：做种活跃池的容量/占用/逐出次数。
+             ("seeding", seeding_json),
+             // FR-15：准入阈值与当前真实 HOT 数。
+             ("limits", limits_json),
              // ADR-022：协商观测。承载维度分开写，防止把「决策回落到中继」读成
              // 「BT 取片已走中继」。
              ("punch_route", punch_route_json),
@@ -768,6 +882,8 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                  ])
              }),
              ("idle", idle_json),
+             // FR-05/06：周期重发布的真实结果（cycles=0 表示还没到第一个周期）。
+             ("kad_publish", kad_republish::stats_json()),
          ]).dump().into_bytes(), "application/json")
     } else if path == "/cli" && method == "POST" {
         let out = match Json::parse(&String::from_utf8_lossy(&body)) {
@@ -1487,6 +1603,18 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
         }
         // 幂等激活：已处于 HOT 的持有者不因重复唤醒再次跃迁（PROTO §3.1 / T0-17）。
         // 这样 COLD → WAKING → HOT 每个激活周期只记录一次，也不会重复拉起做种。
+        // FR-15 的阈值检查放在状态跃迁**之前**：先拒绝就不该留 WAKING/HOT 痕迹。
+        if let Some((limit, hot)) = hot_admission(cfg, &st, &file_hash) {
+            eprintln!("[{}] FR-15 拒绝唤醒 {}: HOT {} 已达上限 {}",
+                      cfg.node_id, entry.name, hot, limit);
+            let mut r = reject(&trace, "REJECT_RESOURCE_LIMIT");
+            if let Json::Obj(ref mut p) = r {
+                p.push(("limit_name".into(), Json::s("max_hot_seeds")));
+                p.push(("limit".into(), Json::n(limit as f64)));
+                p.push(("current".into(), Json::n(hot as f64)));
+            }
+            return Some(r);
+        }
         let already_hot = st.index.get(&file_hash)
             .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
         if !already_hot {
@@ -1597,6 +1725,7 @@ mod rpc_tests {
         let st = NodeState {
             cfg: cfg.clone(),
             index: ShadowIndex::open(&dir.join("state.json")),
+            api_limiter: None,
             nonces: HashSet::new(),
             remote_keys: HashMap::new(),
             last_ack: None,

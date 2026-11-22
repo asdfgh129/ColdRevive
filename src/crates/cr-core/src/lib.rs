@@ -393,6 +393,31 @@ pub struct Config {
     /// `engine.idle_sleep_minutes` 也接受（正整数，换算成秒），两者同时给时秒优先。
     /// 0 表示显式关闭；非法值直接报错，避免「以为会休眠其实一直在供片」。
     pub engine_idle_sleep_secs: Option<u64>,
+    /// FR-09：HTTP 面按来源 IP 的令牌桶速率（`api.rate_per_sec`），单位 次/秒。
+    ///
+    /// `None` 或 0 = **关闭**（默认），既有部署与全部 T0/T1 证据行为不变。
+    /// 限流只作用于 `/cli`、`/jsonrpc` 这类控制面；被拒时返回 429 并带
+    /// `reason=rate_limited` 与 `retry_after_ms`，不伪装成 500/超时。
+    pub api_rate_per_sec: Option<u32>,
+    /// FR-09：突发额度（`api.rate_burst`）。缺省按 `rate_per_sec` 取同值。
+    pub api_rate_burst: Option<u32>,
+    /// FR-01：轮询式目录监听周期（`indexer.watch_secs`）。0/缺省 = 关闭。
+    ///
+    /// 开启后守护进程按周期比对共享目录快照，把新增/修改/删除落到索引。
+    /// 这是**内核通知缺失时的正确兜底**（Windows 的 ReadDirectoryChangesW 尚未接入），
+    /// 语义（新增/修改/删除 + 去抖）与通知式一致，代价是延迟 ≤ 周期。
+    pub indexer_watch_secs: Option<u64>,
+    /// FR-05/06：KAD 关键词的周期重发布间隔（`kad.republish_secs`）。0/缺省 = 关闭。
+    ///
+    /// 只对已经发布过（`kad_published=true`）的条目重发 `KAD_PUBLISH`，
+    /// 不新增关键词、不改 TTL 口径；重发次数与最近一次结果在 `/health.kad_publish` 里可见。
+    pub kad_republish_secs: Option<u64>,
+    /// FR-15：允许同时处于 HOT 的做种条目上限（`limits.max_hot_seeds`）。0/缺省 = 关闭。
+    ///
+    /// 与 `engine.max_active_seeds` 的区别是**冲突时的行为**：那个是容量（满了逐出
+    /// 最久未用者），这个是阈值（超了就**拒绝新的唤醒**，已供片的保持不动）。
+    /// 计数取自索引里真实的 HOT 条目，不拿「配置了几个样本」充数。
+    pub limits_max_hot_seeds: Option<usize>,
 }
 
 impl Config {
@@ -618,6 +643,34 @@ impl Config {
                 Some(r)
             }
         };
+        // 新增的运维开关统一按「非负整数，0 = 关闭」解析：数字与字符串两种写法都收，
+        // 非法值直接报错（静默夹到默认会让「以为开了限流其实没开」）。
+        let opt_num = |section: &str, key: &str| -> Result<Option<u64>, String> {
+            let v = match j.get(section).and_then(|s| s.get(key)) {
+                None => return Ok(None),
+                Some(v) => v,
+            };
+            let n = if let Some(n) = v.as_i64() {
+                n as u64
+            } else if let Some(s) = v.as_str() {
+                s.trim().parse::<u64>()
+                    .map_err(|e| format!("{section}.{key} 非法（需要非负整数）: {s}: {e}"))?
+            } else {
+                return Err(format!("{section}.{key} 非法（需要整数）"));
+            };
+            Ok(if n == 0 { None } else { Some(n) })
+        };
+        let api_rate_per_sec = opt_num("api", "rate_per_sec")?
+            .map(|v| u32::try_from(v).map_err(|_| "api.rate_per_sec 过大".to_string()))
+            .transpose()?;
+        let api_rate_burst = opt_num("api", "rate_burst")?
+            .map(|v| u32::try_from(v).map_err(|_| "api.rate_burst 过大".to_string()))
+            .transpose()?;
+        let indexer_watch_secs = opt_num("indexer", "watch_secs")?;
+        let kad_republish_secs = opt_num("kad", "republish_secs")?;
+        // FR-15：阈值。0/缺省 = 关闭；缺省时既有部署的准入行为完全不变。
+        // 注意不能把 0 夹成 1——那会让「没配」表现成「配了 1，一个都不许热」。
+        let limits_max_hot_seeds = opt_num("limits", "max_hot_seeds")?.map(|n| n as usize);
         Ok(Config {
             node_id: String::new(),
             role,
@@ -652,6 +705,11 @@ impl Config {
             engine_listen,
             engine_max_active_seeds,
             engine_idle_sleep_secs,
+            api_rate_per_sec,
+            api_rate_burst,
+            indexer_watch_secs,
+            kad_republish_secs,
+            limits_max_hot_seeds,
             bt_guard_handshake,
         })
     }

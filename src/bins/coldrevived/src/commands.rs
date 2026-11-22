@@ -13,7 +13,7 @@ use cr_store::FileEntry;
 use cr_wake::{ack_infohash, ack_is_ok, build_req, challenge, has_exact_fields, REQ_FIELDS};
 use std::fs;
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -57,6 +57,8 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
     let cfg = state.lock().unwrap().cfg.clone();
     let result = match command.as_str() {
         "inspect" => inspect(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
+        // FR-01 / FR-13 共用入口：把一个真实文件按多哈希入库（不发布、不判 pass）。
+        "index" => index_path(state, &arg(&args, 0)),
         "find" => find(state, &cfg, &arg(&args, 0)),
         "wake" => wake(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
@@ -116,8 +118,38 @@ fn inspect(state: &Shared, cfg: &Config, sub: &str, hash: &str) -> Json {
             ("index", Json::obj(vec![
                 ("shadow", Json::b(entry.is_some())),
                 ("kad_published", Json::b(entry.as_ref().map(|x| x.kad_published).unwrap_or(false))),
+                // FR-04：索引来源必须可见——recovered_from_backup / corrupt 不能被读成正常。
+                ("open_status", Json::s(st.index.status.as_str())),
+                ("schema_version", Json::n(st.index.loaded_schema as f64)),
+                ("entries", Json::n(st.index.len() as f64)),
+                ("ed2k_hash_present", Json::b(entry.as_ref()
+                    .map(|x| x.can_link_ed2k()).unwrap_or(false))),
             ])),
         ]),
+        // 逐条列出索引，供 e2e 与运维核对「到底登记了哪几个文件、各自 infohash 是什么」。
+        // `inspect index` 只报首条，多样本下无法枚举；这里不做任何猜测排序，按 file_hash 排。
+        "entries" => {
+            let mut all: Vec<(String, Json)> = st.index.entries.values().map(|e| {
+                (e.file_hash.clone(), Json::obj(vec![
+                    ("file_hash", Json::s(&e.file_hash)),
+                    ("name", Json::s(&e.name)),
+                    ("path", Json::s(e.path.to_string_lossy().to_string())),
+                    ("size", Json::n(e.size as f64)),
+                    ("state", Json::s(e.state.as_str())),
+                    ("infohash", Json::s(&e.infohash)),
+                    ("sha1", Json::s(&e.sha1)),
+                    ("ed2k_hash", Json::s(&e.ed2k_hash)),
+                    ("kad_published", Json::b(e.kad_published)),
+                    ("published_keys", Json::n(e.published_keys.len() as f64)),
+                ]))
+            }).collect();
+            all.sort_by(|a, b| a.0.cmp(&b.0));
+            Json::obj(vec![
+                ("open_status", Json::s(st.index.status.as_str())),
+                ("schema_version", Json::n(st.index.loaded_schema as f64)),
+                ("entries", Json::arr(all.into_iter().map(|(_, j)| j).collect())),
+            ])
+        }
         "kad" => {
             let keys = st.index.all_published_keys();
             let kw_count = st.index.entries.values().map(|e| e.keywords.len()).sum::<usize>();
@@ -151,6 +183,97 @@ fn inspect(state: &Shared, cfg: &Config, sub: &str, hash: &str) -> Json {
     }
 }
 
+/// 把「同一个文件的不同写法」（相对/绝对/含 `..`/符号链接）收敛成一个身份。
+///
+/// 索引以 `file_hash` 为键，但 `path` 字段是给人看、给删除事件匹配用的：
+/// 同一个文件用相对路径入库、用绝对路径删除时，旧实现匹配不上，
+/// 条目会永远留在索引里（e2e 的 FR-01 出库检查就是这样抓到的）。
+/// 入库时 `canonicalize` 一次即可让所有后续写法统一。
+pub(crate) fn canonical_or(p: PathBuf) -> PathBuf {
+    std::fs::canonicalize(&p).unwrap_or(p)
+}
+
+/// 判断两个路径是否指向同一个文件条目。
+///
+/// 文件可能**已经被删除**（出库场景），此时 `canonicalize` 自身必然失败，
+/// 因此退化为「规范化父目录 + 原文件名」——父目录还在，就足以判断身份。
+fn same_file(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    fn norm(p: &Path) -> Option<PathBuf> {
+        let parent = p.parent()?;
+        let name = p.file_name()?;
+        let base = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        Some(base.join(name))
+    }
+    match (norm(a), norm(b)) {
+        (Some(x), Some(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// FR-01 / FR-13 的共用入库动作：按真实字节算 sha256/sha1/ed2k 并落盘。
+///
+/// 这里**不发布、不改状态机、不判 pass**：只把「文件事实」写进影子索引，
+/// 让目录监听到的新文件、下载完成的产物都能被后续 wake/publish 看见。
+pub(crate) fn index_path(state: &Shared, path: &str) -> Json {
+    if path.is_empty() {
+        return Json::obj(vec![("error", Json::s("用法: index <路径>"))]);
+    }
+    let p = canonical_or(PathBuf::from(path));
+    let facts = match cr_indexer::inspect(&p) {
+        Ok(f) => f,
+        Err(e) => return Json::obj(vec![
+            ("indexed", Json::b(false)),
+            ("error", Json::s(e)),
+        ]),
+    };
+    let mut st = state.lock().unwrap();
+    let namespace = st.cfg.namespace.clone();
+    let keywords = st.cfg.keywords.clone();
+    let mut e = FileEntry::new(&facts.file_hash, &p, &facts.name, facts.size);
+    e.sha1 = facts.sha1.clone();
+    e.ed2k_hash = facts.ed2k_hash.clone();
+    e.keywords = keywords.clone();
+    e.published_keys = publish_keys(&namespace, &facts.file_hash, &keywords);
+    let already_known = st.index.get(&facts.file_hash).is_some();
+    st.index.insert(e);
+    let saved = st.index.save();
+    Json::obj(vec![
+        ("indexed", Json::b(saved.is_ok())),
+        ("already_known", Json::b(already_known)),
+        ("file_hash", Json::s(&facts.file_hash)),
+        ("sha1", Json::s(&facts.sha1)),
+        ("ed2k_hash", Json::s(&facts.ed2k_hash)),
+        ("size", Json::n(facts.size as f64)),
+        ("entries", Json::n(st.index.len() as f64)),
+        ("index_status", Json::s(st.index.status.as_str())),
+        ("error", Json::s(saved.err().unwrap_or_default())),
+    ])
+}
+
+/// FR-01：文件从共享目录消失时把它移出索引。按**路径**匹配（同一文件可能有多个
+/// 索引键），返回移除条数；不删磁盘上任何东西。
+pub(crate) fn unindex_path(state: &Shared, path: &std::path::Path) -> usize {
+    let mut st = match state.lock() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+    let doomed: Vec<String> = st.index.entries.values()
+        .filter(|e| same_file(&e.path, path))
+        .map(|e| e.file_hash.clone())
+        .collect();
+    if doomed.is_empty() {
+        return 0;
+    }
+    for h in &doomed {
+        st.index.entries.remove(h);
+    }
+    let _ = st.index.save();
+    doomed.len()
+}
+
 fn find(state: &Shared, cfg: &Config, keyword: &str) -> Json {
     let key = keyword_key(&cfg.namespace, keyword);
     let (hit_node, count) = match send_wake(state, cfg, &find_frame(&key), 800) {
@@ -179,6 +302,13 @@ fn wake(state: &Shared, cfg: &Config, sub: &str, file_hash: &str, infohash: &str
         let mut st = state.lock().unwrap();
         st.last_ack = Some(ack.clone());
         st.last_file_hash = Some(file_hash.to_string());
+    }
+
+    // sub == "raw"：把对端应答**原样**交出来。
+    // `probe` 只给布尔值，会把「被资源阈值拒绝」和「challenge 算错」压成同一个 false；
+    // 现场排查与 e2e 需要看到 REJECT_* 的具体码，以及 limit/current 这类附加字段。
+    if sub == "raw" {
+        return Json::obj(vec![("ack", ack)]);
     }
 
     if sub == "probe" {
@@ -305,7 +435,7 @@ fn seed_stats(state: &Shared) -> Json {
 ///
 /// 参数：可选 file_hash；缺省时输出全部索引条目。
 fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
-    let st = state.lock().unwrap();
+    let mut st = state.lock().unwrap();
     let entries: Vec<FileEntry> = if file_hash.is_empty() {
         st.index.entries.values().cloned().collect()
     } else {
@@ -318,35 +448,112 @@ fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
         }
     };
     let mut links = Vec::new();
+    let mut backfilled: Vec<String> = Vec::new();
     for e in &entries {
-        let bytes = match fs::read(&e.path) {
-            Ok(b) => b,
-            Err(err) => {
-                links.push(Json::obj(vec![
-                    ("file_hash", Json::s(&e.file_hash)),
-                    ("error", Json::s(format!("读文件失败: {err}"))),
-                ]));
-                continue;
+        // FR-12：优先用索引里已存的 eD2k fileID —— 生成链接不该再读一遍盘。
+        // 只有 v1 索引（没有 ed2k_hash）才回落到读文件，并把结果**回填**进索引，
+        // 下次就走上快路径；回填失败不掩盖，照记 error。
+        let (hash, size, source, err): ([u8; 16], usize, &'static str, Option<String>) = if e.can_link_ed2k() {
+            match cr_hash::unhex16(&e.ed2k_hash) {
+                Some(h) => (h, e.size, "index", None),
+                None => {
+                    links.push(Json::obj(vec![
+                        ("file_hash", Json::s(&e.file_hash)),
+                        ("error", Json::s("索引里的 ed2k_hash 不是 32 位十六进制")),
+                    ]));
+                    continue;
+                }
+            }
+        } else {
+            match fs::read(&e.path) {
+                Ok(bytes) => (cr_hash::ed2k_hash(&bytes), bytes.len(), "disk", None),
+                Err(err) => {
+                    links.push(Json::obj(vec![
+                        ("file_hash", Json::s(&e.file_hash)),
+                        ("error", Json::s(format!("读文件失败: {err}"))),
+                    ]));
+                    continue;
+                }
             }
         };
-        let hash = cr_hash::ed2k_hash(&bytes);
-        let link = cr_hash::ed2k_link(&e.name, bytes.len(), &hash);
+        if source == "disk" {
+            if let Some(entry) = st.index.get_mut(&e.file_hash) {
+                entry.ed2k_hash = cr_hash::hex(&hash);
+                entry.size = size;
+                backfilled.push(e.file_hash.clone());
+            }
+        }
+        let link = cr_hash::ed2k_link(&e.name, size, &hash);
         let keys: Vec<String> = e.keywords.iter()
             .map(|k| cr_hash::hex(&cr_kad::kad_ed2k::ed2k_keyword_key(k)))
             .collect();
         links.push(Json::obj(vec![
             ("file_hash", Json::s(&e.file_hash)),
             ("name", Json::s(&e.name)),
-            ("size", Json::n(bytes.len() as f64)),
+            ("size", Json::n(size as f64)),
+            ("ed2k_hash", Json::s(cr_hash::hex(&hash))),
+            ("link_source", Json::s(source)),
             ("ed2k_link", Json::s(&link)),
             ("keyword_keys_md4", Json::arr(keys.into_iter().map(Json::s).collect())),
+            ("error", Json::s(err.unwrap_or_default())),
         ]));
+    }
+    if !backfilled.is_empty() {
+        let _ = st.index.save();
     }
     Json::obj(vec![
         ("count", Json::n(links.len() as f64)),
+        ("backfilled_from_disk", Json::n(backfilled.len() as f64)),
         ("links", Json::arr(links)),
         ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽；本命令只做本地索引")),
     ])
+}
+
+/// FR-05/06：把**已发布**条目的关键词重发布一次（周期任务调用）。
+///
+/// 口径纪律：只重发 `kad_published=true` 的条目已有的 key，不新增关键词、
+/// 不把「发过帧」写成「公网可检索」（后者需要 S2 证据，仍是 BLOCKED）。
+pub(crate) fn republish_published_keys(state: &Shared) -> Json {
+    let (cfg, keys) = {
+        let st = match state.lock() {
+            Ok(s) => s,
+            Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
+        };
+        (st.cfg.clone(), st.index.all_published_keys())
+    };
+    if keys.is_empty() {
+        return Json::obj(vec![
+            ("sent", Json::b(false)),
+            ("keys", Json::n(0.0)),
+            ("note", Json::s("没有已发布条目，未发帧")),
+        ]);
+    }
+    let frame = Json::obj(vec![
+        ("t", Json::s("KAD_PUBLISH")),
+        ("node", Json::s(&cfg.node_id)),
+        ("keys", Json::arr(keys.iter().map(|k| Json::s(k)).collect())),
+    ]);
+    match send_wake(state, &cfg, &frame, 800) {
+        Ok((ack, elapsed)) => {
+            // `sent=true` 只认**对端明确回了 KAD_PUBLISH_ACK**。任何别的应答
+            // （旧版本对端的空对象、串到别的帧上的结果）都算未确认——否则
+            // 「发出去一帧」会被读成「对端已收下关键词」。
+            let ack_t = ack.get("t").and_then(Json::as_str).unwrap_or("");
+            let acked = ack_t == "KAD_PUBLISH_ACK";
+            Json::obj(vec![
+                ("sent", Json::b(acked)),
+                ("keys", Json::n(keys.len() as f64)),
+                ("elapsed_ms", Json::n(elapsed as f64)),
+                ("ack_t", Json::s(ack_t)),
+                ("ack_status", Json::s(ack.get("status").and_then(Json::as_str).unwrap_or(""))),
+            ])
+        }
+        Err(e) => Json::obj(vec![
+            ("sent", Json::b(false)),
+            ("keys", Json::n(keys.len() as f64)),
+            ("error", Json::s(e)),
+        ]),
+    }
 }
 
 fn golden(cfg: &Config) -> Json {
@@ -643,6 +850,21 @@ fn download(state: &Shared, cfg: &Config, magnet: &str) -> Json {
 
     if complete {
         let mut st = state.lock().unwrap();
+        // FR-13：完成产物回流索引。此前「下载完」只写 DownloadRecord，
+        // 索引里没有这一条，于是「刚下完的文件」不能做种、不能生成 ed2k link，
+        // 必须人工再 index 一次——这正是完成事件没有闭环的表现。
+        let namespace = st.cfg.namespace.clone();
+        let keywords = st.cfg.keywords.clone();
+        let mut e = FileEntry::new(&sha256, &target, &torrent.name, bytes.len());
+        e.sha1 = cr_hash::sha1_hex(&bytes);
+        e.ed2k_hash = cr_hash::hex(&cr_hash::ed2k_hash(&bytes));
+        e.infohash = torrent.info_hash.clone();
+        e.torrent_path = torrent_file.clone();
+        e.piece_size = torrent.piece_size;
+        e.keywords = keywords.clone();
+        e.published_keys = publish_keys(&namespace, &sha256, &keywords);
+        st.index.insert(e);
+        let _ = st.index.save();
         st.download = Some(DownloadRecord {
             path: target, sha256: sha256.clone(), piece_ok, complete, private_seen,
         });

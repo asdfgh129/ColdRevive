@@ -81,6 +81,11 @@ tests/e2e/w25-daemon/run/*
 # W5.2 唤醒可达性决策复核运行产物（本地证据，不入库）
 tests/e2e/w52/reports/*
 
+# P0 运行期 e2e（FR-01/02/04/05/06/09/10/12/13，本地证据，不入库）
+tests/e2e/p0/run/
+tests/e2e/p0/reports/*
+!tests/e2e/p0/reports/.gitkeep
+
 # M0 Spike 就绪度报告（由 m0_preflight.py 生成，不纳入版本控制）
 tests/spikes/reports/*
 !tests/spikes/reports/.gitkeep

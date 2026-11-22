@@ -2,6 +2,55 @@
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
 
+## [2.4.100] - 2026-11-22 — P0 运行期欠账批量落地（FR-01/02/04/05/06/09/10/12/13/15）
+
+> 本轮把「只有组件、没有运行期行为」的 P0 项接进守护进程，并用一条可复跑的本机回环
+> e2e（`tests/e2e/p0/`，**48/48**）取证。门禁常量不变：`g2_claim=false`、
+> `s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false`。
+> 全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline` **406 passed / 0 failed / 3 ignored**
+> （v2.4.99 为 392 passed；新增 14 个单测 + 1 个 warning 修正）。
+
+- **FR-01 目录增量**：新增 `src/bins/coldrevived/src/watch.rs`，按 `indexer.watch_secs`
+  用 `cr_indexer::PollWatcher` 比对共享目录快照，新增/修改入库、删除出库。
+  语义与内核通知一致，延迟 ≤ 周期；Windows `ReadDirectoryChangesW` **未接入**，
+  不宣称已用内核通知。
+- **FR-02 多哈希**：`cr_indexer::FileFacts` 一次读盘同时给 SHA-256 / SHA-1 / eD2k fileID，
+  索引条目落盘三者（`schema_version=2`）；`cr_hash` 新增 `unhex16` 供链接侧校验。
+- **FR-04 持久化**：`cr-store` 重写为**原子落盘**（tmp → fsync → 旧文件转 `.bak` → rename），
+  新增 `OpenStatus`（`fresh` / `loaded_v1` / `loaded_v2` / `recovered_from_backup` / `corrupt`）
+  与 v1→v2 就地迁移。恢复自备份**不得**被读成正常加载，corrupt 也不隐藏。
+- **FR-05/06 周期重发布**：新增 `kad_republish.rs`，按 `kad.republish_secs` 重发
+  `kad_published=true` 条目的已有 key，`/health.kad_publish` 报 `cycles` 与最近一次真实结果。
+  `sent=true` 现在**要求对端回 `t=KAD_PUBLISH_ACK`**（此前收到任意一帧就算成功），
+  并在 `ack_t` 里留证。不新增关键词、不改 TTL、不宣称公网可检索（FR-24 仍 BLOCKED）。
+- **FR-09 按 IP 限流**：新增 `ratelimit.rs`（令牌桶，IP 表上限 4096），`api.rate_per_sec` /
+  `api.rate_burst` 控制 `/cli`、`/jsonrpc`、`/inject`；被拒返回 **429** +
+  `reason=rate_limited` + `retry_after_ms` + `limit_per_sec`，不伪装成 500/超时。
+  `/health` 与 `/nat/*` 是探活/诊断面，**不参与限流**（否则「机器忙」会被读成「服务挂了」）。
+- **FR-10 多任务做种可观测**：`/health` 增 `seeding{cap,scheduled,evictions}`，
+  `seed_active` 与上限同屏，能区分「没触发」与「触发了但逐出没生效」。
+- **FR-12 链接来源**：`/cli ed2k` 优先用索引里已存的 fileID（`link_source=index`），
+  只有 v1 条目才读盘并把结果**回填**索引（`backfilled_from_disk` 计数）。
+- **FR-13 完成回流**：下载完成的产物自动写入影子索引（含 SHA-1 / eD2k fileID / infohash），
+  不再需要人工 `index`。
+- **FR-15 资源阈值（部分）**：新增 `limits.max_hot_seeds`。与 `engine.max_active_seeds`
+  的区别是**冲突时的行为**：容量满逐出最久未用者，阈值满**拒绝新唤醒**。
+  拒绝返回 `REJECT_RESOURCE_LIMIT` 并带 `limit_name/limit/current`；
+  **裸 BT 握手（被动唤醒）受同一条阈值约束**，否则绕过 `bt_port` 就能顶满。
+  内存/带宽/造种 CPU 阈值**仍未接线**，FR-15 整体仍记为「部分」。
+- **e2e（`tests/e2e/p0/`，48/48）**：A 段功能（FR-01/02/05/06/10/12），B 段重启+限流
+  （FR-04/09），C 段阈值拒绝（FR-15）。eD2k fileID 由 `tests/e2e/w24/verify_ed2k.py`
+  的纯 Python MD4 **独立复算**，不是把守护进程自己算的数读回来。
+- **e2e 抓到的真实缺陷（已修）**：
+  1. 往共享目录丢一个文件（只登记、无伴随种子）会让**下次重启起不来**
+     （`fs::read("")` → os error 3）。现在跳过并打印，不静默、不拖垮节点。
+  2. 同一文件相对/绝对路径入库时身份不一致，删除事件匹配不上，条目永久残留。
+     现在入库 `canonicalize`、出库按「规范化父目录 + 文件名」比较。
+  3. `/cli inspect index` 在新建节点上报 `schema_version=0`（像「格式未知」）；
+     `fresh` 现在报当前 schema，`status` 仍保留「没有旧文件」这一事实。
+- 新增 CLI：`/cli inspect entries`（逐条列出索引）、`/cli wake raw`（原样返回对端应答，
+  用于分辨 `REJECT_*` 的具体码）、`/cli index|unindex`。
+
 ## [2.4.99] - 2026-11-22 — FR-25 接进守护进程；跨分片仍未闭环
 
 > 本轮补上 FR-25 的 daemon 接线并修掉真实 aMule 暴露的协议/状态机缺口，
