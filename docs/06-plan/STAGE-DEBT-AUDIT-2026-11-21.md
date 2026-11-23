@@ -551,3 +551,20 @@ FR-24 公网检索继续 BLOCKED。`evidence_valid_for_pass` 恒 false。
   0.2 pps、`evidence_valid_for_pass=false`），用来测真实关键词；本次对 `ubuntu`
   仍 0 命中（`reports/public-real-keyword-closest-20261123.json`），与目标 firewalled 一致。
 - G1/G2 门禁常量、`evidence_valid_for_pass=false`、s6_status 均不变；不外推为公网检索通过。
+
+### §18.2 防火墙状态恢复尝试（2026-11-23，用户确认后执行）
+
+按 v2.4.109 的下一步建议，备份 KAD 状态后重启 221 的 aMule（`systemctl restart cr-amuled3`）
+以触发新的 UDP 防火墙测试：~15 s 内再次声明 `Kad: Connected (firewalled)`，
+60 s 窗口内未变化；`amulecmd` 的 `set` 只支持 BwLimit/IPFilter，没有强制重测命令。
+证据 `reports/firewall-remediation-attempt-20261123.json`。
+
+同时排除了「入站 UDP 被墙」这一解释：222 与独立公网中继 `82.157.68.159` 分别向
+`112.5.60.4:4672` 发 2 字节 `KAD2_BOOTSTRAP_REQ`，都收到 521/523 B `BOOTSTRAP_RES`；
+重启期间 40 s 抓包 95 个 UDP 包，aMule 与大量公网节点正常收发 KAD 帧
+（51 B 请求、85/159/310 B 应答）。所以 firewalled 来自 aMule 自身的 UDP 防火墙测试，
+不是入口路径或 KAD 收发失效。中继主机只开放 UDP 7100，无法作为无 NAT 的公网探针主机。
+
+FR-24 口径不变：历史 w51g 报告已证明真实公网闭环可达；要今日复现，需要一个
+**非 firewalled 且本地索引含目标关键词**的节点，或让 221 的防火墙测试拿到一次成功回包
+（外部端口发现/CGNAT 映射需另行排查）。不要再换信封、加发包或改责任区。

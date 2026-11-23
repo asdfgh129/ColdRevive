@@ -1,0 +1,59 @@
+{
+  "schema": "coldrevive.fr24.firewall-remediation/v1",
+  "date": "2026-11-23",
+  "target": "112.5.60.4:4672",
+  "target_host": "192.168.1.221",
+  "goal": "Restore 221 aMule from Kad Connected (firewalled) and re-run the public publish->search loop",
+  "pre_status": "Kad: Connected (firewalled)",
+  "remediation": {
+    "action": "systemctl restart cr-amuled3",
+    "state_backup": [
+      "/opt/g3-clients/amule-config/preferencesKad.dat.bak-20261123",
+      "/opt/g3-clients/amule-config/key_index.dat.bak-20261123"
+    ],
+    "status_timeline_seconds": {
+      "5": "Kad: Not connected",
+      "10": "Kad: Not connected",
+      "15": "Kad: Connected (firewalled)",
+      "20": "Kad: Connected (firewalled)",
+      "25": "Kad: Connected (firewalled)",
+      "30": "Kad: Connected (firewalled)",
+      "35": "Kad: Connected (firewalled)",
+      "40": "Kad: Connected (firewalled)",
+      "45": "Kad: Connected (firewalled)",
+      "50": "Kad: Connected (firewalled)",
+      "55": "Kad: Connected (firewalled)",
+      "60": "Kad: Connected (firewalled)"
+    },
+    "result": "FAILED: fresh KAD startup re-declares firewalled within ~15 s; no amulecmd command can force a UDP firewall re-test"
+  },
+  "inbound_path_checks": [
+    {
+      "vantage": "222 (192.168.34.222, public egress 112.5.32.34)",
+      "probe": "2-byte KAD2_BOOTSTRAP_REQ [0xe4,0x01] from ephemeral UDP port",
+      "reply": "112.5.60.4:4672 -> 192.168.34.222:50208, 521-byte BOOTSTRAP_RES",
+      "verdict": "inbound UDP to 221 public KAD port works"
+    },
+    {
+      "vantage": "relay 82.157.68.159 (independent public IP)",
+      "probe": "2-byte KAD2_BOOTSTRAP_REQ [0xe4,0x01] from ephemeral UDP port",
+      "reply": "112.5.60.4:4672, 523-byte BOOTSTRAP_RES, head e40927d3ccfa6c729e4e4fed8262b21f",
+      "verdict": "inbound UDP to 221 public KAD port works from a second independent public vantage"
+    }
+  ],
+  "kad_traffic_during_restart": {
+    "capture": "/tmp/fwtest.pcap on 221, 40 s spanning restart",
+    "udp_packets": 95,
+    "observation": "aMule exchanged ~51-byte obfuscated KAD requests with many public peers (e.g. 87.2.243.175, 62.174.155.5, 95.236.253.226) and received 85/159/310/44-byte replies",
+    "verdict": "KAD UDP收发本身正常；firewalled 是 aMule 自身 UDP 防火墙测试结果，不是入站路径或 KAD 连接整体失效"
+  },
+  "relay_as_probe_host": {
+    "check": "UDP echo on relay 82.157.68.159:40101 probed from 222",
+    "result": "no reply",
+    "verdict": "relay 只开放 UDP 7100，不能作为无 NAT 的公网 KAD 探针主机"
+  },
+  "conclusion": "重启不能把 221 aMule 恢复成非 firewalled；入口路径与 KAD 收发均正常，状态来自 aMule 自身 UDP 防火墙测试。不要用换信封/加发包来解决。公网 publish->search 闭环的唯一已验证证据仍是 2026-11-17 w51g run-20261117T085411Z.json（当时目标非 firewalled）。",
+  "next_requirement": "要么让 221 的 UDP 防火墙测试拿到一次成功回包（外部端口发现/CGNAT 映射需排查），要么换一个非 firewalled 且本地索引含目标关键词的 KAD 节点再跑同一 probe。",
+  "evidence_valid_for_pass": false,
+  "g2_claim": false
+}

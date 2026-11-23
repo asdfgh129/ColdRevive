@@ -153,3 +153,10 @@ S2 `PLAN.md` §6/§20 已给出机制：aMule `Process2*IndexRequest` 用
 
 **复现闭环的必要条件**：先把 221 的 aMule 恢复为非 firewalled，再跑同一
 `kad-mini wan-index-probe`。不要再换信封或加大发包。
+
+2026-11-23 恢复尝试（证据 `reports/firewall-remediation-attempt-20261123.json`）：
+重启 221 aMule 后 ~15 s 内重新声明 firewalled，60 s 内不变；但 222 与独立公网中继
+分别发 2 字节 `KAD2_BOOTSTRAP_REQ` 都收到 521/523 B `BOOTSTRAP_RES`，且重启期间抓到
+95 个正常 KAD UDP 包 → 入站路径与 KAD 收发正常，firewalled 来自 aMule 自身测试。
+因此**重启不是恢复手段**；需要让该测试拿到成功回包，或改用非 firewalled 且
+本地索引含目标关键词的节点。中继主机只开放 UDP 7100，不能作为无 NAT 探针主机。

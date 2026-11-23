@@ -1,3 +1,20 @@
+## [2.4.110] - 2026-11-23 — FR-24 防火墙状态恢复尝试：重启无效，入口路径正常
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动；全量测试仍 499/0/3。
+
+- 按用户确认执行下一步：备份 KAD 状态后 `systemctl restart cr-amuled3`，
+  221 aMule 在 ~15 s 内重新声明 `Kad: Connected (firewalled)`，60 s 观测窗口内未变。
+  `amulecmd` 没有强制 UDP 防火墙重测的命令（`set` 仅支持 BwLimit/IPFilter）。
+- 两处独立公网入口验证：222 与公网中继 `82.157.68.159` 分别向
+  `112.5.60.4:4672` 发 2 字节 `KAD2_BOOTSTRAP_REQ`，分别收到 521 B / 523 B
+  `BOOTSTRAP_RES` → 入站 UDP 路径正常。
+- 重启期间抓包 95 个 UDP 包：aMule 与大量公网 KAD 节点正常收发 51 B 请求及
+  85/159/310 B 应答 → firewalled 是 aMule 自身 UDP 防火墙测试结果，不是 KAD 收发故障。
+- 中继主机只有 UDP 7100 入站，任意端口无回包，不能当无 NAT 的公网探针主机。
+- 证据：`tests/e2e/w24-pub/reports/firewall-remediation-attempt-20261123.json`。
+  结论不变：闭环验证仍需非 firewalled 且本地索引含关键词的目标，别换信封/加发包。
+
 ## [2.4.109] - 2026-11-23 — FR-24 静默根因再修正：目标临时 UDP-firewalled，非接触接纳
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
