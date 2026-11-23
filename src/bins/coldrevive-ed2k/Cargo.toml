@@ -9,3 +9,4 @@ cr-core = { path = "../../crates/cr-core" }
 cr-hash = { path = "../../crates/cr-hash" }
 cr-kad = { path = "../../crates/cr-kad" }
 cr-ed2k = { path = "../../crates/cr-ed2k" }
+cr-nat = { path = "../../crates/cr-nat" }

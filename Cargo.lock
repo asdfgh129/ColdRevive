@@ -392,6 +392,7 @@ dependencies = [
  "cr-ed2k",
  "cr-hash",
  "cr-kad",
+ "cr-nat",
 ]
 
 [[package]]

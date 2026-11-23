@@ -89,6 +89,48 @@ fn kad_wire(frame: &[u8], envelope: KadEnvelope) -> Vec<u8> {
     }
 }
 
+/// `--key-hex` 固定 16B 索引键，用于对着已知 KadID 的靶机做 SEARCHTOLERANCE
+/// 责任区内验证（aMule 对越界 key 静默丢弃）。这是显式的实验输入，不改变
+/// 默认的 `MD4(UTF-8(term))` A 轨语义；报告里 `key_source` 会如实标出来源。
+fn parse_key_hex(raw: &str) -> Option<[u8; 16]> {
+    if raw.len() != 32 { return None; }
+    let b = raw.as_bytes();
+    let mut out = [0u8; 16];
+    for (i, slot) in out.iter_mut().enumerate() {
+        let hi = (b[2 * i] as char).to_digit(16)?;
+        let lo = (b[2 * i + 1] as char).to_digit(16)?;
+        *slot = ((hi << 4) | lo) as u8;
+    }
+    Some(out)
+}
+
+/// 在**同一条 KAD socket** 上问 STUN，拿到对端实际看到的 IP:port。
+/// 2026-11-23 跨公网实测：NAT 把本地 46057 映射成外部 2078，而 HELLO 载荷
+/// 若填本地端口，aMule 的 HELLO_RES 会发到未映射的外部 46057，永远收不到。
+fn stun_on_kad_socket(sock: &UdpSocket, server: SocketAddr, timeout: Duration)
+    -> Result<([u8; 4], u16), String>
+{
+    let tid = cr_nat::stun::rand_tid();
+    let req = cr_nat::stun::binding_request(&tid);
+    sock.send_to(&req, server).map_err(|e| format!("STUN send_to {server}: {e}"))?;
+    sock.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    let mut buf = [0u8; 1500];
+    loop {
+        let (n, src) = sock.recv_from(&mut buf)
+            .map_err(|e| format!("STUN recv_from: {e}"))?;
+        if src != server { continue; }
+        let mapped = cr_nat::stun::parse_response(&buf[..n], &tid)
+            .and_then(|p| p.mapped)
+            .ok_or_else(|| "STUN 应答无 XOR-MAPPED-ADDRESS".to_string())?;
+        let addr: SocketAddr = mapped.parse()
+            .map_err(|e: std::net::AddrParseError| format!("STUN mapped 地址非法: {e}"))?;
+        if let SocketAddr::V4(v) = addr {
+            return Ok((v.ip().octets(), v.port()));
+        }
+        return Err("STUN mapped 不是 IPv4".into());
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Tag {
     name: Vec<u8>,
@@ -587,7 +629,7 @@ fn run() -> Result<Json, String> {
     let opt = |key: &str| -> Option<String> {
         args.iter().position(|a| a == key).and_then(|i| args.get(i + 1)).cloned()
     };
-    let term = opt("--term").ok_or("用法: coldrevive-ed2k search --term <词> --bootstrap ip:port [--public] [--rate-limit-pps 0.2]")?;
+    let term = opt("--term").ok_or("用法: coldrevive-ed2k search --term <词> --bootstrap ip:port [--public] [--rate-limit-pps 0.2] [--key-hex 32HEX]")?;
     let mut contacts = Vec::new();
     for (i, a) in args.iter().enumerate() {
         if a != "--bootstrap" { continue; }
@@ -624,14 +666,40 @@ fn run() -> Result<Json, String> {
     let max_hops: usize = opt("--max-hops").and_then(|s| s.parse().ok()).unwrap_or(6);
     let alpha: usize = opt("--alpha").and_then(|s| s.parse().ok()).unwrap_or(3);
     let no_lookup = args.iter().any(|a| a == "--no-lookup");
+    // 诊断旗标：aMule 2.3.3 `Process2SearchKeyRequest` 源码里对 0x33 **没有**责任区
+    // 校验（只有 `Process2PublishKeyRequest` 的 0x43 有 SEARCHTOLERANCE 门）。
+    // 旧 CLI 把 0x33 也限制在 2^24 区内是 v2.4.105 基于错误归因加的自缚；
+    // 开启本旗标后，检索目标改取离 key 最近的已验证节点（仍 ≤3、仍 0.2 pps、
+    // 仍 evidence_valid_for_pass=false），用来验证真实关键词能否换回 0x3B。
+    let search_closest = args.iter().any(|a| a == "--search-closest");
     // aMule KAD v8 握手：需要对方 CryptoKadUDPKey 与我们可见公网 IP 才能
     // 让 validReceiverKey=true；缺任一项仍发 try-0，但只记录未验证。
     let do_hello = args.iter().any(|a| a == "--hello");
     let hello_try2 = args.iter().any(|a| a == "--hello-try2");
     let hello_plain = args.iter().any(|a| a == "--hello-plain");
     let peer_udp_key: Option<u32> = opt("--peer-udp-key").and_then(|s| s.parse().ok());
-    let our_public_ip: Option<[u8; 4]> = opt("--our-public-ip").and_then(|s| s.parse::<Ipv4Addr>().ok())
-        .map(|ip| ip.octets());
+    let mut our_public_ip: Option<[u8; 4]> = opt("--our-public-ip")
+        .and_then(|s| s.parse::<Ipv4Addr>().ok()).map(|ip| ip.octets());
+    let mut our_public_port: Option<u16> = opt("--our-public-port").and_then(|s| s.parse().ok());
+    let stun_server: Option<SocketAddr> = opt("--stun").and_then(|s| s.parse().ok());
+    let index_envelope = opt("--index-envelope").unwrap_or_else(|| "auto".into());
+    if !matches!(index_envelope.as_str(), "auto" | "try2" | "try0" | "plain") {
+        return Err(format!("--index-envelope 只能是 auto/try2/try0/plain: {index_envelope}"));
+    }
+    let bind_port: Option<u16> = opt("--bind-port").and_then(|s| s.parse().ok());
+    if let Some(raw) = opt("--bind-port") {
+        if bind_port.is_none() || bind_port == Some(0) {
+            return Err(format!("--bind-port 非法: {raw}"));
+        }
+    }
+    if let Some(raw) = opt("--stun") {
+        if stun_server.is_none() { return Err(format!("--stun 非法（需 ip:port）: {raw}")); }
+    }
+    if let Some(raw) = opt("--our-public-port") {
+        if our_public_port.is_none() || our_public_port == Some(0) {
+            return Err(format!("--our-public-port 非法: {raw}"));
+        }
+    }
     if let Some(raw) = opt("--peer-udp-key") {
         if peer_udp_key.is_none() {
             return Err(format!("--peer-udp-key 非法: {raw}"));
@@ -647,9 +715,25 @@ fn run() -> Result<Json, String> {
     if publish_file.is_some() && (!is_public_run || rate_pps <= 0.0) {
         return Err("--publish-file 只在 --public 且 --rate-limit-pps>0 时允许（G0 最小样本）".into());
     }
-    let key = ed2k_keyword_key(&term);
+    let key_hex_override = opt("--key-hex");
+    let key = match &key_hex_override {
+        Some(raw) => parse_key_hex(raw)
+            .ok_or_else(|| format!("--key-hex 必须是 32 位十六进制: {raw}"))?,
+        None => ed2k_keyword_key(&term),
+    };
     let frame = search_key_req(&key);
-    let sock = UdpSocket::bind("0.0.0.0:0").map_err(|e| format!("bind UDP: {e}"))?;
+    let bind_addr = SocketAddr::from(([0, 0, 0, 0], bind_port.unwrap_or(0)));
+    let sock = UdpSocket::bind(bind_addr).map_err(|e| format!("bind UDP: {e}"))?;
+    let local_udp_port = sock.local_addr().map(|a| a.port()).unwrap_or(0);
+    // STUN 应答必须在同一条 socket 上拿：NAT 每次给新 socket 分配不同的外部端口，
+    // 用别的 socket 探测到的端口填 HELLO 载荷只会让 HELLO_RES 发到错误端口。
+    let mut stun_mapped = String::new();
+    if let Some(server) = stun_server {
+        let (ip, port) = stun_on_kad_socket(&sock, server, Duration::from_millis(timeout_ms))?;
+        stun_mapped = format!("{}:{}", Ipv4Addr::from(ip), port);
+        our_public_ip = Some(ip);
+        our_public_port = Some(port);
+    }
     let mut all: Vec<Answer> = Vec::new();
     let mut probes: Vec<Json> = Vec::new();
     let mut first_error = String::new();
@@ -683,9 +767,19 @@ fn run() -> Result<Json, String> {
         let mut in_zone: Vec<Contact> = l.verified.iter().copied()
             .filter(|c| in_tolerance_zone(&c.id, &key)).collect();
         in_zone.sort_by_key(|c| xor_distance(&c.id, &key));
-        // G0 最小样本：最多 3 个已验证在区节点，不批量发检索。
-        targets = in_zone.iter().take(3)
-            .map(|c| Target { addr: c.addr(), id: c.id, kind: "verified_in_zone" }).collect();
+        // G0 最小样本：最多 3 个已验证节点，不批量发检索。
+        // 默认只取在区节点；--search-closest 诊断臂改取最近的已验证节点
+        // （aMule 0x33 无责任区门，见上方注释），仍保留 3 个上限与 0.2 pps。
+        let chosen: Vec<Contact> = if search_closest && in_zone.is_empty() {
+            let mut closest: Vec<Contact> = l.verified.iter().copied().collect();
+            closest.sort_by_key(|c| xor_distance(&c.id, &key));
+            closest
+        } else {
+            in_zone.clone()
+        };
+        let target_kind = if search_closest && in_zone.is_empty() { "verified_closest_no_zone" } else { "verified_in_zone" };
+        targets = chosen.iter().take(3)
+            .map(|c| Target { addr: c.addr(), id: c.id, kind: target_kind }).collect();
         let target_addrs: Vec<Json> = targets.iter().map(|t| Json::s(&t.addr.to_string())).collect();
         Json::obj(vec![
             ("mode", Json::s("kad2_find_node_convergence")),
@@ -698,8 +792,9 @@ fn run() -> Result<Json, String> {
             ("in_zone_contacts", Json::n(l.in_zone as f64)),
             ("closest_top_chunk", Json::n(l.closest_top_chunk as f64)),
             ("tolerance_zone_reached", Json::b(l.in_zone > 0)),
+            ("search_closest", Json::b(search_closest)),
             ("search_targets", Json::arr(target_addrs)),
-            ("note", Json::s("0x33 只发给 0x21/0x29 验证且落在 2^24 责任区内的节点；未收敛则不发，避免把静默丢弃误记为 0 命中")),
+            ("note", Json::s("默认 0x33 只发给 2^24 区内已验证节点；--search-closest 诊断臂改取最近已验证节点（aMule 0x33 无责任区门），两者都 ≤3 且 0.2 pps")),
         ])
     } else {
         for (dest, boot_ms, err) in &boot_results {
@@ -721,15 +816,20 @@ fn run() -> Result<Json, String> {
     // 会先走 v8 三次握手；后续 0x33/0x43 用 try-2（已知对方 verify key）或 try-0。
     let mut envelopes: HashMap<String, KadEnvelope> = HashMap::new();
     let mut handshake_json = Vec::new();
-    let local_udp_port = sock.local_addr().map(|a| a.port()).unwrap_or(0);
+    // HELLO 载荷里的 sourceUpPort 必须是对端实际可见的端口；NAT 后不能填本地端口。
+    let advertised_udp_port = our_public_port.unwrap_or(local_udp_port);
     for t in &targets {
         let key = t.addr.to_string();
         let receiver_key = match (peer_udp_key, our_public_ip) {
             (Some(k), Some(ip)) => kad_obfuscate::udp_verify_key(k, ip),
             _ => 0,
         };
-        let envelope = if receiver_key != 0 {
+        let envelope = if index_envelope == "plain" {
+            KadEnvelope::Plain
+        } else if receiver_key != 0 && index_envelope != "try0" {
             KadEnvelope::Try2(receiver_key)
+        } else if receiver_key != 0 && index_envelope == "try0" {
+            KadEnvelope::Try0 { id: t.id, receiver_key }
         } else if t.id != [0u8; 16] {
             KadEnvelope::Try0 { id: t.id, receiver_key: 0 }
         } else {
@@ -738,7 +838,7 @@ fn run() -> Result<Json, String> {
         envelopes.insert(key.clone(), envelope);
         if do_hello && t.id != [0u8; 16] {
             let rec = match kad_hello(&sock, t.addr.into(), &t.id, peer_udp_key, our_public_ip,
-                                      local_udp_port, hello_try2, hello_plain,
+                                      advertised_udp_port, hello_try2, hello_plain,
                                       Duration::from_millis(timeout_ms), &mut pacer) {
                 Ok(h) => {
                     let mut fields: Vec<(String, Json)> = vec![
@@ -889,10 +989,15 @@ fn run() -> Result<Json, String> {
         ("schema", Json::s("coldrevive.fr24.kad-search/v1")),
         ("term", Json::s(&term)),
         ("keyword_key", Json::s(&hex(&key))),
-        ("keyword_key_is_unnamespaced_md4", Json::b(true)),
+        ("key_source", Json::s(if key_hex_override.is_some() { "hex_override" } else { "md4_term" })),
+        ("keyword_key_is_unnamespaced_md4", Json::b(key_hex_override.is_none())),
         ("rate_limit_pps", Json::n(rate_pps)),
         ("rate_limited", Json::b(rate_pps > 0.0)),
         ("public_kad_contacted", Json::b(is_public_run)),
+        ("local_udp_port", Json::n(local_udp_port as f64)),
+        ("advertised_udp_port", Json::n(advertised_udp_port as f64)),
+        ("index_envelope", Json::s(&index_envelope)),
+        ("stun_mapped", Json::s(&stun_mapped)),
         ("lookup", lookup_json),
         ("handshake", handshake),
         ("publish", publish_json),
@@ -921,6 +1026,52 @@ mod tests {
     fn pacer_defaults_match_g0_rate() {
         assert_eq!(Pacer::new(0.2).interval, Duration::from_millis(5000));
         assert!(Pacer::new(0.0).interval.is_zero());
+    }
+
+    #[test]
+    fn parse_key_hex_accepts_exact_32_hex_and_rejects_junk() {
+        let id = [0x27, 0xd3, 0xcc, 0xfa, 0x6c, 0x72, 0x9e, 0xe4,
+                  0xfe, 0xd8, 0x26, 0x2b, 0x21, 0xfd, 0xa1, 0x16];
+        let raw = hex(&id);
+        assert_eq!(parse_key_hex(&raw), Some(id));
+        assert_eq!(parse_key_hex(&raw.to_uppercase()), Some(id));
+        // 靶机 KadID +1 仍落在 2^24 责任区（top_chunk=0），是 W5.1g 的贴键口径。
+        let mut near = id;
+        near[15] = near[15].wrapping_add(1);
+        assert_eq!(parse_key_hex(&hex(&near)), Some(near));
+        assert_eq!(parse_key_hex("27d3ccfa"), None);
+        assert_eq!(parse_key_hex(&format!("{}00", raw)), None);
+        assert_eq!(parse_key_hex(&format!("zz{}", &raw[2..])), None);
+    }
+
+    #[test]
+    fn stun_on_kad_socket_reads_xor_mapped_address() {
+        let server = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let server_addr = server.local_addr().unwrap();
+        let helper = std::thread::spawn(move || {
+            let mut buf = [0u8; 1500];
+            let (n, src) = server.recv_from(&mut buf).unwrap();
+            let req = &buf[..n];
+            assert_eq!(u16::from_be_bytes([req[0], req[1]]), cr_nat::stun::BINDING_REQUEST);
+            let mut tid = [0u8; 12];
+            tid.copy_from_slice(&req[8..20]);
+            let mut value = [0u8; 8];
+            value[1] = 0x01;
+            let port = 54321u16;
+            value[2..4].copy_from_slice(&(port ^ (cr_nat::stun::MAGIC >> 16) as u16).to_be_bytes());
+            value[4..8].copy_from_slice(&(u32::from(Ipv4Addr::new(203, 0, 113, 7))
+                                          ^ cr_nat::stun::MAGIC).to_be_bytes());
+            let mut resp = vec![0x01, 0x01, 0, 0];
+            resp.extend_from_slice(&cr_nat::stun::MAGIC.to_be_bytes());
+            resp.extend_from_slice(&tid);
+            resp.extend_from_slice(&cr_nat::stun::attr(cr_nat::stun::ATTR_XOR_MAPPED, &value));
+            server.send_to(&resp, src).unwrap();
+        });
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let (ip, port) = stun_on_kad_socket(&client, server_addr, Duration::from_secs(2)).unwrap();
+        assert_eq!(ip, [203, 0, 113, 7]);
+        assert_eq!(port, 54321);
+        helper.join().unwrap();
     }
 
     #[test]

@@ -113,3 +113,43 @@ S2 `PLAN.md` §6/§20 已给出机制：aMule `Process2*IndexRequest` 用
 是否真发了 ACK 与错误。**`evidence_valid_for_pass` 仍恒 false**；HELLO 有响应也不等于
 公网检索命中，命中只认真实 `SEARCH_RES` 与可解析 tag。try-2 需要预知对端
 `CryptoKadUDPKey` 与我们被看到的 IP，公网节点目前仍缺这两个输入。
+
+## NAT 后 HELLO 的端口口径（v2.4.108）
+
+在对称 NAT 后（222）跨公网做 try-2 时，除 `--peer-udp-key` / IP 还需要：
+
+- `--key-hex <32HEX>`：把索引键钉在靶机 KadID 的 `2^24` 责任区内
+  （`top_chunk=0`）。这是实验输入，报告 `key_source=hex_override`，
+  **不再声称 key 是 `MD4(term)`**；
+- `--bind-port <port>`：固定本地 UDP 口，便于把「对端可见端口」测准并复用；
+- `--our-public-port <port>`：HELLO 载荷 `TAG_SOURCEUPORT` 必须填**对端实际看到的
+  端口**，不是本地端口，也不是 STUN 对另一台服务器给的端口（对称 NAT 会不同）；
+- `--stun <ip:port>`：可选，在**同一条 KAD socket** 上取 `XOR-MAPPED-ADDRESS`，
+  适合 EIM NAT；对称 NAT 仍须用 `--our-public-port` 指定 KAD 目标可见端口；
+- `--index-envelope auto|try2|try0|plain`：只用于诊断对照，不提高判定。
+
+实测：222 → 221 公网路径上 try-2 HELLO 已真成功
+（`reports/public-try2-hello-verified-20261123.json`），但 `0x33`/`0x43`
+在三种信封下都静默（`top_chunk=0` 排除越界），**索引命中仍 BLOCKED**；
+详见审计 §18。
+
+## 更正：0x33/0x43 静默 ≠ 索引接纳门（v2.4.109）
+
+§18 末尾的「索引接纳/节点状态」归因**错误**，见审计 §18.1。aMule 2.3.3 源码事实：
+
+- `Process2SearchKeyRequest`（0x33）**无责任区门**、不要求接触已验证；
+  `SendValidKeywordResult` **只在目标节点本地索引命中 key 时才回 0x3B**。
+  `--key-hex` 贴的合成 key 不在任何人索引里 → 静默是正确行为。
+- `Process2PublishKeyRequest`（0x43）在**接收节点** `IsFirewalledUDP(true)` 时
+  静默 return；`InTrackListIsAllowedPacket` 忽略 verify key，只做洪泛限速。
+- 干净 A/B：2026-11-17 同一公网目标 112.5.60.4:4672 有完整
+  PUBLISH_RES + SEARCH_RES（591 B）闭环（w51g `run-20261117T085411Z.json`）；
+  今天该 aMule `Kad: Connected (firewalled)`、`key_index.dat` 28 B 空，
+  同一 probe 变 `wan_publish_silent_in_zone`。**唯一变量是目标防火墙状态。**
+
+新增 `--search-closest` 诊断旗标：无在区节点时改取最近已验证节点（≤3、0.2 pps、
+`evidence_valid_for_pass=false`），用于真实关键词对照；本次 `ubuntu` 仍 0 命中
+（`reports/public-real-keyword-closest-20261123.json`），与 firewalled 一致。
+
+**复现闭环的必要条件**：先把 221 的 aMule 恢复为非 firewalled，再跑同一
+`kad-mini wan-index-probe`。不要再换信封或加大发包。

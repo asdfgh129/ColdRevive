@@ -351,7 +351,7 @@ FR-25 上传侧获得有界在途与真实编解码，但真 aMule 闭环仍未�
 - **P1 已接线**：`rpc-secret`（写方法鉴权、`/health` 不回显）、Web UI / WebSocket
   （opt-in、不遮蔽既有端点）、OpenAPI、QoS 真实 `upload_bps` 硬上限、NAT `auto_map`
   （真调 UPnP/NAT-PMP）、Mainline DHT daemon enable（真 announce 回查，无 token 如实 BLOCKED）。
-  配置字段见 [CONFIG §2.2](../../04-protocol/CONFIG.md)。
+  配置字段见 [CONFIG §2.2](../04-protocol/CONFIG.md)。
 - **P2 状态**：OpenAPI 已落地；跨协议补源与 FR-26（原重复 FR-24）信誉仍是
   `not_implemented` 状态接口，不伪造来源/分数。
 - **FR-25 上传侧**：`ServeConfig` 以请求回合为信号给在途字节设上界，
@@ -480,3 +480,74 @@ FR-25 上传侧获得有界在途与真实编解码，但真 aMule 闭环仍未�
   限速消除了无主重传、进度更快，但仍在 36.6% 停住。
 - 判据保持：只有对端落地 md5 一致才算 FR-25 上传闭环；两轮都没有。
   生产 `ServeConfig` 的有界在途/限速是 opt-in 诊断，不宣称公网性能。
+
+## 18. FR-24 跨公网 try-2 HELLO 验证与索引静默再定位（2026-11-23，v2.4.108）
+
+**结论**：把两个真实工程缺陷修掉之后，try-2 混淆 HELLO 首次在**两个不同公网出口
+之间**（222 `112.5.32.34` → 221 `112.5.60.4:4672`）拿到真 `HELLO_RES`
+（`receiver_key_verified=true`）；但 `0x33`/`0x43` 索引操作仍 0 ACK、0 命中，
+FR-24 公网检索继续 BLOCKED。`evidence_valid_for_pass` 恒 false。
+
+- **缺陷 A（HELLO 端口）**：`kad_hello` 把本地 socket 端口写进 `TAG_SOURCEUPORT`；
+  222 的 CPE 把本地 `46057` 映射为外部 `2078`，aMule 却按载荷回 `112.5.32.34:46057`
+  ——该端口没有 NAT 映射，应答永远到不了本机。修法：`--stun` 在**同一条 KAD socket**
+  上取映射 IP/port，或显式 `--our-public-port` + `--bind-port`。
+- **缺陷 B（对称 NAT）**：STUN 服务器给的是 `112.5.32.34:2055/2056`，KAD 目标看到的
+  却是 `2080`（222 的映射随目的变化）。所以 STUN 端口不能替代「对端可见端口」；
+  实验上用固定本地口 `40100` + 对端抓包观测的 `2081` 才闭环。
+- **真机证据**：`public-path-plain-20261123.json`（BOOTSTRAP_RES 300 ms、
+  双侧抓包源为公网 IP）、`public-try2-hello-verified-20261123.json`
+  （HELLO try-2 `receiver_verify_key=141047448`、`rtt_ms=868`、
+  `obfuscated_response=true`、`receiver_key_verified=true`）。
+- **索引仍静默**：同一条已验证 try-2 链路上，`--index-envelope` 三种信封
+  （try2 / try0+rvk / plain）都拿不到 `0x4B` ACK 或 `0x3B` 应答；
+  `--key-hex` 贴键使 `top_chunk=0`，已排除 `SEARCHTOLERANCE=2^24` 越界分支。
+  证据：`public-try2-index-silent-20261123.json`、
+  `public-index-try0-variant-20261123.json`、
+  `public-index-plain-variant-20261123.json`。
+  **剩余 blocker 在 aMule 的索引接纳/节点状态**（例如 UDP-verified 联系人门槛），
+  不是信封、NAT 端口或责任区；不要再靠换信封/加发包频率尝试。
+- **代码**：`src/bins/coldrevive-ed2k/src/main.rs` 新增 `parse_key_hex`、
+  `stun_on_kad_socket`、`--key-hex` / `--stun` / `--bind-port` /
+  `--our-public-port` / `--index-envelope`；复用 `cr-nat::stun`；报告新增
+  `key_source` / `local_udp_port` / `advertised_udp_port` / `stun_mapped` /
+  `index_envelope`。全量 `cargo test --workspace --offline` **499 passed / 0 failed / 3 ignored**。
+
+### 18.1 更正（2026-11-23，v2.4.109）：§18 的「索引接纳/节点状态」归因错误
+
+**上面 §18 末尾「剩余 blocker 在 aMule 的索引接纳/节点状态」是错误推断，已被源码与干净 A/B 推翻。**
+对照 aMule 2.3.3 `KademliaUDPListener.cpp` / `Indexed.cpp` / `PacketTracking.cpp`：
+
+- `Process2SearchKeyRequest`（0x33）**没有**责任区校验，也不要求接触已验证；
+  它直接调 `SendValidKeywordResult`，而后者**只在接收节点本地 `m_Keyword_map`
+  命中该 key 时**才发 `KADEMLIA2_SEARCH_RES`（0x3B），否则静默。
+  §18 用的 `--key-hex 27d3...da17` 是贴着对端 KadID 造的合成 key，**不在任何节点索引里**，
+  所以 0x33 静默是协议正确行为，不能当「被接纳门挡住」的证据。
+- `Process2PublishKeyRequest`（0x43）只在两处静默 `return`：
+  ① **接收节点自己** `IsFirewalledUDP(true)`（防火墙节点不索引、也不给假 ACK）；
+  ② 目标 key 超出接收节点 `SEARCHTOLERANCE=2^24` 且源不是 LAN IP。
+  只有 publish 有责任区门，search 没有——v2.4.105 把 0x33 也限在区内是过度推广。
+- `InTrackListIsAllowedPacket(ip, opcode, /*bValidSenderkey*/)` 的 `bValidSenderkey`
+  **被注释掉、完全不参与**；只是每 IP 每 opcode 的洪泛限速（0x33/0x43 各 3/min，
+  超过 15/min 封 IP）。0.2 pps 远低于此，不构成阻断。
+
+**干净 A/B（同目标 `112.5.60.4:4672`、同公网路径、不同日期/节点状态）**：
+
+| 证据 | 日期 | aMule 状态 | 结果 |
+|---|---|---|---|
+| `tests/e2e/w51g/reports/run-20261117T085411Z.json` | 2026-11-17 | 未 firewalled | 7 包闭环：PUBLISH_RES(19 B) + SEARCH_RES(591 B)，`publish_acked=true` |
+| `reports/public-firewalled-recheck-20261123.json` | 2026-11-23 | `Kad: Connected (firewalled)`、`key_index.dat` 28 B 空 | `wan_publish_silent_in_zone`、`publish_acked=false` |
+
+同一 `kad-mini wan-index-probe`、同一贴键（`top_chunk=0` 已排除责任区），
+**唯一变量是目标的 UDP 防火墙状态** → 静默由目标状态单独解释。
+
+**修正后的 FR-24 口径**：
+
+- 真实公网 PUBLISH_RES + SEARCH_RES 闭环**已被 w51g 历史报告证明可达**；
+  不是「从未成功」。今日 0 命中是**被测目标临时 firewalled + 空索引**，不是实现缺陷。
+- 不要再换信封、加发包或改责任区；要复现闭环，先把 221 的 aMule 恢复到非 firewalled
+  （重开 UDP 入向 / 确认 UPnP），再跑同一 probe。
+- CLI 新增诊断旗标 `--search-closest`：在无可信在区节点时改取最近已验证节点（≤3、
+  0.2 pps、`evidence_valid_for_pass=false`），用来测真实关键词；本次对 `ubuntu`
+  仍 0 命中（`reports/public-real-keyword-closest-20261123.json`），与目标 firewalled 一致。
+- G1/G2 门禁常量、`evidence_valid_for_pass=false`、s6_status 均不变；不外推为公网检索通过。

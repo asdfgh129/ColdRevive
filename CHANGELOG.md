@@ -1,3 +1,62 @@
+## [2.4.109] - 2026-11-23 — FR-24 静默根因再修正：目标临时 UDP-firewalled，非接触接纳
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+> 验证：`cargo test --workspace --offline` **499 passed / 0 failed / 3 ignored**。
+
+- **上一版结论被推翻**：v2.4.108 把 `0x33`/`0x43` 静默归因为「aMule 索引接纳/
+  节点状态」。对照 aMule 2.3.3 源码后确认此归因错误：
+  - `Process2SearchKeyRequest`（0x33）**无责任区校验**，直接调
+    `SendValidKeywordResult`；后者**只在该节点本地 `m_Keyword_map` 命中关键词时**
+    才回 `0x3B`。我们用 `--key-hex` 贴的合成 key 在任何人索引里都不存在，静默是正确行为。
+  - `Process2PublishKeyRequest`（0x43）在**接收方** `IsFirewalledUDP(true)` 时
+    `return`（不给 publisher 假成功），且只有它的 `SEARCHTOLERANCE` 责任区门。
+  - `InTrackListIsAllowedPacket(ip, opcode, /*bValidSenderkey*/)` **忽略** verify key，
+    只做每 IP 每 opcode 的洪泛限速（0x33/0x43 各 3/min）；请求处理无「接触已验证」门。
+- **干净 A/B（同一目标、同一公网路径、不同日期）**：
+  - 2026-11-17 `tests/e2e/w51g/reports/run-20261117T085411Z.json` 对
+    `112.5.60.4:4672` 有完整 7 包闭环：BOOTSTRAP → HELLO → PUBLISH_KEY_REQ →
+    **PUBLISH_RES(19 B)** → SEARCH_KEY_REQ(20 B) → **SEARCH_RES(591 B)**，`publish_acked=true`。
+  - 今天 `amulecmd -c status` 报 `Kad: Connected (firewalled)`，`key_index.dat` 仅 28 B（空）。
+    同一 `kad-mini wan-index-probe` 重跑得到 `wan_publish_silent_in_zone` /
+    `publish_acked=false`（`reports/public-firewalled-recheck-20261123.json`）。
+  - 结论：**目标临时防火墙状态变化**单独解释全部静默，不是信封/NAT/责任区/接触接纳。
+- **CLI 诊断旗标 `--search-closest`**：默认 0x33 仍只发 2^24 区内（旧口径）；该旗标在
+  无在区节点时改取最近的已验证节点（≤3、仍 0.2 pps、`evidence_valid_for_pass=false`）。
+  实测把真实词 `ubuntu` 的 try-0 0x33 发给 3 个公网节点，仍 0 命中
+  （`reports/public-real-keyword-closest-20261123.json`）。
+- **FR-24 口径**：真实 `SEARCH_RES` 闭环由 w51g 历史报告证明可达；今日公网 0 命中
+  是**被测目标状态**而非协议实现缺陷。不要再换信封/加发包；要复现需先把 221 的 aMule
+  恢复为非 firewalled，再跑同一 probe。
+
+## [2.4.108] - 2026-11-23 — FR-24 跨公网 try-2 HELLO 验证；索引操作仍 BLOCKED
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+> 验证：`cargo test --workspace --offline` **499 passed / 0 failed / 3 ignored**（+2 单测）。
+
+- **CLI 新开关（全部显式 opt-in）**：`--key-hex <32HEX>` 固定责任区内索引键
+  （W5.1g 贴键口径，报告 `key_source=hex_override`，不再冒称 MD4(term)）；
+  `--stun <ip:port>` 在**同一条 KAD socket** 上取 `XOR-MAPPED-ADDRESS`；
+  `--our-public-port` / `--bind-port` 显式给对端可见端口；
+  `--index-envelope auto|try2|try0|plain` 只做信封诊断对照，不提高判定。
+  复用 `cr-nat::stun`（std-only），新增 `coldrevive-ed2k` 2 条单测。
+- **真机路径（222 → 221，两个不同公网出口）**：`tcpdump` 双侧证实 222 的
+  UDP 从 `112.5.32.34` 进入 221 的 `112.5.60.4:4672`，`BOOTSTRAP_RES` 真实往返；
+  旧明文索引探针 `wan_publish_silent_in_zone`（0 ACK / 0 命中）。
+- **抓到两个真缺陷**：① HELLO 载荷的 `sourceUpPort` 填的是本地端口，NAT 后
+  aMule 的 `HELLO_RES` 回向错误端口（实测本地 46057 → 外部 2078，却回 46057）；
+  ② 222 是对称 NAT，STUN 对 STUN 服务器给的端口（2055/2056）不等于 KAD 目标
+  看到的端口（2080）。固定本地口 + 对端可见口后，
+  **try-2 HELLO 跨公网真成功**：`receiver_verify_key=141047448`、`rtt_ms=868`、
+  `obfuscated_response=true`、`receiver_key_verified=true`
+  （`reports/public-try2-hello-verified-20261123.json`）。
+- **仍未闭环**：`0x33`/`0x43` 在 try-2、try-0+rvk、明文三种信封下均静默
+  （`top_chunk=0` 已排除责任区越界），单 key 最小发布也拿不到 `0x4B` ACK，
+  `answer_count=0`。剩余 blocker 位于 aMule 的索引接纳/节点状态，
+  **不是 RC4 信封、NAT 端口或责任区**；别再靠换信封或加大发包重试。
+  FR-24 公网真实 `SEARCH_RES` 保持 BLOCKED，不外推 LAN 结果。
+
 ## [2.4.107] - 2026-11-23 — FR-24 KAD v8 握手接线、混淆字节序修正与 FR-25 A/B
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
