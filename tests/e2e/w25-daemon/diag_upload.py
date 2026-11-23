@@ -58,6 +58,10 @@ BLOCK = 184_320
 SAMPLE_BYTES = int(os.environ.get("FR25_SAMPLE_BYTES", str(PART_SIZE + 8192)))
 STALL_SECS = int(os.environ.get("FR25_STALL_SECS", "30"))
 MAX_WAIT = int(os.environ.get("FR25_MAX_WAIT_SECS", "300"))
+# Diagnostic-only throttle on the S->C leg. 0 = pass through at wire speed.
+# If a paced run completes while the unpaced run stalls, the peer's stop-read
+# is a receive-buffer/consumption issue, not a frame-format issue.
+PACE_BPS = int(os.environ.get("FR25_PACE_BPS", "0"))
 OUR_LAN = h.OUR_LAN
 PROXY_PORT = 4663
 DAEMON_PORT = 4763
@@ -182,6 +186,8 @@ def pipe(src, dst, direction, log):
                 detail = " payload_len=%d" % len(payload)
             log("%s proto=%#x op=%s(%#02x) len=%d%s" % (
                 direction, hdr[0], OPS.get(op, "?"), op, len(payload), detail))
+            if PACE_BPS > 0 and direction == "S->C":
+                time.sleep((len(hdr) + len(payload)) / PACE_BPS)
             dst.sendall(hdr + payload)
     except Exception as exc:  # noqa: BLE001
         log("%s END %s: %s" % (direction, type(exc).__name__, exc))
@@ -270,6 +276,7 @@ def main() -> int:
         "schema": "coldrevive.fr25.upload-diag/v2",
         "generated_at_unix": int(time.time()),
         "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+        "pace_bps": PACE_BPS,
         "sample": {"name": name, "bytes": SAMPLE_BYTES,
                    "md5": hashlib.md5(sample.read_bytes()).hexdigest()},
         "amule_logging": {

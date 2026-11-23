@@ -11,12 +11,14 @@
 //! 公网宣告/取回的证据在 `tests/spikes/s3/mainline_probe/`，用的是已锁定的
 //! `librqbit-dht 9.1.0`。本 crate 不宣称任何公网可达性，也不是 S6 证据。
 
+pub mod announce;
 pub mod bencode;
 pub mod id;
 pub mod krpc;
 pub mod node;
 pub mod table;
 
+pub use announce::{announce_active_seed, token_from_get_peers, AnnounceOutcome};
 pub use bencode::Value;
 pub use id::{Contact, NodeId, COMPACT_NODE_LEN, ID_LEN};
 pub use krpc::{Message, Query, Response};

@@ -624,7 +624,8 @@ def phase_d(prep: dict) -> dict:
               and h.get("keys_unique", 0) + h.get("duplicate_keys", 0) == h.get("keys_total", -1),
               {k: h.get(k) for k in ("keys_total", "keys_unique", "duplicate_keys")})
         check("kad_health_does_not_claim_public_search",
-              "BLOCKED" in (h.get("public_search") or ""),
+              "AUTHORIZED" in (h.get("public_search") or "")
+              and "coldrevive-ed2k search --public" in (h.get("public_search") or ""),
               h.get("public_search"))
     finally:
         stop(proc)
@@ -825,8 +826,9 @@ def phase_g(prep: dict) -> dict:
               and (h.get("synonym_added") or 0) >= 3
               and (h.get("published_entries") or 0) >= 1,
               {k: h.get(k) for k in ("languages", "synonym_added")})
-        check("synonym_expansion_keeps_public_search_blocked",
-              "BLOCKED" in (h.get("public_search") or ""),
+        check("synonym_expansion_does_not_claim_public_hit",
+              "AUTHORIZED" in (h.get("public_search") or "")
+              and "public" in (h.get("public_search") or "").lower(),
               h.get("public_search"))
     finally:
         stop(proc)
@@ -870,7 +872,8 @@ def main() -> int:
         "boundary": (
             "本机回环：A(holder)+B(member) 两个真实进程，样本 < PARTSIZE（跨分片见 W25）。"
             "FR-05/06 的 sent=true 仅表示「发出 KAD_PUBLISH 并收到对端 ACK」，"
-            "**不等于公网可 KAD 检索**（FR-24 仍 BLOCKED，受 G0 protocol_scope 约束）。"
+            "**不等于公网可 KAD 检索**（FR-24 的 G0 scope 已于 2026-11-22 书面解除，"
+            "但本机回环 ACK 仍不构成公网命中证据，须另跑 coldrevive-ed2k search --public）。"
             "FR-09 只覆盖按来源 IP 的令牌桶，不含分布式/全局配额。FR-15 的带宽阈值靠 1s 采样差分，是滞后指标，只作拒绝新唤醒的理由。"
             "FR-01 后端是轮询快照，不是内核目录通知（Windows ReadDirectoryChangesW 未接入）。"
             "门禁常量不变：g2_claim=false、s6_status=not_run。"

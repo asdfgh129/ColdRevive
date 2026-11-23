@@ -524,6 +524,13 @@ dependencies = [
 [[package]]
 name = "cr-api"
 version = "0.1.0"
+dependencies = [
+ "cr-core",
+ "cr-dht",
+ "cr-hash",
+ "cr-qos",
+ "cr-reputation",
+]
 
 [[package]]
 name = "cr-bridge"

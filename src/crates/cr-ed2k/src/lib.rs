@@ -21,10 +21,19 @@ pub mod sha1;
 pub mod kad;
 #[path = "../../../../tests/spikes/s2/ed2k-mini/src/wire.rs"]
 pub mod wire;
-#[path = "../../../../tests/spikes/s2/ed2k-mini/src/stack.rs"]
+// The stack is vendored into this crate (not `#[path]`-included from the S2
+// spike) because FR-25 pacing work must live entirely under cr-ed2k/**. The
+// vendored copy keeps the audited chunking/frame parsing byte-for-byte; only
+// the upload pacing path is extended. `wire`/`kad`/`sha1` remain the single
+// audited source of truth and are still path-included.
 pub mod stack;
+/// Honest codecs for the eD2k features whose wire format is either pinned in
+/// `docs/04-protocol/PROTO.md` (source exchange) or explicitly not verified in
+/// this repo (server login / credit / AICH). The latter return `Unsupported`
+/// rather than emitting plausible-looking bytes.
+pub mod codecs;
 
-pub use stack::{Link, SharedFile, UploadQueue};
+pub use stack::{Link, ServeConfig, SharedFile, UploadQueue};
 pub use wire::{Hash16, Hello};
 
 /// 里程碑标记保留但不再是「骨架」——生产 crate 已完成栈的纳入。

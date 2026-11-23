@@ -12,7 +12,7 @@
 use crate::Json;
 use cr_core::unix_ts;
 use cr_ed2k::kad::{Tag as KadTag, TagValue as KadTagValue};
-use cr_ed2k::stack::{download, serve, SharedFile, UploadQueue};
+use cr_ed2k::stack::{download, serve_with_config, ServeConfig, SharedFile, UploadQueue};
 use cr_ed2k::wire::{ct, Hello};
 use cr_hash::{hex, md4};
 use std::fs;
@@ -45,6 +45,9 @@ struct ServeAggregate {
     active: usize,
     bytes_sent: usize,
     blocks_sent: usize,
+    idle_resends: usize,
+    deferred_bytes: usize,
+    max_in_flight_peak: usize,
     peer: String,
     peer_hello: bool,
     queue_granted: bool,
@@ -62,6 +65,9 @@ impl ServeAggregate {
             active: 0,
             bytes_sent: 0,
             blocks_sent: 0,
+            idle_resends: 0,
+            deferred_bytes: 0,
+            max_in_flight_peak: 0,
             peer: String::new(),
             peer_hello: false,
             queue_granted: false,
@@ -159,7 +165,8 @@ pub fn link_cmd(args: &[String]) -> Json {
     ])
 }
 
-/// `ed2k-serve <file> [--port 4663] [--timeout-ms 120000] [--name NAME]`
+/// `ed2k-serve <file> [--port 4663] [--timeout-ms 120000] [--name NAME]
+///   [--max-in-flight-bytes N | --in-flight-unlimited] [--request-gated-pacing]`
 ///
 /// 监听与 accept 之前的步骤同步完成（端口冲突当场报错）；真正的单次供片在后台线程。
 pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
@@ -169,6 +176,15 @@ pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
     };
     let port: u16 = opt(args, "--port").and_then(|s| s.parse().ok()).unwrap_or(4663);
     let timeout_ms: u64 = opt(args, "--timeout-ms").and_then(|s| s.parse().ok()).unwrap_or(120_000);
+    let mut serve_config = ServeConfig::default();
+    if let Some(n) = opt(args, "--max-in-flight-bytes").and_then(|s| s.parse::<usize>().ok()) {
+        serve_config.max_in_flight_bytes = Some(n);
+    }
+    if args.iter().any(|a| a == "--in-flight-unlimited") {
+        serve_config.max_in_flight_bytes = None;
+    }
+    // Opt-in 假说：每请求回合只送一个块，不主动 idle 重传；未对真 aMule 验证。
+    serve_config.request_gated_pacing = args.iter().any(|a| a == "--request-gated-pacing");
     let data = match fs::read(&path) {
         Ok(b) => b,
         Err(e) => return Json::obj(vec![("error", Json::s(format!("读取 {path}: {e}")))]),
@@ -225,12 +241,16 @@ pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
                     let shared2 = shared.clone();
                     let queue2 = queue.clone();
                     let hello2 = hello(port);
+                    let serve_cfg2 = serve_config.clone();
                     let remaining = deadline.saturating_duration_since(Instant::now());
                     handles.push(thread::spawn(move || {
-                        let out = serve(stream, &[shared2], &hello2, &queue2, remaining);
+                        let out = serve_with_config(stream, &[shared2], &hello2, &queue2, remaining, serve_cfg2);
                         if let Ok(mut g) = agg2.lock() {
                             g.bytes_sent += out.bytes_sent;
                             g.blocks_sent += out.blocks_sent;
+                            g.idle_resends += out.idle_resends;
+                            g.deferred_bytes += out.deferred_bytes;
+                            g.max_in_flight_peak = g.max_in_flight_peak.max(out.max_in_flight_bytes);
                             g.peer_hello |= out.peer_hello.is_some();
                             g.queue_granted |= out.queue_granted;
                             g.log_tail = out.log.iter().rev().take(12)
@@ -285,6 +305,10 @@ pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
             ("queue_granted", Json::b(g.queue_granted)),
             ("blocks_sent", Json::n(g.blocks_sent as f64)),
             ("bytes_sent", Json::n(g.bytes_sent as f64)),
+            ("idle_resends", Json::n(g.idle_resends as f64)),
+            ("deferred_bytes", Json::n(g.deferred_bytes as f64)),
+            ("max_in_flight_peak", Json::n(g.max_in_flight_peak as f64)),
+            ("request_gated_pacing", Json::b(serve_config.request_gated_pacing)),
             ("ed2k_link", Json::s(&link)),
             ("log_tail", Json::arr(g.log_tail.clone())),
         ]);

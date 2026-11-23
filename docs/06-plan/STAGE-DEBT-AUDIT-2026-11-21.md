@@ -44,10 +44,10 @@ updated: 2026-11-22
 | FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
 | FR-15 资源阈值 | **五条阈值全部接线** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` / `max_seeding_cpu_millipct` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽与 CPU 是滞后指标；RSS/CPU 读不到的平台显式 `unavailable` 而非按 0 处理（§10/§11）。这里只说**接线齐**，不承诺公网性能或自动通过 | 否（代码） |
-| FR-24 公共 KAD 检索 | 部分 | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：新出口可重测 0/5 是否出口相关；但根因登记为 G0 `protocol_scope`，需所有者书面放宽 |
+| FR-24 公共 KAD 检索 | 部分（行政阻塞已解除） | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：G0 `protocol_scope` 已于 2026-11-22 由项目所有者书面解除（`g0_review.protocol_scope_relaxation_2026_11_22`）；实现与公网证据仍须重测，不得拿 LAN 外推 |
 | FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
-治理债：SRS 仍 v2.0「待评审」；FR-24 在 SRS 第 43/45 行重复编号（信誉行未实现）。
+治理债：SRS 已于 2026-11-22 评审至 v2.1（口径确认）；原重复 FR-24 的信誉行已改为 FR-26，实现仍为骨架。
 
 ## 3. P1 / P2 欠账明细
 
@@ -58,7 +58,7 @@ updated: 2026-11-22
 | P1 | FR-18 Mainline DHT | daemon 关闭 DHT；自有公网节点 announce 闭环，但 transmissionbt `token_len=0`、两个 router 超时（`tests/e2e/dht-announce/`） |
 | P1 | FR-19 / FR-21 | Web UI、WebSocket 未实现（`src/crates/cr-api/src/lib.rs` 注释明确 G2 前不做） |
 | P1 | FR-20 | `/jsonrpc` 子集 + CORS 有；**无 `rpc-secret`** |
-| P2 | FR-22 / FR-23 / 重复 FR-24 | 无 OpenAPI；插件仅测试资产；跨协议补源与信誉/激励均骨架 |
+| P2 | FR-22 / FR-23 / FR-26（原重复 FR-24） | 无 OpenAPI；插件仅测试资产；跨协议补源与信誉/激励均骨架 |
 
 ## 4. M1 / M2 欠账明细
 
@@ -77,7 +77,7 @@ updated: 2026-11-22
 | Mainline DHT | 自有节点闭环；公共引导节点无可用 token | 找到确实签发 token 的邻居，独立节点 get_peers 回查；否则维持 BLOCKED |
 | TCP 打洞 | 原语通过，BT 数据面未接线，公网双侧 BLOCKED | 先解决公网双侧，再谈接线；symmetric 不可直连保留为正确结论 |
 | 守护进程多样种 | 组件级 `Cold→Hot→Cold→Hot` 已证；daemon 仍单任务 | 多 infohash + cap 触发 e2e |
-| FR-24 公网 | 5 节点全超时 | G0 `protocol_scope` 书面放宽 |
+| FR-24 公网 | 5 节点全超时 | G0 `protocol_scope` 已书面解除（2026-11-22）；下一步是生产实现 + 真实公网节点重测 |
 | FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 下载方向 10/10 闭环，上传方向推进到 19.2%–85.3% 后静置 | 定位 aMule 上传侧停止追加请求的判据 → 双轨发布 → 公网证据 |
 | 外推边界 | W61 的 `rst-path-verified` 只指 `119.29.150.254` 这一条路径 | 不得写成“所有 RST 部署已验证” |
 | 性能 | 跨公网只有单次 1 MiB 样本；4 MiB 公网 143–235 s 成因未定位 | 多组样本，按 ADR-012 不折算速率 |
@@ -133,7 +133,7 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
 ## 7. 建议顺序（不因新增环境而重排）
 
 1. **先补代码债的头部**：FR-25 的 >`PARTSIZE` 跨分片闭环（daemon 接线已完成）；FR-10 守护进程多样种；FR-11/14 的默认策略与 µTP 覆盖。
-2. **再补授权/治理**：G0 `protocol_scope` 书面决定是否允许公共 KAD `0x33`；SRS v2.0 评审与 FR-24 编号去重；R-02/R-11（M4 前）。
+2. **授权/治理（已完成 2026-11-22）**：G0 `protocol_scope` 已书面解除；SRS v2.1 评审与编号去重已完成。R-02/R-11 仍按 M4 前复核。
 3. **最后用家宽样本补环境面**：把新 NAT 分类、DHT/KAD 只读结果作为描述性证据归档；即使结果理想也不改 `g2_claim`、`s6_status`。
 4. 公平性阈值、Mainline 邻居发现、TCP 打洞接数据面继续按 DOC-27 的下一步执行，不因为 kit 有输出就提前宣称达标。
 
@@ -319,6 +319,164 @@ FR-25 上传方向仍 BLOCKED，但停顿位置已定位到对端而不是我们
   `keywords_expanded=[..., cinema]`、`language=en`；中文条目
   `keywords=[冷启动复活, 电影, 测试样本]` → 扩展出 `影片/片子`、`language=zh`；
   重索引逐项一致；`cinema` 的 SHA-1 key 出现在 `inspect kad` 已发布列表里；
-  `public_search` 仍为 BLOCKED。
+  `public_search` 仍为 BLOCKED（行政口径已于 2026-11-22 解除，见 §12）。
 - 口径未变：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
-  `auto_pass=false`；FR-24 公网检索仍等 G0 `protocol_scope` 书面放宽。
+  `auto_pass=false`；FR-24 公网检索仍等 G0 `protocol_scope` 书面放宽（已于 2026-11-22 解除，见 §12）。
+
+## 12. G0 scope 解除与剩余欠账总账（2026-11-22，项目所有者决定）
+
+项目所有者在本会话明确指令「解除」，并按「全部剩余欠账」继续推进。
+机读决定：`tests/spikes/spikes.json` → `g0_review.protocol_scope_relaxation_2026_11_22`；
+说明：[G0-REVIEW §12](G0-REVIEW.md)、[OPEN-QUESTIONS §3](OPEN-QUESTIONS.md)。
+
+- **FR-24 行政阻塞销账**：公共 KAD `0x33`/`0x43` 索引操作不再因 G0 scope 记 BLOCKED。
+  这不等于 FR-24 完成——生产实现、真实公网节点证据、R-02/R-11 仍开放。
+- **本轮工作清单**（按 DOC-29 §7 顺序展开）：FR-24 公网检索；FR-25 上传跨分片 /
+  server / source exchange / credit / AICH / 双轨发布 / 公网证据；P1 的 QoS 接数据面、
+  NAT 自动映射、Mainline DHT 启用、`rpc-secret`、Web UI/WebSocket；P2 的 OpenAPI、
+  跨协议补源、信誉行；治理项的 SRS 评审状态与 FR-24 编号去重、证据可移植性、
+  公平性阈值与拥塞语义。
+- **不因本决定变化**：`g2_claim=false`、`s6_status=not_run`、
+  `evidence_valid_for_pass=false`、`auto_pass=false`；限速 0.2 pps、最小样本、
+  禁止批量发布测试 Key；脚本不得自动 pass；缺证据即 BLOCKED/FAIL。
+- 上方 §2–§11 的历史口径按决策演化链保留，不与本条冲突时以本条为准。
+
+## 13. P1/P2 接线与 FR-25 有界在途落地（2026-11-22，v2.4.104）
+
+**结论：§3 的 P1 五项与 §4 中可代码化的 P2/OpenAPI 项已接线（全部 opt-in、带测试）；
+FR-25 上传侧获得有界在途与真实编解码，但真 aMule 闭环仍未取得；门禁机器常量不变。**
+
+- 验证：全量 `cargo test --workspace --offline` **480 passed / 0 failed / 3 ignored**；
+  P0 e2e **77/77**；新增 `tests/e2e/p1/run_p1.py` **5/5**；`cr-ed2k` **53/53**。
+- **P1 已接线**：`rpc-secret`（写方法鉴权、`/health` 不回显）、Web UI / WebSocket
+  （opt-in、不遮蔽既有端点）、OpenAPI、QoS 真实 `upload_bps` 硬上限、NAT `auto_map`
+  （真调 UPnP/NAT-PMP）、Mainline DHT daemon enable（真 announce 回查，无 token 如实 BLOCKED）。
+  配置字段见 [CONFIG §2.2](../../04-protocol/CONFIG.md)。
+- **P2 状态**：OpenAPI 已落地；跨协议补源与 FR-26（原重复 FR-24）信誉仍是
+  `not_implemented` 状态接口，不伪造来源/分数。
+- **FR-25 上传侧**：`ServeConfig` 以请求回合为信号给在途字节设上界，
+  `deferred_bytes` 保留半区间进度；Windows `WouldBlock` 分类修复让 idle 看门狗真跑；
+  `codecs.rs` 真编解 `0x44/0x34/0x4B/0x3B`，server login/credit/AICH 明确 Unsupported。
+  CLI/daemon 暴露 `--max-in-flight-bytes` / `--request-gated-pacing`（未验证假说）。
+  **真 aMule 完整文件 md5 闭环仍未取得**，上传方向继续保持 BLOCKED。
+- **治理**：SRS v2.1 已评审、重复 FR-24 → FR-26；G0 scope 已书面解除（§12）。
+  R-02 / R-11 仍按 M4 前复核；证据可移植性（gitignored reports）与公平性阈值/
+  可靠层拥塞语义仍开放，不以本轮数字宣称 G2 达标。
+
+## 14. FR-24 公网 0 命中根因与生产工具修正（2026-11-23，v2.4.105）
+
+**结论：此前「BOOTSTRAP_RES 成功但 SEARCH_RES 0 命中」的机制原因已定位并修入生产工具；
+剩余 0 命中来自另一类边界（在区节点拒绝/无法接收索引操作），仍按真实证据登记，不宣称 FR-24 公网命中通过。**
+
+- **根因**：直接向 bootstrap 节点发 `0x33`。aMule 的索引操作有
+  `SEARCHTOLERANCE = 2^24` 责任区校验（S2 PLAN §6/§20），越界静默丢弃；
+  >200 B 的应答可能是 `0xE5` zlib 帧，旧工具只解 `0xE4`。
+  这与 HELLO/RC4、换网、防火墙行政限制都无关——G0 scope 已于 §12 书面解除。
+- **代码**：`cr-kad` 提升零依赖 zlib 解码器与联系人/`0x21/0x29`/责任区原语，
+  并加字节级 `0x43` 发布编码回归（对 aMule 已接受帧逐字节一致）；
+  `coldrevive-ed2k search --public` 先迭代收敛，只对已验证在区节点发检索；
+  `--publish-file` 做一个唯一 key 的最小样本发布（最多 3 节点、0.2 pps）。
+  `evidence_valid_for_pass` 改为恒 false。
+- **证据边界**：`public-lookup-20261123-ubuntu.json` 36 发 `0x21` / 33 收 `0x29` /
+  33 已验证 / 1 在区（`top_chunk=8,875,008`）；该节点 `0x33` 仍超时，符合
+  S2 §20.5「能问路但 UDP 入站不可达/拒绝索引操作」那一类边界。
+  更宽收敛（`wide`：80 发 `0x21` / 72 收 `0x29` / 仍 1 个在区节点）与新鲜联系人
+  （`fresh`：2 跳找到 2 个在区节点）轮次对 `0x43`/`0x33` 都静默，
+  `ack_count=0`、`answer_count=0`。未取得真实 `SEARCH_RES` 前 FR-24 公网命中保持
+  BLOCKED；下一判别实验应在有真实公网 UDP 入向的主机（如 221）重跑同一工具。
+- **FR-25**：7 份透明代理报告重放 aMule 块记账，`dropped_exceeds/dropped_unknown`
+  恒 0，对端 Recv-Q 停住而状态仍 `Downloading`。新增诊断性 `FR25_PACE_BPS`
+  做限速对照，用来区分帧格式错误与对端接收缓冲/消费速率问题；
+  生产 `serve` 语义未因此改变，真 aMule md5 闭环仍 BLOCKED。
+- 验证：全量 `cargo test --workspace --offline` **486 passed / 0 failed / 3 ignored**；
+  P0 e2e **77/77**；P1 e2e **5/5**。门禁机器常量不变。
+
+## 15. 真机判别实验：FR-24 根因再定位（2026-11-23，221 真机）
+
+**结论修正**：此前 §14 把公网 0 命中归因为「在区节点 UDP 入站不可达/拒绝索引」，
+本轮真机对照**证伪**了这一归因——公网 KAD 本身可用，缺口在我们只会发明文帧。
+
+- **主机/网络**：221 `192.168.1.221`（出口 `112.5.60.4`）；STUN 判定
+  `cone_or_no_nat`（多个服务器一致映射到 `112.5.60.4:10193`），
+  `UPnP IGD=False / NAT-PMP=False`。本机 A 出口同为 `112.5.60.4`（同一 NAT）。
+  amuled `Kad: Connected (firewalled)`，UDP 4672 监听正常。
+- **决定性对照**（同一台 221、同一 NAT）：
+  - 真 aMule `amulecmd search kad ubuntu` → **361 个结果**（eD2k Not connected，纯 KAD）。
+  - 真 aMule `search kad fr24-after-restart`（我们自造 key）→ 0（靶子本就不在公网索引）。
+  - 我们的明文工具 `search --public --term ubuntu` → 收敛 60 发 `0x21`/55 收 `0x29`/
+    55 已验证/1 在区（`tolerance_zone_reached=true`），但 `0x33` 静默、`answer_count=0`。
+  - 我们的明文工具直连本地 aMule（`--bootstrap 127.0.0.1:4672 --no-lookup`）→ 0。
+- **抓包根因**：`tcpdump` 证实 aMule 的 `0x33/0x3B` 全是 **RC4 混淆帧**
+  （`CryptoKadUDPKey=2738379211`），payload 首字节随机、无明文 `0xE4` 头；
+  BOOTSTRAP_RES 是 `0xE5` zlib，仍为明文可达。所以「能 BOOTSTRAP/问路、索引操作静默」
+  的原因是**我们只发明文，混淆节点直接丢弃**。
+- **混淆实现与验证**：把 S2 `wire.rs` 的 `obfuscate/deobfuscate`（RC4 + MD5
+  `StoreCryptValue(targetKadID)` + senderVerifyKey）提升为 `cr-kad::kad_obfuscate`
+  （25/25 单测），并在 `coldrevive-ed2k search` 对已知 KadID 的 `0x33/0x43` 启用 try-0
+  封装。用 `BOOTSTRAP_RES` 解出的本地 KadID 作 key，**自解信封 magic 与 inner 帧逐字节正确**
+  （`e4 33 <target16> 0000`）。
+- **仍未闭环**：混淆帧发到真 aMule（本地 + 公网在区节点）**仍无应答**。
+  查证 S2 历史：`kad-wan-index-probe-20261117084125.json` 的 `--obfuscate` 也是
+  `search_responded=false / publish_acked=false / verdict=wan_publish_silent_in_zone`——
+  即 S2 的混淆实现**从未被真 aMule 接受过**，是自洽但未验证的假说。
+  aMule 收到我们的 try-0 帧后不回任何包（无 HELLO 请求），说明还缺
+  `HELLO`/receiver-verify-key 握手或 marker/verify 字段的精确语义。
+- **门禁口径不变**：`evidence_valid_for_pass` 恒 false；FR-24 公网真实命中仍 BLOCKED，
+  不外推 LAN/真 aMule 结果。下一步见 §16。
+
+## 16. HELLO/verify-key 接线与混淆字节序再定位（2026-11-23，v2.4.107 工作树）
+
+**结论**：HELLO/HELLO_RES_ACK 与 receiverVerifyKey 派生已接进 CLI；源码核对又抓到两个
+真缺陷（magic/verify-key 字节序、try-0 双向 RC4 base 不对称），已修并有 aMule 收包语义
+回归。**真 aMule 的 try-2 HELLO 已在 LAN 成功**（`receiver_key_verified=true`），
+但 try-0 仍不回包，且公网索引命中未取得，FR-24 公网命中继续 BLOCKED。
+
+- **新增协议语义**（源码 `EncryptedDatagramSocket.cpp` / `UInt128.cpp` / `ClientUDPSocket.cpp`）：
+  - 收包 `DecryptReceivedClient`：try-0 base = 对端 `GetKadID().StoreCryptValue()`，
+    x86 上等于线上 KadID **每 4 字节字反序**；try-2 base = `PokeUInt32(verifyKey)`（LE）。
+  - 发包 `EncryptSendClient`：try-0 base = `md4cpy(clientHashOrKadID)`，即**原始线上 ID**。
+    两边不对称；此前用同一个「原始 ID」函数做双向，自洽回环通过、真机静默。
+  - magic 与 receiver/senderVerifyKey 在混淆头中都是 **LE 字节**（x86 的
+    `ENDIAN_SWAP_32` / `ENDIAN_SWAP_I_32` 恒等）；旧代码写 BE，只有自解能通过。
+  - `udp_verify_key(kadKey, ip)` 按 `CPrefs::GetUDPVerifyKey` 实现并有已知答案单测。
+- **代码**：`cr-kad::kad_obfuscate` 拆出 `send_key_base` / `receive_key_base`，
+  修正 magic/verify-key 字节序；`coldrevive-ed2k` 新增 `--hello` / `--hello-try2` /
+  `--hello-plain` / `--peer-udp-key` / `--our-public-ip`，HELLO_RES 请求 ACK 时回
+  `HELLO_RES_ACK`（用回包 senderVerifyKey 做 try-2 信封）。
+- **真机证据**：221 本地明文 `--hello-plain` **成功**（`rtt_ms=31`、
+  `obfuscated_response=true`、解出 peer_id/version/ACK 标志），说明 HELLO 载荷正确、
+  aMule 可回混淆帧且我们的解包正确。抓包中 try-0 帧为
+  `4034120c…`（49 B），按 aMule 收包语义离线解密得到 magic `0x395F2EC1`、
+  `rvk=3224252923`、`svk=OUR_UDP_KEY`、内帧 `e4 11 <ourid> …`，
+  **字节级合法但 aMule 未回 HELLO_RES**（洪泛窗口外重试仍如此）；说明真实节点
+  对 try-0 base 的精确语义仍与我们建模不同，不能靠自洽解密代替对端验收。
+- **突破**：`--hello --hello-try2 --peer-udp-key 2738379211 --our-public-ip 192.168.1.210`
+  对同一真 aMule **成功**（`local-hello-try2-verified-20261123.json`）：
+  `hello_envelope=try2`、`receiver_verify_key=3224252923`、`rtt_ms=31`、
+  `obfuscated_response=true`、`peer_id=27d3ccfa…`、`receiver_key_verified=true`。
+  这是首次真 aMule 接受我们的**混淆**握手；`receiver_key_verified` 只在 try-2
+  真换回 HELLO_RES 时置真，参数齐全但 try-0 失败时保持 false。
+- `cr-kad` 相关单测 **9/9**（含真 aMule HELLO_RES 解密向量、aMule 收包语义的出站帧校验）；
+  `cr-kad + coldrevive-ed2k` **34 passed**。证据文件：
+  `tests/e2e/w24-pub/reports/local-hello-plain-cli-20261123.json`、
+  `local-hello-try0-*.json`、`local-hello-try2-verified-20261123.json`。
+  **公网边界不变**：try-2 需要预先知道对端 KadUDPKey 与我们被看到的公网 IP；
+  目前只有 LAN 靶机具备这两个输入，公网节点仍无真实 `SEARCH_RES`。
+
+## 17. FR-25 原版 aMule A/B 上传对照（2026-11-23）
+
+**结论**：按「同链路、同客户端、唯一新样本、先 Cancel 旧项」做了 unpaced / paced 两轮；
+两轮都停在 `STALLED_WITH_PENDING_BLOCKS`，对端收下字节但不再消费。
+`FR25_PACE_BPS=200000` 把完成块从 11 提高到 21（12.7% → 36.6%），但没有闭环。
+
+- A（无 pacing）：`upload-diag-20261123100705.json`，`amule 12.7%`、
+  `bytes_sent=5,844,992`、`blocks_completed=11`、`blocks_pending=6`、
+  `dropped_exceeds=0`、`dropped_no_pending=390`、`Recv-Q=4,070,974 B`。
+  390 个 `send_no_pending` 来自 idle 重传看门狗在块已完成后继续重发最后请求区间；
+  Recv-Q 累积到 4 MB 说明字节进了内核缓冲但对端应用未消费，**不是帧越界**。
+- B（`FR25_PACE_BPS=200000`）：`upload-diag-20261123100746.json`，`amule 36.6%`、
+  `bytes_sent=3,766,272`、`blocks_completed=21`、`blocks_pending=6`、
+  `dropped_exceeds=0`、`dropped_no_pending=0`、`Recv-Q=133,336 B`。
+  限速消除了无主重传、进度更快，但仍在 36.6% 停住。
+- 判据保持：只有对端落地 md5 一致才算 FR-25 上传闭环；两轮都没有。
+  生产 `ServeConfig` 的有界在途/限速是 opt-in 诊断，不宣称公网性能。

@@ -227,6 +227,9 @@ fn server_satisfies_amule_style_sliding_window() {
         }
     }
     assert_eq!(got.as_slice(), file.data.as_slice(), "滑窗客户端没有收到完整内容");
+    // 按协议收尾：不发包就断开会让服务端的 idle watchdog 在 3 s 后向已关闭的
+    // socket 重传，最终表现为写超时。END_OF_DOWNLOAD 才是正常的会话结束信号。
+    link.send_frame(&wire::end_of_download(&hash)).unwrap();
     let up = server.join().unwrap();
     assert!(up.error.is_none(), "serve 报错: {:?}", up.error);
 }
@@ -323,6 +326,8 @@ fn server_satisfies_amule_block_accounting() {
         }
     }
     assert!(complete.iter().all(|v| *v), "有字节没送到");
+    // 同上：显式收尾，避免服务端把「客户端静默」误判为需要 idle 重传。
+    link.send_frame(&wire::end_of_download(&hash)).unwrap();
     let up = server.join().unwrap();
     assert!(up.error.is_none(), "serve 报错: {:?}", up.error);
 }

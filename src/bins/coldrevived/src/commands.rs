@@ -451,8 +451,9 @@ fn seed_stats(state: &Shared) -> Json {
 ///
 /// 只做**本地索引 → 链接**：`fileID` 由 `fs::read(path)` 的内容导出（ADR-011 L1 硬约束，
 /// 不可伪造），关键词 Key 用无前缀 MD4（`cr_kad::kad_ed2k::ed2k_keyword_key`）。
-/// **不查询公共 eMule 词典**：G0 `protocol_scope` 仍限定「跳过 HELLO」、公网 0x33/0x43
-/// 索引操作 0/19 静默（OPEN-QUESTIONS §1），所以公网检索保持 BLOCKED，这里不编造结果。
+/// **不查询公共 eMule 词典**：G0 `protocol_scope` 已于 2026-11-22 由项目所有者书面解除
+/// （公共 0x33/0x43 已授权），但本命令仍只做本地索引；公网检索请用
+/// `coldrevive-ed2k search --public --rate-limit-pps 0.2`，结果只认真实 UDP 观测。
 ///
 /// 参数：可选 file_hash；缺省时输出全部索引条目。
 fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
@@ -526,7 +527,7 @@ fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
         ("count", Json::n(links.len() as f64)),
         ("backfilled_from_disk", Json::n(backfilled.len() as f64)),
         ("links", Json::arr(links)),
-        ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽；本命令只做本地索引")),
+        ("public_search", Json::s("AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本命令只做本地索引，公网检索请用 coldrevive-ed2k search --public --rate-limit-pps 0.2")),
     ])
 }
 
@@ -714,7 +715,7 @@ pub(crate) fn kad_health(state: &Shared) -> Json {
         ("languages", Json::obj(languages.iter().map(|(k, v)| (*k, Json::n(*v as f64))).collect())),
         ("synonym_added", Json::n(synonym_added as f64)),
         ("refresh_failures", Json::n(failures as f64)),
-        ("public_search", Json::s("BLOCKED: 公共 KAD 0x33 检索需 G0 protocol_scope 放宽")),
+        ("public_search", Json::s("AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public")),
     ])
 }
 
@@ -722,7 +723,7 @@ pub(crate) fn kad_health(state: &Shared) -> Json {
 ///
 /// 与 `/cli index` 刻意分开：入库只是本地事实，不能因为写了 key 就宣称「已发布」。
 /// 这里也**只认对端明确的 `KAD_PUBLISH_ACK`**：收到一帧别的应答不算发布成功。
-/// 这个 ACK 表示「对端节点收下了 key」，不表示公网 KAD 可检索（FR-24 仍 BLOCKED）。
+/// 这个 ACK 表示「对端节点收下了 key」，不表示公网 KAD 可检索（FR-24 公网证据需另跑真实检索）。
 pub(crate) fn publish_path(state: &Shared, path: &str) -> Json {
     if path.is_empty() {
         return Json::obj(vec![("error", Json::s("用法: publish <路径>"))]);

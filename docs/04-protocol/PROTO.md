@@ -74,7 +74,7 @@ DeepWiki 把 `PUBLISH_KEY_REQ` 误记为 `0x35`，源码中 `0x35` 实为 `SEARC
 | 查询必有响应 | **索引里没有该 Key 时不回应**：`CIndexed::SendValidKeywordResult` 整个响应构造都在 `if (m_Keyword_map.find(keyID) != end())` 内，miss 只走末尾的 `Clean()` | 客户端必须把 `SEARCH_RES` 超时视为「无结果」，且**不可区分**「无人持有」与「对方不服务」；查询需多目标冗余 |
 | 发布必有响应 | **三条静默丢弃**：① 对端自身 UDP firewalled（`IsFirewalledUDP(true)` → `return`，**无 LAN 豁免**）② `top_chunk(对端 KadID, Key) > SEARCHTOLERANCE`（LAN 源地址豁免）③ entry 构造里 `ReadTag` 抛异常，被 `catch(...) { delete entry; throw; }` 原样抛出，`PUBLISH_RES` 那一行永远到不了 | 发布只能发往「距离在区内」的节点，且必须多目标扇出；tag 帧头必须按 Kad 格式编码（下条），否则任何节点都不会回包 |
 | Tag 编码 `type[\|0x80] + name + value` | Kad 路径是 `type + u16(name_len) + name + value`，数值名字就是长度 1 的字符串（`TAG_FILENAME = wxT("\x01")`）；`ReadTag` 的 switch 里没有 `STRn` / `BLOB`，命中 default 即 `throw` | 所有字符串一律 `TAGTYPE_STRING (0x02)`，禁止 `STRn`；`0x80` 短名形式只属于 ed2k/met 的 `CTag::CTag`，Kad 上无效 |
-| 索引操作需先 `HELLO` 互认 | **不成立**（v2.4.22 源码核实）：`Process2SearchKeyRequest` / `Process2PublishKeyRequest` 均不查询路由表、不校验发送方是否为已知 contact | v1 继续跳过 `HELLO`；索引可达性不依赖对等体互认 |
+| 索引操作需先 `HELLO` 互认 | **不成立**（v2.4.22 源码核实）：`Process2SearchKeyRequest` / `Process2PublishKeyRequest` 均不查询路由表、不校验发送方是否为已知 contact | `HELLO` 是可选的 receiver-key/路由表注入手段，不是索引操作的准入条件；`--hello` 显式开启，默认仍跳过 |
 | 响应都是明文 `0xE4` | >200 字节的响应改用 `0xE5` + zlib 压缩帧；`HELLO_RES` 对 kadVersion ≥ 6 可能 RC4 混淆 | 客户端须能分类 `0xE4` / `0xE5` / 非 KAD 帧，并分开计数 |
 
 > **tag 帧头是第三条静默路径，也是最容易自证清白的一条**：`Process2PublishKeyRequest`
@@ -85,10 +85,15 @@ DeepWiki 把 `PUBLISH_KEY_REQ` 误记为 `0x35`，源码中 `0x35` 实为 `SEARC
 > 于是编码器验证编码器，自己给自己发了合格证。详见 [PLAN §19](../../tests/spikes/s2/PLAN.md)。
 
 `sender/receiver UDP key` 的作用是**反 IP 欺骗与标记联系人已验证**，不是「明文包一律丢弃」的加密门禁：
-`ClientUDPSocket.cpp` 对首字节 `0xE4` 直接放行，`PacketTracking.cpp` 的 key 形参实际未启用。
-该 key 形如 `(m_key, m_ip)` 且 `GetKeyValue(myIP)` 仅在 `myIP == m_ip` 时返回，**绑定原机器公网 IP，
-不可从 `nodes.dat` 复制到别的主机使用**。因此 v1 不实现它，也不实现 RC4；实网小样本跳过 `HELLO` 路径
-（`BOOTSTRAP_RES` / `KADEMLIA2_RES` / `PUBLISH_RES` / `SEARCH_RES` 的发送端均传 `cryptTargetID = NULL`）。
+`ClientUDPSocket.cpp` 对首字节 `0xE4` 直接放行，`PacketTracking.cpp` 的 key 只影响洪泛计数/封禁与
+`HELLO` 三次握手，不是索引请求的准入条件。该 key 形如 `(m_key, m_ip)` 且 `GetKeyValue(myIP)` 仅在
+`myIP == m_ip` 时返回，**绑定原机器可见 IP，不可从 `nodes.dat` 复制到别的主机使用**。
+v2.4.107 起 `cr-kad::kad_obfuscate` 实现 aMule try-0（对方 KadID）/ try-2（对方 verify key）
+RC4 信封、`udp_verify_key(kad_udp_key, 对端可见 IP)` 派生与 `HELLO_REQ/RES/RES_ACK` 三次握手；
+`coldrevive-ed2k search --hello [--hello-try2] --peer-udp-key <u32> --our-public-ip <ip>` 可显式启用。
+**实测校正**：aMule KAD 混淆的 KadID key base 是线上 16 字节原序（不是逐 4 字节反转），
+try-2 key base 用 `PokeUInt32` 的主机小端字节，只有 crypt header 里的 verify key 是 BE。
+`BOOTSTRAP` / `0x21` 问路仍保持明文（实测可应答）；索引帧是否混淆按目标能力选择。
 
 | 项 | 规定 |
 | :--- | :--- |

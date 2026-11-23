@@ -1,6 +1,133 @@
+## [2.4.107] - 2026-11-23 — FR-24 KAD v8 握手接线、混淆字节序修正与 FR-25 A/B
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+
+- **FR-24 握手**：`coldrevive-ed2k search` 新增 `--hello` / `--hello-plain` /
+  `--hello-try2` / `--peer-udp-key` / `--our-public-ip`，实现 `udp_verify_key`
+  与 HELLO_RES_ACK 回包；`receiver_key_verified` 只在 try-2 真换回 `HELLO_RES`
+  时置真，不因参数齐全就自证通过。
+- **混淆层字节序**：源码核对发现 magic / verify-key 应为 LE 字节，且 try-0 的
+  RC4 base 收发两端不对称（对端收包用 `StoreCryptValue` 逐字反序，发包用原始 ID）。
+  旧实现自洽但真机静默；已拆成 `send_key_base` / `receive_key_base` 并补
+  aMule 收包语义出站回归、真 aMule HELLO_RES 解密向量。
+- **真机结果**：221 本地明文与 **try-2 混淆 HELLO 都成功**（`rtt_ms=31`、
+  `receiver_verify_key=3224252923`、`obfuscated_response=true`），首次让真 aMule
+  接受我们的混淆握手；try-0 在洪泛窗口外仍无应答。公网 `0x33` 真实命中仍 BLOCKED
+  （公网节点缺 KadUDPKey / 可见 IP 输入）。
+- **FR-25 A/B**：同链路唯一新样本两轮对照，unpaced 12.7% / Recv-Q 4 MB /
+  390 个无主重传，paced（`FR25_PACE_BPS=200000`）36.6% / Recv-Q 133 KB /
+  0 无主重传；两轮均 `STALLED_WITH_PENDING_BLOCKS`，对端落地 md5 闭环未取得。
+- 验证：`cargo test --workspace --offline` **497 passed / 0 failed / 3 ignored**；
+  P0 e2e **77/77**；P1 e2e **5/5**。审计 §16/§17 有完整证据边界。
+
+## [2.4.106] - 2026-11-23 — FR-24 真机判别：根因定位为 KAD UDP 混淆
+
+- 真机对照（221，出口 `112.5.60.4`）：同一台 firewalled 真 aMule KAD 搜 `ubuntu`
+  命中 **361**，我们的明文工具同词收敛到在区节点却 `answer_count=0` → 公网 KAD
+  可用，缺口在我们只发明文帧（此前「在区节点入站不可达」归因被证伪）。
+- `tcpdump` 抓包证实 aMule `0x33/0x3B` 为 RC4 混淆帧（`CryptoKadUDPKey`），
+  BOOTSTRAP_RES 是明文 `0xE5` zlib；STUN 判定 cone NAT，入向不是 blocker。
+- 提升 S2 混淆原语为 `cr-kad::kad_obfuscate`（25/25 单测），`coldrevive-ed2k search`
+  对已知 KadID 的 `0x33/0x43` 启用 try-0 封装并用本地 KadID 自解验证字节正确。
+- **仍未闭环**：混淆帧对真 aMule（本地+公网）仍无应答；S2 历史 `--obfuscate`
+  探针也从未成功（`wan_publish_silent_in_zone`），说明还缺 HELLO/verify-key 握手语义。
+  FR-24 公网真实命中保持 BLOCKED，`evidence_valid_for_pass` 恒 false。
+- 全量 `cargo test --workspace --offline` 486 passed / 0 failed / 3 ignored（门禁常量不变）。
+
 # 变更记录（Changelog）
 
 本文件记录**文档体系与项目决策**的变更。格式参考 Keep a Changelog，版本与文档 front matter 中的 `version` 对应。
+
+## [2.4.105] - 2026-11-23 — FR-24 公网 0 命中的根因定位与生产工具修正
+
+> 门禁常量仍不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+
+- **根因**：此前 `search --public` 先收到 `BOOTSTRAP_RES`，再把 `0x33` 直接发给
+  bootstrap 节点。S2 `PLAN.md` §6/§20 已证：aMule 的索引操作按
+  `SEARCHTOLERANCE = 2^24` 校验「节点 KadID ↔ Key」距离，越界**静默丢弃**；
+  它还会对 >200 B 的应答发 `0xE5` zlib 帧，旧工具只认 `0xE4`。
+  所以「0 命中」不是 HELLO/RC4，也不是网关/换网问题。
+- **修正**：`cr-kad::kad_ed2k` 提升 S2 的零依赖 zlib 解码器，新增联系人解码、
+  `0x21/0x29` 节点发现、责任区判定和字节级 `0x43` 发布编码（对 aMule 已接受的
+  真实请求帧逐字节回归）；`coldrevive-ed2k search --public` 先迭代收敛，
+  只对「回显 target 且在责任区」的节点发 `0x33`，`0xE4/0xE5` 都解；
+  `--publish-file` 支持 A 轨最小样本发布（一个唯一 key，最多 3 个在区节点，0.2 pps）。
+  `evidence_valid_for_pass` 修正为**恒 false**，程序不再自证通过。
+- **实测**：`public-lookup-20261123-ubuntu.json` — 36 次 `0x21`、33 次 `0x29`、
+  33 个已验证节点、1 个在区（`top_chunk=8,875,008 < 2^24`）；该在区节点对
+  `0x33` 仍静默，符合 S2 §20.5「能问路的在区节点也可能 UDP 入站不可达」。
+  更宽的 16 跳/alpha=5 轮次（`public-roundtrip-20261123-wide.json`：80 发 `0x21` /
+  72 收 `0x29` / 仍只 1 个在区节点）与新鲜联系人轮次
+  （`public-roundtrip-20261123-fresh.json`：2 跳找到 2 个在区节点）都对
+  `0x43`/`0x33` 静默，`ack_count=0`、`answer_count=0`。
+  命中只认真实 `SEARCH_RES`，0 命中如实记 0；剩余边界更像是本机公网 UDP 入向不可达
+  或对端索引策略，需要换具备真实入向能力的主机复核。
+- **FR-25 定位补充**：`diag_upload.py` 从 7 份透明代理报告重放 aMule 块记账，
+  `dropped_exceeds/dropped_unknown` 恒 0；对端 Recv-Q 停住但状态仍 `Downloading`。
+  新增 `FR25_PACE_BPS` 仅用于诊断性限速对照（不进生产），用来区分
+  「帧格式错」与「对端接收缓冲/消费速率问题」。
+- 验证：全量 `cargo test --workspace --offline` **486 passed / 0 failed / 3 ignored**；
+  P0 e2e **77/77**；P1 e2e **5/5**；`cr-kad` **22/22**；`coldrevive-ed2k` **3/3**。
+
+## [2.4.104] - 2026-11-22 — P1/P2 接线与 FR-25 有界在途（全部 opt-in）
+
+> 门禁常量仍不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+> 验证：全量 `cargo test --workspace --offline` **480 passed / 0 failed / 3 ignored**；
+> P0 e2e **77/77**；新增 P1 e2e **5/5**；`cr-ed2k` 单独 **53/53**。
+
+- **P1 API/运行时（`coldrevived` / `cr-api`）**：
+  - `api.rpc_secret`：写方法要 token/header，**`/health` 永不回显密钥**；
+  - `api.web_ui` / `api.websocket`：自包含静态 UI + 真 RFC6455 状态帧，默认关闭、
+    排在既有端点之后不遮蔽 `/health`；
+  - `GET /openapi.json`：真实 REST 路径 + JSON-RPC 方法（含 `mutating` 标记）；
+  - `qos.background_upload_ratio` 通过 librqbit 真实 `upload_bps` 落实硬上限，
+    比率按 `reference_link_bps` 名义换算（`cr-qos` 只记账），**不宣称 LEDBAT**；
+  - `nat.auto_map`：启动时真调 UPnP/NAT-PMP 并把成功/失败与外部地址写进 `/health.nat`，
+    **路由器应答不是入向可达证据**；
+  - `dht.enabled`：活跃种子真跑 `get_peers → announce_peer → 回查`，
+    公共节点无 token 时如实记 `token_unavailable`，不宣称公网可发现；
+  - 跨协议补源/信誉仍是 `not_implemented` 状态接口，不伪造来源或分数。
+- **FR-25 上传侧**：`cr-ed2k::stack` 增加 `ServeConfig` / `serve_with_config`，
+  以「请求回合」为进度信号给在途字节设硬上界（默认 3×`BLOCKSIZE`），
+  半区间进度保留在 `deferred_bytes`；修 Windows `WouldBlock` 误判导致 idle 看门狗不跑；
+  新增 `codecs.rs` 对 `0x44/0x34/0x4B/0x3B` 做真编解码，server login/credit/AICH
+  明确 `Unsupported` 而不编造帧。`coldrevive-ed2k serve` 与
+  `/cli ed2k-serve` 暴露 `--max-in-flight-bytes` / `--in-flight-unlimited` /
+  `--request-gated-pacing`（后者是**未验证假说**），输出 `idle_resends` /
+  `max_in_flight_bytes` / `deferred_bytes` 供真实 e2e 判定。
+- **FR-24**：见 [2.4.103]；公网实测 `BOOTSTRAP_RES` 3/3、`SEARCH_RES` 0 命中，
+  如实记 0，不外推 LAN 结果。
+- **配置文档**：`docs/04-protocol/CONFIG.md` §2.2 列出全部新增 opt-in 字段与边界；
+  SRS v2.1 完成评审与重复 FR-24 → FR-26 编号去重。
+
+## [2.4.103] - 2026-11-22 — 项目所有者书面解除 G0 `protocol_scope`
+
+> 决策条目，不含代码/门禁变更。用户在本会话明确指令「解除」，并按「全部剩余欠账」继续推进。
+> 机读：`tests/spikes/spikes.json` → `g0_review.protocol_scope_relaxation_2026_11_22`。
+
+- **放宽范围**：公共 KAD `0x33`/`0x43` 索引操作不再因 G0 scope 登记 BLOCKED；
+  允许对真实公共节点做 `SEARCH_KEY_REQ`/`PUBLISH_KEY_REQ` 并读取响应，
+  允许查询公共 eMule 关键词词典。v2.4.22 已证伪「必须先 HELLO」，所以本决定
+  **不要求**实现 `HELLO`/UDP key/RC4，也不改帧格式。
+- **保留约束**：0.2 pps 限速、最小样本、禁止批量发布测试 Key、真实 fileID、
+  R-02/R-11 的 M4 复审、所有结论只来自真实观测且脚本不得自动 pass。
+- **门禁常量不变**：`g2_claim=false`、`s6_status=not_run`、
+  `evidence_valid_for_pass=false`、`auto_pass=false`。
+  FR-24 公网检索仍须生产实现 + 真实公网证据重新登记，LAN 结果不得外推。
+- 文档同步：`docs/06-plan/G0-REVIEW.md` §12、`OPEN-QUESTIONS.md` §3、
+  `STAGE-DEBT-AUDIT-2026-11-21.md` §12。
+- **FR-24 工具侧配套**：`coldrevive-ed2k search` 新增 `--rate-limit-pps`
+  （`--public` 时缺省 0.2，0=不限速），bootstrap 与 0x33 发包前统一节流；
+  输出新增 `rate_limit_pps` / `rate_limited`。daemon 的 `public_search` 文案由
+  `BLOCKED` 改为 `AUTHORIZED`，仍明确本命令只做本地索引，不伪造公网命中。
+  P0 e2e 两条断言同步改为「已授权且未宣称命中」。
+- **首轮公网实测（rate=0.2 pps，3 个新鲜公共联系人）**：
+  `ubuntu` / `mp3` 两轮均 `BOOTSTRAP_RES` 3/3，但 `SEARCH_RES` 0 命中；
+  记录为 `tests/e2e/w24-pub/reports/public-search-20261122-{ubuntu,mp3}.json`。
+  按证据口径这**不是** FR-24 公网检索通过，只证明公网 KAD UDP 出入程可达。
 
 ## [2.4.102] - 2026-11-22 — FR-15 五条阈值齐活；FR-07 同义词与语言识别保持可复算
 

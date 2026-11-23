@@ -2267,6 +2267,21 @@
       "g2_claim": false,
       "spike_status_changed": false,
       "note": "条件冻结的三项必测回填仍未结案；所有新证据均标 evidence_valid_for_pass=false，结论由实验执行人依证据手工回填，脚本不自动置 pass"
+    },
+    "protocol_scope_relaxation_2026_11_22": {
+      "recorded_at": "2026-11-22",
+      "decided_by": "项目所有者（用户在 2026-11-22 会话中明确指令「解除」）",
+      "decision": "relaxed",
+      "scope": "解除 G0 protocol_scope 对公共 KAD 0x33/0x43 索引操作的 BLOCKED 登记；允许对真实公共节点做 SEARCH_KEY_REQ/PUBLISH_KEY_REQ 并读取 SEARCH_RES/PUBLISH_RES，允许查询公共 eMule 关键词词典。H1 已于 v2.4.22 被源码核对证伪，故不要求实现 HELLO/UDP key/RC4；本次放宽是授权边界，不是要求改帧格式。",
+      "preserved_constraints": [
+        "沿用 0.2 包/秒限速与 sample_size<=3 的最小样本口径；扩大样本须再次登记",
+        "禁止批量发布测试 Key；发布仍以真实内容与真实 fileID 为前提",
+        "R-02（公共 KAD 按运营速率是否视为污染）与 R-11（书面法务意见）仍是 M4 前未结风险，不因本决定消失",
+        "所有运行期结果仍须来自真实 UDP/文件/CLI 观测；缺失即 BLOCKED/FAIL，脚本不得自动 pass",
+        "g2_claim=false、s6_status=not_run、evidence_valid_for_pass=false、auto_pass=false 机器常量不变"
+      ],
+      "effect": "FR-24 公网 KAD 0x33 检索不再因 G0 scope 被行政 BLOCKED；实现与公网证据仍需按真实节点重测后登记，不得拿 LAN 结果外推。",
+      "evidence_note": "本条是项目所有者在本会话中的书面决定；替代历史口径「需 G0 protocol_scope 书面放宽」，不改写 2026-11-09 的 g0.confirmed.protocol_scope 原文。"
     }
   },
   "m1_progress": {

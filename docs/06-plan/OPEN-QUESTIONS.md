@@ -78,6 +78,13 @@ firewalled / 陈旧路由表假设被否证；但 aMule 源码核实表明该「
 服务器 TCP 搜索，只有明确选 `Kademlia` 方法出结果才要求 UDP 通 —— 因此这不构成 KAD
 出站证据，**不要开下载验证**，改做 `Kademlia` 方法热门词搜索。工程结论与归因解耦：
 本网无独立客户端可跑 P4，**换网重跑**；剩余核实只用于收窄归因，不阻塞。
+
+> **2026-11-22 口径更新（G0 scope 已书面解除）**：项目所有者在本会话明确指令「解除」，
+> `G0 protocol_scope` 对公共 KAD `0x33`/`0x43` 索引操作的 BLOCKED 登记已取消，机读见
+> `tests/spikes/spikes.json` → `g0_review.protocol_scope_relaxation_2026_11_22`，
+> 说明见 [G0-REVIEW §12](G0-REVIEW.md)。上方「需所有者先书面放宽 scope」是历史口径，
+> 不再作为 FR-24 公网检索的行政阻塞；但限速、最小样本、禁止批量发布、R-02/R-11 与
+> 门禁机器常量全部保留，且实现状态仍须由真实公网证据重新登记。
 2. 建立 Cargo Workspace 骨架与 CI（对应 W1.1），冻结 [ARCH](../02-architecture/ARCH.md) 与 [PROTO](../04-protocol/PROTO.md)——**须等 G0 通过**。
 3. 确认 [OPS §6](../07-operations/OPS.md) 合规红线；R-11 因 S8 豁免未消除，M4/G4 前复核法务结论。
 4. 输出 M1 的双节点 Demo 验收脚本（T0/T1），作为 G1 门禁依据。

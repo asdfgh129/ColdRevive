@@ -7,7 +7,8 @@
 //! 口径边界（不许被这条任务顺手放宽）：
 //! - 只重发 `kad_published=true` 的条目已有 key，不新增关键词、不改 TTL 数值；
 //! - `sent=true` 只表示「本机发出了帧且收到 ACK」，**不等于公网可检索**；
-//!   公网 KAD 检索（FR-24）仍受 G0 `protocol_scope` 约束，保持 BLOCKED。
+//!   公网 KAD 检索（FR-24）已于 2026-11-22 获所有者书面解除 G0 scope，
+//!   但 ACL 解除不等于这条周期任务取得了公网命中证据，仍须另跑真实检索。
 //! - 失败（无对端/超时）原样记进 `/health.kad_publish.last_error`。
 
 use crate::commands;

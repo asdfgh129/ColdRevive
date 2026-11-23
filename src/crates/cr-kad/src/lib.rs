@@ -9,9 +9,16 @@
 use cr_core::{Json, NAMESPACE};
 use cr_hash::{sha1_hex, sha256_hex};
 
-/// ADR-011 eMule 兼容轨的字节层原语（无前缀 MD4 Key + 0x33/0x3B 编解码）。
-/// 只做离线可验证的编解码，不代表公网检索可用。
+/// ADR-011 eMule 兼容轨的字节层原语（无前缀 MD4 Key + 0x33/0x3B 编解码，
+/// 以及 0x01/0x09/0x21/0x29 节点发现与 0xE5 zlib 解包）。
+/// 本 crate 不发包；公网命中只由调用方的真实 UDP 观测登记。
 pub mod kad_ed2k;
+/// aMule 对 >200 B 的 KAD 应答发 `0xE5` zlib 帧；这里是零依赖解码器。
+/// 从 S2 `kad-mini/src/inflate.rs` 原样提升，避免两个实现漂移。
+pub mod kad_inflate;
+/// aMule KAD UDP 混淆（RC4 try-0 / try-2 信封）。真机证实公网节点普遍开混淆，
+/// 明文 `0xE4` 的 0x33/0x43 会被静默丢弃；从 S2 `kad-mini/src/wire.rs` 提升。
+pub mod kad_obfuscate;
 use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::time::Duration;
 

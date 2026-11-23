@@ -15,11 +15,15 @@
 mod bt;
 mod commands;
 mod data_plane;
+mod dht_daemon;
 mod ed2k_tasks;
 mod idle;
 mod kad_republish;
+mod nat_auto;
 mod nat_path;
+mod p1_config;
 mod punch_route;
+mod qos_seed;
 mod ratelimit;
 mod relay_sub;
 mod sched;
@@ -160,6 +164,14 @@ pub struct NodeState {
     /// FR-15：真实资源采样（RSS / 对端连接数 / 上行速率）。
     /// 只由采样线程写入，准入判定只读；未配置任何采样阈值时保持 unknown。
     pub res: sysres::Meter,
+    /// P1 新增 opt-in 配置（从同一份 JSON 额外读取；cr_core::Config 保持不变）。
+    pub p1: p1_config::P1Config,
+    /// FR-17：启动时的真实 NAT 映射结果（未启用时是显式 disabled）。
+    pub nat_auto: nat_auto::AutoMapStatus,
+    /// FR-16：BT 做种上传字节预算（真实 `uploaded_bytes`  feeding）。
+    pub qos: qos_seed::SeedingQos,
+    /// FR-18：Mainline DHT 宣告状态（只报真实 get_peers/announce 结果）。
+    pub dht: dht_daemon::DhtStatus,
 }
 
 fn main() {
@@ -176,6 +188,8 @@ fn main() {
         Ok(c) => c,
         Err(e) => { eprintln!("配置载入失败: {}", e); std::process::exit(2); }
     };
+    // P1 opt-in 段与 cr_core::Config 读同一份文件，但独立解析；老配置缺省全关。
+    let p1 = p1_config::P1Config::load(Path::new(&cfg_path));
     cfg.node_id = node_id.clone();
     if let Some(b) = opt("--bind") { cfg.bind = b; }
     // T1 双机：本进程所在主机的对外地址覆盖 nodes.<self>.host；
@@ -275,7 +289,16 @@ fn main() {
         punch_route: punch_route::PunchRouteState::from_config(&cfg),
         data_plane,
         res: sysres::Meter::new(),
+        p1: p1.clone(),
+        // FR-17：opt-in 时在此真实调用 UPnP/NAT-PMP；失败就是失败，不填占位映射。
+        nat_auto: nat_auto::attempt(&p1, me.wake_udp_port, me.bt_port),
+        qos: qos_seed::SeedingQos::from_p1(&p1),
+        dht: dht_daemon::DhtStatus::disabled(),
     };
+    if p1.nat_auto_map {
+        println!("[{}] FR-17 NAT 自动映射结果: {}", node_id,
+                 st.nat_auto.json().dump());
+    }
     if !st.stale_pids.is_empty() {
         println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
     }
@@ -318,6 +341,18 @@ fn main() {
         kad_republish::spawn(shared.clone());
         // FR-15：真实资源采样（peers / 上行速率 / RSS）。没配阈值就不起线程。
         sysres::spawn(shared.clone());
+        // FR-16：采样引擎真实 `uploaded_bytes` 喂令牌桶；ratio=0 时不建线程。
+        if shared.lock().unwrap().qos.enabled() {
+            qos_seed::spawn(shared.clone());
+        }
+        // FR-18：opt-in Mainline DHT：用真实活跃种子的 infohash 走宣告路径。
+        let dht_hashes: Vec<[u8; cr_api::dht::ID_LEN]> = {
+            let st = shared.lock().unwrap();
+            st.seed_tasks.keys().filter_map(|h| dht_daemon::parse_infohash(h)).collect()
+        };
+        if p1.dht_enabled {
+            dht_daemon::spawn(shared.clone(), p1.clone(), dht_hashes, me.bt_port);
+        }
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));
@@ -436,6 +471,8 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
     };
 
     let proxy_url = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
+    // FR-16：把 ratio 换算出的字节硬上限交给引擎；None（ratio=0）时保持旧行为。
+    let upload_cap = st.qos.engine_cap_bps();
     let mut engine = RqbitEngine::new(EngineOptions {
         download_dir: share_dir.clone(),
         listen: Some(engine_bind),
@@ -449,7 +486,7 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         // opt-in（ADR-023）：默认 None 逐字节保持旧行为；开启后所有出站连接
         // 经本地 SOCKS5，未登记目标仍回落真实直连（cr-bridge 既有语义）。
         proxy_url,
-        upload_bps: None,
+        upload_bps: upload_cap,
         download_bps: None,
         init_timeout: Duration::from_secs(60),
     })?;
@@ -802,7 +839,12 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         Ok(r) => r,
         Err(_) => return,
     };
-    let (method, path, body) = req;
+    let (method, path, raw_headers, body) = req;
+    // P1：布尔开关先取一次，避免下面在同一条 `Json::obj(vec![...])` 里重复 lock 死锁。
+    let (web_ui_enabled, ws_enabled) = {
+        let st = state.lock().unwrap();
+        (st.p1.web_ui, st.p1.websocket)
+    };
     // FR-09：控制面按来源 IP 限流。`/health` 与 `/nat/*` 是探活/诊断面，
     // 参与限流会让「机器忙」被读成「服务挂了」；`/cli`、`/jsonrpc`、`/inject`
     // 走同一处判断，换个路径绕不过去。
@@ -826,6 +868,37 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                 ]).dump().into_bytes();
                 write_http(&mut stream, "429 Too Many Requests", "application/json", &payload);
                 return;
+            }
+        }
+    }
+    // FR-20：配置了 api.rpc_secret 时，mutating JSON-RPC 调用必须带正确 token。
+    // 只读方法（tell*/get*/ed2kStatus）不受影响；secret 值不进任何响应。
+    if path == "/jsonrpc" && method == "POST" {
+        let secret = { state.lock().unwrap().p1.rpc_secret.clone() };
+        if secret.is_some() {
+            if let Ok(req_json) = Json::parse(&String::from_utf8_lossy(&body)) {
+                let m = req_json.get("method").and_then(Json::as_str).unwrap_or("");
+                let params = req_json.get("params").and_then(Json::as_arr).unwrap_or(&[]);
+                let header_token = raw_headers.lines().find_map(|line| {
+                    let (k, v) = line.split_once(':')?;
+                    let name = k.trim();
+                    if name.eq_ignore_ascii_case("Authorization")
+                        || name.eq_ignore_ascii_case("X-RPC-Secret") {
+                        Some(v.trim())
+                    } else { None }
+                });
+                if cr_api::rpc::authorize(secret.as_deref(), params, header_token, m).is_err() {
+                    let id = req_json.get("id").cloned().unwrap_or(Json::Null);
+                    let payload = Json::obj(vec![
+                        ("jsonrpc", Json::s("2.0")), ("id", id),
+                        ("error", Json::obj(vec![
+                            ("code", Json::n(-32000.0)),
+                            ("message", Json::s("rpc_secret: missing or invalid token")),
+                        ])),
+                    ]).dump().into_bytes();
+                    write_http_cors(&mut stream, "200 OK", "application/json", &payload);
+                    return;
+                }
             }
         }
     }
@@ -976,6 +1049,30 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                     .map(|t| Json::n(*t as f64)).collect())),
             ])
         };
+        // P1：五块状态各自在 obj 之外取锁。绝不在同一个 `Json::obj(vec![...])` 里
+        // 再加 `state.lock()`——上一个 guard 活到语句结束会把自己锁死（历史坑）。
+        let api_json = { state.lock().unwrap().p1.health_json() };
+        let nat_auto_json = { state.lock().unwrap().nat_auto.json() };
+        let qos_json = { state.lock().unwrap().qos.json() };
+        let dht_json = { state.lock().unwrap().dht.json() };
+        let cross_protocol_json = Json::obj(vec![
+            ("enabled", Json::b(false)),
+            ("status", Json::s(cr_bridge::cross_protocol::SOURCE_SUPPLEMENT_STATUS)),
+            ("bt_to_ed2k", Json::s(cr_bridge::cross_protocol::supplement_bt_to_ed2k("")
+                .status_label())),
+            ("ed2k_to_bt", Json::s(cr_bridge::cross_protocol::supplement_ed2k_to_bt("")
+                .status_label())),
+            ("note", Json::s("跨协议补源未实现；不生成来源、不伪造成功")),
+        ]);
+        let reputation_json = {
+            let ledger = cr_api::reputation::ReputationLedger::new();
+            Json::obj(vec![
+                ("enabled", Json::b(ledger.enabled())),
+                ("status", Json::s(ledger.status())),
+                ("score", Json::Null),
+                ("note", Json::s("只记账不评分；信誉/激励尚未实现")),
+            ])
+        };
         ("200 OK".into(),
          Json::obj(vec![
              ("status", Json::s("ok")),
@@ -1013,6 +1110,13 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                  ])
              }),
              ("idle", idle_json),
+             // P1：api 只暴露 enabled，secret 值永不出现；其余均为真实观测状态。
+             ("api", api_json),
+             ("nat", nat_auto_json),
+             ("qos", qos_json),
+             ("dht", dht_json),
+             ("cross_protocol", cross_protocol_json),
+             ("reputation", reputation_json),
              // FR-05/06：周期重发布的真实结果（cycles=0 表示还没到第一个周期）。
              ("kad_publish", kad_republish::stats_json()),
          ]).dump().into_bytes(), "application/json")
@@ -1072,11 +1176,86 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
     } else if path == "/jsonrpc" && method == "OPTIONS" {
         cors = true;
         ("204 No Content".into(), Vec::new(), "text/plain")
+    } else if path == "/ws" && method == "GET" && ws_enabled {
+        // RFC6455：握手后转为帧连接，绕过普通 HTTP 响应写回。
+        handle_ws(&mut stream, &raw_headers, &state);
+        return;
+    } else if cr_api::webui::is_web_ui_path(&path, web_ui_enabled) && method == "GET" {
+        ("200 OK".into(), cr_api::webui::INDEX_HTML.as_bytes().to_vec(),
+         cr_api::webui::CONTENT_TYPE)
+    } else if path == "/openapi.json" && method == "GET" {
+        ("200 OK".into(), cr_api::openapi::document_json().dump().into_bytes(),
+         "application/json")
     } else {
         ("404 Not Found".into(), b"not found".to_vec(), "text/plain")
     };
     if cors { write_http_cors(&mut stream, &response.0, response.2, &response.1) }
     else { write_http(&mut stream, &response.0, response.2, &response.1) }
+}
+
+/// /ws 每次推送的状态：只读真实引擎计数，不构造“好看”的数字。
+fn ws_status_json(state: &Arc<Mutex<NodeState>>) -> Json {
+    let st = state.lock().unwrap();
+    let mut served = 0u64;
+    if let Ok(guard) = st.engine.lock() {
+        if let Some(engine) = guard.as_ref() {
+            for task in st.seed_tasks.values() {
+                if let Some(p) = engine.progress(*task) {
+                    served = served.saturating_add(p.uploaded_bytes);
+                }
+            }
+        }
+    }
+    Json::obj(vec![
+        ("node", Json::s(&st.cfg.node_id)),
+        ("seed_tasks", Json::n(st.seed_tasks.len() as f64)),
+        ("served_bytes", Json::n(served as f64)),
+        ("ts_ms", Json::n(now_unix_ms() as f64)),
+    ])
+}
+
+/// RFC6455 状态推送。握手成功后每秒发一帧 text；识别客户端的 close/ping。
+fn handle_ws(stream: &mut TcpStream, raw_headers: &str, state: &Arc<Mutex<NodeState>>) {
+    let response = match cr_api::ws::handshake_response(cr_api::ws::key_from_request(raw_headers)) {
+        Ok(r) => r,
+        Err(e) => {
+            write_http(stream, "400 Bad Request", "text/plain", e.as_bytes());
+            return;
+        }
+    };
+    if stream.write_all(response.as_bytes()).is_err() || stream.flush().is_err() { return; }
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut buf = [0u8; 4096];
+    loop {
+        let payload = ws_status_json(state).dump();
+        if stream.write_all(&cr_api::ws::encode_text(payload.as_bytes())).is_err() { return; }
+        if stream.flush().is_err() { return; }
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            match stream.read(&mut buf) {
+                Ok(0) => return,
+                Ok(n) => {
+                    if let Ok((frame, _)) = cr_api::ws::decode_client_frame(&buf[..n]) {
+                        match frame.opcode {
+                            0x8 => {
+                                let _ = stream.write_all(&cr_api::ws::encode_close());
+                                return;
+                            }
+                            0x9 => {
+                                let _ = stream.write_all(&cr_api::ws::encode_pong(&frame.payload));
+                                let _ = stream.flush();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(_) => return,
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
 
 /// 故障注入控制面（仅 127.0.0.1、仅 T0 测试用）。A 节点真实移动/恢复样本文件。
@@ -1114,7 +1293,7 @@ fn handle_inject(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
     }
 }
 
-fn read_http(stream: &mut TcpStream) -> Result<(String, String, Vec<u8>), String> {
+fn read_http(stream: &mut TcpStream) -> Result<(String, String, String, Vec<u8>), String> {
     let mut buf = Vec::new();
     let mut tmp = [0u8; 4096];
     let header_end;
@@ -1142,7 +1321,8 @@ fn read_http(stream: &mut TcpStream) -> Result<(String, String, Vec<u8>), String
         if n == 0 { break; }
         buf.extend_from_slice(&tmp[..n]);
     }
-    Ok((method, path, buf[header_end..header_end + len.min(buf.len() - header_end)].to_vec()))
+    Ok((method, path, head,
+        buf[header_end..header_end + len.min(buf.len() - header_end)].to_vec()))
 }
 
 /// 取 `aria2.addUri` 的第一个 URI。
@@ -1886,6 +2066,10 @@ mod rpc_tests {
             punch_route: punch_route::PunchRouteState::from_config(&cfg),
             data_plane: data_plane::DataPlane::new().ok(),
             res: sysres::Meter::new(),
+            p1: p1_config::P1Config::default(),
+            nat_auto: nat_auto::AutoMapStatus::disabled(),
+            qos: qos_seed::SeedingQos::from_p1(&p1_config::P1Config::default()),
+            dht: dht_daemon::DhtStatus::disabled(),
         };
         assert!(st.data_plane.is_some(), "本用例的前提就是数据面已开启");
         assert!(st.punch_route.enabled);
@@ -2039,6 +2223,156 @@ mod duplicate_task_tests {
         assert!(duplicate_download_error(true, &out).is_none());
 
         let _ = fs::remove_file(&out);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod p1_http_tests {
+    use super::*;
+
+    fn state_with(p1: p1_config::P1Config) -> (Arc<Mutex<NodeState>>, Config, std::path::PathBuf) {
+        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("cr_p1_http_{id}"));
+        fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801, "bt_port": 17802}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let p = dir.join("c.json");
+        fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let st = NodeState {
+            cfg: cfg.clone(),
+            index: ShadowIndex::open(&dir.join("state.json")),
+            api_limiter: None,
+            nonces: HashSet::new(), remote_keys: HashMap::new(), last_ack: None,
+            sample: None, torrent: None, bt_seeding: false, download: None,
+            stale_pids: Vec::new(), blacklist: HashSet::new(), last_file_hash: None,
+            nat: nat_path::NatContext::from_config(&cfg),
+            hub: UdpHub { socket: Arc::new(udp), stun_sink: Arc::new(Mutex::new(None)) },
+            rpc_tasks: Vec::new(), ed2k_tasks: ed2k_tasks::registry(),
+            engine: Arc::new(Mutex::new(None)), seed_task: None,
+            seed_tasks: HashMap::new(), sched: LruScheduler::new(1),
+            last_activity: Instant::now(), idle_sleep_count: 0,
+            idle_slept_tasks: Vec::new(), idle_last_attempt: None,
+            guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+            guard_internal: None, guard_external: None,
+            punch_route: punch_route::PunchRouteState::from_config(&cfg),
+            data_plane: None, res: sysres::Meter::new(),
+            p1, nat_auto: nat_auto::AutoMapStatus::disabled(),
+            qos: qos_seed::SeedingQos::from_p1(&p1_config::P1Config::default()),
+            dht: dht_daemon::DhtStatus::disabled(),
+        };
+        (Arc::new(Mutex::new(st)), cfg, dir)
+    }
+
+    fn serve(state: Arc<Mutex<NodeState>>, cfg: Config) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for s in listener.incoming() {
+                if let Ok(s) = s {
+                    let (st, c) = (state.clone(), cfg.clone());
+                    thread::spawn(move || handle_conn(s, c, st));
+                }
+            }
+        });
+        addr
+    }
+
+    fn request(addr: SocketAddr, raw: &[u8]) -> String {
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(raw).unwrap();
+        let mut out = Vec::new();
+        c.read_to_end(&mut out).unwrap();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn post(addr: SocketAddr, path: &str, body: &str) -> String {
+        let raw = format!(
+            "POST {path} HTTP/1.1\r\nHost: h\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len());
+        request(addr, raw.as_bytes())
+    }
+
+    #[test]
+    fn web_ui_and_openapi_do_not_shadow_existing_endpoints() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            web_ui: true, ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let health = request(addr, b"GET /health HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(health.contains("\"status\":\"ok\"") && health.contains("\"api\""), "{health}");
+        assert!(!health.contains("<!doctype html>"), "/health 被 Web UI 遮蔽");
+        let openapi = request(addr, b"GET /openapi.json HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(openapi.contains("\"openapi\":\"3.0.3\""), "{openapi}");
+        assert!(openapi.contains("\"/health\""), "{openapi}");
+        let cli = post(addr, "/cli", r#"{"command":"unknown"}"#);
+        assert!(cli.contains("\"error\"") && !cli.contains("<!doctype html>"), "{cli}");
+        let root = request(addr, b"GET / HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(root.contains("<!doctype html>") && root.contains("ColdRevive status"), "{root}");
+        let options = request(addr, b"OPTIONS /jsonrpc HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(options.contains("204 No Content"), "{options}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rpc_secret_blocks_mutating_calls_without_leaking_it() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            rpc_secret: Some("TOPSECRET".into()), ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let no_token = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":1,"method":"aria2.addUri","params":[["magnet:?"]]}"#);
+        assert!(no_token.contains("-32000"), "{no_token}");
+        assert!(!no_token.contains("TOPSECRET"), "secret 泄漏到响应");
+        let with_token = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":2,"method":"aria2.addUri","params":["token:TOPSECRET",["magnet:?"]]}"#);
+        assert!(!with_token.contains("-32000"), "{with_token}");
+        assert!(with_token.contains("\"result\""), "{with_token}");
+        let readonly = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":3,"method":"aria2.getVersion","params":[]}"#);
+        assert!(readonly.contains("\"result\""), "只读调用不该要求 token: {readonly}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn websocket_upgrade_sends_real_rfc6455_text_frame() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            websocket: true, ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(b"GET /ws HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\n\
+                      Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+                      Sec-WebSocket-Version: 13\r\n\r\n").unwrap();
+        let mut head = Vec::new();
+        let mut one = [0u8; 1];
+        loop {
+            c.read_exact(&mut one).unwrap();
+            head.push(one[0]);
+            if head.ends_with(b"\r\n\r\n") { break; }
+        }
+        let head = String::from_utf8_lossy(&head);
+        assert!(head.starts_with("HTTP/1.1 101 Switching Protocols"), "{head}");
+        assert!(head.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+        let mut hdr = [0u8; 2];
+        c.read_exact(&mut hdr).unwrap();
+        assert_eq!(hdr[0], 0x81, "服务端 text 帧不掩码");
+        let len = (hdr[1] & 0x7f) as usize;
+        let mut payload = vec![0u8; len];
+        c.read_exact(&mut payload).unwrap();
+        let text = String::from_utf8_lossy(&payload);
+        assert!(text.contains("\"node\"") && text.contains("\"seed_tasks\""), "{text}");
         let _ = fs::remove_dir_all(&dir);
     }
 }

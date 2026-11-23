@@ -27,7 +27,9 @@ python tests/e2e/p0/run_p0.py
 ## 边界（不许被这份报告顺手放宽）
 
 - **FR-05/06 的 `sent=true` 只表示「发出 KAD_PUBLISH 并收到对端 ACK」**，不等于公网
-  KAD 可检索。FR-24 公网检索仍 BLOCKED（G0 `protocol_scope` 未放宽）。
+  KAD 可检索。FR-24 的 G0 `protocol_scope` 已于 2026-11-22 由项目所有者书面解除，
+  但本机回环 ACK 仍不是公网命中证据；公网检索请另跑
+  `coldrevive-ed2k search --public --rate-limit-pps 0.2` 并按真实响应登记。
 - **FR-01 后端是轮询快照**（`cr_indexer::PollWatcher`），语义与内核通知一致但延迟 ≤ 周期；
   Windows `ReadDirectoryChangesW` 尚未接入，不得宣称已用内核通知。
 - **FR-09 只覆盖按来源 IP 的令牌桶**，不含全局/分布式配额，也不覆盖数据面。

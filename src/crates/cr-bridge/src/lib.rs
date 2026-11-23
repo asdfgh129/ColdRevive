@@ -35,6 +35,8 @@ const REP_HOST_UNREACHABLE: u8 = 0x04;
 const REP_COMMAND_UNSUPPORTED: u8 = 0x07;
 const REP_ATYP_UNSUPPORTED: u8 = 0x08;
 
+pub mod cross_protocol;
+
 /// SOCKS5 上游：可以是打洞得到的真 socket（ADR-021），也可以是中继隧道（ADR-023）。
 /// 两种都只需 `AsyncRead + AsyncWrite`，`copy_bidirectional` 不关心底层是谁。
 pub enum Upstream {

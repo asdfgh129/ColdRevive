@@ -122,6 +122,22 @@ cors_allowlist = []
 只能由外部主机实测（[`tests/e2e/w51d/public_inbound.py`](../../tests/e2e/w51d/public_inbound.py)）；
 `/nat/public` 返回的 `inbound_verified` 恒为 `false`，`s6_status` 恒为 `not_run`。
 
+### 2.2 P1 运行时 JSON 段（2026-11-22 接线，全部 opt-in）
+
+以下字段与 §2.1 共用同一份 JSON 配置；不写时行为与旧版本逐字节一致。
+
+| 段 | 参数 | 默认 | 约束 / 说明 |
+| :--- | :--- | :--- | :--- |
+| api | `rpc_secret` | 空 | 配置后 `/jsonrpc` 的**写方法**要求 `token:<secret>`（params）或 `Authorization` / `X-RPC-Secret` 头；读方法仍免费。`/health.api.rpc_secret` 只给 `enabled`，**永不回显密钥值** |
+| api | `web_ui` / `websocket` | `false` | 开启后 `GET /` 提供自包含静态 UI（无 CDN），`GET /ws` 提供 RFC6455 状态推送。两者都排在既有端点之后、只匹配精确路径，不遮蔽 `/health` / `/cli` 等 |
+| qos | `background_upload_ratio` | `0.02` | 通过 librqbit 的真实 `upload_bps` 硬上限落实；`cr-qos` 令牌桶负责记账与可观测。**比率按 `reference_link_bps` 折算，不是实测链路速率**，也不宣称 LEDBAT |
+| qos | `reference_link_bps` | `100000000` | 比率→字节的名义参考带宽；只用于换算，不代表本机实测带宽 |
+| nat | `auto_map` | `false` | 启动时调用真实 UPnP IGD / NAT-PMP 原语建映射；`/health.nat` 逐项记录成功/失败与外部地址。**路由器应答不等于入向可达证据** |
+| dht | `enabled` / `bootstrap` | `false` / 空 | 开启后对活跃种子执行真实 `get_peers → announce_peer → 回查`；`/health.dht` 报 verified/no-token/failed 与真实错误。公共节点不给 token 时如实记 `token_unavailable`，不宣称公网可发现 |
+
+`GET /openapi.json` 始终可用，列出真实 REST 路径与 JSON-RPC 方法（含 `mutating` 标记）。
+跨协议补源与信誉/激励仍是 `not_implemented` 状态接口，不返回伪造来源或分数。
+
 ## 3. 校验规则
 
 启动时校验，失败则拒绝启动并给出明确错误：

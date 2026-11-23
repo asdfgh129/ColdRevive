@@ -233,3 +233,18 @@ S5 已补真实内核 `tc htb + netem` 跨 netns 链路，默认 ratio=0.02 前�
 ② LRU 冷热调度器接引擎（现仍走 M1 `bt_seeding` 门闩）；③ 中继生产化收尾（公网部署 / 鉴权 / 限流 / 跨公网时延）；
 ④ BT/TCP 打洞；⑤ M4 前 R-02 拒绝率复审与 R-11 书面法务意见。
 **三项 Spike 判定只回答「技术路线是否成立」，不构成 G2 达标**；`g2_claim` 仍为 `false`。
+
+## 12. G0 `protocol_scope` 书面放宽（2026-11-22，项目所有者决定）
+
+项目所有者在本会话中明确指令「解除」，据此把 G0 `protocol_scope` 对**公共 KAD `0x33`/`0x43` 索引操作**的 BLOCKED 登记解除。机读留痕见
+[`spikes.json`](../../tests/spikes/spikes.json) → `g0_review.protocol_scope_relaxation_2026_11_22`。
+
+- **放宽范围**：允许对真实公共节点执行 `SEARCH_KEY_REQ` / `PUBLISH_KEY_REQ` 并读取响应，
+  允许查询公共 eMule 关键词词典。v2.4.22 的源码核对已证伪「必须先 HELLO 互认」（H1），
+  所以本决定**不要求**实现 `HELLO` / sender/receiver UDP key / RC4，也不是要改帧格式。
+- **不随放宽消失的约束**：沿用 0.2 包/秒限速与最小样本口径；禁止批量发布测试 Key；
+  发布仍以真实内容和真实 fileID 为前提；R-02 / R-11 仍是 M4 前未结风险；
+  运行期结论只来自真实 UDP / 文件 / CLI 观测，脚本不得自动 pass。
+- **门禁不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false`。
+  FR-24 公网检索的实现状态与证据仍须按真实公网节点重测后登记，**LAN 结果不得外推**。
+- 历史字段 `S2.g0.confirmed.protocol_scope` 原文不改；本条只覆盖其后的行政 BLOCKED 口径。
