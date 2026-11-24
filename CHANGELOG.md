@@ -1,3 +1,18 @@
+## [2.4.119] - 2026-11-24 — 公网 TCP DNAT 验收：环回 PASS，simultaneous-open 仍 BLOCKED
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮未改 Rust 代码。
+
+- 所有者建立 `112.5.60.4:19910 → 192.168.1.221:19910` 与
+  `112.5.32.34:19920 → 192.168.34.222:19920` 后，跨主机连接收到预期标记；
+  工作机到 221 的超时是自身出口与 221 公网地址同址、网关不支持 hairpin，不是 DNAT 失败。
+- 新增 `tests/e2e/w56/public_tcp_dnat_roundtrip.py`：两方向各监听/连接一次并做
+  PING/PONG，报告 `public-tcp-dnat-roundtrip-20261124T102845Z.json` 判 **PASS**。
+  这只证明 DNAT 承载真实 TCP 双向字节，明确不冒充 simultaneous-open。
+- 原 `public_tcp_punch_probe.py` 重跑仍 BLOCKED。双侧抓包证明 221 绑定源端口
+  `19910` 被上游 NAT 改写为 `18011`（同一 SYN seq），对端 4 元组不匹配而回 RST；
+  需要上游保持源端口，或所有者书面改判据，才能改变该结论。审计 §20.3 已更新。
+
 ## [2.4.118] - 2026-11-24 — 公平性根因修复与同阈值重跑；TCP DNAT 前置复核
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

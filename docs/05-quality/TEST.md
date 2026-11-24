@@ -842,6 +842,23 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   **521 passed / 0 failed / 3 ignored**。所有成功/失败/BLOCKED 均归档
   `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
 
+## 10. v2.4.119 新增证据（TCP DNAT 建立后验收）
+
+- **DNAT 双向环回（PASS）**：所有者建立两条 TCP DNAT 后，新增
+  `python3 tests/e2e/w56/public_tcp_dnat_roundtrip.py`，221↔222 两方向各
+  监听/连接一次并交换 PING/PONG。报告
+  `tests/e2e/w56/reports/public-tcp-dnat-roundtrip-20261124T102845Z.json`：
+  两方向 `ok=true`，`PAYLOAD PONG` 与 `DATA PING` 同时成立。**这不是
+  simultaneous-open 证据**，只证明 DNAT 路径承载真实 TCP 双向字节。
+- **工作机 hairpin 排除**：工作机出口与 221 公网地址同为 `112.5.60.4`，
+  本机直连该地址超时；从 222 独立出口连 `112.5.60.4:19910` 与从 221 连
+  `112.5.32.34:19920` 都成功。证据 `tcp-dnat-hairpin-crosshost-20261124.json`。
+- **simultaneous-open 仍 BLOCKED**：`python3 tests/e2e/w56/public_tcp_punch_probe.py`
+  两侧 `Connection refused`。抓包 `tcp-punch-source-port-rewrite-20261124.txt`
+  证明 221 绑定源端口 `19910` 经上游 NAT 变成 `18011`，对端返回的 SYN
+  无法匹配本地 4 元组。要满足原判据需上游保持源端口或由所有者书面改判据；
+  本轮不改判据、不外推。门禁常量不变。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

@@ -699,29 +699,33 @@ Jain ≥ 0.95、两条流稳态份额均在 [0.45, 0.55]，且 `all_rounds_must_
   `hash_matches/content_matches/completed=true`，落地 md5 一致。
 - 测试后 221 aMule 为 `active`。这是生产 daemon 路径的组件级公网证据，不等于 G2/S6。
 
-### 20.3 公网 TCP 打洞：前置仍缺（DNAT 建立步骤）
+### 20.3 公网 TCP DNAT 已建：DNAT 环回 PASS，simultaneous-open 仍 BLOCKED
 
-复核证据 `tests/ARCHIVE/evidence/tcp-dnat-reachability-20261124.json`：
-221 的 `112.5.60.4` 不是本机地址，`ip route get 112.5.60.4` 经 `192.168.1.254`；
-本机 `0.0.0.0:19910` 监听已 READY，但外部 TCP 连 `112.5.60.4:19910` 5 s 超时。
-222 的默认路由是 `192.168.34.1`，`112.5.32.34:19920` 同样没有入向映射。
-两侧 `iptables -t nat` 均无 1991x DNAT；现有 SSH key 也进不了两台上游网关
-（221 网关只有 Web 80/443，222 网关 22/80/443 全闭）。必须由**公网地址的所有者**
-在上游网关建 endpoint-independent 固定映射：
+所有者已在上游网关建立两条固定映射：TCP `112.5.60.4:19910` → `192.168.1.221:19910`、
+TCP `112.5.32.34:19920` → `192.168.34.222:19920`（**不能**填管理网卡 `192.168.1.222`）。
+本机出口与 221 公网站点同为 `112.5.60.4`，本机直连 `112.5.60.4:19910` 因网关不支持
+hairpin 而超时；这不是映射失败。证据 `tcp-dnat-hairpin-crosshost-20261124.json`。
 
-1. 221 侧网关（持有 `112.5.60.4`）：TCP `112.5.60.4:19910` → `192.168.1.221:19910`。
-2. 222 侧网关（持有 `112.5.32.34`，对称 NAT）：TCP `112.5.32.34:19920`
-   → `192.168.34.222:19920`。**不能**填管理网卡 `192.168.1.222`。
-3. 两侧网关放行 FORWARD，开启 `ip_forward`；若从同 LAN 测公网地址，再补 hairpin MASQUERADE。
-4. Linux 网关（iptables）等价命令：
-   `iptables -t nat -A PREROUTING -d <公网IP> -p tcp --dport <端口> -j DNAT --to-destination <内网IP>:<端口>`；
-   `iptables -I FORWARD -p tcp -d <内网IP> --dport <端口> -j ACCEPT`。
-   nftables 等价规则写在 `inet nat prerouting`。
-5. 验收：外部主机 `nc -vz 112.5.60.4 19910` 与 `nc -vz 112.5.32.34 19920` 都连上，
-   再跑 `python3 tests/e2e/w56/public_tcp_punch_probe.py --report-out <报告路径>`。
-   只有两侧都 `ok=true` 且 `bytes_roundtrip=true` 才算 TCP punch 证据。
+跨主机验收（真正独立出口）：222→`112.5.60.4:19910` 与 221→`112.5.32.34:19920`
+都收到预期标记，221 抓包确认 SYN 到达 `192.168.1.221:19910`。随后新增
+`tests/e2e/w56/public_tcp_dnat_roundtrip.py`：一端监听、一端经公网连接，两方向各做
+PING/PONG，报告 `tcp-dnat-bidirectional-roundtrip-20261124.json`：两个方向 `ok=true`、
+`PAYLOAD PONG` 与 `DATA PING` 同时成立，判 **PASS**。这证明 DNAT 承载真实 TCP 双向字节，
+**不是** simultaneous-open 证据。
 
-在规则建立并可连通之前不重跑、不改判据、不外推；门禁常量不变。
+原判据重跑仍是 BLOCKED：`public_tcp_punch_probe.py` 两侧 `ok=false`，
+错误为 `Connection refused (os error 111)`；报告
+`tcp-punch-after-dnat-20261124T102535Z.json` 与
+`tcp-punch-after-dnat-tcpdump-run-20261124T102900Z.json`。抓包
+`tcp-punch-source-port-rewrite-20261124.txt` 给出确定根因：221 打洞 socket 绑定源端口
+`19910`，同一 SYN（seq `1461449036`）到达 222 时源端口被上游 NAT 改写为 `18011`，
+222 的 SYN_SENT socket 期望远端 `112.5.60.4:19910`，4 元组对不上而回 RST。
+这是 NAT 不保留源端口的限制，不是链路不可达，也不是我们的握手判据错误。
+
+要使 §20.3 原判据（`ok=true` 且 `bytes_roundtrip=true`）成立，需要上游对这两条流
+保持源端口（1:1 / no-PAT 静态映射），或由所有者书面修改判据以接受 DNAT 环回证据；
+我不单方改判据。门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+`evidence_valid_for_pass=false`、`auto_pass=false`。
 
 ### 20.4 公平性根因修复与同阈值重跑：仍整体 FAIL
 

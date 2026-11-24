@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-11-24T18:25:18+08:00",
+  "scope": "TCP DNAT reachability after owner established mappings; distinguishes local hairpin from cross-host path",
+  "local_from_workstation": {
+    "221": {
+      "public": "112.5.60.4:19910",
+      "listener": "READY but no ACCEPT within 30 s",
+      "result": "TimeoutError: timed out"
+    },
+    "222": {
+      "public": "112.5.32.34:19920",
+      "payload": "DNAT_OK_19920",
+      "listener_source": "112.5.60.4:17866"
+    }
+  },
+  "cross_host": {
+    "222_to_221": {
+      "public": "112.5.60.4:19910",
+      "payload": "DNAT_OK_19910",
+      "listener_source": "112.5.32.34:2050",
+      "tcpdump_on_221": "In IP 112.5.32.34.2050 > 192.168.1.221.19910: Flags [S]"
+    },
+    "221_to_222": {
+      "public": "112.5.32.34:19920",
+      "payload": "DNAT_OK_19920",
+      "listener_source": "112.5.60.4:17937"
+    }
+  },
+  "verdict": "PASS cross-host; local 221 timeout is same-WAN hairpin, not DNAT failure",
+  "note": "Workstation egress is 112.5.60.4, the same public address as 221. The upstream gateway does not hairpin that flow; 222 is a genuinely independent vantage point.",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}

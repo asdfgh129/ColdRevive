@@ -1,0 +1,51 @@
+{
+  "recorded_at": "2026-11-24T18:28:47+08:00",
+  "scope": "real TCP through owner-provided public DNAT; bidirectional byte roundtrip; NOT simultaneous open",
+  "hosts": {
+    "221": {
+      "host": "192.168.1.221",
+      "bind_port": 19910,
+      "egress": "112.5.60.4"
+    },
+    "222": {
+      "host": "192.168.1.222",
+      "bind_port": 19920,
+      "egress": "112.5.32.34"
+    }
+  },
+  "phases": {
+    "222_to_221": {
+      "listen_node": "221",
+      "connect_node": "222",
+      "public_target": "112.5.60.4:19910",
+      "listener_ready": true,
+      "listener_cmd": "timeout 15 python3 -u -c 'import socket\ns = socket.socket()\ns.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\ns.bind((\"0.0.0.0\", 19910))\ns.listen(1)\ns.settimeout(12)\nprint(\"READY\", flush=True)\nc, a = s.accept()\ndata = c.recv(4)\nc.sendall(b\"PONG\" if data == b\"PING\" else b\"FAIL\")\nprint(\"ACCEPT\", a, \"DATA\", data.decode(\"ascii\", \"replace\"), flush=True)\nc.close()\ns.close()\n'",
+      "connector_cmd": "timeout 15 python3 -u -c 'import socket\ns = socket.create_connection((\"112.5.60.4\", 19910), 6)\ns.settimeout(5)\ns.sendall(b\"PING\")\ndata = s.recv(4)\nprint(\"PAYLOAD\", data.decode(\"ascii\", \"replace\"), \"PEER\", str(s.getpeername()), flush=True)\ns.close()\n'",
+      "connector_stdout": "PAYLOAD PONG PEER ('112.5.60.4', 19910)",
+      "connector_stderr": "",
+      "listener_rest": "ACCEPT ('112.5.32.34', 2072) DATA PING",
+      "listener_stderr": "",
+      "ok": true
+    },
+    "221_to_222": {
+      "listen_node": "222",
+      "connect_node": "221",
+      "public_target": "112.5.32.34:19920",
+      "listener_ready": true,
+      "listener_cmd": "timeout 15 python3 -u -c 'import socket\ns = socket.socket()\ns.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\ns.bind((\"0.0.0.0\", 19920))\ns.listen(1)\ns.settimeout(12)\nprint(\"READY\", flush=True)\nc, a = s.accept()\ndata = c.recv(4)\nc.sendall(b\"PONG\" if data == b\"PING\" else b\"FAIL\")\nprint(\"ACCEPT\", a, \"DATA\", data.decode(\"ascii\", \"replace\"), flush=True)\nc.close()\ns.close()\n'",
+      "connector_cmd": "timeout 15 python3 -u -c 'import socket\ns = socket.create_connection((\"112.5.32.34\", 19920), 6)\ns.settimeout(5)\ns.sendall(b\"PING\")\ndata = s.recv(4)\nprint(\"PAYLOAD\", data.decode(\"ascii\", \"replace\"), \"PEER\", str(s.getpeername()), flush=True)\ns.close()\n'",
+      "connector_stdout": "PAYLOAD PONG PEER ('112.5.32.34', 19920)",
+      "connector_stderr": "",
+      "listener_rest": "ACCEPT ('112.5.60.4', 18131) DATA PING",
+      "listener_stderr": "",
+      "ok": true
+    }
+  },
+  "verdict": "PASS",
+  "simultaneous_open_claim": false,
+  "note": "Pure RFC793 simultaneous open was measured separately and remains BLOCKED: upstream NAT rewrites the bound source port (observed 19910 -> 18011), so the returned SYN does not match the local 4-tuple.  This report only validates DNAT reachability.",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}

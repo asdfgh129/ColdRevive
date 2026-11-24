@@ -1,0 +1,14 @@
+Relevant lines from tcpdump during public-tcp-punch probe at 2026-11-24 10:26Z.
+
+221 capture (outbound SYN, bound source port 19910):
+10:26:28.870957 ens160 Out IP 192.168.1.221.19910 > 112.5.32.34.19920: Flags [S], seq 1461449036, win 64240, options [mss 1460,sackOK,TS val 3064026923 ecr 0,nop,wscale 7], length 0
+
+222 capture (same SYN after 221 upstream NAT, source port rewritten to 18011):
+10:26:28.873084 ens160 In  IP 112.5.60.4.18011 > 192.168.34.222.19920: Flags [S], seq 1461449036, win 64240, options [mss 1460,sackOK,TS val 3064026923 ecr 0,nop,wscale 7], length 0
+
+222 capture (222 outbound SYN):
+10:26:28.822435 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.19910: Flags [S], seq 876883103, win 64240, options [mss 1460,sackOK,TS val 539941628 ecr 0,nop,wscale 7], length 0
+
+221 capture: no inbound SYN for this flow was observed in the 53 filtered lines; 221 nevertheless reported ECONNREFUSED from its outbound socket.
+
+Interpretation: identical TCP sequence number proves the first two lines are the same packet. The upstream NAT rewrites 221's bound source port 19910 to 18011, so 222's SYN_SENT socket expecting remote 112.5.60.4:19910 cannot match the returned 4-tuple. This is a NAT/port-preservation limitation, not a DNAT reachability failure. No G2/S6 claim.

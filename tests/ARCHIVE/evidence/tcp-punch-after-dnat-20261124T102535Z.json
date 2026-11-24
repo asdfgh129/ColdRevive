@@ -1,0 +1,54 @@
+{
+  "recorded_at": "2026-11-24T18:25:41+08:00",
+  "scope": "real public dual-side TCP simultaneous open; no NAT matrix or G2 claim",
+  "hosts": {
+    "221": {
+      "host": "192.168.1.221",
+      "bin": "/opt/coldrevive/repo/target/release/coldrevive-nat",
+      "bind": "0.0.0.0:19910",
+      "egress": "112.5.60.4"
+    },
+    "222": {
+      "host": "192.168.1.222",
+      "bin": "/tmp/coldrevive-nat",
+      "bind": "0.0.0.0:19920",
+      "egress": "112.5.32.34"
+    }
+  },
+  "results": {
+    "222": {
+      "node": "222",
+      "command": "/tmp/coldrevive-nat --tcp-punch 0.0.0.0:19920 112.5.60.4:19910 --echo-responder --timeout 5000 --json --tag egress=112.5.32.34 --tag peer=221",
+      "stdout": "{\"mode\":\"tcp-punch\",\"ok\":false,\"local\":\"0.0.0.0:19920\",\"peers\":\"112.5.60.4:19910\",\"attempts\":45,\"errors\":\"向 112.5.60.4:19910 的连接被拒: Connection refused (os error 111)\"}\n",
+      "stderr": "",
+      "parsed": {
+        "mode": "tcp-punch",
+        "ok": false,
+        "local": "0.0.0.0:19920",
+        "peers": "112.5.60.4:19910",
+        "attempts": 45,
+        "errors": "向 112.5.60.4:19910 的连接被拒: Connection refused (os error 111)"
+      }
+    },
+    "221": {
+      "node": "221",
+      "command": "/opt/coldrevive/repo/target/release/coldrevive-nat --tcp-punch 0.0.0.0:19910 112.5.32.34:19920 --echo --timeout 5000 --json --tag egress=112.5.60.4 --tag peer=222",
+      "stdout": "{\"mode\":\"tcp-punch\",\"ok\":false,\"local\":\"0.0.0.0:19910\",\"peers\":\"112.5.32.34:19920\",\"attempts\":45,\"errors\":\"向 112.5.32.34:19920 的连接被拒: Connection refused (os error 111)\"}\n",
+      "stderr": "",
+      "parsed": {
+        "mode": "tcp-punch",
+        "ok": false,
+        "local": "0.0.0.0:19910",
+        "peers": "112.5.32.34:19920",
+        "attempts": 45,
+        "errors": "向 112.5.32.34:19920 的连接被拒: Connection refused (os error 111)"
+      }
+    }
+  },
+  "verdict": "BLOCKED",
+  "reason": "221: 向 112.5.32.34:19920 的连接被拒: Connection refused (os error 111); 222: 向 112.5.60.4:19910 的连接被拒: Connection refused (os error 111)",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}
