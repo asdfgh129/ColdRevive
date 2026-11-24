@@ -964,11 +964,42 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     ]);
                 }
             };
+            // 4) 真正 handoff：Route::Direct 时把已验证 socket 登记进桥，
+            //    否则它会在本函数返回时 drop——旧实现只有判据没有数据面。
+            let dp = state.lock().unwrap().data_plane.clone();
+            let punched_registered = if route == cr_nat::Route::Direct {
+                match dp {
+                    Some(dp) => match dp.attach_punched_socket(target, stream) {
+                        Ok(()) => true,
+                        Err(e) => {
+                            state.lock().unwrap().punch_route.record(None);
+                            return Json::obj(vec![
+                                ("ok", Json::b(false)),
+                                ("route", Json::s("relay-fallback")),
+                                ("reason", Json::s(format!("打洞成功但登记数据面失败: {e}"))),
+                                ("s6_status", Json::s("not_run")),
+                            ]);
+                        }
+                    },
+                    None => {
+                        state.lock().unwrap().punch_route.record(None);
+                        return Json::obj(vec![
+                            ("ok", Json::b(false)),
+                            ("route", Json::s("relay-fallback")),
+                            ("reason", Json::s("nat.punch_route 未创建数据面，无法登记 socket")),
+                            ("s6_status", Json::s("not_run")),
+                        ]);
+                    }
+                }
+            } else {
+                false
+            };
             state.lock().unwrap().punch_route.record(Some(route));
             Json::obj(vec![
-                ("ok", Json::b(route == cr_nat::Route::Direct)),
+                ("ok", Json::b(route == cr_nat::Route::Direct && punched_registered)),
                 ("route", Json::s(route.label())),
                 ("peer", Json::s(&peer_label)),
+                ("punched_socket_registered", Json::b(punched_registered)),
                 ("tcp_punch_established", Json::b(true)),
                 ("relay_data_plane", Json::s("tcp-carrier-implemented")),
                 ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-path-verified")),

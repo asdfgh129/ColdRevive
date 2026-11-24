@@ -1,0 +1,13 @@
+{
+  "recorded_at": "2026-11-24T11:12:34+08:00",
+  "targets": {
+    "221:19910": {
+      "reachable": false,
+      "error": "TimeoutError: timed out"
+    },
+    "222:19920": {
+      "reachable": false,
+      "error": "TimeoutError: timed out"
+    }
+  }
+}

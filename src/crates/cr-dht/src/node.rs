@@ -28,6 +28,8 @@ pub const MAX_DATAGRAM: usize = 1500;
 pub const MAX_PEERS_PER_KEY: usize = 64;
 /// token 长度。BEP 5 没规定；8 字节足够挡住随手构造的 announce。
 pub const TOKEN_LEN: usize = 8;
+/// 默认每个节点最多保存多少个 info_hash 的 peer 表（防止字符串 key 内存放大）。
+pub const MAX_KEYS: usize = 512;
 
 #[derive(Debug, Default)]
 pub struct DhtStats {
@@ -47,11 +49,19 @@ pub struct DhtNode {
     /// token 的密钥。只在内存里，重启即换 —— 旧 token 失效是正确行为。
     secret: [u8; 16],
     peers: Mutex<HashMap<[u8; ID_LEN], Vec<SocketAddr>>>,
+    /// peer key 的插入顺序，用于超过 max_keys 时淘汰最旧 key（HashMap 顺序不稳定）。
+    peer_keys: Mutex<Vec<[u8; ID_LEN]>>,
+    max_keys: usize,
     stats: Mutex<DhtStats>,
 }
 
 impl DhtNode {
     pub fn new(id: NodeId) -> Self {
+        Self::new_with_limits(id, MAX_KEYS)
+    }
+
+    /// 可配置 key 上限；0 被夹到 1，避免出现「配了 0 于是无限」的反直觉语义。
+    pub fn new_with_limits(id: NodeId, max_keys: usize) -> Self {
         let mut secret = [0u8; 16];
         // 复用 NodeId 的随机源即可：token 只需要「别人猜不到」，不需要长期机密。
         secret.copy_from_slice(&NodeId::random().as_bytes()[..16]);
@@ -60,6 +70,8 @@ impl DhtNode {
             table: Mutex::new(RoutingTable::new(id)),
             secret,
             peers: Mutex::new(HashMap::new()),
+            peer_keys: Mutex::new(Vec::new()),
+            max_keys: max_keys.max(1),
             stats: Mutex::new(DhtStats::default()),
         }
     }
@@ -83,6 +95,11 @@ impl DhtNode {
 
     pub fn table_len(&self) -> usize {
         self.table.lock().unwrap().len()
+    }
+
+    /// 当前 peer key 数（资源治理可观测）。
+    pub fn peer_key_count(&self) -> usize {
+        self.peer_keys.lock().unwrap().len()
     }
 
     pub fn contacts(&self) -> Vec<Contact> {
@@ -230,6 +247,18 @@ impl DhtNode {
                 let addr = SocketAddr::new(src.ip(), port);
                 {
                     let mut peers = self.peers.lock().unwrap();
+                    let mut keys = self.peer_keys.lock().unwrap();
+                    if !peers.contains_key(&ih) {
+                        while keys.len() >= self.max_keys {
+                            if let Some(old) = keys.first().copied() {
+                                keys.remove(0);
+                                peers.remove(&old);
+                            } else {
+                                break;
+                            }
+                        }
+                        keys.push(ih);
+                    }
                     let list = peers.entry(ih).or_default();
                     if !list.contains(&addr) {
                         if list.len() >= MAX_PEERS_PER_KEY {
@@ -587,6 +616,23 @@ mod tests {
         assert_eq!(stored.len(), MAX_PEERS_PER_KEY);
         assert!(stored.contains(&src), "新 peer 必须能进来");
         assert!(!stored.contains(&"112.5.60.4:1000".parse().unwrap()), "最旧的应被淘汰");
+    }
+
+    #[test]
+    fn peer_key_count_is_capped_and_evicts_oldest() {
+        let node = DhtNode::new_with_limits(NodeId::random(), 2);
+        let src: SocketAddr = "112.5.60.4:9100".parse().unwrap();
+        let token = node.token_for(src.ip());
+        let keys = [[0x11u8; ID_LEN], [0x22u8; ID_LEN], [0x33u8; ID_LEN]];
+        for (i, ih) in keys.iter().enumerate() {
+            let q = Query::announce_peer(
+                format!("t{i}").into_bytes(), NodeId::random(), *ih, 9100 + i as u16, token.clone(),
+            );
+            node.handle(&krpc::encode_query(&q), src).expect("应成功");
+        }
+        assert_eq!(node.peer_key_count(), 2, "key 总数必须硬封顶");
+        assert!(node.peers_for(&keys[0]).is_empty(), "最旧 key 应被淘汰");
+        assert_eq!(node.peers_for(&keys[2]).len(), 1);
     }
 
     #[test]

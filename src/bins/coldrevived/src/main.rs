@@ -240,9 +240,7 @@ fn main() {
                 std::process::exit(2);
             }
         }
-        match data_plane::DataPlane::new_with_carrier(
-            data_plane::DataPlane::carrier_from_config(&cfg)
-        ) {
+        match data_plane::DataPlane::new_from_config(&cfg) {
             Ok(dp) => Some(dp),
             Err(e) => {
                 eprintln!("[{node_id}] 数据面启动失败: {e}");
@@ -350,9 +348,12 @@ fn main() {
             let st = shared.lock().unwrap();
             st.seed_tasks.keys().filter_map(|h| dht_daemon::parse_infohash(h)).collect()
         };
-        if p1.dht_enabled {
-            dht_daemon::spawn(shared.clone(), p1.clone(), dht_hashes, me.bt_port);
-        }
+        // 句柄留到进程结束；退出作用域时 Drop 会置 stop，避免后台 DHT 线程悬挂。
+        let _dht_handle = if p1.dht_enabled {
+            dht_daemon::spawn(shared.clone(), p1.clone(), dht_hashes, me.bt_port)
+        } else {
+            None
+        };
         loop { thread::sleep(Duration::from_secs(3600)); }
     } else {
         let shared = Arc::new(Mutex::new(st));

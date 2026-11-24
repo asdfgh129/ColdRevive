@@ -63,6 +63,52 @@ pub const RTO_INIT: Duration = Duration::from_millis(200);
 pub const RTO_MAX: Duration = Duration::from_secs(5);
 /// 连续重复 ACK 达到此数触发快重传。
 pub const FAST_RETRANS_ACKS: u32 = 3;
+/// v2.4.116：拥塞控制的 RTO 下限（有 RTT 样本时不再固定 200 ms）。
+pub const RTO_MIN: Duration = Duration::from_millis(50);
+
+/// ADR-024 阶段 3：可选拥塞控制参数。
+///
+/// **默认全关**：阶段 1/2 的既有行为（固定 32 段窗口、RTO 指数退避、不 pacing）逐字节不变。
+/// 打开后发送窗口由 AIMD 控制：每收到一个推进 base 的 ACK 加性增长 `1/cwnd`，
+/// 每次丢包事件（快重传或 RTO）乘性减半且每个 RTT 最多减一次；RTO 由
+/// Jacobson–Karels 的 `srtt + 4*rttvar` 推导；pacing 把新段发送摊到整个 RTT。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CongestionConfig {
+    pub enabled: bool,
+    pub cwnd_init: u32,
+    pub cwnd_min: u32,
+    pub cwnd_max: u32,
+    /// 乘性减小系数（典型 0.5）。
+    pub beta: f64,
+    /// 是否对新段做速率平滑；重传永远立即发，不受 pacing 阻挡。
+    pub pacing: bool,
+}
+
+impl Default for CongestionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cwnd_init: WINDOW,
+            cwnd_min: 1,
+            cwnd_max: WINDOW,
+            beta: 0.5,
+            pacing: false,
+        }
+    }
+}
+
+/// 拥塞控制可观测快照（不作为任何跨公网公平性结论）。
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CcStats {
+    pub enabled: bool,
+    /// 拥塞窗口的 100 倍（避免浮点出现在 JSON 里）。
+    pub cwnd_x100: u64,
+    pub srtt_ms: u64,
+    pub rttvar_ms: u64,
+    pub loss_events: u64,
+    pub rtt_samples: u64,
+    pub paced_new_segments: u64,
+}
 
 // ---- u32 序列号环绕比较（经典 TCP 差值法；窗口 32 « 2^31，安全）----
 
@@ -180,6 +226,17 @@ pub struct StreamCore {
     rto: Duration,
     /// 快重传待办：base 段下一轮强制重发。
     fast_retransmit: bool,
+    // ---- 可选拥塞控制（默认关）----
+    cc: CongestionConfig,
+    cwnd: f64,
+    srtt: Option<Duration>,
+    rttvar: Duration,
+    /// 每个 RTT 最多减小一次 cwnd 的时间门。
+    last_loss_at: Option<Instant>,
+    loss_events: u64,
+    rtt_samples: u64,
+    next_send_at: Option<Instant>,
+    paced_new_segments: u64,
     // ---- 接收侧 ----
     /// 下一个期望收到的 app seq（累积确认值）。
     expected: u32,
@@ -217,6 +274,15 @@ impl Default for StreamCore {
 impl StreamCore {
     /// 用起始 app seq 构造。双端都从 0 开始即可（各自独立 seq 空间）。
     pub fn new(start_seq: u32) -> Self {
+        Self::with_cc(start_seq, CongestionConfig::default())
+    }
+
+    /// 带可选拥塞控制构造。参数先夹到合法范围，不让配置把窗口撑爆。
+    pub fn with_cc(start_seq: u32, cc: CongestionConfig) -> Self {
+        let cwnd_max = cc.cwnd_max.clamp(1, WINDOW);
+        let cwnd_min = cc.cwnd_min.clamp(1, cwnd_max);
+        let cwnd_init = cc.cwnd_init.clamp(cwnd_min, cwnd_max);
+        let cc = CongestionConfig { cwnd_min, cwnd_max, cwnd_init, beta: cc.beta.clamp(0.1, 0.9), ..cc };
         Self {
             next_seq: start_seq,
             base: start_seq,
@@ -225,6 +291,15 @@ impl StreamCore {
             last_ack: start_seq,
             rto: RTO_INIT,
             fast_retransmit: false,
+            cc,
+            cwnd: cwnd_init as f64,
+            srtt: None,
+            rttvar: Duration::ZERO,
+            last_loss_at: None,
+            loss_events: 0,
+            rtt_samples: 0,
+            next_send_at: None,
+            paced_new_segments: 0,
             expected: start_seq,
             incoming: BTreeMap::new(),
             peer_closed: false,
@@ -245,7 +320,12 @@ impl StreamCore {
         if data.is_empty() {
             return 0;
         }
-        let capacity = WINDOW as usize - self.inflight.len();
+        let window = if self.cc.enabled {
+            (self.cwnd as usize).max(1).min(WINDOW as usize)
+        } else {
+            WINDOW as usize
+        };
+        let capacity = window.saturating_sub(self.inflight.len());
         if capacity == 0 {
             return 0;
         }
@@ -326,24 +406,48 @@ impl StreamCore {
         }
     }
 
-    /// 处理 ACK（可能 piggyback 在 DATA/ACK/CLOSE 上）。
-    /// 只有 ack 真正推进 base 才重置 RTO / 清重复 ACK 计数；SACK 位图用于窗口内乱序确认。
+    /// 处理 ACK（可能 piggyback 在 DATA/ACK/CLOSE 上）。真实时钟版本。
     pub fn on_ack(&mut self, ack: u32, sack: u64) {
+        self.on_ack_at(ack, sack, Instant::now());
+    }
+
+    /// 虚拟时钟版本：单测/量具可精确注入时间，不依赖真实网络时序。
+    pub fn on_ack_at(&mut self, ack: u32, sack: u64, now: Instant) {
         self.ack_received += 1;
         // ACK 必须在 [base, next_seq] 内，否则是过期/伪造，忽略推进。
         if seq_ge(ack, self.base) && seq_le(ack, self.next_seq) {
             if seq_gt(ack, self.base) {
                 self.base = ack;
-                self.rto = RTO_INIT;
-                self.dup_acks = 0;
-                // 清掉已被累积确认的段。
-                while let Some(front) = self.inflight.front() {
-                    if seq_lt(front.seq, self.base) {
-                        self.inflight.pop_front();
-                    } else {
-                        break;
+                if self.cc.enabled {
+                    // 清掉已确认段并用它们的发送时刻采 RTT；只有真的发过的段才采样。
+                    while let Some(front) = self.inflight.front() {
+                        if seq_lt(front.seq, self.base) {
+                            if let Some(seg) = self.inflight.pop_front() {
+                                if let Some(t) = seg.sent_at {
+                                    if now >= t {
+                                        self.sample_rtt(now.duration_since(t));
+                                    }
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                    // AIMD 的 AI：每个推进 ACK 加 1/cwnd，封顶 cwnd_max。
+                    self.cwnd = (self.cwnd + 1.0 / self.cwnd.max(1.0))
+                        .min(self.cc.cwnd_max as f64);
+                    self.rto = self.derived_rto();
+                } else {
+                    self.rto = RTO_INIT;
+                    while let Some(front) = self.inflight.front() {
+                        if seq_lt(front.seq, self.base) {
+                            self.inflight.pop_front();
+                        } else {
+                            break;
+                        }
                     }
                 }
+                self.dup_acks = 0;
             } else if ack == self.last_ack && ack == self.base {
                 // 没有推进且和上次一样 → 重复 ACK。
                 self.dup_acks = self.dup_acks.saturating_add(1);
@@ -351,6 +455,7 @@ impl StreamCore {
                     self.fast_retransmit = true;
                     self.fast_retransmits += 1;
                     self.dup_acks = 0;
+                    self.note_loss(now);
                 }
             }
         }
@@ -374,6 +479,55 @@ impl StreamCore {
             } else {
                 break;
             }
+        }
+    }
+
+    /// Jacobson–Karels RTT 估计。只在实际发出过的段被确认时采样。
+    fn sample_rtt(&mut self, sample: Duration) {
+        self.rtt_samples += 1;
+        let s = self.srtt.unwrap_or(sample);
+        let srtt_us = s.as_micros() as f64;
+        let sample_us = sample.as_micros() as f64;
+        let rttvar_us = self.rttvar.as_micros() as f64;
+        self.srtt = Some(Duration::from_micros(((7.0 * srtt_us + sample_us) / 8.0) as u64));
+        self.rttvar = Duration::from_micros(
+            ((3.0 * rttvar_us + (srtt_us - sample_us).abs()) / 4.0) as u64,
+        );
+    }
+
+    fn derived_rto(&self) -> Duration {
+        match self.srtt {
+            Some(s) => (s + self.rttvar * 4).clamp(RTO_MIN, RTO_MAX),
+            None => RTO_INIT,
+        }
+    }
+
+    /// 丢包事件：乘性减小，同一 RTT 内不重复减小，避免一次超时把 cwnd 连砍数刀。
+    fn note_loss(&mut self, now: Instant) {
+        if !self.cc.enabled {
+            return;
+        }
+        self.loss_events += 1;
+        let rtt = self.srtt.unwrap_or(RTO_INIT);
+        let due = self.last_loss_at
+            .map(|t| now.duration_since(t) >= rtt)
+            .unwrap_or(true);
+        if due {
+            self.cwnd = (self.cwnd * self.cc.beta).max(self.cc.cwnd_min as f64);
+            self.last_loss_at = Some(now);
+        }
+    }
+
+    /// 拥塞控制快照（默认关闭时 cwnd=WINDOW、样本为 0）。
+    pub fn cc_stats(&self) -> CcStats {
+        CcStats {
+            enabled: self.cc.enabled,
+            cwnd_x100: (self.cwnd * 100.0) as u64,
+            srtt_ms: self.srtt.map(|d| d.as_millis() as u64).unwrap_or(0),
+            rttvar_ms: self.rttvar.as_millis() as u64,
+            loss_events: self.loss_events,
+            rtt_samples: self.rtt_samples,
+            paced_new_segments: self.paced_new_segments,
         }
     }
 
@@ -403,6 +557,7 @@ impl StreamCore {
                 seg.sent_at = Some(now);
                 seg.retries = seg.retries.saturating_add(1);
                 self.retransmits += 1;
+                // 丢失事件已在 on_ack_at 的第三次重复 ACK 处记过，这里不重复计数。
                 out.push(Segment::Data {
                     seq: seg.seq,
                     ack,
@@ -412,20 +567,60 @@ impl StreamCore {
             }
         }
 
+        // pacing 每轮最多放一个新段；重传不受 pacing 阻挡。关掉时行为与阶段 1/2 一致。
+        let derived_rto = if self.cc.enabled && self.srtt.is_some() {
+            self.derived_rto()
+        } else {
+            RTO_INIT
+        };
+        let mut new_emitted = false;
         for seg in self.inflight.iter_mut() {
             match seg.sent_at {
                 None => {
+                    if self.cc.enabled && self.cc.pacing {
+                        if let Some(t) = self.next_send_at {
+                            if now < t {
+                                continue;
+                            }
+                        }
+                        if new_emitted {
+                            continue;
+                        }
+                        let rtt = self.srtt.unwrap_or(Duration::from_millis(25));
+                        let rate = self.cwnd * DATA_PAYLOAD_MAX as f64
+                            / rtt.as_secs_f64().max(0.005);
+                        let gap = Duration::from_secs_f64(seg.body.len() as f64 / rate.max(1.0));
+                        self.next_send_at = Some(now + gap.min(Duration::from_millis(200)));
+                        self.paced_new_segments += 1;
+                        new_emitted = true;
+                    }
                     // 首发。
                     seg.sent_at = Some(now);
                     self.sent_segments += 1;
                     out.push(Segment::Data { seq: seg.seq, ack, sack, body: seg.body.clone() });
                 }
                 Some(t) if now.duration_since(t) >= self.rto => {
-                    // 超时重传：指数退避，但有上限。
+                    // 超时重传：RTT 派生 RTO ×2；无样本时沿用阶段 1/2 的指数退避。
                     seg.sent_at = Some(now);
                     seg.retries = seg.retries.saturating_add(1);
                     self.retransmits += 1;
-                    self.rto = (self.rto * 2).min(RTO_MAX);
+                    if self.cc.enabled {
+                        // 内联 note_loss：这里持有 inflight 的 iter_mut，不能借整个 self。
+                        self.loss_events += 1;
+                        let rtt = self.srtt.unwrap_or(RTO_INIT);
+                        let due = self.last_loss_at
+                            .map(|t| now.duration_since(t) >= rtt)
+                            .unwrap_or(true);
+                        if due {
+                            self.cwnd = (self.cwnd * self.cc.beta).max(self.cc.cwnd_min as f64);
+                            self.last_loss_at = Some(now);
+                        }
+                    }
+                    self.rto = if self.cc.enabled && self.srtt.is_some() {
+                        (derived_rto.max(self.rto * 2)).min(RTO_MAX)
+                    } else {
+                        (self.rto * 2).min(RTO_MAX)
+                    };
                     out.push(Segment::Data { seq: seg.seq, ack, sack, body: seg.body.clone() });
                 }
                 Some(_) => {}
@@ -486,6 +681,12 @@ struct StreamCounters {
     retransmits: AtomicU64,
     status_ignored: AtomicU64,
     sender_alive: AtomicBool,
+    cc_enabled: AtomicBool,
+    cc_cwnd_x100: AtomicU64,
+    cc_srtt_ms: AtomicU64,
+    cc_loss_events: AtomicU64,
+    cc_rtt_samples: AtomicU64,
+    cc_paced_new: AtomicU64,
     last_error: std::sync::Mutex<Option<String>>,
 }
 
@@ -547,8 +748,17 @@ const STREAM_POLL: Duration = Duration::from_millis(20);
 impl UdpRelayStream {
     /// 用已注册的 client 构造并启动泵。`peer` 是对端的**中继会话 id**（不是节点 id）。
     pub fn new(
+        client: crate::relay_udp::UdpRelayClient,
+        peer: [u8; NODE_ID_LEN],
+    ) -> Result<Self, String> {
+        Self::new_with_cc(client, peer, CongestionConfig::default())
+    }
+
+    /// opt-in 拥塞控制版本：`new` 的行为保持不变，只有显式传配置才启用 AIMD/pacing。
+    pub fn new_with_cc(
         mut client: crate::relay_udp::UdpRelayClient,
         peer: [u8; NODE_ID_LEN],
+        cc: CongestionConfig,
     ) -> Result<Self, String> {
         let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(STREAM_QUEUE);
         let (read_tx, read_rx) = mpsc::channel::<Option<Vec<u8>>>();
@@ -565,7 +775,7 @@ impl UdpRelayStream {
         let pump = thread::Builder::new()
             .name("cr-udp-relay-stream".into())
             .spawn(move || {
-                let mut core = StreamCore::new(0);
+                let mut core = StreamCore::with_cc(0, cc);
                 // peer 允许构造时为全 0（持有方收到 OPEN 前不知发起方 id）：
                 // 从第一个 DELIVER 的真实来源锁定，此后所有回包发往该 id。
                 let mut peer = peer;
@@ -604,6 +814,13 @@ impl UdpRelayStream {
                         }
                     }
                     c.retransmits.store(core.retransmits(), Ordering::Relaxed);
+                    let cc_s = core.cc_stats();
+                    c.cc_enabled.store(cc_s.enabled, Ordering::Relaxed);
+                    c.cc_cwnd_x100.store(cc_s.cwnd_x100, Ordering::Relaxed);
+                    c.cc_srtt_ms.store(cc_s.srtt_ms, Ordering::Relaxed);
+                    c.cc_loss_events.store(cc_s.loss_events, Ordering::Relaxed);
+                    c.cc_rtt_samples.store(cc_s.rtt_samples, Ordering::Relaxed);
+                    c.cc_paced_new.store(cc_s.paced_new_segments, Ordering::Relaxed);
 
                     // 3) 收对端帧：只认 DELIVER 里的 ACK / DATA；STATUS 忽略。
                     match client.recv_frame(STREAM_POLL) {
@@ -738,6 +955,21 @@ impl UdpRelayStream {
         *self.write.shared.peer.lock().unwrap()
     }
 
+    /// 拥塞控制快照（看板/量具用；不是跨公网公平性结论）。
+    pub fn cc_stats(&self) -> CcStats {
+        let c = &self.read.shared.counters;
+        let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        CcStats {
+            enabled: c.cc_enabled.load(Ordering::Relaxed),
+            cwnd_x100: g(&c.cc_cwnd_x100),
+            srtt_ms: g(&c.cc_srtt_ms),
+            rttvar_ms: 0,
+            loss_events: g(&c.cc_loss_events),
+            rtt_samples: g(&c.cc_rtt_samples),
+            paced_new_segments: g(&c.cc_paced_new),
+        }
+    }
+
     /// 读计数 / 写计数 / 重传 / 最后错误（可观测，证据用）。
     pub fn stats(&self) -> (u64, u64, u64, Option<String>) {
         let c = &self.read.shared.counters;
@@ -782,6 +1014,21 @@ impl UdpStreamRead {
 }
 
 impl UdpStreamWrite {
+    /// 写半边也能读 CC 快照（split 后看板仍可观测）。
+    pub fn cc_stats(&self) -> CcStats {
+        let c = &self.shared.counters;
+        let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        CcStats {
+            enabled: c.cc_enabled.load(Ordering::Relaxed),
+            cwnd_x100: g(&c.cc_cwnd_x100),
+            srtt_ms: g(&c.cc_srtt_ms),
+            rttvar_ms: 0,
+            loss_events: g(&c.cc_loss_events),
+            rtt_samples: g(&c.cc_rtt_samples),
+            paced_new_segments: g(&c.cc_paced_new),
+        }
+    }
+
     /// 关闭写半边：置标志让泵排空后发 CLOSE，并 drop 发送端。
     pub fn close_write(&mut self) {
         self.shared.write_closed.store(true, Ordering::Relaxed);
@@ -1005,6 +1252,101 @@ pub fn splice_stream_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cc_config() -> CongestionConfig {
+        CongestionConfig {
+            enabled: true,
+            cwnd_init: 4,
+            cwnd_min: 1,
+            cwnd_max: 16,
+            beta: 0.5,
+            pacing: false,
+        }
+    }
+
+    #[test]
+    fn cc_default_off_preserves_window_and_rto() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::new(0);
+        let wrote = core.write(&vec![7u8; DATA_PAYLOAD_MAX * 40]);
+        assert_eq!(wrote, DATA_PAYLOAD_MAX * WINDOW as usize);
+        assert_eq!(core.inflight_len(), WINDOW as usize);
+        assert_eq!(core.rto(), RTO_INIT);
+        let segs = core.take_transmissions(t0);
+        assert_eq!(segs.len(), WINDOW as usize);
+        core.on_ack_at(WINDOW, 0, t0 + Duration::from_secs(1));
+        assert_eq!(core.rto(), RTO_INIT, "关闭 CC 时 ACK 仍重置到固定 RTO_INIT");
+        assert_eq!(core.cc_stats().cwnd_x100, (WINDOW as u64) * 100);
+        assert_eq!(core.cc_stats().loss_events, 0);
+    }
+
+    #[test]
+    fn cc_aimd_increases_on_ack_and_halves_on_loss() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, cc_config());
+        let wrote = core.write(&vec![7u8; DATA_PAYLOAD_MAX * 8]);
+        assert_eq!(wrote, DATA_PAYLOAD_MAX * 4, "初始 cwnd=4 必须限制写入");
+        assert_eq!(core.take_transmissions(t0).len(), 4);
+
+        core.on_ack_at(4, 0, t0 + Duration::from_millis(40));
+        let s = core.cc_stats();
+        assert!(s.cwnd_x100 > 400, "ACK 推进必须加性增长: {s:?}");
+        assert_eq!(s.rtt_samples, 4, "四个已发送段都应贡献 RTT 样本");
+        assert!(s.srtt_ms > 0 && s.rttvar_ms == 0, "快照口径为整毫秒: {s:?}");
+
+        for _ in 0..FAST_RETRANS_ACKS {
+            core.on_ack_at(4, 0, t0 + Duration::from_millis(41));
+        }
+        let s = core.cc_stats();
+        assert_eq!(s.loss_events, 1, "三次重复 ACK 应记一次丢失事件");
+        assert!(s.cwnd_x100 <= 250, "丢失后必须乘性减小: {s:?}");
+        assert!(core.fast_retransmit, "快重传仍要发起，不能只改窗口");
+        assert!(core.rto() >= RTO_MIN && core.rto() <= RTO_MAX);
+    }
+
+    #[test]
+    fn cc_pacing_spreads_new_segments_but_not_retransmits() {
+        let t0 = Instant::now();
+        let cc = CongestionConfig { pacing: true, ..cc_config() };
+        let mut core = StreamCore::with_cc(0, cc);
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 8]);
+        assert_eq!(core.take_transmissions(t0).len(), 1, "pacing 首轮只放一个新段");
+        assert!(core.take_transmissions(t0 + Duration::from_millis(1)).is_empty());
+        assert_eq!(core.cc_stats().paced_new_segments, 1);
+        // 200 ms 恰好触发 seq=0 的超时重传，同时 pacing 放行一个新段；两件事都该发生。
+        let out = core.take_transmissions(t0 + Duration::from_millis(200));
+        assert!(out.iter().any(|s| matches!(s, Segment::Data { seq: 0, .. })));
+        assert_eq!(core.cc_stats().paced_new_segments, 2);
+
+        let out = core.take_transmissions(t0 + Duration::from_secs(2));
+        assert!(out.iter().any(|s| matches!(s, Segment::Data { seq: 0, .. })),
+            "超时重传必须立即发出，不能被 pacing 挡住");
+        assert!(core.retransmits() > 0);
+    }
+
+    #[test]
+    fn cc_loss_halves_at_most_once_per_rtt() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, cc_config());
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 8]);
+        core.take_transmissions(t0);
+        core.on_ack_at(4, 0, t0 + Duration::from_millis(40));
+        let before = core.cc_stats().cwnd_x100;
+        for _ in 0..FAST_RETRANS_ACKS {
+            core.on_ack_at(4, 0, t0 + Duration::from_millis(41));
+        }
+        let after_first = core.cc_stats().cwnd_x100;
+        assert_eq!(core.cc_stats().loss_events, 1);
+
+        // 同一个 RTT 内再丢一次只记事件，不再砍窗口。
+        core.fast_retransmit = false;
+        for _ in 0..FAST_RETRANS_ACKS {
+            core.on_ack_at(4, 0, t0 + Duration::from_millis(42));
+        }
+        assert_eq!(core.cc_stats().loss_events, 2);
+        assert_eq!(core.cc_stats().cwnd_x100, after_first);
+        assert!(after_first < before);
+    }
 
     fn seg_data(seq: u32, s: &str) -> Segment {
         Segment::Data { seq, ack: 0, sack: 0, body: s.as_bytes().to_vec() }

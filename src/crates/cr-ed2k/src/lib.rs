@@ -27,6 +27,8 @@ pub mod wire;
 // the upload pacing path is extended. `wire`/`kad`/`sha1` remain the single
 // audited source of truth and are still path-included.
 pub mod stack;
+/// FR-25：接收 stock aMule 的 `OP_COMPRESSEDPART(0x40)` 所需的 std-only zlib 解压。
+pub mod inflate;
 /// Honest codecs for the eD2k features whose wire format is either pinned in
 /// `docs/04-protocol/PROTO.md` (source exchange) or explicitly not verified in
 /// this repo (server login / credit / AICH). The latter return `Unsupported`

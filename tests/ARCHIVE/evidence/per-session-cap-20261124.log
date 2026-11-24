@@ -1,0 +1,9 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running unittests src\lib.rs (target\debug\deps\cr_nat-9c86f9ed92695f52.exe)
+
+running 2 tests
+test relay_udp::tests::per_session_cap_disabled_by_default ... ok
+test relay_udp::tests::per_session_cap_throttles_one_flow_not_others ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 199 filtered out; finished in 0.00s
+

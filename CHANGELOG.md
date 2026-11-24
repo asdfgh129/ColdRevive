@@ -1,3 +1,32 @@
+## [2.4.116] - 2026-11-24 — G2 欠账推进：拥塞语义、DHT 治理、打洞 handoff、FR-25 公网
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。**没有自动解禁，也不把组件级证据
+> 外推为 G2/S6 通过。**全量回归 **519 passed / 0 failed / 3 ignored**。
+
+- **可靠层拥塞语义（ADR-024 阶段 3，opt-in）**：`StreamCore` 增加 AIMD（ACK 加性增长、
+  每次丢失乘性减半且每 RTT 最多一次）、Jacobson–Karels RTT/RTO、可选 pacing；
+  `UdpLimits` 增加每会话字节桶（0=关），与全局桶叠加防止单流独占。
+  配置 `nat.udp_cc_*` 默认全关，中继 `--udp-per-session-rate/--udp-per-session-burst`，
+  `/health.data_plane` 暴露 `udp_cc_cwnd_x100/srtt_ms/loss_events/rtt_samples/paced_new`。
+  这只是**机制实现**：没有跨公网多流共享瓶颈与预注册公平阈值，仍不能说「公平性达标」。
+- **DHT 产品化治理**：`dht_daemon` 引入 stop 句柄、有界 `find_node` 发现（先越过不发 token
+  的引导节点）、每轮宣告预算与请求间隔、max_seeds/max_keys/RSS 软跳过；网络 I/O 移出
+  `NodeState` 锁；`/health.dht` 增加 `last_cycle_status/cycles/requests/discovered/resource_skipped`
+  且不再用历史 verified 永久覆盖本轮失败。`DhtNode` key 总数硬封顶并淘汰最旧 key。
+- **打洞 handoff 真接线**：`nat punch-route` 以前验完 socket 就 drop；现在 `Route::Direct`
+  时经 `DataPlane::attach_punched_socket` 登记进 SOCKS5 桥，`/health.data_plane` 分开报
+  `punched_registered` / `punched_alive`。回环测试经真 SOCKS5 CONNECT 完成 hello/world 往返。
+  公网双侧同时打开仍 **BLOCKED**：221/222 各 34 次 SYN 均被静默丢弃，19910/19920 无 TCP DNAT，
+  222 又是对称 NAT；symmetric 不可直连按既定口径结案。
+- **FR-25 公网组件级闭环**：222 → `112.5.60.4:4662` 从已共享 aMule 样本下载 262,144 B，
+  `hash_matches/content_matches=true`；随后 221 用我们的 `serve --compressed-parts` 暂占映射端口，
+  222 下载 9,736,192 B（>PARTSIZE），`hash_matches/content_matches/completed=true`。
+  过程中发现我们自己的下载端只认 `0x46`、无法解析 `0x40`，新增 std-only zlib inflate
+  （stored/fixed/dynamic + Adler-32 + 输出上限），修复后公网回环才通过。测试结束已恢复 aMule。
+- 所有失败、BLOCKED 与日志覆盖更正均登记 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`；
+  审计新增 §19，配置/测试文档同步。门禁仍需所有者书面复评，脚本不自动 pass。
+
 ## [2.4.115] - 2026-11-24 — FR-18 真实 Mainline DHT announce + 异机回查闭环
 
 > 无源码改动；门禁常量不变：`g2_claim=false`、`s6_status=not_run`、

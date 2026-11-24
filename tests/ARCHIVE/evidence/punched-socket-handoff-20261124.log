@@ -1,0 +1,11 @@
+   Compiling coldrevived v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevived)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.86s
+     Running unittests src\main.rs (target\debug\deps\coldrevived-d5ecf526f23e0e24.exe)
+
+running 1 test
+[data-plane] SOCKS5 桥就绪: socks5://127.0.0.1:64651（opt-in）
+[data-plane] 打洞直连 socket 已登记: peer=203.0.113.9:4662（is_s6_evidence=false）
+test data_plane::tests::punched_socket_registration_carries_real_bytes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 75 filtered out; finished in 0.00s
+

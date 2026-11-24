@@ -16,11 +16,11 @@
 
 | 项 | 状态 | 前置条件 |
 | :--- | :--- | :--- |
-| FR-25 第二个 aMule 上传端反向 A/B | **已执行并归档**：0x46 版 97.6% 停滞；同构 `OP_COMPRESSEDPART(0x40)` 后两轮 A/B 我们 daemon 与 stock 上传端都落地同一 md5（LAN PASS） | 见 `TEST-RUNS-2026-11-24.md` 与审计 §17.2；公网未测 |
+| FR-25 第二个 aMule 上传端反向 A/B | **已执行并归档**：0x46 版 97.6% 停滞；同构 `OP_COMPRESSEDPART(0x40)` 后两轮 A/B 我们 daemon 与 stock 上传端都落地同一 md5（LAN PASS） | 见 `TEST-RUNS-2026-11-24.md` 与审计 §17.2；公网 CLI 组件级闭环已于 v2.4.116 补齐，daemon 路径仍未测 |
 | FR-10 守护进程多样种 + cap 逐出 e2e | **已于 2026-11-24 重跑并归档**：P0 77/77，wake1 `evictions=0` → wake2 `evictions=1`，`seed_active<=cap=1` | 见 `TEST-RUNS-2026-11-24.md` 与 `evidence/p0-health-after-wake*-20261124.json` |
-| 公平性阈值 / 拥塞语义 | 只有量具原始计数，无阈值判定 | 多组公网丢包/时延梯度样本 + 阈值讨论 |
-| Mainline DHT 公共引导邻居发现 | **已闭环（2026-11-24）**：从 `dht.transmissionbt.com` 发现 `37.48.95.218:3691`（`token_len=4`），222 受控 announce + 221 独立 get_peers 回查到 `112.5.32.34:17200` | 见 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`；daemon 自动 DHT 仍未接线 |
-| TCP 打洞接 BT 数据面 | 原语通过，公网双侧 BLOCKED | 先解决公网双侧；symmetric 不可直连是正确结论 |
+| 公平性阈值 / 拥塞语义 | **机制已实现并测过**（AIMD/RTT/pacing + 每会话桶，单测 PASS）；仍无阈值判定，不能说公平性达标 | 共享真实瓶颈 + 竞争流 + 预注册 Jain/份额阈值 + 多轮原始样本 |
+| Mainline DHT 公共引导邻居发现 | **已闭环（2026-11-24）**：从 `dht.transmissionbt.com` 发现 `37.48.95.218:3691`（`token_len=4`），222 受控 announce + 221 独立 get_peers 回查到 `112.5.32.34:17200`；v2.4.116 daemon 已补治理与有界 find_node | 见 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`；daemon 自动加入仍缺公网可达率/NAT 矩阵证据 |
+| TCP 打洞接 BT 数据面 | 原语通过，handoff 已接线并回环验证；公网双侧 **BLOCKED**（2026-11-24 各 34 次 SYN 静默丢弃，19910/19920 无 TCP DNAT） | 需要所有者在 CPE 上真实建 endpoint-independent TCP DNAT；symmetric 不可直连是正确结论 |
 | G2 / S6 自动通过 | 机器常量固定 `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` | 只能由项目所有者书面判定 |
 
 ## C. 已补齐的可移植证据
@@ -31,6 +31,12 @@
 - FR-25 daemon 接线、跨分片与上传诊断 JSON：`tests/e2e/w25-daemon/reports/*.json`
   与 `run/diag-upload-frames-*.log` 已纳入版本控制；大体积 `.bin` 样本仍留本机。
 - FR-24 209 eMule 闭环：四份 2026-11-24 JSON 报告原本已入库，账本登记其哈希。
-- 全量 Rust 单测：2026-11-24 原始输出 `evidence/cargo-test-workspace-20261124.log`。
+- 全量 Rust 单测：2026-11-24 原始输出 `evidence/cargo-test-workspace-20261124.log`；
+  v2.4.116 最终 `evidence/workspace-test-20261124-v24116-final.log`（519 passed / 0 failed / 3 ignored）。
+- FR-25 公网 CLI 双向：`evidence/fr25-public-download-shared-20261124.log`、
+  `evidence/fr25-public-upload-{server,client}-final-20261124.log`；失败尝试同样在账本中。
+- 公网 TCP 打洞：`tests/e2e/w56/reports/public-tcp-punch-20261124.json` 与
+  `evidence/public-tcp-endpoint-reach-20261124.json`，判据为两侧 `ok && bytes_roundtrip`，
+  本次如实 BLOCKED。
 - FR-25 第二上传端反向 A/B：两臂报告、A 臂帧日志与 stock 上传端帧抓包均已入库；
   `stock-upload-capture-20261124085132.json` 那轮因复用文件无传输，明确不作为协议证据。

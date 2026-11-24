@@ -244,6 +244,13 @@ fn main() {
         if let Some(v) = opt("--udp-data-burst").and_then(|s| s.parse::<u64>().ok()) {
             ulim.data_burst_bytes = v.max(1);
         }
+        // v2.4.116：每会话字节上限（0=关闭），与全局桶叠加，防止一条流独占共享带宽。
+        if let Some(v) = opt("--udp-per-session-rate").and_then(|s| s.parse::<u64>().ok()) {
+            ulim.per_session_data_byte_rate = v;
+        }
+        if let Some(v) = opt("--udp-per-session-burst").and_then(|s| s.parse::<u64>().ok()) {
+            ulim.per_session_burst_bytes = v.max(1);
+        }
         let srv = match cr_nat::relay_udp::UdpRelayServer::bind(&addr) {
             Ok(s) => s.with_psk(psk).with_limits(ulim),
             Err(e) => {
@@ -261,9 +268,10 @@ fn main() {
         let h = srv.spawn();
         println!("RELAY_UDP_LISTEN={}", a);
         println!(
-            "RELAY_UDP_LIMITS=max_sessions:{},max_per_ip:{},idle:{}s,rate:{}/s,data_rate:{}/s,data_burst:{}",
+            "RELAY_UDP_LIMITS=max_sessions:{},max_per_ip:{},idle:{}s,rate:{}/s,data_rate:{}/s,data_burst:{},per_session_rate:{}/s,per_session_burst:{}",
             ulim.max_sessions, ulim.max_per_ip, ulim.idle_timeout.as_secs(), ulim.rate_pps,
-            ulim.data_byte_rate, ulim.data_burst_bytes
+            ulim.data_byte_rate, ulim.data_burst_bytes,
+            ulim.per_session_data_byte_rate, ulim.per_session_burst_bytes
         );
         println!(
             "[coldrevive-relay] UDP 承载监听 {}（每报文 HMAC，最大负载 {} 字节）",

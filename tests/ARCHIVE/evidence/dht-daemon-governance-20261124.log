@@ -1,0 +1,17 @@
+   Compiling cr-dht v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-dht)
+   Compiling cr-api v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-api)
+   Compiling coldrevived v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevived)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.37s
+     Running unittests src\main.rs (target\debug\deps\coldrevived-d5ecf526f23e0e24.exe)
+
+running 7 tests
+test dht_daemon::tests::run_config_follows_p1_limits ... ok
+test dht_daemon::tests::last_cycle_status_is_not_sticky ... ok
+test dht_daemon::tests::disabled_status_is_explicit_and_silent ... ok
+test p1_config::tests::dht_limits_default_and_reject_zero ... ok
+test dht_daemon::tests::unreachable_bootstrap_is_recorded_as_failure ... ok
+test dht_daemon::tests::loopback_cycle_announces_real_active_seed ... ok
+test dht_daemon::tests::cycle_budget_caps_announce_attempts ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.11s
+

@@ -20,6 +20,15 @@ pub struct P1Config {
     pub nat_gateway: Option<String>,
     pub dht_enabled: bool,
     pub dht_bootstrap: Vec<String>,
+    /// FR-18 资源治理（全部 opt-in 参数，缺省保持既有行为）。
+    pub dht_timeout_ms: u64,
+    pub dht_refresh_secs: u64,
+    pub dht_max_bootstraps: usize,
+    pub dht_max_seeds: usize,
+    pub dht_max_keys: usize,
+    pub dht_max_announces_per_cycle: usize,
+    pub dht_min_interval_ms: u64,
+    pub dht_rss_soft_skip_mb: u64,
 }
 
 impl Default for P1Config {
@@ -34,6 +43,14 @@ impl Default for P1Config {
             nat_gateway: None,
             dht_enabled: false,
             dht_bootstrap: Vec::new(),
+            dht_timeout_ms: 2000,
+            dht_refresh_secs: 600,
+            dht_max_bootstraps: 8,
+            dht_max_seeds: 50,
+            dht_max_keys: 512,
+            dht_max_announces_per_cycle: 16,
+            dht_min_interval_ms: 50,
+            dht_rss_soft_skip_mb: 0, // 0 = 不做 RSS 软跳过
         }
     }
 }
@@ -61,6 +78,14 @@ fn f64_in(j: Option<&Json>, key: &str, default: f64) -> f64 {
 fn u64_in(j: Option<&Json>, key: &str, default: u64) -> u64 {
     match j.and_then(|s| s.get(key)) {
         Some(Json::Num(n)) if n.is_finite() && *n >= 0.0 => *n as u64,
+        _ => default,
+    }
+}
+
+/// 资源上限不接受 0：0 通常意味着「配错了」，静默当成无限会让治理形同虚设。
+fn positive_u64_in(j: Option<&Json>, key: &str, default: u64) -> u64 {
+    match j.and_then(|s| s.get(key)) {
+        Some(Json::Num(n)) if n.is_finite() && *n >= 1.0 => *n as u64,
         _ => default,
     }
 }
@@ -99,6 +124,14 @@ impl P1Config {
             nat_gateway: str_in(nat, "gateway"),
             dht_enabled: bool_in(dht, "enabled", false),
             dht_bootstrap: bootstrap,
+            dht_timeout_ms: positive_u64_in(dht, "timeout_ms", 2000),
+            dht_refresh_secs: positive_u64_in(dht, "refresh_secs", 600),
+            dht_max_bootstraps: positive_u64_in(dht, "max_bootstraps", 8) as usize,
+            dht_max_seeds: positive_u64_in(dht, "max_seeds", 50) as usize,
+            dht_max_keys: positive_u64_in(dht, "max_keys", 512) as usize,
+            dht_max_announces_per_cycle: positive_u64_in(dht, "max_announces_per_cycle", 16) as usize,
+            dht_min_interval_ms: u64_in(dht, "min_interval_ms", 50),
+            dht_rss_soft_skip_mb: u64_in(dht, "rss_soft_skip_mb", 0),
         }
     }
 
@@ -146,6 +179,33 @@ mod tests {
         assert_eq!(p.nat_upnp_location.as_deref(), Some("http://1.2.3.4/d.xml"));
         assert!(p.dht_enabled);
         assert_eq!(p.dht_bootstrap, vec!["router.example:6881".to_string()]);
+    }
+
+    #[test]
+    fn dht_limits_default_and_reject_zero() {
+        let d = P1Config::from_json(&Json::Null);
+        assert_eq!(d.dht_timeout_ms, 2000);
+        assert_eq!(d.dht_max_bootstraps, 8);
+        assert_eq!(d.dht_max_seeds, 50);
+        assert_eq!(d.dht_max_keys, 512);
+        assert_eq!(d.dht_max_announces_per_cycle, 16);
+        assert_eq!(d.dht_min_interval_ms, 50);
+        assert_eq!(d.dht_rss_soft_skip_mb, 0);
+
+        let j = Json::parse(r#"{"dht":{
+            "timeout_ms": 500, "refresh_secs": 60, "max_bootstraps": 0,
+            "max_seeds": 3, "max_keys": 7, "max_announces_per_cycle": 2,
+            "min_interval_ms": 10, "rss_soft_skip_mb": 400
+        }}"#).unwrap();
+        let p = P1Config::from_json(&j);
+        assert_eq!(p.dht_timeout_ms, 500);
+        assert_eq!(p.dht_refresh_secs, 60);
+        assert_eq!(p.dht_max_bootstraps, 8, "0 是非法的，回落缺省而不是无限");
+        assert_eq!(p.dht_max_seeds, 3);
+        assert_eq!(p.dht_max_keys, 7);
+        assert_eq!(p.dht_max_announces_per_cycle, 2);
+        assert_eq!(p.dht_min_interval_ms, 10);
+        assert_eq!(p.dht_rss_soft_skip_mb, 400);
     }
 
     #[test]

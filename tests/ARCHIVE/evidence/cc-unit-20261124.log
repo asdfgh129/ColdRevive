@@ -1,0 +1,11 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.12s
+     Running unittests src\lib.rs (target\debug\deps\cr_nat-9c86f9ed92695f52.exe)
+
+running 4 tests
+test relay_udp_stream::tests::cc_aimd_increases_on_ack_and_halves_on_loss ... ok
+test relay_udp_stream::tests::cc_loss_halves_at_most_once_per_rtt ... ok
+test relay_udp_stream::tests::cc_pacing_spreads_new_segments_but_not_retransmits ... ok
+test relay_udp_stream::tests::cc_default_off_preserves_window_and_rto ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 195 filtered out; finished in 0.00s
+

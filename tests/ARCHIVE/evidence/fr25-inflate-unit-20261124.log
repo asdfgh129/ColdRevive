@@ -1,0 +1,24 @@
+   Compiling cr-ed2k v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-ed2k)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.36s
+     Running unittests src\lib.rs (target\debug\deps\cr_ed2k-b308a8e451f31973.exe)
+
+running 2 tests
+
+thread 'inflate::tests::rejects_corrupted_adler_and_oversized_output' (20992) panicked at src\crates\cr-ed2k\src\inflate.rs:313:9:
+assertion failed: inflate_zlib(&bad, 4096).unwrap_err().contains("Adler")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'inflate::tests::inflates_stored_fixed_and_dynamic_blocks' (1580) panicked at src\crates\cr-ed2k\src\inflate.rs:303:64:
+fixed: DEFLATE 回指越界或超过声明块长度
+test inflate::tests::rejects_corrupted_adler_and_oversized_output ... FAILED
+test inflate::tests::inflates_stored_fixed_and_dynamic_blocks ... FAILED
+
+failures:
+
+failures:
+    inflate::tests::inflates_stored_fixed_and_dynamic_blocks
+    inflate::tests::rejects_corrupted_adler_and_oversized_output
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 50 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p cr-ed2k --lib`

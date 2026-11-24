@@ -1,0 +1,9 @@
+   Compiling cr-dht v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-dht)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.31s
+     Running unittests src\lib.rs (target\debug\deps\cr_dht-e576600109d77931.exe)
+
+running 1 test
+test node::tests::peer_key_count_is_capped_and_evicts_oldest ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 41 filtered out; finished in 0.00s
+

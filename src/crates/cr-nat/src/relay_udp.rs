@@ -303,6 +303,10 @@ pub struct UdpLimits {
     pub data_byte_rate: u64,
     /// 数据字节令牌桶容量（允许的突发字节数），与 TCP `data_burst_bytes` 对齐。
     pub data_burst_bytes: u64,
+    /// v2.4.116：**每会话**数据字节速率上限（0=关闭，保持既有行为）。
+    /// 全局桶挡总带宽，这个桶挡单会话独占——两者都要过才算放行。
+    pub per_session_data_byte_rate: u64,
+    pub per_session_burst_bytes: u64,
 }
 
 impl Default for UdpLimits {
@@ -316,6 +320,8 @@ impl Default for UdpLimits {
             // 512 KiB/s ≈ 4 Mbps，突发 4 秒——与 TCP 侧 `Limits::default()` 完全一致。
             data_byte_rate: 512 * 1024,
             data_burst_bytes: 2 * 1024 * 1024,
+            per_session_data_byte_rate: 0,
+            per_session_burst_bytes: 0,
         }
     }
 }
@@ -334,8 +340,13 @@ struct ByteBucket {
 
 impl ByteBucket {
     fn new(limits: &UdpLimits) -> Self {
-        let rate = limits.data_byte_rate.max(1) as f64;
-        let burst = limits.data_burst_bytes.max(1) as f64;
+        Self::with_rate(limits.data_byte_rate, limits.data_burst_bytes)
+    }
+
+    /// 显式速率/突发构造。rate<=0 时仍按 1 B/s 建桶，但调用方应先判断开关。
+    fn with_rate(rate: u64, burst: u64) -> Self {
+        let rate = rate.max(1) as f64;
+        let burst = burst.max(1) as f64;
         Self { tokens: burst, rate, burst, last: Instant::now() }
     }
     fn try_take(&mut self, bytes: usize) -> bool {
@@ -382,6 +393,9 @@ pub struct UdpStatsInner {
     pub bandwidth_limited: AtomicU64,
     /// 被字节预算拒绝的 DATA 负载字节数（累计）。
     pub bandwidth_limited_bytes: AtomicU64,
+    /// 每会话上限单独拒绝的帧数/字节数（与全局带宽拒绝分开排障）。
+    pub per_session_limited: AtomicU64,
+    pub per_session_limited_bytes: AtomicU64,
     pub not_registered: AtomicU64,
     pub target_absent: AtomicU64,
     pub sessions_rejected: AtomicU64,
@@ -414,6 +428,8 @@ pub struct UdpRelayStats {
     pub data_bytes_out: u64,
     pub bandwidth_limited: u64,
     pub bandwidth_limited_bytes: u64,
+    pub per_session_limited: u64,
+    pub per_session_limited_bytes: u64,
     pub not_registered: u64,
     pub target_absent: u64,
     pub sessions_rejected: u64,
@@ -447,6 +463,8 @@ impl UdpStatsInner {
             data_bytes_out: g(&self.data_bytes_out),
             bandwidth_limited: g(&self.bandwidth_limited),
             bandwidth_limited_bytes: g(&self.bandwidth_limited_bytes),
+            per_session_limited: g(&self.per_session_limited),
+            per_session_limited_bytes: g(&self.per_session_limited_bytes),
             not_registered: g(&self.not_registered),
             target_absent: g(&self.target_absent),
             sessions_rejected: g(&self.sessions_rejected),
@@ -538,6 +556,8 @@ pub struct UdpRelayServer {
     seed: u64,
     /// 全局数据字节令牌桶（ADR-014 口径）。UDP DATA 帧按帧类型计费，信令绕过。
     data_budget: ByteBucket,
+    /// v2.4.116：每会话字节桶。0 速率开关关闭时不建桶，老配置零开销。
+    session_budgets: HashMap<[u8; NODE_ID_LEN], ByteBucket>,
 }
 
 /// 服务端句柄：可读计数、可停。
@@ -591,6 +611,7 @@ impl UdpRelayServer {
             last_reap: Instant::now(),
             seed: now_ms(),
             data_budget,
+            session_budgets: HashMap::new(),
         })
     }
 
@@ -602,6 +623,7 @@ impl UdpRelayServer {
     pub fn with_limits(mut self, limits: UdpLimits) -> Self {
         // 预算参数可能变了，令牌桶必须重建；否则 --data-rate 配了却不生效。
         self.data_budget = ByteBucket::new(&limits);
+        self.session_budgets.clear();
         self.limits = limits;
         self
     }
@@ -638,6 +660,7 @@ impl UdpRelayServer {
         for id in dead {
             if let Some(s) = self.sessions.remove(&id) {
                 self.by_addr.remove(&s.addr);
+                self.session_budgets.remove(&id);
                 self.stats.sessions_expired.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -760,6 +783,35 @@ impl UdpRelayServer {
                         encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
                     s.status_out.fetch_add(1, Ordering::Relaxed);
                     return self.emit(from, st);
+                }
+                // v2.4.116：每会话上限。默认 0 = 不建桶、不查表，老配置逐字节不变。
+                // 两个桶都放行才算真正转发；拒绝都带明确原因，不静默丢包。
+                if self.limits.per_session_data_byte_rate > 0 {
+                    use std::collections::hash_map::Entry;
+                    let n = dg.payload.len();
+                    let allowed = match self.session_budgets.entry(dg.session) {
+                        Entry::Occupied(mut e) => e.get_mut().try_take(n),
+                        Entry::Vacant(e) => e
+                            .insert(ByteBucket::with_rate(
+                                self.limits.per_session_data_byte_rate,
+                                self.limits.per_session_burst_bytes,
+                            ))
+                            .try_take(n),
+                    };
+                    if !allowed {
+                        s.per_session_limited.fetch_add(1, Ordering::Relaxed);
+                        s.per_session_limited_bytes
+                            .fetch_add(n as u64, Ordering::Relaxed);
+                        let seq = self.send_counter(&dg.session);
+                        let mut sp = Vec::with_capacity(9 + 64);
+                        sp.push(UdpStatus::BandwidthLimited.code());
+                        sp.extend_from_slice(&dg.seq.to_be_bytes());
+                        sp.extend_from_slice(b"per-session data bandwidth budget exhausted");
+                        let st =
+                            encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
+                        s.status_out.fetch_add(1, Ordering::Relaxed);
+                        return self.emit(from, st);
+                    }
                 }
                 s.data_bytes_in
                     .fetch_add(dg.payload.len() as u64, Ordering::Relaxed);
@@ -1406,6 +1458,68 @@ mod tests {
         assert!(stats.bandwidth_limited_bytes >= 24);
         assert!(stats.data_bytes_in >= 24);
         assert_eq!(stats.deliver_out, 1, "被拒的帧不得计入转发");
+        h.stop();
+    }
+
+    /// v2.4.116：单会话上限只掐一条流，另一条流仍可用；原因与全局预算分开计数。
+    #[test]
+    fn per_session_cap_throttles_one_flow_not_others() {
+        let psk = [0x1au8; PSK_LEN];
+        let limits = UdpLimits {
+            per_session_data_byte_rate: 1, // 低到补充可忽略
+            per_session_burst_bytes: 24,   // 只够一帧 16(id)+8(body)
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        let mut b = client(&h, Some(psk));
+        let mut c = client(&h, Some(psk));
+        a.hello(ids(0xea), Duration::from_millis(500)).unwrap();
+        b.hello(ids(0xeb), Duration::from_millis(500)).unwrap();
+        c.hello(ids(0xec), Duration::from_millis(500)).unwrap();
+
+        a.send_data(&ids(0xeb), b"12345678").unwrap();
+        let f = b.recv_frame(Duration::from_millis(500)).unwrap().expect("a 首帧应被转发");
+        assert_eq!(f.kind, UdpKind::Deliver);
+        let s = a.recv_frame(Duration::from_millis(500)).unwrap().unwrap();
+        assert_eq!(UdpStatus::from_code(s.payload[0]), Some(UdpStatus::Forwarded));
+
+        a.send_data(&ids(0xeb), b"12345678").unwrap();
+        let st = a.recv_frame(Duration::from_millis(500)).unwrap().expect("a 第二帧应被拒");
+        assert_eq!(UdpStatus::from_code(st.payload[0]), Some(UdpStatus::BandwidthLimited));
+        assert!(String::from_utf8_lossy(&st.payload[9..]).contains("per-session"));
+
+        c.send_data(&ids(0xeb), b"abcdefgh").unwrap();
+        let f = b.recv_frame(Duration::from_millis(500)).unwrap().expect("c 的首帧不应受 a 限制");
+        assert_eq!(f.kind, UdpKind::Deliver);
+        let s = c.recv_frame(Duration::from_millis(500)).unwrap().unwrap();
+        assert_eq!(UdpStatus::from_code(s.payload[0]), Some(UdpStatus::Forwarded));
+
+        let stats = h.stats();
+        assert_eq!(stats.per_session_limited, 1);
+        assert_eq!(stats.per_session_limited_bytes, 24);
+        assert_eq!(stats.bandwidth_limited, 0, "全局桶不该被这帧限制");
+        assert_eq!(stats.deliver_out, 2, "只有 a 的第二帧被拒");
+        h.stop();
+    }
+
+    /// 默认关闭：不建每会话桶，既有全局预算行为逐字节不变。
+    #[test]
+    fn per_session_cap_disabled_by_default() {
+        let psk = [0x1bu8; PSK_LEN];
+        let h = start(Some(psk), None);
+        let mut a = client(&h, Some(psk));
+        let mut b = client(&h, Some(psk));
+        a.hello(ids(0xed), Duration::from_millis(500)).unwrap();
+        b.hello(ids(0xee), Duration::from_millis(500)).unwrap();
+        for _ in 0..3 {
+            a.send_data(&ids(0xee), b"12345678").unwrap();
+            let f = b.recv_frame(Duration::from_millis(500)).unwrap().unwrap();
+            assert_eq!(f.kind, UdpKind::Deliver);
+            let s = a.recv_frame(Duration::from_millis(500)).unwrap().unwrap();
+            assert_eq!(UdpStatus::from_code(s.payload[0]), Some(UdpStatus::Forwarded));
+        }
+        assert_eq!(h.stats().per_session_limited, 0);
         h.stop();
     }
 

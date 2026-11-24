@@ -203,6 +203,18 @@ pub fn local_wake_host(bind: &str) -> String {
 
 /// 只在 `nat.enabled` 且配了中继（`nat.relay` 或 `nat.relay_udp`）时启动；
 /// 失败自动重连，不阻塞主线程。
+/// UDP 可靠层拥塞控制配置（opt-in，默认关闭）；两端同一份配置语义。
+fn udp_cc_from_config(cfg: &Config) -> cr_nat::relay_udp_stream::CongestionConfig {
+    cr_nat::relay_udp_stream::CongestionConfig {
+        enabled: cfg.nat_udp_cc_enabled,
+        cwnd_init: cfg.nat_udp_cc_cwnd_init,
+        cwnd_min: 1,
+        cwnd_max: 32,
+        beta: cfg.nat_udp_cc_beta_x100 as f64 / 100.0,
+        pacing: cfg.nat_udp_cc_pacing,
+    }
+}
+
 pub fn spawn(cfg: &Config) {
     if !cfg.nat_enabled {
         return;
@@ -281,11 +293,12 @@ pub fn spawn(cfg: &Config) {
         if let Some(target) = dial {
             let label = cfg.node_id.clone();
             let relay_list = relays_udp.clone();
+            let cc = udp_cc_from_config(cfg);
             thread::spawn(move || {
                 let mut start = 0usize;
                 loop {
                     let addr = &relay_list[start % relay_list.len()];
-                    if let Err(e) = serve_udp_data_plane(addr, &self_id, target) {
+                    if let Err(e) = serve_udp_data_plane(addr, &self_id, target, cc) {
                         eprintln!("[{}][relay-sub] UDP 数据面中断（{}）: {}，{}s 后重连",
                                   label, addr, e, RECONNECT_DELAY.as_secs());
                     }
@@ -567,6 +580,7 @@ fn serve_udp_data_plane(
     relay: &str,
     self_id: &[u8; NODE_ID_LEN],
     dial: SocketAddr,
+    cc: cr_nat::relay_udp_stream::CongestionConfig,
 ) -> Result<(), String> {
     use cr_nat::relay_udp_stream::{
         recv_open, send_opened, splice_stream_with as splice, UdpRelayStream,
@@ -583,7 +597,7 @@ fn serve_udp_data_plane(
 
     // 一条连接服务一条 OPEN 后 splice；splice 结束（或出错）后返回，由上层重连。
     // 这与 TCP 侧「持有者 splice 在独立线程」语义一致，只是 UDP 侧本线程专职数据面。
-    let mut stream = UdpRelayStream::new(client, [0u8; NODE_ID_LEN])?;
+    let mut stream = UdpRelayStream::new_with_cc(client, [0u8; NODE_ID_LEN], cc)?;
     let (channel, initiator) = recv_open(&mut stream)?;
     HOLDER.opens.fetch_add(1, Ordering::Relaxed);
     eprintln!("[relay-sub] UDP 数据面 OPEN: channel={channel} peer={}", cr_hash::hex(&initiator));

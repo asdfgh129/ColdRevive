@@ -106,6 +106,9 @@ cors_allowlist = []
 | nat | `utp` | `true` | BT 监听端口上是否同时开 µTP（BEP 29，UDP 同端口）。关掉只留 TCP；标准客户端默认先试 µTP，关了它们要先等回落。不影响任何帧格式。**公网入向另需 CPE 上的 UDP 映射**（与 `bt_external` 那条 TCP 规则并列）；是否真的绑上以 `netstat -ano -p UDP` 的 PID 为准 |
 | nat | `punch_route` | `false` | 启用「打洞优先 / 中继兜底」控制面（[ADR-022](../02-architecture/adr/ADR-022-punch-first-relay-fallback.md)）与 opt-in 的 TCP 中继 BT 数据面（[ADR-023](../02-architecture/adr/ADR-023-bt-over-relay.md)）。关闭时 `proxy_url` 保持 `None`、引擎行为不变；开启后建本地 SOCKS5 桥，唤醒成功即向对端发 `OPEN`、**收到 `OPENED` 才登记隧道**，失败如实回落直连。持有者侧同时在订阅连接上分流数据面帧、拨本地引擎并双向 splice，计数见 `/health.holder_data`（`opens/accepted/bytes_to_engine/bytes_from_engine`）；下载方侧 `/health.data_plane` 暴露 `proxy/served_registered/bytes_relayed/tunnels/tunnels_alive`（**`tunnels` 只是登记条数，泵死了它照样是 1；要看 `tunnels_alive`**）。CLI：`nat punch-route` / `nat punch-route-answer`。`punch_route.relay_data_plane` 写 `tcp-carrier-implemented`，UDP 承载另写 `relay_data_plane_udp="udp-carrier-implemented-rst-path-verified"`（[ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md)：W61 已在 `119.29.150.254` 那条入向 TCP 被注入 RST 的路径上复现双 NAT 1 MiB；`path` 只指该路径，不外推所有 RST 部署）。持有方 `/health.holder_data.carrier` 随 opt-in 承载标 `relay-sub-tcp` / `relay-sub-udp`，不再写死 TCP |
 | nat | `data_plane_carrier` | `tcp` | 中继 BT 数据面走哪种承载：`tcp`（默认，[ADR-023](../02-architecture/adr/ADR-023-bt-over-relay.md)）或 `udp`（[ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md)，需同时配 `relay_udp`）。非法值回落 `tcp` 并告警。选 `udp` 时发起方在 UDP 中继会话上做 OPEN/OPENED（**未收到 `OPENED` 不登记隧道**），持有方在 `relay_udp` 订阅之外另起数据面服务；`/health.data_plane` 增加 `carrier`、`udp_tunnels`、`udp_tunnels_alive`。默认 `tcp` 保证 W58/W59/W60 的结论不变 |
+| nat | `udp_cc_enabled` / `udp_cc_pacing` | `false` / `false` | ADR-024 阶段 3 的 UDP 可靠层拥塞控制，默认全关。开启后发送窗口从固定 32 段改为 AIMD（ACK 加性增长、丢失乘性减半且每 RTT 最多一次），RTO 由真实 RTT 推导；`pacing=true` 把新段摊到整个 RTT，重传仍立即发。非法整数在配置层报错，不静默夹到「以为开了」。`/health.data_plane.udp_cc_*` 是机制快照，**不是跨公网公平性结论** |
+| nat | `udp_cc_cwnd_init` / `udp_cc_beta_x100` | `4` / `50` | 初始拥塞窗口（1..32）与乘性减小系数（10..90，除以 100）。只在 `udp_cc_enabled=true` 时生效；越界直接报错 |
+| nat | `udp_per_session_rate` / `udp_per_session_burst` | `0` / `0`（关） | 这是**中继进程**的启动参数（`coldrevive-relay --udp-per-session-rate/--udp-per-session-burst`），不是 daemon 配置。每会话字节桶与全局 `data_byte_rate` 叠加：两者都放行才转发，拒绝返回带原因的 `BandwidthLimited` STATUS 并单独计数。默认 0 = 不建桶、老行为逐字节不变 |
 | nat | `relay_rendezvous` | 空 | **中继会合地址**（IPv4，只允许 RFC 5737 网段 `203.0.113.0/24`、`198.51.100.0/24`、`192.0.2.0/24`），必须与 `punch_route=true` 同时配置。没有入向映射时，持有者把它作为 `bt_external`（`kind=relay`）通告出去，对端引擎据此拨号、再由本机 SOCKS5 桥改道到中继隧道。它**不是端口映射**：不进 `is_explicit_port_mapping()`，也不作为公网入向证据；填真实 IP 或私网地址会在启动时直接报错（避免被 tracker/可达性声明读成「真的有公网入向」） |
 | engine | `dir` | `<workdir>/downloads` | 引擎下载目录 |
 | engine | `listen` | 空 | `ip:port`。留空且声明了任一 `*_external` 时，做种监听落 `0.0.0.0:bt_port`；否则绑 `bind` |
@@ -133,7 +136,10 @@ cors_allowlist = []
 | qos | `background_upload_ratio` | `0.02` | 通过 librqbit 的真实 `upload_bps` 硬上限落实；`cr-qos` 令牌桶负责记账与可观测。**比率按 `reference_link_bps` 折算，不是实测链路速率**，也不宣称 LEDBAT |
 | qos | `reference_link_bps` | `100000000` | 比率→字节的名义参考带宽；只用于换算，不代表本机实测带宽 |
 | nat | `auto_map` | `false` | 启动时调用真实 UPnP IGD / NAT-PMP 原语建映射；`/health.nat` 逐项记录成功/失败与外部地址。**路由器应答不等于入向可达证据** |
-| dht | `enabled` / `bootstrap` | `false` / 空 | 开启后对活跃种子执行真实 `get_peers → announce_peer → 回查`；`/health.dht` 报 verified/no-token/failed 与真实错误。公共节点不给 token 时如实记 `token_unavailable`，不宣称公网可发现 |
+| dht | `enabled` / `bootstrap` | `false` / 空 | 开启后先做有界 `find_node` 发现，再对活跃种子执行真实 `get_peers → announce_peer → 回查`；`/health.dht` 报 verified/no-token/failed 与真实错误。公共节点不给 token 时如实记 `token_unavailable`，不宣称公网可发现 |
+| dht | `timeout_ms` / `refresh_secs` / `min_interval_ms` | `2000` / `600` / `50` | 单请求超时、轮次间隔、请求间最小间隔。`min_interval_ms=0` 表示不刻意限速；前两项 0 或非整数回落缺省 |
+| dht | `max_bootstraps` / `max_seeds` / `max_keys` | `8` / `50` / `512` | 每轮引导节点与种子数上限；`max_keys` 是本地 DHT 节点保存 peer 表的 infohash 总数上限，超出淘汰最旧 key。0 回落缺省，不解释成「无限」 |
+| dht | `max_announces_per_cycle` / `rss_soft_skip_mb` | `16` / `0` | 每轮宣告尝试硬上限（每次内部仍走真实 token 门）与 RSS 软跳过阈值（MB，0=关）。读不到 RSS 时不参与判定，**绝不当 0** |
 
 `GET /openapi.json` 始终可用，列出真实 REST 路径与 JSON-RPC 方法（含 `mutating` 标记）。
 跨协议补源与信誉/激励仍是 `not_implemented` 状态接口，不返回伪造来源或分数。

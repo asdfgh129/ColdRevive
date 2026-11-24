@@ -637,3 +637,21 @@ FR-24 口径不变：历史 w51g 报告已证明真实公网闭环可达；要�
 目标临时 firewalled + 空索引解释。门禁常量与 `evidence_valid_for_pass=false` 不变，
 不把诊断探针外推为 G2 通过。目标配置见 `reports/public-209-target-profile-20261124.json`
 （不含凭据）。
+
+## 19. G2 欠账推进复核（2026-11-24，v2.4.116）
+
+**门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+`auto_pass=false`。本节只记录实现与组件级证据，不宣称任何门禁解禁。
+
+| 欠账 | 本轮结果 | 仍缺什么 |
+|---|---|---|
+| 可靠层拥塞语义 / 公平性 | `StreamCore` 实现 AIMD、RTT 派生 RTO 与 opt-in pacing；中继增加每会话字节桶；4+2 条确定性单测通过并归档 | **共享真实瓶颈 + 竞争流 + 预注册 Jain/份额阈值 + 多轮原始样本**；当前只有机制与虚拟时钟/回环量具，不能写「公平性达标」 |
+| DHT 产品化治理 | daemon 可 stop；有界 `find_node` 越过不发 token 的引导节点；每轮预算/间隔/key 上限/RSS 软跳过；`/health.dht` 非黏性；I/O 移出状态锁 | 自动 DHT 公网可达率、NAT 矩阵、资源长期运行数据；FR-18 证据仍不构成 S3/S6/G2 |
+| TCP 打洞接 BT 数据面 | 验完的 punched socket 已登记进 SOCKS5 桥，真 hello/world 往返；`/health.data_plane.punched_registered/punched_alive` 分开计数 | 公网双侧仍 BLOCKED：221/222 各 34 次 SYN 静默丢弃，19910/19920 无真实 TCP DNAT，222 对称 NAT。需要所有者提供 CPE TCP DNAT 后重测，不能改判据 |
+| FR-25 公网传输 | 222→221 公网下载 262,144 B 落地一致；221→222 跨分片 9,736,192 B（>PARTSIZE）落地一致。补上下载端 `0x40` zlib inflate（`cr-ed2k::inflate`）后才闭合 | 生产 daemon 路径的公网 A/B（本轮是 CLI 组件级）、非 `sources` 的自动发现仍 `not_implemented`；不作 G2 证据 |
+
+证据均按 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md` 登记，包括失败与 BLOCKED：
+`public-tcp-punch-20261124.json`（双侧 34 次 SYN）、
+`fr25-public-download-shared-20261124.log`、`fr25-public-upload-{server,client}-final-20261124.log`、
+`workspace-test-20261124-v24116-final.log`（519 passed / 0 failed / 3 ignored）。
+所有脚本仍禁止自动 pass；下一次 G2 复评必须是所有者基于真实证据的书面决定。

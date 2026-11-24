@@ -1,0 +1,2 @@
+[serve] 等待真实客户端连接 0.0.0.0:4662 file=ed2k://|file|w25-pub-upload-sample.bin|9736192|b2d43cf63dc096543ba43e1b8227220b|/
+{"schema":"coldrevive.fr25.live-upload/v1","peer":"112.5.32.34:2062","peer_hello":false,"queue_granted":false,"queue_rank_sent":"","blocks_sent":0,"bytes_sent":0,"idle_resends":0,"max_in_flight_bytes":0,"deferred_bytes":0,"request_gated_pacing":false,"error":"","log_tail":[]}

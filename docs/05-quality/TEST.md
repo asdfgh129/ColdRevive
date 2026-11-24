@@ -15,7 +15,11 @@ updated: 2026-11-20
 > 关键词检索 / W25+W25-live FR-25 与真实 aMule 双向互通）。均不改门禁口径：
 > `g2_claim=false`、`s6_status=not_run`；全量 `cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（2026-11-20）；2026-11-24 复跑
-> **499 passed / 0 failed / 3 ignored**（原始输出 `tests/ARCHIVE/evidence/cargo-test-workspace-20261124.log`）。
+> **499 passed / 0 failed / 3 ignored**（原始输出 `tests/ARCHIVE/evidence/cargo-test-workspace-20261124.log`）；
+> v2.4.116 再复跑 **519 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/workspace-test-20261124-v24116-final.log`）。
+> v2.4.116 新增判据：拥塞控制虚拟时钟 4 项、中继每会话上限 2 项、DHT 治理 7 项、
+> `DhtNode` key 上限 1 项、打洞 socket handoff 1 项、zlib inflate 2 项；FR-25 公网
+> 双向传输与公网 TCP 打洞 BLOCKED 的判据/证据见 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
 > 每次测试的过程与结果必须按 `tests/ARCHIVE/README.md` 归档。
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 

@@ -176,6 +176,50 @@ pub struct DownloadResult {
 /// Standard eD2k download handshake and block transfer against any conforming
 /// uploader. `expected` supplies the file hash (from the eD2k link / KAD
 /// keyword entry) so every returned block and the final content can be checked.
+/// 把一段已经解析/解压出来的字节落进缓冲区并推进请求窗口。
+/// `OP_SENDINGPART(0x46)` 与 `OP_COMPRESSEDPART(0x40)` 共用这段判据，
+/// 避免压缩帧只走一半逻辑（v2.4.116 公网实测踩到）。
+fn land_part(
+    link: &mut Link,
+    hash: &Hash16,
+    start: u32,
+    end: u32,
+    data: &[u8],
+    buffer: &mut Vec<u8>,
+    received: &mut Vec<(u32, u32)>,
+    in_flight: &mut Vec<(u32, u32)>,
+    pending: &mut Vec<(u32, u32)>,
+    out: &mut DownloadResult,
+    expected_data: &[u8],
+) -> Result<(), String> {
+    let s = start as usize;
+    let e = end as usize;
+    if e > buffer.len() || e <= s || e - s != data.len() {
+        return Err(format!("part range {start}..{end} invalid for {} bytes", buffer.len()));
+    }
+    buffer[s..e].copy_from_slice(data);
+    out.bytes_received += data.len();
+    out.blocks_received += 1;
+    // aMule 会把一个 184320 的请求拆成多条 10240 字节回帧，必须按区间覆盖清 in_flight。
+    merge_interval(received, start, end);
+    let done = |r: &(u32, u32)| covered_by(received, r.0, r.1);
+    in_flight.retain(|r| !done(r));
+    pending.retain(|r| !done(r));
+    if covered_by(received, 0, buffer.len() as u32) {
+        out.data = buffer.clone();
+        out.hash_matches = ed2k_hash(buffer) == *hash;
+        out.content_matches = buffer.as_slice() == expected_data;
+        link.send_frame(&w::end_of_download(hash))?;
+        out.completed = out.hash_matches && out.content_matches;
+        if !out.completed {
+            return Err("downloaded bytes failed ed2k_hash / content check".into());
+        }
+    } else if in_flight.is_empty() {
+        send_next_batch(link, pending, in_flight, hash)?;
+    }
+    Ok(())
+}
+
 pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, timeout: Duration) -> DownloadResult {
     let mut out = DownloadResult::default();
     let deadline = Instant::now() + timeout;
@@ -276,36 +320,36 @@ pub fn download(stream: TcpStream, expected: &SharedFile, our_hello: &Hello, tim
                     if h != hash {
                         return Err("SENDINGPART carried a different fileID".into());
                     }
-                    let s = start as usize;
-                    let e = end as usize;
-                    if e > buffer.len() || e - s != data.len() {
-                        return Err(format!("SENDINGPART range {start}..{end} invalid for {} bytes", buffer.len()));
-                    }
-                    buffer[s..e].copy_from_slice(&data);
-                    out.bytes_received += data.len();
-                    out.blocks_received += 1;
                     last_progress = Instant::now();
-                    // 真实 aMule 会把一个 184320 的请求拆成多条 10240 字节的
-                    // SENDINGPART 送回（实测 `len=10264 range=0..10240`×18）。
-                    // 覆盖判定必须是「区间 r 已被已收区间包含」，写成
-                    // `r.0 >= start && r.1 <= end` 会把方向弄反，碎片永远清不掉
-                    // in_flight，于是 4s 后重发同一批请求、对端最终断开。
-                    merge_interval(&mut received, start, end);
-                    let done = |r: &(u32, u32)| covered_by(&received, r.0, r.1);
-                    in_flight.retain(|r| !done(r));
-                    pending.retain(|r| !done(r));
-                    if covered_by(&received, 0, buffer.len() as u32) {
-                        out.data = buffer.clone();
-                        out.hash_matches = ed2k_hash(&buffer) == hash;
-                        out.content_matches = buffer == *expected.data;
-                        link.send_frame(&w::end_of_download(&hash))?;
-                        out.completed = out.hash_matches && out.content_matches;
-                        if !out.completed {
-                            return Err("downloaded bytes failed ed2k_hash / content check".into());
-                        }
-                    } else if in_flight.is_empty() {
-                        send_next_batch(&mut link, &mut pending, &mut in_flight, &hash)?;
+                    land_part(&mut link, &hash, start, end, &data, &mut buffer,
+                              &mut received, &mut in_flight, &mut pending, &mut out,
+                              &expected.data)?;
+                }
+                w::op::COMPRESSEDPART => {
+                    // stock aMule / 我们的 `--compressed-parts` 上传端：
+                    // hash(16) | start(u32 LE) | compressed_len(u32 LE) | zlib。
+                    let p = &packet.payload;
+                    if p.len() < 24 {
+                        return Err("COMPRESSEDPART 太短".into());
                     }
+                    let mut h = [0u8; 16];
+                    h.copy_from_slice(&p[..16]);
+                    if h != hash {
+                        return Err("COMPRESSEDPART carried a different fileID".into());
+                    }
+                    let start = u32::from_le_bytes([p[16], p[17], p[18], p[19]]) as usize;
+                    let clen = u32::from_le_bytes([p[20], p[21], p[22], p[23]]) as usize;
+                    if start > buffer.len() || p.len() < 24 + clen {
+                        return Err("COMPRESSEDPART 长度/起点非法".into());
+                    }
+                    let data = crate::inflate::inflate_zlib(
+                        &p[24..24 + clen], buffer.len() - start,
+                    )?;
+                    last_progress = Instant::now();
+                    land_part(&mut link, &hash, start as u32,
+                              (start + data.len()) as u32, &data, &mut buffer,
+                              &mut received, &mut in_flight, &mut pending, &mut out,
+                              &expected.data)?;
                 }
                 w::op::FILEREQANSNOFIL => return Err("peer does not have the file (OP_FILEREQANSNOFIL)".into()),
                 w::op::CANCELTRANSFER => return Err("peer cancelled the transfer".into()),

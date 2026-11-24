@@ -15,7 +15,9 @@ use cr_bridge::Bridge;
 use cr_nat::relay::{RelayClient, NODE_ID_LEN};
 use cr_nat::relay_tunnel::{derive_session_id, RelayTunnel, RelayTunnelSet, OPEN_TIMEOUT};
 use cr_nat::relay_udp::UdpRelayClient;
-use cr_nat::relay_udp_stream::{send_open_and_wait as udp_send_open_and_wait, UdpRelayStream};
+use cr_nat::relay_udp_stream::{
+    send_open_and_wait as udp_send_open_and_wait, CcStats, CongestionConfig, UdpRelayStream,
+};
 use std::collections::HashMap;
 use std::io::{ErrorKind, Write};
 use std::net::SocketAddr;
@@ -25,7 +27,7 @@ use std::thread;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream as TokioTcpStream};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const CHANNEL_QUEUE: usize = 64;
@@ -42,6 +44,12 @@ pub struct DataPlane {
     udp_tunnels: Mutex<HashMap<u32, Arc<std::sync::atomic::AtomicBool>>>,
     /// 本数据面实际使用的承载（"relay-tcp" / "relay-udp"）。
     carrier: &'static str,
+    /// ADR-024 阶段 3：UDP 可靠层拥塞控制配置（默认关闭）。
+    cc: CongestionConfig,
+    /// 最近一次 UDP 流泵的 CC 快照（看板口径，不跨流汇总）。
+    cc_last: Arc<Mutex<CcStats>>,
+    /// ADR-021/022：打洞成功后真正登记进桥的 socket（登记数 ≠ 泵还活着）。
+    punched: Mutex<HashMap<SocketAddr, Arc<AtomicBool>>>,
 }
 
 impl DataPlane {
@@ -59,8 +67,28 @@ impl DataPlane {
         }
     }
 
+    /// 从配置创建：承载与 UDP 拥塞控制都遵循 opt-in，老配置逐字节不变。
+    pub fn new_from_config(cfg: &cr_core::Config) -> Result<Arc<Self>, String> {
+        let cc = CongestionConfig {
+            enabled: cfg.nat_udp_cc_enabled,
+            cwnd_init: cfg.nat_udp_cc_cwnd_init,
+            cwnd_min: 1,
+            cwnd_max: 32,
+            beta: cfg.nat_udp_cc_beta_x100 as f64 / 100.0,
+            pacing: cfg.nat_udp_cc_pacing,
+        };
+        Self::new_with_carrier_cc(Self::carrier_from_config(cfg), cc)
+    }
+
     /// 创建本地桥，指定数据面承载（`relay-tcp` / `relay-udp`，ADR-024 阶段 2 opt-in）。
     pub fn new_with_carrier(carrier: &'static str) -> Result<Arc<Self>, String> {
+        Self::new_with_carrier_cc(carrier, CongestionConfig::default())
+    }
+
+    fn new_with_carrier_cc(
+        carrier: &'static str,
+        cc: CongestionConfig,
+    ) -> Result<Arc<Self>, String> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("cr-data-plane")
@@ -86,6 +114,9 @@ impl DataPlane {
             tunnels: Mutex::new(HashMap::new()),
             udp_tunnels: Mutex::new(HashMap::new()),
             carrier,
+            cc,
+            cc_last: Arc::new(Mutex::new(CcStats::default())),
+            punched: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -159,8 +190,9 @@ impl DataPlane {
         client
             .hello(dp_id, CONNECT_TIMEOUT)
             .map_err(|e| format!("UDP 数据面注册中继失败: {e}"))?;
-        let mut stream = UdpRelayStream::new(client, peer_dp)?;
+        let mut stream = UdpRelayStream::new_with_cc(client, peer_dp, self.cc)?;
         udp_send_open_and_wait(&mut stream, channel, &dp_id)?;
+        *self.cc_last.lock().unwrap() = stream.cc_stats();
 
         let (bridge_side, stream_side) = tokio::io::duplex(CHANNEL_QUEUE * 1024);
         self.bridge
@@ -168,7 +200,12 @@ impl DataPlane {
             .map_err(|e| format!("登记 UDP 中继隧道失败: {e}"))?;
 
         let alive = Arc::new(AtomicBool::new(true));
-        if let Err(e) = spawn_udp_stream_pump(stream_side, stream, alive.clone()) {
+        if let Err(e) = spawn_udp_stream_pump(
+            stream_side,
+            stream,
+            alive.clone(),
+            self.cc_last.clone(),
+        ) {
             self.udp_tunnels.lock().unwrap().remove(&channel);
             return Err(e);
         }
@@ -177,6 +214,47 @@ impl DataPlane {
             "[data-plane] UDP 中继隧道已确认并登记: channel={channel} peer={advertised_peer} \
              relay={relay_addr} session={}",
             cr_hash::hex(&dp_id)
+        );
+        Ok(())
+    }
+
+    /// ADR-021/022：把**已经通过 poll(POLLOUT)+SO_ERROR 与 nonce 握手验证**的直连
+    /// socket 登记进本地 SOCKS5 桥。此前 `nat punch-route` 验完就 drop，等于只做了判据
+    /// 没接数据面；这里补上真正的 handoff。未登记的 socket 不会被引擎用到。
+    pub fn attach_punched_socket(
+        &self,
+        advertised_peer: SocketAddr,
+        stream: std::net::TcpStream,
+    ) -> Result<(), String> {
+        stream.set_nonblocking(false)
+            .map_err(|e| format!("punched socket 设阻塞失败: {e}"))?;
+        // `from_std` 必须在 runtime 上下文里调用；CLI/控制面不保证调用方已经在 tokio 中。
+        let socket = {
+            let _guard = self.runtime.enter();
+            TokioTcpStream::from_std(stream)
+                .map_err(|e| format!("punched socket 接入 runtime 失败: {e}"))?
+        };
+        let (bridge_side, socket_side) = tokio::io::duplex(CHANNEL_QUEUE * 1024);
+        self.bridge
+            .register_tunnel(advertised_peer, bridge_side)
+            .map_err(|e| format!("登记打洞 socket 失败: {e}"))?;
+
+        let alive = Arc::new(AtomicBool::new(true));
+        let (mut from_bridge, mut to_bridge) = tokio::io::split(socket_side);
+        let (mut from_peer, mut to_peer) = tokio::io::split(socket);
+        let a1 = alive.clone();
+        self.runtime.spawn(async move {
+            let _ = tokio::io::copy(&mut from_bridge, &mut to_peer).await;
+            a1.store(false, Ordering::Relaxed);
+        });
+        let a2 = alive.clone();
+        self.runtime.spawn(async move {
+            let _ = tokio::io::copy(&mut from_peer, &mut to_bridge).await;
+            a2.store(false, Ordering::Relaxed);
+        });
+        self.punched.lock().unwrap().insert(advertised_peer, alive);
+        println!(
+            "[data-plane] 打洞直连 socket 已登记: peer={advertised_peer}（is_s6_evidence=false）"
         );
         Ok(())
     }
@@ -193,6 +271,12 @@ impl DataPlane {
             .filter(|a| a.load(Ordering::Relaxed)).count();
         let udp_total = u.len();
         drop(u);
+        let cc = *self.cc_last.lock().unwrap();
+        let p = self.punched.lock().unwrap();
+        let punched_total = p.len();
+        let punched_alive = p.values()
+            .filter(|a| a.load(Ordering::Relaxed)).count();
+        drop(p);
         cr_core::Json::obj(vec![
             ("enabled", cr_core::Json::b(true)),
             ("proxy", cr_core::Json::s(&self.proxy_url)),
@@ -206,6 +290,16 @@ impl DataPlane {
             // 分开列以免把「登记」误读成「活着」）。
             ("udp_tunnels", cr_core::Json::n(udp_total as f64)),
             ("udp_tunnels_alive", cr_core::Json::n(udp_alive as f64)),
+            ("punched_registered", cr_core::Json::n(punched_total as f64)),
+            ("punched_alive", cr_core::Json::n(punched_alive as f64)),
+            // ADR-024 阶段 3：机制可观测。这里只是本进程最近一条 UDP 流的快照，
+            // 不是跨公网公平性结论，也不参与任何 pass 判定。
+            ("udp_cc_enabled", cr_core::Json::b(cc.enabled)),
+            ("udp_cc_cwnd_x100", cr_core::Json::n(cc.cwnd_x100 as f64)),
+            ("udp_cc_srtt_ms", cr_core::Json::n(cc.srtt_ms as f64)),
+            ("udp_cc_loss_events", cr_core::Json::n(cc.loss_events as f64)),
+            ("udp_cc_rtt_samples", cr_core::Json::n(cc.rtt_samples as f64)),
+            ("udp_cc_paced_new", cr_core::Json::n(cc.paced_new_segments as f64)),
         ])
     }
 }
@@ -219,11 +313,13 @@ fn spawn_udp_stream_pump(
     duplex: DuplexStream,
     stream: UdpRelayStream,
     alive: Arc<AtomicBool>,
+    cc_last: Arc<Mutex<CcStats>>,
 ) -> Result<(), String> {
     let (read, write) = stream.split();
     let (mut duplex_read, mut duplex_write) = tokio::io::split(duplex);
 
     let a1 = alive.clone();
+    let cc1 = cc_last.clone();
     thread::Builder::new().name("cr-udp-dp-to-stream".into()).spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         rt.block_on(async move {
@@ -235,6 +331,7 @@ fn spawn_udp_stream_pump(
                     Ok(n) => {
                         if std::io::Write::write_all(&mut wr, &buf[..n]).is_err() { break; }
                         let _ = std::io::Write::flush(&mut wr);
+                        *cc1.lock().unwrap() = wr.cc_stats();
                     }
                 }
             }
@@ -418,5 +515,60 @@ mod tests {
         drop(dp);
         holder.join().unwrap();
         handle.stop();
+    }
+
+    /// ADR-021/022：打洞 socket 必须经过本地 SOCKS5 桥真的把字节送到引擎侧。
+    /// 只断言 `/health.punched_registered` 会重犯「登记数不是活着数」的错。
+    #[test]
+    fn punched_socket_registration_carries_real_bytes() {
+        use std::io::{Read as _, Write as _};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let listener_addr = listener.local_addr().unwrap();
+        let peer_thread = std::thread::spawn(move || {
+            let (mut peer, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 5];
+            peer.read_exact(&mut buf).unwrap();
+            assert_eq!(&buf, b"hello");
+            peer.write_all(b"world").unwrap();
+            peer.flush().unwrap();
+        });
+
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "203.0.113.9:4662".parse().unwrap();
+        let socket = std::net::TcpStream::connect(listener_addr).unwrap();
+        dp.attach_punched_socket(advertised, socket).unwrap();
+        let j = dp.json();
+        assert_eq!(j.get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
+        assert_eq!(j.get("punched_alive").and_then(cr_core::Json::as_i64), Some(1));
+
+        let proxy: SocketAddr = dp.proxy_url()
+            .trim_start_matches("socks5://").parse().unwrap();
+        let mut client = std::net::TcpStream::connect(proxy).unwrap();
+        client.write_all(&[0x05, 0x01, 0x00]).unwrap();
+        let mut neg = [0u8; 2];
+        client.read_exact(&mut neg).unwrap();
+        assert_eq!(neg, [0x05, 0x00], "SOCKS5 协商必须成功");
+        let ip = match advertised.ip() {
+            std::net::IpAddr::V4(v) => v.octets().to_vec(),
+            std::net::IpAddr::V6(_) => panic!("测试用 IPv4 文档地址"),
+        };
+        let mut req = vec![0x05, 0x01, 0x00, 0x01];
+        req.extend_from_slice(&ip);
+        req.extend_from_slice(&advertised.port().to_be_bytes());
+        client.write_all(&req).unwrap();
+        let mut reply = [0u8; 10];
+        client.read_exact(&mut reply).unwrap();
+        assert_eq!(reply[1], 0x00, "已登记地址必须 CONNECT 成功");
+
+        client.write_all(b"hello").unwrap();
+        let mut echo = [0u8; 5];
+        client.read_exact(&mut echo).unwrap();
+        assert_eq!(&echo, b"world", "打洞 socket 必须真实承载双向字节");
+
+        // 对端回完 world 就关闭，copy 任务随即结束；此时 alive=0 是正确收尾，不是失败。
+        let j = dp.json();
+        assert_eq!(j.get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
+        peer_thread.join().unwrap();
     }
 }

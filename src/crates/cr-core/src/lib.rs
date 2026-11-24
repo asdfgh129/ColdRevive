@@ -341,6 +341,12 @@ pub struct Config {
     /// 保证 W58/W59/W60 既有结论与默认行为逐字节不变（opt-in 硬约束）。
     /// UDP 承载用于「中继入向 TCP 被掐、UDP 可用」的部署；需要同时配 `nat.relay_udp`。
     pub nat_data_plane_carrier: String,
+    /// v2.4.116：UDP 可靠层拥塞控制（opt-in，默认全关）。cwnd 初值/β/pacing
+    /// 只在 `udp_cc_enabled=true` 时生效；字段口径为机读整数，避免 JSON 浮点歧义。
+    pub nat_udp_cc_enabled: bool,
+    pub nat_udp_cc_cwnd_init: u32,
+    pub nat_udp_cc_beta_x100: u32,
+    pub nat_udp_cc_pacing: bool,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
@@ -697,6 +703,23 @@ impl Config {
             };
             Ok(if n == 0 { None } else { Some(n) })
         };
+        // v2.4.116 UDP 可靠层拥塞控制：缺省关闭；参数非法直接报错，不静默夹到「以为开了」。
+        // 复用 opt_num（0 = 未配置），所以 cwnd_init / beta 没有「0 合法」的歧义。
+        let nat_udp_cc_enabled = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "udp_cc_enabled"))
+            .and_then(|(_, v)| v.as_bool())
+            .unwrap_or(false);
+        let nat_udp_cc_pacing = nat
+            .and_then(|o| o.iter().find(|(n, _)| n == "udp_cc_pacing"))
+            .and_then(|(_, v)| v.as_bool())
+            .unwrap_or(false);
+        let nat_udp_cc_cwnd_init = opt_num("nat", "udp_cc_cwnd_init")?
+            .map(|n| n.min(32) as u32).unwrap_or(4);
+        let nat_udp_cc_beta_x100 = match opt_num("nat", "udp_cc_beta_x100")? {
+            None => 50,
+            Some(n) if (10..=90).contains(&n) => n as u32,
+            Some(n) => return Err(format!("nat.udp_cc_beta_x100 必须在 10..=90，当前 {n}")),
+        };
         let api_rate_per_sec = opt_num("api", "rate_per_sec")?
             .map(|v| u32::try_from(v).map_err(|_| "api.rate_per_sec 过大".to_string()))
             .transpose()?;
@@ -738,6 +761,10 @@ impl Config {
             nat_relays,
             nat_relay_udps,
             nat_data_plane_carrier,
+            nat_udp_cc_enabled,
+            nat_udp_cc_cwnd_init,
+            nat_udp_cc_beta_x100,
+            nat_udp_cc_pacing,
             nat_bt_external,
             nat_relay_rendezvous,
             nat_http_external,
@@ -1105,6 +1132,37 @@ mod tests {
         assert_eq!(mk(r#"{"idle_sleep_secs": "7"}"#), Some(7));
         assert_eq!(mk(r#"{"idle_sleep_minutes": "2"}"#), Some(120));
         assert_eq!(mk(r#"{"idle_sleep_secs": "3", "idle_sleep_minutes": "9"}"#), Some(3));
+    }
+
+    /// v2.4.116：UDP 拥塞控制默认全关；参数非法直接报错，不接受「静默夹回去」。
+    #[test]
+    fn udp_congestion_control_is_opt_in_with_strict_params() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 16800, "wake_udp_port": 16801, "bt_port": 16802}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {NAT}
+        }"#;
+        let p = std::env::temp_dir().join("cr_core_udp_cc.json");
+        let mk = |nat: &str| {
+            fs::write(&p, base.replace("{NAT}", nat)).unwrap();
+            Config::load(&p)
+        };
+        let d = mk("{}").unwrap();
+        assert!(!d.nat_udp_cc_enabled && !d.nat_udp_cc_pacing);
+        assert_eq!(d.nat_udp_cc_cwnd_init, 4);
+        assert_eq!(d.nat_udp_cc_beta_x100, 50);
+
+        let on = mk(r#"{"udp_cc_enabled":true,"udp_cc_pacing":true,"udp_cc_cwnd_init":"8","udp_cc_beta_x100":40}"#).unwrap();
+        assert!(on.nat_udp_cc_enabled && on.nat_udp_cc_pacing);
+        assert_eq!(on.nat_udp_cc_cwnd_init, 8);
+        assert_eq!(on.nat_udp_cc_beta_x100, 40);
+
+        assert!(mk(r#"{"udp_cc_beta_x100":95}"#).is_err(), "β 越界必须报错");
+        let _ = fs::remove_file(&p);
     }
 
     /// ADR-022：punch_route 默认关闭，显式 true 才开；非布尔不得被当成 true。
