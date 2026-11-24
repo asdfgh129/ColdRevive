@@ -1,0 +1,88 @@
+=== 0) cleanup ===
+=== 1) veth + netns ===
+=== 2) shapes and arms ===
+SHAPE L1 rate=16mbit delay=20msms jitter=2msms
+ROUND_DONE L1-cc_off-r1
+ROUND_DONE L1-cc_off-r2
+ROUND_DONE L1-cc_off-r3
+ROUND_DONE L1-cc_off-r4
+ROUND_DONE L1-cc_off-r5
+ROUND_DONE L1-cc_off-r6
+ROUND_DONE L1-cc_off-r7
+ROUND_DONE L1-cc_off-r8
+ROUND_DONE L1-cc_off-r9
+ROUND_DONE L1-cc_off-r10
+ROUND_DONE L1-cc_on-r1
+ROUND_DONE L1-cc_on-r2
+ROUND_DONE L1-cc_on-r3
+ROUND_DONE L1-cc_on-r4
+ROUND_DONE L1-cc_on-r5
+ROUND_DONE L1-cc_on-r6
+ROUND_DONE L1-cc_on-r7
+ROUND_DONE L1-cc_on-r8
+ROUND_DONE L1-cc_on-r9
+ROUND_DONE L1-cc_on-r10
+ROUND_DONE L1-cc_paced-r1
+ROUND_DONE L1-cc_paced-r2
+ROUND_DONE L1-cc_paced-r3
+ROUND_DONE L1-cc_paced-r4
+ROUND_DONE L1-cc_paced-r5
+ROUND_DONE L1-cc_paced-r6
+ROUND_DONE L1-cc_paced-r7
+ROUND_DONE L1-cc_paced-r8
+ROUND_DONE L1-cc_paced-r9
+ROUND_DONE L1-cc_paced-r10
+ROUND_DONE L1-cc_on_per_session_cap-r1
+ROUND_DONE L1-cc_on_per_session_cap-r2
+ROUND_DONE L1-cc_on_per_session_cap-r3
+ROUND_DONE L1-cc_on_per_session_cap-r4
+ROUND_DONE L1-cc_on_per_session_cap-r5
+ROUND_DONE L1-cc_on_per_session_cap-r6
+ROUND_DONE L1-cc_on_per_session_cap-r7
+ROUND_DONE L1-cc_on_per_session_cap-r8
+ROUND_DONE L1-cc_on_per_session_cap-r9
+ROUND_DONE L1-cc_on_per_session_cap-r10
+SHAPE L2 rate=8mbit delay=50msms jitter=5msms
+ROUND_DONE L2-cc_off-r1
+ROUND_DONE L2-cc_off-r2
+ROUND_DONE L2-cc_off-r3
+ROUND_DONE L2-cc_off-r4
+ROUND_DONE L2-cc_off-r5
+ROUND_DONE L2-cc_off-r6
+ROUND_DONE L2-cc_off-r7
+ROUND_DONE L2-cc_off-r8
+ROUND_DONE L2-cc_off-r9
+ROUND_DONE L2-cc_off-r10
+ROUND_DONE L2-cc_on-r1
+ROUND_DONE L2-cc_on-r2
+ROUND_DONE L2-cc_on-r3
+ROUND_DONE L2-cc_on-r4
+ROUND_DONE L2-cc_on-r5
+ROUND_DONE L2-cc_on-r6
+ROUND_DONE L2-cc_on-r7
+ROUND_DONE L2-cc_on-r8
+ROUND_DONE L2-cc_on-r9
+ROUND_DONE L2-cc_on-r10
+ROUND_DONE L2-cc_paced-r1
+ROUND_DONE L2-cc_paced-r2
+ROUND_DONE L2-cc_paced-r3
+ROUND_DONE L2-cc_paced-r4
+ROUND_DONE L2-cc_paced-r5
+ROUND_DONE L2-cc_paced-r6
+ROUND_DONE L2-cc_paced-r7
+ROUND_DONE L2-cc_paced-r8
+ROUND_DONE L2-cc_paced-r9
+ROUND_DONE L2-cc_paced-r10
+ROUND_DONE L2-cc_on_per_session_cap-r1
+ROUND_DONE L2-cc_on_per_session_cap-r2
+ROUND_DONE L2-cc_on_per_session_cap-r3
+ROUND_DONE L2-cc_on_per_session_cap-r4
+ROUND_DONE L2-cc_on_per_session_cap-r5
+ROUND_DONE L2-cc_on_per_session_cap-r6
+ROUND_DONE L2-cc_on_per_session_cap-r7
+ROUND_DONE L2-cc_on_per_session_cap-r8
+ROUND_DONE L2-cc_on_per_session_cap-r9
+ROUND_DONE L2-cc_on_per_session_cap-r10
+=== 3) done ===
+OUT=/opt/cr-current/tests/e2e/w61/reports/g2-fairness-20261124T085447Z
+G2_GATE_SNAPSHOT g2_claim=false s6_status=not_run evidence_valid_for_pass=false auto_pass=false

@@ -822,6 +822,26 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   **519 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/workspace-test-20261124-final2.log`）。
   门禁常量不变；脚本禁止自动 pass。
 
+## 9. v2.4.118 新增证据（公平性根因与 DNAT 前置）
+
+- **cap arm 根因修复**：每会话预算耗尽改有界整形（每会话 64 帧 / 总 256 帧），
+  队列满才带 `BandwidthLimited` 原因拒绝；可靠层把该 STATUS 当背压，快重传但不
+  减 cwnd、不指数退避 RTO。单测：`cargo test --offline -p cr-nat per_session -- --nocapture`
+  与 `cargo test --offline -p cr-nat relay_backpressure -- --nocapture`。
+- **同阈值重跑（整体仍 FAIL）**：fixture sha256 `0671a173…` 未改。
+  `bash tests/e2e/w61/run_g2_fairness.sh` 在 221 完整跑 80 轮，
+  `python3 tests/e2e/w61/analyze_g2_fairness.py --dir tests/e2e/w61/reports/g2-fairness-20261124T085447Z --fixture tests/fixtures/g2-fairness-thresholds.toml`。
+  结果：所有 L1 arms 与 L2 cc_off / cc_on_per_session_cap 均 10/10；
+  L2 cc_on、cc_paced 各 9/10（0.430/0.570、0.433/0.567），按 `all_rounds_must_pass`
+  判 **FAIL**，禁止改阈值或继续抽样至通过。门禁常量不变。
+- **TCP DNAT 前置（BLOCKED）**：`tests/ARCHIVE/evidence/tcp-dnat-reachability-20261124.json`。
+  221 本地监听 READY 但公网 `112.5.60.4:19910` 连入超时；两侧上游网关无管理 SSH，
+  必须由所有者建 endpoint-independent DNAT（步骤见审计 §20.3）后再跑
+  `python3 tests/e2e/w56/public_tcp_punch_probe.py --report-out <路径>`。
+- **全量回归**：`CARGO_INCREMENTAL=0 cargo test --workspace --offline`
+  **521 passed / 0 failed / 3 ignored**。所有成功/失败/BLOCKED 均归档
+  `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

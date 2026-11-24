@@ -1,3 +1,25 @@
+## [2.4.118] - 2026-11-24 — 公平性根因修复与同阈值重跑；TCP DNAT 前置复核
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。全量回归 **521 passed / 0 failed / 3 ignored**。
+
+- **公平性根因**：§20.1 的 cap arms 失衡来自中继每会话令牌耗尽就丢帧回
+  `BandwidthLimited`，发送端按超时退避，SRTT/RTO 涨到数百毫秒、cwnd 落底，
+  两条同速率流被随机错配。可靠层现在把该 STATUS 作为背压信号做一次快重传
+  （不算 ACK、不算丢包、不做 RTO 指数退避），并暴露 `udp_cc_backpressure`。
+- **有界整形**：每会话预算不足的 DATA 进入每会话 64 帧 / 总 256 帧队列等令牌，
+  按队首顺序放行；队列满才明确拒绝。计数拆为 `per_session_limited /
+  per_session_shaped / per_session_dropped`，配置/审计文档同步更新。
+- **同阈值重跑仍整体 FAIL**：预注册 fixture sha256 `0671a173…` 未改，221 上
+  2 形状 × 4 arms × 10 轮全部完成：`g2-fairness-20261124T085447Z`。
+  所有 L1 arms 与 L2 cc_off / cap 均 10/10；L2 cc_on、cc_paced 各 9/10
+  （份额 0.430/0.570 与 0.433/0.567）。按 `all_rounds_must_pass` 仍是 FAIL，
+  不再抽样碰运气，也不改阈值；门禁不自动解禁。
+- **TCP DNAT 复核**：221 的 `112.5.60.4` 与 222 的 `112.5.32.34` 都是上游网关
+  地址；221 本地 19910 监听 READY 但公网 TCP 连入超时，两侧 nat 表无 1991x 规则，
+  现有 key 也进不了网关。审计 §20.3 给出两条 endpoint-independent DNAT 步骤与验收命令；
+  规则建好前保持 BLOCKED。证据 `tests/ARCHIVE/evidence/tcp-dnat-reachability-20261124.json`。
+
 ## [2.4.117] - 2026-11-24 — G2 欠账推进第二轮：公平性阈值实测、FR-25 daemon 公网闭环
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

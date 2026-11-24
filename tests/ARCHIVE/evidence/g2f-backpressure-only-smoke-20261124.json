@@ -1,0 +1,159 @@
+{
+  "tool": "analyze_g2_fairness.py",
+  "fixture_version": "g2-fairness-thresholds-v1",
+  "fixture_recorded_at": "2026-11-24T14:55:21+08:00",
+  "scope": "221 单机双 netns + 真内核 veth/HTB/netem；两条 UdpRelayStream 竞争流；不是公网 G2 证据",
+  "summary": [
+    {
+      "shape": "L1",
+      "arm": "cc_on_per_session_cap",
+      "rounds_seen": 1,
+      "rounds_valid": 1,
+      "rounds_pass": 0,
+      "criterion_met": false,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            545792,
+            1110016
+          ],
+          "shares": [
+            0.32962275819418674,
+            0.6703772418058133
+          ],
+          "jain": 0.8959661308506008,
+          "pass": false,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 200,
+            "srtt_ms": 717,
+            "rtt_samples": 792,
+            "loss_events": 44,
+            "paced_new": 0,
+            "backpressure": 39
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 254,
+            "srtt_ms": 469,
+            "rtt_samples": 1343,
+            "loss_events": 63,
+            "paced_new": 0,
+            "backpressure": 53
+          },
+          "retransmits": [
+            62,
+            89
+          ],
+          "relay_stats": {
+            "datagrams": 4500,
+            "bytes_in": 2796864,
+            "bytes_out": 2704160,
+            "data_in": 4404,
+            "deliver_out": 4404,
+            "status_out": 4496,
+            "data_bytes_in": 2411344,
+            "data_bytes_out": 2411344,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 92,
+            "per_session_limited_bytes": 97520,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L2",
+      "arm": "cc_on_per_session_cap",
+      "rounds_seen": 1,
+      "rounds_valid": 1,
+      "rounds_pass": 1,
+      "criterion_met": false,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            359424,
+            350208
+          ],
+          "shares": [
+            0.5064935064935064,
+            0.4935064935064935
+          ],
+          "jain": 0.999831365935919,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 206,
+            "srtt_ms": 1241,
+            "rtt_samples": 679,
+            "loss_events": 33,
+            "paced_new": 0,
+            "backpressure": 25
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 254,
+            "srtt_ms": 486,
+            "rtt_samples": 669,
+            "loss_events": 33,
+            "paced_new": 0,
+            "backpressure": 27
+          },
+          "retransmits": [
+            45,
+            49
+          ],
+          "relay_stats": {
+            "datagrams": 2846,
+            "bytes_in": 1764136,
+            "bytes_out": 1711752,
+            "data_in": 2790,
+            "deliver_out": 2790,
+            "status_out": 2842,
+            "data_bytes_in": 1526872,
+            "data_bytes_out": 1526872,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 52,
+            "per_session_limited_bytes": 55120,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    }
+  ],
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "verdict_wording": "component-level fairness measurement only; not G2 unlock"
+}

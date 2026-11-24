@@ -49,7 +49,7 @@
 
 use crate::relay::NODE_ID_LEN;
 use crate::secure::PSK_LEN;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::ErrorKind;
 use std::net::{SocketAddr, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -331,6 +331,11 @@ impl Default for UdpLimits {
 /// 与 `Session::allow` 的 pps 粗粒度窗口分开：pps 挡「刷包」，字节桶挡「占满带宽」。
 /// 两者拒绝的原因不同、计数不同，排障方向也不同。按时间平滑补充而非每秒清零，
 /// 避免窗口边界放过 2 倍突发；一次性申请整帧，超了就整帧拒绝，不半途截流。
+/// 单会话排队上限。令牌桶改为有界整形：超预算先排队，不立刻拒收，
+/// 避免发送端把中继拒收当超时，RTT 被 RTO 反馈环推到秒级。
+const PER_SESSION_PENDING_MAX: usize = 64;
+const PENDING_TOTAL_MAX: usize = 256;
+
 struct ByteBucket {
     tokens: f64,
     rate: f64,
@@ -396,6 +401,11 @@ pub struct UdpStatsInner {
     /// 每会话上限单独拒绝的帧数/字节数（与全局带宽拒绝分开排障）。
     pub per_session_limited: AtomicU64,
     pub per_session_limited_bytes: AtomicU64,
+    /// 进入有界整形队列的帧/字节（仍会转发，只是延后）。
+    pub per_session_shaped: AtomicU64,
+    pub per_session_shaped_bytes: AtomicU64,
+    /// 队列满才真正拒绝的帧（带明确 BandwidthLimited 原因）。
+    pub per_session_dropped: AtomicU64,
     pub not_registered: AtomicU64,
     pub target_absent: AtomicU64,
     pub sessions_rejected: AtomicU64,
@@ -430,6 +440,9 @@ pub struct UdpRelayStats {
     pub bandwidth_limited_bytes: u64,
     pub per_session_limited: u64,
     pub per_session_limited_bytes: u64,
+    pub per_session_shaped: u64,
+    pub per_session_shaped_bytes: u64,
+    pub per_session_dropped: u64,
     pub not_registered: u64,
     pub target_absent: u64,
     pub sessions_rejected: u64,
@@ -465,6 +478,9 @@ impl UdpStatsInner {
             bandwidth_limited_bytes: g(&self.bandwidth_limited_bytes),
             per_session_limited: g(&self.per_session_limited),
             per_session_limited_bytes: g(&self.per_session_limited_bytes),
+            per_session_shaped: g(&self.per_session_shaped),
+            per_session_shaped_bytes: g(&self.per_session_shaped_bytes),
+            per_session_dropped: g(&self.per_session_dropped),
             not_registered: g(&self.not_registered),
             target_absent: g(&self.target_absent),
             sessions_rejected: g(&self.sessions_rejected),
@@ -558,6 +574,14 @@ pub struct UdpRelayServer {
     data_budget: ByteBucket,
     /// v2.4.116：每会话字节桶。0 速率开关关闭时不建桶，老配置零开销。
     session_budgets: HashMap<[u8; NODE_ID_LEN], ByteBucket>,
+    /// 每会话令牌不足时暂存的数据帧；有界，队列满才明确拒绝。
+    pending: VecDeque<PendingData>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingData {
+    dg: UdpDatagram,
+    from: SocketAddr,
 }
 
 /// 服务端句柄：可读计数、可停。
@@ -612,6 +636,7 @@ impl UdpRelayServer {
             seed: now_ms(),
             data_budget,
             session_budgets: HashMap::new(),
+            pending: VecDeque::new(),
         })
     }
 
@@ -624,6 +649,11 @@ impl UdpRelayServer {
         // 预算参数可能变了，令牌桶必须重建；否则 --data-rate 配了却不生效。
         self.data_budget = ByteBucket::new(&limits);
         self.session_budgets.clear();
+        self.pending.clear();
+        if limits.per_session_data_byte_rate > 0 {
+            // 整形队列需要高频冲刷；5 ms 足够守住 100 kpps 以下的小帧流。
+            let _ = self.sock.set_read_timeout(Some(Duration::from_millis(5)));
+        }
         self.limits = limits;
         self
     }
@@ -784,77 +814,58 @@ impl UdpRelayServer {
                     s.status_out.fetch_add(1, Ordering::Relaxed);
                     return self.emit(from, st);
                 }
-                // v2.4.116：每会话上限。默认 0 = 不建桶、不查表，老配置逐字节不变。
-                // 两个桶都放行才算真正转发；拒绝都带明确原因，不静默丢包。
+                // v2.4.118：每会话上限改为**有界整形**。默认 0 = 不建桶、不查表，老配置不变。
+                // 令牌不足时先入队等下一次冲刷，不立刻发 STATUS 拒收：直接拒收会让
+                // 发送端按超时处理，RTT/RTO 反馈环把两条同速率流推成长期不公平。
+                // 只有有界队列也满了才明确拒绝，仍带 BandwidthLimited 原因。
                 if self.limits.per_session_data_byte_rate > 0 {
                     use std::collections::hash_map::Entry;
                     let n = dg.payload.len();
-                    let allowed = match self.session_budgets.entry(dg.session) {
-                        Entry::Occupied(mut e) => e.get_mut().try_take(n),
-                        Entry::Vacant(e) => e
-                            .insert(ByteBucket::with_rate(
-                                self.limits.per_session_data_byte_rate,
-                                self.limits.per_session_burst_bytes,
-                            ))
-                            .try_take(n),
+                    let session = dg.session;
+                    let queued_ahead = self.pending.iter().any(|p| p.dg.session == session);
+                    let allowed = if queued_ahead {
+                        false
+                    } else {
+                        match self.session_budgets.entry(session) {
+                            Entry::Occupied(mut e) => e.get_mut().try_take(n),
+                            Entry::Vacant(e) => e
+                                .insert(ByteBucket::with_rate(
+                                    self.limits.per_session_data_byte_rate,
+                                    self.limits.per_session_burst_bytes,
+                                ))
+                                .try_take(n),
+                        }
                     };
                     if !allowed {
                         s.per_session_limited.fetch_add(1, Ordering::Relaxed);
                         s.per_session_limited_bytes
                             .fetch_add(n as u64, Ordering::Relaxed);
-                        let seq = self.send_counter(&dg.session);
-                        let mut sp = Vec::with_capacity(9 + 64);
+                        let queued = self
+                            .pending
+                            .iter()
+                            .filter(|p| p.dg.session == session)
+                            .count();
+                        if self.pending.len() < PENDING_TOTAL_MAX
+                            && queued < PER_SESSION_PENDING_MAX
+                        {
+                            s.per_session_shaped.fetch_add(1, Ordering::Relaxed);
+                            s.per_session_shaped_bytes
+                                .fetch_add(n as u64, Ordering::Relaxed);
+                            self.pending.push_back(PendingData { dg, from });
+                            return Vec::new();
+                        }
+                        s.per_session_dropped.fetch_add(1, Ordering::Relaxed);
+                        let seq = self.send_counter(&session);
+                        let mut sp = Vec::with_capacity(9 + 80);
                         sp.push(UdpStatus::BandwidthLimited.code());
                         sp.extend_from_slice(&dg.seq.to_be_bytes());
-                        sp.extend_from_slice(b"per-session data bandwidth budget exhausted");
-                        let st =
-                            encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
+                        sp.extend_from_slice(b"per-session data bandwidth budget exhausted (queue full)");
+                        let st = encode_datagram(UdpKind::Status, &session, seq, &sp, self.psk.as_ref());
                         s.status_out.fetch_add(1, Ordering::Relaxed);
                         return self.emit(from, st);
                     }
                 }
-                s.data_bytes_in
-                    .fetch_add(dg.payload.len() as u64, Ordering::Relaxed);
-                s.data_in.fetch_add(1, Ordering::Relaxed);
-                let mut target = [0u8; NODE_ID_LEN];
-                target.copy_from_slice(&dg.payload[..NODE_ID_LEN]);
-                let body = &dg.payload[NODE_ID_LEN..];
-                let mut out: Vec<(SocketAddr, Vec<u8>)> = Vec::with_capacity(2);
-                let target_addr = self.sessions.get(&target).map(|t| t.addr);
-                let status = match target_addr {
-                    Some(taddr) => {
-                        let mut dpayload = Vec::with_capacity(NODE_ID_LEN + body.len());
-                        dpayload.extend_from_slice(&dg.session);
-                        dpayload.extend_from_slice(body);
-                        let seq = self.send_counter(&target);
-                        let d = encode_datagram(
-                            UdpKind::Deliver,
-                            &target,
-                            seq,
-                            &dpayload,
-                            self.psk.as_ref(),
-                        );
-                        s.bytes_out
-                            .fetch_add(d.len() as u64, Ordering::Relaxed);
-                        s.data_bytes_out
-                            .fetch_add(dpayload.len() as u64, Ordering::Relaxed);
-                        out.push((taddr, d));
-                        s.deliver_out.fetch_add(1, Ordering::Relaxed);
-                        UdpStatus::Forwarded
-                    }
-                    None => {
-                        s.target_absent.fetch_add(1, Ordering::Relaxed);
-                        UdpStatus::TargetAbsent
-                    }
-                };
-                let seq = self.send_counter(&dg.session);
-                let mut sp = Vec::with_capacity(9);
-                sp.push(status.code());
-                sp.extend_from_slice(&dg.seq.to_be_bytes());
-                let st = encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
-                s.status_out.fetch_add(1, Ordering::Relaxed);
-                out.push((from, st));
-                out
+                self.forward_data(dg, from)
             }
             UdpKind::Bye => {
                 self.sessions.remove(&dg.session);
@@ -947,6 +958,87 @@ impl UdpRelayServer {
         vec![(to, bytes)]
     }
 
+    /// 两个字节桶都已放行后的实际转发逻辑。排队冲刷与直达路径共用，保证计数一致。
+    fn forward_data(&mut self, dg: UdpDatagram, from: SocketAddr) -> Vec<(SocketAddr, Vec<u8>)> {
+        let s = self.stats.clone();
+        s.data_bytes_in.fetch_add(dg.payload.len() as u64, Ordering::Relaxed);
+        s.data_in.fetch_add(1, Ordering::Relaxed);
+        let mut target = [0u8; NODE_ID_LEN];
+        target.copy_from_slice(&dg.payload[..NODE_ID_LEN]);
+        let body = &dg.payload[NODE_ID_LEN..];
+        let mut out: Vec<(SocketAddr, Vec<u8>)> = Vec::with_capacity(2);
+        let target_addr = self.sessions.get(&target).map(|t| t.addr);
+        let status = match target_addr {
+            Some(taddr) => {
+                let mut dpayload = Vec::with_capacity(NODE_ID_LEN + body.len());
+                dpayload.extend_from_slice(&dg.session);
+                dpayload.extend_from_slice(body);
+                let seq = self.send_counter(&target);
+                let d = encode_datagram(
+                    UdpKind::Deliver,
+                    &target,
+                    seq,
+                    &dpayload,
+                    self.psk.as_ref(),
+                );
+                s.bytes_out.fetch_add(d.len() as u64, Ordering::Relaxed);
+                s.data_bytes_out
+                    .fetch_add(dpayload.len() as u64, Ordering::Relaxed);
+                out.push((taddr, d));
+                s.deliver_out.fetch_add(1, Ordering::Relaxed);
+                UdpStatus::Forwarded
+            }
+            None => {
+                s.target_absent.fetch_add(1, Ordering::Relaxed);
+                UdpStatus::TargetAbsent
+            }
+        };
+        let seq = self.send_counter(&dg.session);
+        let mut sp = Vec::with_capacity(9);
+        sp.push(status.code());
+        sp.extend_from_slice(&dg.seq.to_be_bytes());
+        let st = encode_datagram(UdpKind::Status, &dg.session, seq, &sp, self.psk.as_ref());
+        s.status_out.fetch_add(1, Ordering::Relaxed);
+        out.push((from, st));
+        out
+    }
+
+    /// 冲刷整形队列。某会话队首没令牌时，同会话后续帧必须等，不能越过队首。
+    pub fn flush_pending(&mut self) -> Vec<(SocketAddr, Vec<u8>)> {
+        if self.pending.is_empty() {
+            return Vec::new();
+        }
+        let mut out = Vec::new();
+        let mut blocked: HashSet<[u8; NODE_ID_LEN]> = HashSet::new();
+        let mut idx = 0usize;
+        while idx < self.pending.len() {
+            let session = self.pending[idx].dg.session;
+            if blocked.contains(&session) {
+                idx += 1;
+                continue;
+            }
+            let n = self.pending[idx].dg.payload.len();
+            use std::collections::hash_map::Entry;
+            let allowed = match self.session_budgets.entry(session) {
+                Entry::Occupied(mut e) => e.get_mut().try_take(n),
+                Entry::Vacant(e) => e
+                    .insert(ByteBucket::with_rate(
+                        self.limits.per_session_data_byte_rate,
+                        self.limits.per_session_burst_bytes,
+                    ))
+                    .try_take(n),
+            };
+            if allowed {
+                let p = self.pending.remove(idx).expect("idx 刚检查过");
+                out.extend(self.forward_data(p.dg, p.from));
+            } else {
+                blocked.insert(session);
+                idx += 1;
+            }
+        }
+        out
+    }
+
     pub fn spawn(self) -> UdpRelayHandle {
         let addr = self.sock.local_addr().expect("已绑定的 socket 必然有本地地址");
         let stats = self.stats.clone();
@@ -957,16 +1049,21 @@ impl UdpRelayServer {
         thread::spawn(move || {
             let mut buf = vec![0u8; 4096];
             while server.running.load(Ordering::Relaxed) {
+                // 每轮先冲刷整形队列；有帧被令牌放行就立刻发出。
+                for (to, bytes) in server.flush_pending() {
+                    let _ = server.sock.send_to(&bytes, to);
+                }
                 match server.sock.recv_from(&mut buf) {
                     Ok((n, from)) => {
-                        let outs = server.process(&buf[..n], from);
-                        for (to, bytes) in outs {
+                        for (to, bytes) in server.process(&buf[..n], from) {
                             let _ = server.sock.send_to(&bytes, to);
                         }
                     }
                     Err(e)
                         if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
                     {
+                        // 5 ms 读超时 + 短睡，给令牌补充留出确定性时基。
+                        thread::sleep(Duration::from_millis(1));
                         continue
                     }
                     Err(_) => break,
@@ -1461,9 +1558,10 @@ mod tests {
         h.stop();
     }
 
-    /// v2.4.116：单会话上限只掐一条流，另一条流仍可用；原因与全局预算分开计数。
+    /// v2.4.118：单会话上限对超限流做有界整形，另一条流不受影响；
+    /// 整形与全局预算分开计数，队首未放行时不能静默丢包。
     #[test]
-    fn per_session_cap_throttles_one_flow_not_others() {
+    fn per_session_cap_shapes_one_flow_not_others() {
         let psk = [0x1au8; PSK_LEN];
         let limits = UdpLimits {
             per_session_data_byte_rate: 1, // 低到补充可忽略
@@ -1485,9 +1583,12 @@ mod tests {
         assert_eq!(UdpStatus::from_code(s.payload[0]), Some(UdpStatus::Forwarded));
 
         a.send_data(&ids(0xeb), b"12345678").unwrap();
-        let st = a.recv_frame(Duration::from_millis(500)).unwrap().expect("a 第二帧应被拒");
-        assert_eq!(UdpStatus::from_code(st.payload[0]), Some(UdpStatus::BandwidthLimited));
-        assert!(String::from_utf8_lossy(&st.payload[9..]).contains("per-session"));
+        // 超限帧进入整形队列，不再立刻回 BandwidthLimited：
+        // 立即拒收会让发送端按超时处理，才是公平性实验里的 RTT 反馈环根因。
+        assert!(
+            a.recv_frame(Duration::from_millis(80)).unwrap().is_none(),
+            "排队中的帧不应立刻回 STATUS"
+        );
 
         c.send_data(&ids(0xeb), b"abcdefgh").unwrap();
         let f = b.recv_frame(Duration::from_millis(500)).unwrap().expect("c 的首帧不应受 a 限制");
@@ -1498,8 +1599,55 @@ mod tests {
         let stats = h.stats();
         assert_eq!(stats.per_session_limited, 1);
         assert_eq!(stats.per_session_limited_bytes, 24);
+        assert_eq!(stats.per_session_shaped, 1, "第二帧应进入有界整形队列");
+        assert_eq!(stats.per_session_shaped_bytes, 24);
+        assert_eq!(stats.per_session_dropped, 0, "队列未满不应拒绝");
         assert_eq!(stats.bandwidth_limited, 0, "全局桶不该被这帧限制");
-        assert_eq!(stats.deliver_out, 2, "只有 a 的第二帧被拒");
+        assert_eq!(stats.deliver_out, 2, "只有 a 的第二帧在排队");
+        h.stop();
+    }
+
+    /// 队列满必须明确拒绝并带原因，不能无限缓存（ADR-024 有界内存红线）。
+    #[test]
+    fn per_session_cap_queue_full_rejects_with_reason() {
+        let psk = [0x1cu8; PSK_LEN];
+        let limits = UdpLimits {
+            per_session_data_byte_rate: 1,
+            per_session_burst_bytes: 24,
+            ..Default::default()
+        };
+        let h = start(Some(psk), Some(limits));
+        let mut a = client(&h, Some(psk));
+        let mut b = client(&h, Some(psk));
+        a.hello(ids(0xef), Duration::from_millis(500)).unwrap();
+        b.hello(ids(0xf0), Duration::from_millis(500)).unwrap();
+
+        // 首帧放行，随后 PER_SESSION_PENDING_MAX 帧入队，再多一帧必须拒绝。
+        for _ in 0..(PER_SESSION_PENDING_MAX + 2) {
+            a.send_data(&ids(0xf0), b"12345678").unwrap();
+        }
+        let mut rejected = false;
+        for _ in 0..(PER_SESSION_PENDING_MAX + 4) {
+            match a.recv_frame(Duration::from_millis(100)).unwrap() {
+                Some(f)
+                    if f.kind == UdpKind::Status
+                        && UdpStatus::from_code(f.payload[0])
+                            == Some(UdpStatus::BandwidthLimited) =>
+                {
+                    assert!(
+                        String::from_utf8_lossy(&f.payload[9..]).contains("per-session"),
+                        "队列满拒绝必须带可观测原因"
+                    );
+                    rejected = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert!(rejected, "有界队列满后必须明确拒绝，不能静默丢弃");
+        let stats = h.stats();
+        assert_eq!(stats.per_session_shaped, PER_SESSION_PENDING_MAX as u64);
+        assert_eq!(stats.per_session_dropped, 1);
         h.stop();
     }
 

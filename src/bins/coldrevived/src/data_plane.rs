@@ -300,6 +300,7 @@ impl DataPlane {
             ("udp_cc_loss_events", cr_core::Json::n(cc.loss_events as f64)),
             ("udp_cc_rtt_samples", cr_core::Json::n(cc.rtt_samples as f64)),
             ("udp_cc_paced_new", cr_core::Json::n(cc.paced_new_segments as f64)),
+            ("udp_cc_backpressure", cr_core::Json::n(cc.relay_backpressure_events as f64)),
         ])
     }
 }

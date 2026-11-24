@@ -132,6 +132,8 @@ fn run_relay(args: &[String]) -> Result<(), String> {
             "\"data_bytes_in\":{},\"data_bytes_out\":{},",
             "\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},",
             "\"per_session_limited\":{},\"per_session_limited_bytes\":{},",
+            "\"per_session_shaped\":{},\"per_session_shaped_bytes\":{},",
+            "\"per_session_dropped\":{},",
             "\"rate_limited\":{},\"replay\":{},\"mac_fail\":{},",
             "\"sessions_active\":{},\"sessions_expired\":{}}}}}"
         ),
@@ -154,6 +156,9 @@ fn run_relay(args: &[String]) -> Result<(), String> {
         s.bandwidth_limited_bytes,
         s.per_session_limited,
         s.per_session_limited_bytes,
+        s.per_session_shaped,
+        s.per_session_shaped_bytes,
+        s.per_session_dropped,
         s.rate_limited,
         s.replay,
         s.mac_fail,
@@ -225,7 +230,8 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             concat!(
                 "{{\"bytes_read\":{},\"bytes_read_counter\":{},\"retransmits\":{},",
                 "\"cc\":{{\"enabled\":{},\"cwnd_x100\":{},\"srtt_ms\":{},",
-                "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{}}},",
+                "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{},",
+                "\"backpressure\":{}}},",
                 "\"samples\":[{}]}}"
             ),
             total,
@@ -237,6 +243,7 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             stats.rtt_samples,
             stats.loss_events,
             stats.paced_new_segments,
+            stats.relay_backpressure_events,
             sample_pairs,
         ))
     });
@@ -273,7 +280,8 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             concat!(
                 "{{\"bytes_written\":{},\"retransmits\":{},",
                 "\"cc\":{{\"enabled\":{},\"cwnd_x100\":{},\"srtt_ms\":{},",
-                "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{}}}}}"
+                "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{},",
+                "\"backpressure\":{}}}}}"
             ),
             bytes,
             retransmits,
@@ -283,6 +291,7 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             stats.rtt_samples,
             stats.loss_events,
             stats.paced_new_segments,
+            stats.relay_backpressure_events,
         ))
     });
 

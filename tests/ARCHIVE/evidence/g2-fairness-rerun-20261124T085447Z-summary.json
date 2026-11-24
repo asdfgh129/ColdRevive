@@ -1,0 +1,4791 @@
+{
+  "tool": "analyze_g2_fairness.py",
+  "fixture_version": "g2-fairness-thresholds-v1",
+  "fixture_recorded_at": "2026-11-24T14:55:21+08:00",
+  "scope": "221 单机双 netns + 真内核 veth/HTB/netem；两条 UdpRelayStream 竞争流；不是公网 G2 证据",
+  "summary": [
+    {
+      "shape": "L1",
+      "arm": "cc_off",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            7463936,
+            7435264
+          ],
+          "shares": [
+            0.5009621993127148,
+            0.4990378006872852
+          ],
+          "jain": 0.9999962967036449,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            13,
+            8
+          ],
+          "relay_stats": {
+            "datagrams": 37342,
+            "bytes_in": 22849064,
+            "bytes_out": 22849096,
+            "data_in": 37338,
+            "deliver_out": 37338,
+            "status_out": 37338,
+            "data_bytes_in": 20459176,
+            "data_bytes_out": 20459176,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            7455744,
+            7478272
+          ],
+          "shares": [
+            0.4992457487657707,
+            0.5007542512342293
+          ],
+          "jain": 0.999997724425481,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            12,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 37280,
+            "bytes_in": 22811120,
+            "bytes_out": 22811152,
+            "data_in": 37276,
+            "deliver_out": 37276,
+            "status_out": 37276,
+            "data_bytes_in": 20425200,
+            "data_bytes_out": 20425200,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            7410688,
+            7479296
+          ],
+          "shares": [
+            0.49769616945189465,
+            0.5023038305481053
+          ],
+          "jain": 0.9999787699099487,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            13,
+            12
+          ],
+          "relay_stats": {
+            "datagrams": 37414,
+            "bytes_in": 22893128,
+            "bytes_out": 22893160,
+            "data_in": 37410,
+            "deliver_out": 37410,
+            "status_out": 37410,
+            "data_bytes_in": 20498632,
+            "data_bytes_out": 20498632,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            7441408,
+            7425024
+          ],
+          "shares": [
+            0.5005510400881664,
+            0.4994489599118336
+          ],
+          "jain": 0.9999987854207602,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            9,
+            10
+          ],
+          "relay_stats": {
+            "datagrams": 37264,
+            "bytes_in": 22801328,
+            "bytes_out": 22801360,
+            "data_in": 37260,
+            "deliver_out": 37260,
+            "status_out": 37260,
+            "data_bytes_in": 20416432,
+            "data_bytes_out": 20416432,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            7472128,
+            7488512
+          ],
+          "shares": [
+            0.4994524298425736,
+            0.5005475701574265
+          ],
+          "jain": 0.9999988006691292,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            12
+          ],
+          "relay_stats": {
+            "datagrams": 37548,
+            "bytes_in": 22975136,
+            "bytes_out": 22975168,
+            "data_in": 37544,
+            "deliver_out": 37544,
+            "status_out": 37544,
+            "data_bytes_in": 20572064,
+            "data_bytes_out": 20572064,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            7450624,
+            7438336
+          ],
+          "shares": [
+            0.5004126547455295,
+            0.4995873452544704
+          ],
+          "jain": 0.9999993188647079,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            12,
+            15
+          ],
+          "relay_stats": {
+            "datagrams": 37402,
+            "bytes_in": 22885784,
+            "bytes_out": 22885816,
+            "data_in": 37398,
+            "deliver_out": 37398,
+            "status_out": 37398,
+            "data_bytes_in": 20492056,
+            "data_bytes_out": 20492056,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            7437312,
+            7437312
+          ],
+          "shares": [
+            0.5,
+            0.5
+          ],
+          "jain": 1.0,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 37160,
+            "bytes_in": 22737680,
+            "bytes_out": 22737712,
+            "data_in": 37156,
+            "deliver_out": 37156,
+            "status_out": 37156,
+            "data_bytes_in": 20359440,
+            "data_bytes_out": 20359440,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            7440384,
+            7446528
+          ],
+          "shares": [
+            0.49979364424267436,
+            0.5002063557573256
+          ],
+          "jain": 0.9999998296692347,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            14,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 37398,
+            "bytes_in": 22883336,
+            "bytes_out": 22883368,
+            "data_in": 37394,
+            "deliver_out": 37394,
+            "status_out": 37394,
+            "data_bytes_in": 20489864,
+            "data_bytes_out": 20489864,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            7474176,
+            7473152
+          ],
+          "shares": [
+            0.5000342536137562,
+            0.49996574638624375
+          ],
+          "jain": 0.9999999953067598,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 37424,
+            "bytes_in": 22899248,
+            "bytes_out": 22899280,
+            "data_in": 37420,
+            "deliver_out": 37420,
+            "status_out": 37420,
+            "data_bytes_in": 20504112,
+            "data_bytes_out": 20504112,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            7439360,
+            7467008
+          ],
+          "shares": [
+            0.4990726111149275,
+            0.5009273888850725
+          ],
+          "jain": 0.9999965598112583,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            13,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 37288,
+            "bytes_in": 22816016,
+            "bytes_out": 22816048,
+            "data_in": 37284,
+            "deliver_out": 37284,
+            "status_out": 37284,
+            "data_bytes_in": 20429584,
+            "data_bytes_out": 20429584,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L1",
+      "arm": "cc_on",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            6511616,
+            6719488
+          ],
+          "shares": [
+            0.4921445708536491,
+            0.507855429146351
+          ],
+          "jain": 0.9997532298422483,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1892,
+            "srtt_ms": 40,
+            "rtt_samples": 7771,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1783,
+            "srtt_ms": 40,
+            "rtt_samples": 8171,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            8,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 31984,
+            "bytes_in": 19569968,
+            "bytes_out": 19570000,
+            "data_in": 31980,
+            "deliver_out": 31980,
+            "status_out": 31980,
+            "data_bytes_in": 17522992,
+            "data_bytes_out": 17522992,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            6778880,
+            6300672
+          ],
+          "shares": [
+            0.5182807484537697,
+            0.48171925154623035
+          ],
+          "jain": 0.9986650414404646,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 41,
+            "rtt_samples": 8237,
+            "loss_events": 4,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 7652,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            4,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 31922,
+            "bytes_in": 19532024,
+            "bytes_out": 19532056,
+            "data_in": 31918,
+            "deliver_out": 31918,
+            "status_out": 31918,
+            "data_bytes_in": 17489016,
+            "data_bytes_out": 17489016,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            6585344,
+            7315456
+          ],
+          "shares": [
+            0.4737384898710866,
+            0.5262615101289134
+          ],
+          "jain": 0.9972489216538513,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 8039,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2923,
+            "srtt_ms": 41,
+            "rtt_samples": 8730,
+            "loss_events": 1,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            1
+          ],
+          "relay_stats": {
+            "datagrams": 33674,
+            "bytes_in": 20604248,
+            "bytes_out": 20604280,
+            "data_in": 33670,
+            "deliver_out": 33670,
+            "status_out": 33670,
+            "data_bytes_in": 18449112,
+            "data_bytes_out": 18449112,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            6816768,
+            6955008
+          ],
+          "shares": [
+            0.4949810394824894,
+            0.5050189605175106
+          ],
+          "jain": 0.9998992502928209,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 7997,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2639,
+            "srtt_ms": 40,
+            "rtt_samples": 8263,
+            "loss_events": 4,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            4
+          ],
+          "relay_stats": {
+            "datagrams": 32654,
+            "bytes_in": 19980008,
+            "bytes_out": 19980040,
+            "data_in": 32650,
+            "deliver_out": 32650,
+            "status_out": 32650,
+            "data_bytes_in": 17890152,
+            "data_bytes_out": 17890152,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            6751232,
+            6338560
+          ],
+          "shares": [
+            0.5157631228975984,
+            0.48423687710240165
+          ],
+          "jain": 0.9990070826907189,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 7758,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2506,
+            "srtt_ms": 39,
+            "rtt_samples": 7690,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 31036,
+            "bytes_in": 18989792,
+            "bytes_out": 18989824,
+            "data_in": 31032,
+            "deliver_out": 31032,
+            "status_out": 31032,
+            "data_bytes_in": 17003488,
+            "data_bytes_out": 17003488,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            6204416,
+            6451200
+          ],
+          "shares": [
+            0.4902500202281738,
+            0.5097499797718262
+          ],
+          "jain": 0.9996198961116998,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1683,
+            "srtt_ms": 40,
+            "rtt_samples": 7418,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1649,
+            "srtt_ms": 41,
+            "rtt_samples": 7715,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            9,
+            8
+          ],
+          "relay_stats": {
+            "datagrams": 30370,
+            "bytes_in": 18582200,
+            "bytes_out": 18582232,
+            "data_in": 30366,
+            "deliver_out": 30366,
+            "status_out": 30366,
+            "data_bytes_in": 16638520,
+            "data_bytes_out": 16638520,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            6302720,
+            6350848
+          ],
+          "shares": [
+            0.49809824391033425,
+            0.5019017560896658
+          ],
+          "jain": 0.9999855335043842,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2018,
+            "srtt_ms": 40,
+            "rtt_samples": 7609,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 7848,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            8,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 31046,
+            "bytes_in": 18995912,
+            "bytes_out": 18995944,
+            "data_in": 31042,
+            "deliver_out": 31042,
+            "status_out": 31042,
+            "data_bytes_in": 17008968,
+            "data_bytes_out": 17008968,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            7012352,
+            6569984
+          ],
+          "shares": [
+            0.5162846803377563,
+            0.4837153196622437
+          ],
+          "jain": 0.9989403607715452,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2267,
+            "srtt_ms": 39,
+            "rtt_samples": 8488,
+            "loss_events": 3,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 7834,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 32772,
+            "bytes_in": 20052224,
+            "bytes_out": 20052256,
+            "data_in": 32768,
+            "deliver_out": 32768,
+            "status_out": 32768,
+            "data_bytes_in": 17954816,
+            "data_bytes_out": 17954816,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            5979136,
+            6468608
+          ],
+          "shares": [
+            0.4803389272787101,
+            0.5196610727212899
+          ],
+          "jain": 0.9984561560174063,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1327,
+            "srtt_ms": 41,
+            "rtt_samples": 7217,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 7653,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 29858,
+            "bytes_in": 18268856,
+            "bytes_out": 18268888,
+            "data_in": 29854,
+            "deliver_out": 29854,
+            "status_out": 29854,
+            "data_bytes_in": 16357944,
+            "data_bytes_out": 16357944,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            6292480,
+            6377472
+          ],
+          "shares": [
+            0.49664592257334517,
+            0.5033540774266548
+          ],
+          "jain": 0.9999550026833136,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1805,
+            "srtt_ms": 40,
+            "rtt_samples": 7750,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2341,
+            "srtt_ms": 40,
+            "rtt_samples": 7476,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            8
+          ],
+          "relay_stats": {
+            "datagrams": 30566,
+            "bytes_in": 18702152,
+            "bytes_out": 18702184,
+            "data_in": 30562,
+            "deliver_out": 30562,
+            "status_out": 30562,
+            "data_bytes_in": 16745928,
+            "data_bytes_out": 16745928,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L1",
+      "arm": "cc_on_per_session_cap",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            2414592,
+            2411520
+          ],
+          "shares": [
+            0.5003182686187142,
+            0.4996817313812858
+          ],
+          "jain": 0.9999995948205095,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2572,
+            "srtt_ms": 101,
+            "rtt_samples": 3071,
+            "loss_events": 11,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 135,
+            "rtt_samples": 3081,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            11,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 12458,
+            "bytes_in": 7620056,
+            "bytes_out": 7620088,
+            "data_in": 12454,
+            "deliver_out": 12454,
+            "status_out": 12454,
+            "data_bytes_in": 6822744,
+            "data_bytes_out": 6822744,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5549,
+            "per_session_limited_bytes": 5881940,
+            "per_session_shaped": 5549,
+            "per_session_shaped_bytes": 5881940,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            2406400,
+            2413568
+          ],
+          "shares": [
+            0.4992564265986828,
+            0.5007435734013171
+          ],
+          "jain": 0.9999977883992786,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1743,
+            "srtt_ms": 134,
+            "rtt_samples": 3074,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 135,
+            "rtt_samples": 3079,
+            "loss_events": 4,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            4
+          ],
+          "relay_stats": {
+            "datagrams": 12436,
+            "bytes_in": 7606592,
+            "bytes_out": 7606624,
+            "data_in": 12432,
+            "deliver_out": 12432,
+            "status_out": 12432,
+            "data_bytes_in": 6810688,
+            "data_bytes_out": 6810688,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5703,
+            "per_session_limited_bytes": 6045180,
+            "per_session_shaped": 5703,
+            "per_session_shaped_bytes": 6045180,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            2411520,
+            2409472
+          ],
+          "shares": [
+            0.5002124044180118,
+            0.4997875955819881
+          ],
+          "jain": 0.9999998195374854,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2482,
+            "srtt_ms": 96,
+            "rtt_samples": 3077,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2697,
+            "srtt_ms": 106,
+            "rtt_samples": 3083,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 12450,
+            "bytes_in": 7615160,
+            "bytes_out": 7615192,
+            "data_in": 12446,
+            "deliver_out": 12446,
+            "status_out": 12446,
+            "data_bytes_in": 6818360,
+            "data_bytes_out": 6818360,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5748,
+            "per_session_limited_bytes": 6092880,
+            "per_session_shaped": 5748,
+            "per_session_shaped_bytes": 6092880,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            2413568,
+            2406400
+          ],
+          "shares": [
+            0.5007435734013171,
+            0.4992564265986828
+          ],
+          "jain": 0.9999977883992786,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2107,
+            "srtt_ms": 79,
+            "rtt_samples": 3081,
+            "loss_events": 4,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3127,
+            "srtt_ms": 125,
+            "rtt_samples": 3074,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            4,
+            10
+          ],
+          "relay_stats": {
+            "datagrams": 12448,
+            "bytes_in": 7613936,
+            "bytes_out": 7613968,
+            "data_in": 12444,
+            "deliver_out": 12444,
+            "status_out": 12444,
+            "data_bytes_in": 6817264,
+            "data_bytes_out": 6817264,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5630,
+            "per_session_limited_bytes": 5967800,
+            "per_session_shaped": 5630,
+            "per_session_shaped_bytes": 5967800,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            2408448,
+            2415616
+          ],
+          "shares": [
+            0.49925705794947994,
+            0.5007429420505201
+          ],
+          "jain": 0.9999977921533129,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2807,
+            "srtt_ms": 113,
+            "rtt_samples": 3077,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 135,
+            "rtt_samples": 3081,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            8,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 12458,
+            "bytes_in": 7620056,
+            "bytes_out": 7620088,
+            "data_in": 12454,
+            "deliver_out": 12454,
+            "status_out": 12454,
+            "data_bytes_in": 6822744,
+            "data_bytes_out": 6822744,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5621,
+            "per_session_limited_bytes": 5958260,
+            "per_session_shaped": 5621,
+            "per_session_shaped_bytes": 5958260,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            2407424,
+            2406400
+          ],
+          "shares": [
+            0.5001063603488619,
+            0.49989363965113803
+          ],
+          "jain": 0.9999999547499068,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1787,
+            "srtt_ms": 67,
+            "rtt_samples": 3072,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1458,
+            "srtt_ms": 55,
+            "rtt_samples": 3072,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 12394,
+            "bytes_in": 7580888,
+            "bytes_out": 7580920,
+            "data_in": 12390,
+            "deliver_out": 12390,
+            "status_out": 12390,
+            "data_bytes_in": 6787672,
+            "data_bytes_out": 6787672,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5692,
+            "per_session_limited_bytes": 6033520,
+            "per_session_shaped": 5692,
+            "per_session_shaped_bytes": 6033520,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            2409472,
+            2407424
+          ],
+          "shares": [
+            0.5002125850340136,
+            0.4997874149659864
+          ],
+          "jain": 0.9999998192304459,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1895,
+            "srtt_ms": 71,
+            "rtt_samples": 3075,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1714,
+            "srtt_ms": 65,
+            "rtt_samples": 3074,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 12404,
+            "bytes_in": 7587008,
+            "bytes_out": 7587040,
+            "data_in": 12400,
+            "deliver_out": 12400,
+            "status_out": 12400,
+            "data_bytes_in": 6793152,
+            "data_bytes_out": 6793152,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5660,
+            "per_session_limited_bytes": 5999600,
+            "per_session_shaped": 5660,
+            "per_session_shaped_bytes": 5999600,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            2410496,
+            2403328
+          ],
+          "shares": [
+            0.5007445224420336,
+            0.4992554775579664
+          ],
+          "jain": 0.9999977827502494,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 136,
+            "rtt_samples": 3080,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 984,
+            "srtt_ms": 68,
+            "rtt_samples": 3068,
+            "loss_events": 14,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            14
+          ],
+          "relay_stats": {
+            "datagrams": 12426,
+            "bytes_in": 7600472,
+            "bytes_out": 7600504,
+            "data_in": 12422,
+            "deliver_out": 12422,
+            "status_out": 12422,
+            "data_bytes_in": 6805208,
+            "data_bytes_out": 6805208,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5716,
+            "per_session_limited_bytes": 6058960,
+            "per_session_shaped": 5716,
+            "per_session_shaped_bytes": 6058960,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            2407424,
+            2413568
+          ],
+          "shares": [
+            0.4993627867459643,
+            0.5006372132540357
+          ],
+          "jain": 0.9999983758397134,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 135,
+            "rtt_samples": 3068,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 131,
+            "rtt_samples": 3079,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            10,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 12460,
+            "bytes_in": 7621280,
+            "bytes_out": 7621312,
+            "data_in": 12456,
+            "deliver_out": 12456,
+            "status_out": 12456,
+            "data_bytes_in": 6823840,
+            "data_bytes_out": 6823840,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5717,
+            "per_session_limited_bytes": 6060020,
+            "per_session_shaped": 5717,
+            "per_session_shaped_bytes": 6060020,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            2410496,
+            2410496
+          ],
+          "shares": [
+            0.5,
+            0.5
+          ],
+          "jain": 1.0,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 963,
+            "srtt_ms": 65,
+            "rtt_samples": 3077,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 136,
+            "rtt_samples": 3076,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            9,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 12422,
+            "bytes_in": 7598024,
+            "bytes_out": 7598056,
+            "data_in": 12418,
+            "deliver_out": 12418,
+            "status_out": 12418,
+            "data_bytes_in": 6803016,
+            "data_bytes_out": 6803016,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 5673,
+            "per_session_limited_bytes": 6013380,
+            "per_session_shaped": 5673,
+            "per_session_shaped_bytes": 6013380,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L1",
+      "arm": "cc_paced",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            4879360,
+            4946944
+          ],
+          "shares": [
+            0.4965610671112964,
+            0.5034389328887037
+          ],
+          "jain": 0.9999526972000087,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5431,
+            "loss_events": 0,
+            "paced_new": 5451,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5608,
+            "loss_events": 0,
+            "paced_new": 5628,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22208,
+            "bytes_in": 13587056,
+            "bytes_out": 13587088,
+            "data_in": 22204,
+            "deliver_out": 22204,
+            "status_out": 22204,
+            "data_bytes_in": 12165744,
+            "data_bytes_out": 12165744,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            4943872,
+            4954112
+          ],
+          "shares": [
+            0.4994827229464101,
+            0.50051727705359
+          ],
+          "jain": 0.9999989296989449,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5594,
+            "loss_events": 0,
+            "paced_new": 5612,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5414,
+            "loss_events": 0,
+            "paced_new": 5433,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22150,
+            "bytes_in": 13551560,
+            "bytes_out": 13551592,
+            "data_in": 22146,
+            "deliver_out": 22146,
+            "status_out": 22146,
+            "data_bytes_in": 12133960,
+            "data_bytes_out": 12133960,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            4915200,
+            4902912
+          ],
+          "shares": [
+            0.5006257822277848,
+            0.49937421777221525
+          ],
+          "jain": 0.9999984335888672,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5348,
+            "loss_events": 0,
+            "paced_new": 5367,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5638,
+            "loss_events": 0,
+            "paced_new": 5660,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22108,
+            "bytes_in": 13525856,
+            "bytes_out": 13525888,
+            "data_in": 22104,
+            "deliver_out": 22104,
+            "status_out": 22104,
+            "data_bytes_in": 12110944,
+            "data_bytes_out": 12110944,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            4845568,
+            4898816
+          ],
+          "shares": [
+            0.4972677595628415,
+            0.5027322404371585
+          ],
+          "jain": 0.9999701403404001,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5312,
+            "loss_events": 0,
+            "paced_new": 5330,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5390,
+            "loss_events": 0,
+            "paced_new": 5411,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 21540,
+            "bytes_in": 13178240,
+            "bytes_out": 13178272,
+            "data_in": 21536,
+            "deliver_out": 21536,
+            "status_out": 21536,
+            "data_bytes_in": 11799680,
+            "data_bytes_out": 11799680,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            4910080,
+            4801536
+          ],
+          "shares": [
+            0.5055883593420498,
+            0.49441164065795024
+          ],
+          "jain": 0.9998750965622741,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5416,
+            "loss_events": 0,
+            "paced_new": 5438,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5215,
+            "loss_events": 0,
+            "paced_new": 5236,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 21396,
+            "bytes_in": 13090112,
+            "bytes_out": 13090144,
+            "data_in": 21392,
+            "deliver_out": 21392,
+            "status_out": 21392,
+            "data_bytes_in": 11720768,
+            "data_bytes_out": 11720768,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            4916224,
+            4761600
+          ],
+          "shares": [
+            0.507988572637816,
+            0.4920114273621839
+          ],
+          "jain": 0.9997447959745613,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5378,
+            "loss_events": 0,
+            "paced_new": 5398,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5308,
+            "loss_events": 0,
+            "paced_new": 5329,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 21506,
+            "bytes_in": 13157432,
+            "bytes_out": 13157464,
+            "data_in": 21502,
+            "deliver_out": 21502,
+            "status_out": 21502,
+            "data_bytes_in": 11781048,
+            "data_bytes_out": 11781048,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            4813824,
+            4835328
+          ],
+          "shares": [
+            0.4988857051894301,
+            0.5011142948105699
+          ],
+          "jain": 0.9999950334129677,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 39,
+            "rtt_samples": 5287,
+            "loss_events": 0,
+            "paced_new": 5306,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5247,
+            "loss_events": 0,
+            "paced_new": 5265,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 21198,
+            "bytes_in": 12968936,
+            "bytes_out": 12968968,
+            "data_in": 21194,
+            "deliver_out": 21194,
+            "status_out": 21194,
+            "data_bytes_in": 11612264,
+            "data_bytes_out": 11612264,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            4928512,
+            4954112
+          ],
+          "shares": [
+            0.4987047974303181,
+            0.5012952025696819
+          ],
+          "jain": 0.9999932898462405,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5614,
+            "loss_events": 0,
+            "paced_new": 5637,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5537,
+            "loss_events": 0,
+            "paced_new": 5561,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22436,
+            "bytes_in": 13726592,
+            "bytes_out": 13726624,
+            "data_in": 22432,
+            "deliver_out": 22432,
+            "status_out": 22432,
+            "data_bytes_in": 12290688,
+            "data_bytes_out": 12290688,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            4953088,
+            4884480
+          ],
+          "shares": [
+            0.5034870406994899,
+            0.49651295930051004
+          ],
+          "jain": 0.999951364554162,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5461,
+            "loss_events": 0,
+            "paced_new": 5480,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5474,
+            "loss_events": 0,
+            "paced_new": 5494,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22002,
+            "bytes_in": 13460984,
+            "bytes_out": 13461016,
+            "data_in": 21998,
+            "deliver_out": 21998,
+            "status_out": 21998,
+            "data_bytes_in": 12052856,
+            "data_bytes_out": 12052856,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            4855808,
+            4880384
+          ],
+          "shares": [
+            0.4987379049221708,
+            0.5012620950778292
+          ],
+          "jain": 0.9999936285046543,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5448,
+            "loss_events": 0,
+            "paced_new": 5470,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 40,
+            "rtt_samples": 5565,
+            "loss_events": 0,
+            "paced_new": 5586,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 22158,
+            "bytes_in": 13556456,
+            "bytes_out": 13556488,
+            "data_in": 22154,
+            "deliver_out": 22154,
+            "status_out": 22154,
+            "data_bytes_in": 12138344,
+            "data_bytes_out": 12138344,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L2",
+      "arm": "cc_off",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            3149824,
+            3139584
+          ],
+          "shares": [
+            0.5008140670791273,
+            0.49918593292087265
+          ],
+          "jain": 0.9999973491861895,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            16,
+            27
+          ],
+          "relay_stats": {
+            "datagrams": 15904,
+            "bytes_in": 9729008,
+            "bytes_out": 9729040,
+            "data_in": 15900,
+            "deliver_out": 15900,
+            "status_out": 15900,
+            "data_bytes_in": 8711152,
+            "data_bytes_out": 8711152,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            3149824,
+            3143680
+          ],
+          "shares": [
+            0.5004881223560039,
+            0.49951187764399607
+          ],
+          "jain": 0.9999990469471706,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            18,
+            29
+          ],
+          "relay_stats": {
+            "datagrams": 15920,
+            "bytes_in": 9738800,
+            "bytes_out": 9738832,
+            "data_in": 15916,
+            "deliver_out": 15916,
+            "status_out": 15916,
+            "data_bytes_in": 8719920,
+            "data_bytes_out": 8719920,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            3146752,
+            3146752
+          ],
+          "shares": [
+            0.5,
+            0.5
+          ],
+          "jain": 1.0,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            20,
+            22
+          ],
+          "relay_stats": {
+            "datagrams": 15912,
+            "bytes_in": 9733904,
+            "bytes_out": 9733936,
+            "data_in": 15908,
+            "deliver_out": 15908,
+            "status_out": 15908,
+            "data_bytes_in": 8715536,
+            "data_bytes_out": 8715536,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            3162112,
+            3153920
+          ],
+          "shares": [
+            0.5006485084306096,
+            0.4993514915693904
+          ],
+          "jain": 0.9999983177500917,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            12,
+            17
+          ],
+          "relay_stats": {
+            "datagrams": 15900,
+            "bytes_in": 9726560,
+            "bytes_out": 9726592,
+            "data_in": 15896,
+            "deliver_out": 15896,
+            "status_out": 15896,
+            "data_bytes_in": 8708960,
+            "data_bytes_out": 8708960,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            3143680,
+            3135488
+          ],
+          "shares": [
+            0.5006523157208089,
+            0.49934768427919113
+          ],
+          "jain": 0.9999982979396985,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            22,
+            20
+          ],
+          "relay_stats": {
+            "datagrams": 15820,
+            "bytes_in": 9677600,
+            "bytes_out": 9677632,
+            "data_in": 15816,
+            "deliver_out": 15816,
+            "status_out": 15816,
+            "data_bytes_in": 8665120,
+            "data_bytes_out": 8665120,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            3140608,
+            3146752
+          ],
+          "shares": [
+            0.4995114006514658,
+            0.5004885993485342
+          ],
+          "jain": 0.9999990450836184,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            18,
+            14
+          ],
+          "relay_stats": {
+            "datagrams": 15844,
+            "bytes_in": 9692288,
+            "bytes_out": 9692320,
+            "data_in": 15840,
+            "deliver_out": 15840,
+            "status_out": 15840,
+            "data_bytes_in": 8678272,
+            "data_bytes_out": 8678272,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            3126272,
+            3141632
+          ],
+          "shares": [
+            0.49877471001470347,
+            0.5012252899852965
+          ],
+          "jain": 0.9999939946938716,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            26,
+            22
+          ],
+          "relay_stats": {
+            "datagrams": 15850,
+            "bytes_in": 9695960,
+            "bytes_out": 9695992,
+            "data_in": 15846,
+            "deliver_out": 15846,
+            "status_out": 15846,
+            "data_bytes_in": 8681560,
+            "data_bytes_out": 8681560,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            3153920,
+            3155968
+          ],
+          "shares": [
+            0.49983771502758845,
+            0.5001622849724116
+          ],
+          "jain": 0.999999894654362,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            14,
+            23
+          ],
+          "relay_stats": {
+            "datagrams": 15932,
+            "bytes_in": 9746144,
+            "bytes_out": 9746176,
+            "data_in": 15928,
+            "deliver_out": 15928,
+            "status_out": 15928,
+            "data_bytes_in": 8726496,
+            "data_bytes_out": 8726496,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            3126272,
+            3127296
+          ],
+          "shares": [
+            0.4999181267398068,
+            0.5000818732601933
+          ],
+          "jain": 0.9999999731870778,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            27,
+            32
+          ],
+          "relay_stats": {
+            "datagrams": 15886,
+            "bytes_in": 9717992,
+            "bytes_out": 9718024,
+            "data_in": 15882,
+            "deliver_out": 15882,
+            "status_out": 15882,
+            "data_bytes_in": 8701288,
+            "data_bytes_out": 8701288,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            3148800,
+            3141632
+          ],
+          "shares": [
+            0.500569754191763,
+            0.499430245808237
+          ],
+          "jain": 0.99999870152233,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": false,
+            "cwnd_x100": 400,
+            "srtt_ms": 0,
+            "rtt_samples": 0,
+            "loss_events": 0,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            18,
+            24
+          ],
+          "relay_stats": {
+            "datagrams": 15918,
+            "bytes_in": 9737576,
+            "bytes_out": 9737608,
+            "data_in": 15914,
+            "deliver_out": 15914,
+            "status_out": 15914,
+            "data_bytes_in": 8718824,
+            "data_bytes_out": 8718824,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L2",
+      "arm": "cc_on",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 9,
+      "criterion_met": false,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            1987584,
+            1974272
+          ],
+          "shares": [
+            0.5016800206771775,
+            0.49831997932282246
+          ],
+          "jain": 0.9999887102495569,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2108,
+            "srtt_ms": 100,
+            "rtt_samples": 2276,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1112,
+            "srtt_ms": 99,
+            "rtt_samples": 2321,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 9280,
+            "bytes_in": 5675120,
+            "bytes_out": 5675152,
+            "data_in": 9276,
+            "deliver_out": 9276,
+            "status_out": 9276,
+            "data_bytes_in": 5081200,
+            "data_bytes_out": 5081200,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            1825792,
+            1667072
+          ],
+          "shares": [
+            0.5227206097918499,
+            0.4772793902081501
+          ],
+          "jain": 0.9979393506068216,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2891,
+            "srtt_ms": 101,
+            "rtt_samples": 2146,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1315,
+            "srtt_ms": 100,
+            "rtt_samples": 1945,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 8292,
+            "bytes_in": 5070464,
+            "bytes_out": 5070496,
+            "data_in": 8288,
+            "deliver_out": 8288,
+            "status_out": 8288,
+            "data_bytes_in": 4539776,
+            "data_bytes_out": 4539776,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            1759232,
+            1713152
+          ],
+          "shares": [
+            0.5066352108522559,
+            0.493364789147744
+          ],
+          "jain": 0.9998239269149752,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1511,
+            "srtt_ms": 98,
+            "rtt_samples": 2017,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1282,
+            "srtt_ms": 99,
+            "rtt_samples": 2014,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            8
+          ],
+          "relay_stats": {
+            "datagrams": 8154,
+            "bytes_in": 4986008,
+            "bytes_out": 4986040,
+            "data_in": 8150,
+            "deliver_out": 8150,
+            "status_out": 8150,
+            "data_bytes_in": 4464152,
+            "data_bytes_out": 4464152,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            1933312,
+            2018304
+          ],
+          "shares": [
+            0.4892459186317699,
+            0.5107540813682301
+          ],
+          "jain": 0.9995376128364959,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2083,
+            "srtt_ms": 100,
+            "rtt_samples": 2287,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1377,
+            "srtt_ms": 101,
+            "rtt_samples": 2366,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 9398,
+            "bytes_in": 5747336,
+            "bytes_out": 5747368,
+            "data_in": 9394,
+            "deliver_out": 9394,
+            "status_out": 9394,
+            "data_bytes_in": 5145864,
+            "data_bytes_out": 5145864,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            2060288,
+            1897472
+          ],
+          "shares": [
+            0.5205692108667529,
+            0.4794307891332471
+          ],
+          "jain": 0.9983104895336694,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1666,
+            "srtt_ms": 100,
+            "rtt_samples": 2357,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2959,
+            "srtt_ms": 100,
+            "rtt_samples": 2246,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 9326,
+            "bytes_in": 5703272,
+            "bytes_out": 5703304,
+            "data_in": 9322,
+            "deliver_out": 9322,
+            "status_out": 9322,
+            "data_bytes_in": 5106408,
+            "data_bytes_out": 5106408,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            1909760,
+            1641472
+          ],
+          "shares": [
+            0.5377739331026529,
+            0.4622260668973472
+          ],
+          "jain": 0.9943249103728706,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1755,
+            "srtt_ms": 99,
+            "rtt_samples": 2137,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1471,
+            "srtt_ms": 98,
+            "rtt_samples": 1991,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            7
+          ],
+          "relay_stats": {
+            "datagrams": 8354,
+            "bytes_in": 5108408,
+            "bytes_out": 5108440,
+            "data_in": 8350,
+            "deliver_out": 8350,
+            "status_out": 8350,
+            "data_bytes_in": 4573752,
+            "data_bytes_out": 4573752,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            1523712,
+            2016256
+          ],
+          "shares": [
+            0.430431009545849,
+            0.569568990454151
+          ],
+          "jain": 0.9810082899572409,
+          "pass": false,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1919,
+            "srtt_ms": 100,
+            "rtt_samples": 1809,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2201,
+            "srtt_ms": 99,
+            "rtt_samples": 2378,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 8486,
+            "bytes_in": 5189192,
+            "bytes_out": 5189224,
+            "data_in": 8482,
+            "deliver_out": 8482,
+            "status_out": 8482,
+            "data_bytes_in": 4646088,
+            "data_bytes_out": 4646088,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            1754112,
+            2131968
+          ],
+          "shares": [
+            0.45138339920948617,
+            0.5486166007905139
+          ],
+          "jain": 0.9906342510681869,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2481,
+            "srtt_ms": 100,
+            "rtt_samples": 1981,
+            "loss_events": 7,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1650,
+            "srtt_ms": 99,
+            "rtt_samples": 2450,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            7,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 8974,
+            "bytes_in": 5487848,
+            "bytes_out": 5487880,
+            "data_in": 8970,
+            "deliver_out": 8970,
+            "status_out": 8970,
+            "data_bytes_in": 4913512,
+            "data_bytes_out": 4913512,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            1915904,
+            1629184
+          ],
+          "shares": [
+            0.5404390525707683,
+            0.45956094742923165
+          ],
+          "jain": 0.993501242224286,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2390,
+            "srtt_ms": 100,
+            "rtt_samples": 2276,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1929,
+            "srtt_ms": 101,
+            "rtt_samples": 1947,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            8
+          ],
+          "relay_stats": {
+            "datagrams": 8564,
+            "bytes_in": 5236928,
+            "bytes_out": 5236960,
+            "data_in": 8560,
+            "deliver_out": 8560,
+            "status_out": 8560,
+            "data_bytes_in": 4688832,
+            "data_bytes_out": 4688832,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            1692672,
+            1554432
+          ],
+          "shares": [
+            0.521286660359508,
+            0.47871333964049195
+          ],
+          "jain": 0.9981907915309388,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2871,
+            "srtt_ms": 98,
+            "rtt_samples": 2009,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2413,
+            "srtt_ms": 98,
+            "rtt_samples": 1861,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 7880,
+            "bytes_in": 4818320,
+            "bytes_out": 4818352,
+            "data_in": 7876,
+            "deliver_out": 7876,
+            "status_out": 7876,
+            "data_bytes_in": 4314000,
+            "data_bytes_out": 4314000,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L2",
+      "arm": "cc_on_per_session_cap",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 10,
+      "criterion_met": true,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            1205248,
+            1226752
+          ],
+          "shares": [
+            0.49557894736842106,
+            0.504421052631579
+          ],
+          "jain": 0.9999218232865916,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 270,
+            "rtt_samples": 1532,
+            "loss_events": 2,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1857,
+            "srtt_ms": 142,
+            "rtt_samples": 1506,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            2,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 6200,
+            "bytes_in": 3790160,
+            "bytes_out": 3790192,
+            "data_in": 6196,
+            "deliver_out": 6196,
+            "status_out": 6196,
+            "data_bytes_in": 3393360,
+            "data_bytes_out": 3393360,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 2249,
+            "per_session_limited_bytes": 2383940,
+            "per_session_shaped": 2249,
+            "per_session_shaped_bytes": 2383940,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            1202176,
+            1204224
+          ],
+          "shares": [
+            0.49957446808510636,
+            0.5004255319148936
+          ],
+          "jain": 0.9999992756908822,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2210,
+            "srtt_ms": 173,
+            "rtt_samples": 1523,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2472,
+            "srtt_ms": 193,
+            "rtt_samples": 1527,
+            "loss_events": 3,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            8,
+            3
+          ],
+          "relay_stats": {
+            "datagrams": 6220,
+            "bytes_in": 3802400,
+            "bytes_out": 3802432,
+            "data_in": 6216,
+            "deliver_out": 6216,
+            "status_out": 6216,
+            "data_bytes_in": 3404320,
+            "data_bytes_out": 3404320,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 1823,
+            "per_session_limited_bytes": 1932380,
+            "per_session_shaped": 1823,
+            "per_session_shaped_bytes": 1932380,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            1235968,
+            1257472
+          ],
+          "shares": [
+            0.49568788501026695,
+            0.504312114989733
+          ],
+          "jain": 0.999925628188839,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 272,
+            "rtt_samples": 1528,
+            "loss_events": 3,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2708,
+            "srtt_ms": 218,
+            "rtt_samples": 1476,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            5
+          ],
+          "relay_stats": {
+            "datagrams": 6150,
+            "bytes_in": 3759560,
+            "bytes_out": 3759592,
+            "data_in": 6146,
+            "deliver_out": 6146,
+            "status_out": 6146,
+            "data_bytes_in": 3365960,
+            "data_bytes_out": 3365960,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 2086,
+            "per_session_limited_bytes": 2211160,
+            "per_session_shaped": 2086,
+            "per_session_shaped_bytes": 2211160,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            1206272,
+            1200128
+          ],
+          "shares": [
+            0.5012765957446809,
+            0.49872340425531914
+          ],
+          "jain": 0.999993481255713,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2850,
+            "srtt_ms": 227,
+            "rtt_samples": 1530,
+            "loss_events": 3,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2174,
+            "srtt_ms": 170,
+            "rtt_samples": 1524,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 6238,
+            "bytes_in": 3813416,
+            "bytes_out": 3813448,
+            "data_in": 6234,
+            "deliver_out": 6234,
+            "status_out": 6234,
+            "data_bytes_in": 3414184,
+            "data_bytes_out": 3414184,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 1824,
+            "per_session_limited_bytes": 1933440,
+            "per_session_shaped": 1824,
+            "per_session_shaped_bytes": 1933440,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            1238016,
+            1196032
+          ],
+          "shares": [
+            0.5086243163651661,
+            0.4913756836348338
+          ],
+          "jain": 0.9997025731579795,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1400,
+            "srtt_ms": 108,
+            "rtt_samples": 1532,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1514,
+            "srtt_ms": 99,
+            "rtt_samples": 1501,
+            "loss_events": 10,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            10
+          ],
+          "relay_stats": {
+            "datagrams": 6156,
+            "bytes_in": 3763232,
+            "bytes_out": 3763264,
+            "data_in": 6152,
+            "deliver_out": 6152,
+            "status_out": 6152,
+            "data_bytes_in": 3369248,
+            "data_bytes_out": 3369248,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 1427,
+            "per_session_limited_bytes": 1512620,
+            "per_session_shaped": 1427,
+            "per_session_shaped_bytes": 1512620,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            1255424,
+            1205248
+          ],
+          "shares": [
+            0.5101955888472742,
+            0.48980441115272577
+          ],
+          "jain": 0.9995843726901179,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1907,
+            "srtt_ms": 145,
+            "rtt_samples": 1476,
+            "loss_events": 8,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 1691,
+            "srtt_ms": 267,
+            "rtt_samples": 1537,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            8,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 6130,
+            "bytes_in": 3747320,
+            "bytes_out": 3747352,
+            "data_in": 6126,
+            "deliver_out": 6126,
+            "status_out": 6126,
+            "data_bytes_in": 3355000,
+            "data_bytes_out": 3355000,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 1694,
+            "per_session_limited_bytes": 1795640,
+            "per_session_shaped": 1694,
+            "per_session_shaped_bytes": 1795640,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            1204224,
+            1202176
+          ],
+          "shares": [
+            0.5004255319148936,
+            0.49957446808510636
+          ],
+          "jain": 0.9999992756908822,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2700,
+            "srtt_ms": 213,
+            "rtt_samples": 1532,
+            "loss_events": 3,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2772,
+            "srtt_ms": 219,
+            "rtt_samples": 1529,
+            "loss_events": 4,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            4
+          ],
+          "relay_stats": {
+            "datagrams": 6246,
+            "bytes_in": 3818312,
+            "bytes_out": 3818344,
+            "data_in": 6242,
+            "deliver_out": 6242,
+            "status_out": 6242,
+            "data_bytes_in": 3418568,
+            "data_bytes_out": 3418568,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 2433,
+            "per_session_limited_bytes": 2578980,
+            "per_session_shaped": 2433,
+            "per_session_shaped_bytes": 2578980,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            1219584,
+            1205248
+          ],
+          "shares": [
+            0.502956081081081,
+            0.4970439189189189
+          ],
+          "jain": 0.999965047560284,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2002,
+            "srtt_ms": 156,
+            "rtt_samples": 1530,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2117,
+            "srtt_ms": 166,
+            "rtt_samples": 1528,
+            "loss_events": 2,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 6222,
+            "bytes_in": 3803624,
+            "bytes_out": 3803656,
+            "data_in": 6218,
+            "deliver_out": 6218,
+            "status_out": 6218,
+            "data_bytes_in": 3405416,
+            "data_bytes_out": 3405416,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 2151,
+            "per_session_limited_bytes": 2280060,
+            "per_session_shaped": 2151,
+            "per_session_shaped_bytes": 2280060,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            1204224,
+            1208320
+          ],
+          "shares": [
+            0.499151103565365,
+            0.5008488964346349
+          ],
+          "jain": 0.9999971175076818,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2588,
+            "srtt_ms": 201,
+            "rtt_samples": 1508,
+            "loss_events": 5,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2671,
+            "srtt_ms": 211,
+            "rtt_samples": 1525,
+            "loss_events": 9,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            5,
+            9
+          ],
+          "relay_stats": {
+            "datagrams": 6204,
+            "bytes_in": 3792608,
+            "bytes_out": 3792640,
+            "data_in": 6200,
+            "deliver_out": 6200,
+            "status_out": 6200,
+            "data_bytes_in": 3395552,
+            "data_bytes_out": 3395552,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 1714,
+            "per_session_limited_bytes": 1816840,
+            "per_session_shaped": 1714,
+            "per_session_shaped_bytes": 1816840,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            1202176,
+            1207296
+          ],
+          "shares": [
+            0.49893752656183593,
+            0.501062473438164
+          ],
+          "jain": 0.9999954846211615,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1945,
+            "srtt_ms": 149,
+            "rtt_samples": 1505,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2297,
+            "srtt_ms": 178,
+            "rtt_samples": 1503,
+            "loss_events": 6,
+            "paced_new": 0,
+            "backpressure": 0
+          },
+          "retransmits": [
+            6,
+            6
+          ],
+          "relay_stats": {
+            "datagrams": 6130,
+            "bytes_in": 3747320,
+            "bytes_out": 3747352,
+            "data_in": 6126,
+            "deliver_out": 6126,
+            "status_out": 6126,
+            "data_bytes_in": 3355000,
+            "data_bytes_out": 3355000,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 2064,
+            "per_session_limited_bytes": 2187840,
+            "per_session_shaped": 2064,
+            "per_session_shaped_bytes": 2187840,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    },
+    {
+      "shape": "L2",
+      "arm": "cc_paced",
+      "rounds_seen": 10,
+      "rounds_valid": 10,
+      "rounds_pass": 9,
+      "criterion_met": false,
+      "criterion": {
+        "jain_min": 0.95,
+        "share_min": 0.45,
+        "share_max": 0.55,
+        "rounds_required": 10,
+        "all_rounds_must_pass": true
+      },
+      "rounds": [
+        {
+          "round": 1,
+          "valid": true,
+          "received_bytes": [
+            1690624,
+            1845248
+          ],
+          "shares": [
+            0.47813495511149723,
+            0.5218650448885027
+          ],
+          "jain": 0.9980913292388003,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1764,
+            "srtt_ms": 101,
+            "rtt_samples": 1886,
+            "loss_events": 2,
+            "paced_new": 1897,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 101,
+            "rtt_samples": 2011,
+            "loss_events": 0,
+            "paced_new": 2037,
+            "backpressure": 0
+          },
+          "retransmits": [
+            2,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 7904,
+            "bytes_in": 4833008,
+            "bytes_out": 4833040,
+            "data_in": 7900,
+            "deliver_out": 7900,
+            "status_out": 7900,
+            "data_bytes_in": 4327152,
+            "data_bytes_out": 4327152,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 2,
+          "valid": true,
+          "received_bytes": [
+            1455104,
+            1585152
+          ],
+          "shares": [
+            0.4786123273829572,
+            0.5213876726170428
+          ],
+          "jain": 0.9981736116379745,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2937,
+            "srtt_ms": 100,
+            "rtt_samples": 1611,
+            "loss_events": 3,
+            "paced_new": 1628,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3030,
+            "srtt_ms": 99,
+            "rtt_samples": 1788,
+            "loss_events": 2,
+            "paced_new": 1806,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 6934,
+            "bytes_in": 4239368,
+            "bytes_out": 4239400,
+            "data_in": 6930,
+            "deliver_out": 6930,
+            "status_out": 6930,
+            "data_bytes_in": 3795592,
+            "data_bytes_out": 3795592,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 3,
+          "valid": true,
+          "received_bytes": [
+            1401856,
+            1695744
+          ],
+          "shares": [
+            0.4525619834710744,
+            0.5474380165289257
+          ],
+          "jain": 0.9910788418144754,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2307,
+            "srtt_ms": 100,
+            "rtt_samples": 1585,
+            "loss_events": 3,
+            "paced_new": 1597,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 101,
+            "rtt_samples": 1851,
+            "loss_events": 2,
+            "paced_new": 1872,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 6998,
+            "bytes_in": 4278536,
+            "bytes_out": 4278568,
+            "data_in": 6994,
+            "deliver_out": 6994,
+            "status_out": 6994,
+            "data_bytes_in": 3830664,
+            "data_bytes_out": 3830664,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 4,
+          "valid": true,
+          "received_bytes": [
+            1920000,
+            1664000
+          ],
+          "shares": [
+            0.5357142857142857,
+            0.4642857142857143
+          ],
+          "jain": 0.9949238578680203,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 99,
+            "rtt_samples": 2074,
+            "loss_events": 0,
+            "paced_new": 2090,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 98,
+            "rtt_samples": 1818,
+            "loss_events": 2,
+            "paced_new": 1838,
+            "backpressure": 0
+          },
+          "retransmits": [
+            0,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 7916,
+            "bytes_in": 4840352,
+            "bytes_out": 4840384,
+            "data_in": 7912,
+            "deliver_out": 7912,
+            "status_out": 7912,
+            "data_bytes_in": 4333728,
+            "data_bytes_out": 4333728,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 5,
+          "valid": true,
+          "received_bytes": [
+            1694720,
+            1529856
+          ],
+          "shares": [
+            0.5255636710066688,
+            0.4744363289933312
+          ],
+          "jain": 0.9973928101063334,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2045,
+            "srtt_ms": 99,
+            "rtt_samples": 1864,
+            "loss_events": 2,
+            "paced_new": 1873,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2836,
+            "srtt_ms": 99,
+            "rtt_samples": 1705,
+            "loss_events": 2,
+            "paced_new": 1721,
+            "backpressure": 0
+          },
+          "retransmits": [
+            2,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 7250,
+            "bytes_in": 4432760,
+            "bytes_out": 4432792,
+            "data_in": 7246,
+            "deliver_out": 7246,
+            "status_out": 7246,
+            "data_bytes_in": 3968760,
+            "data_bytes_out": 3968760,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 6,
+          "valid": true,
+          "received_bytes": [
+            1892352,
+            1691648
+          ],
+          "shares": [
+            0.528,
+            0.472
+          ],
+          "jain": 0.9968738037514355,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 1679,
+            "srtt_ms": 97,
+            "rtt_samples": 2059,
+            "loss_events": 1,
+            "paced_new": 2073,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 100,
+            "rtt_samples": 1847,
+            "loss_events": 1,
+            "paced_new": 1869,
+            "backpressure": 0
+          },
+          "retransmits": [
+            1,
+            1
+          ],
+          "relay_stats": {
+            "datagrams": 7920,
+            "bytes_in": 4842800,
+            "bytes_out": 4842832,
+            "data_in": 7916,
+            "deliver_out": 7916,
+            "status_out": 7916,
+            "data_bytes_in": 4335920,
+            "data_bytes_out": 4335920,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 7,
+          "valid": true,
+          "received_bytes": [
+            1871872,
+            1666048
+          ],
+          "shares": [
+            0.5290882778581766,
+            0.4709117221418234
+          ],
+          "jain": 0.9966269046454556,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 99,
+            "rtt_samples": 2021,
+            "loss_events": 1,
+            "paced_new": 2041,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 102,
+            "rtt_samples": 1833,
+            "loss_events": 1,
+            "paced_new": 1852,
+            "backpressure": 0
+          },
+          "retransmits": [
+            1,
+            1
+          ],
+          "relay_stats": {
+            "datagrams": 7848,
+            "bytes_in": 4798736,
+            "bytes_out": 4798768,
+            "data_in": 7844,
+            "deliver_out": 7844,
+            "status_out": 7844,
+            "data_bytes_in": 4296464,
+            "data_bytes_out": 4296464,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 8,
+          "valid": true,
+          "received_bytes": [
+            1416192,
+            1852416
+          ],
+          "shares": [
+            0.4332706766917293,
+            0.5667293233082706
+          ],
+          "jain": 0.9825004773228264,
+          "pass": false,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2724,
+            "srtt_ms": 99,
+            "rtt_samples": 1542,
+            "loss_events": 3,
+            "paced_new": 1560,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 99,
+            "rtt_samples": 2011,
+            "loss_events": 0,
+            "paced_new": 2027,
+            "backpressure": 0
+          },
+          "retransmits": [
+            3,
+            0
+          ],
+          "relay_stats": {
+            "datagrams": 7238,
+            "bytes_in": 4425416,
+            "bytes_out": 4425448,
+            "data_in": 7234,
+            "deliver_out": 7234,
+            "status_out": 7234,
+            "data_bytes_in": 3962184,
+            "data_bytes_out": 3962184,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 9,
+          "valid": true,
+          "received_bytes": [
+            1739776,
+            1702912
+          ],
+          "shares": [
+            0.5053539559785841,
+            0.4946460440214158
+          ],
+          "jain": 0.9998853537667833,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 100,
+            "rtt_samples": 1888,
+            "loss_events": 1,
+            "paced_new": 1910,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 2320,
+            "srtt_ms": 99,
+            "rtt_samples": 1848,
+            "loss_events": 2,
+            "paced_new": 1865,
+            "backpressure": 0
+          },
+          "retransmits": [
+            1,
+            2
+          ],
+          "relay_stats": {
+            "datagrams": 7596,
+            "bytes_in": 4644512,
+            "bytes_out": 4644544,
+            "data_in": 7592,
+            "deliver_out": 7592,
+            "status_out": 7592,
+            "data_bytes_in": 4158368,
+            "data_bytes_out": 4158368,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        },
+        {
+          "round": 10,
+          "valid": true,
+          "received_bytes": [
+            1740800,
+            1745920
+          ],
+          "shares": [
+            0.49926578560939794,
+            0.5007342143906021
+          ],
+          "jain": 0.9999978437215641,
+          "pass": true,
+          "cc_flow1": {
+            "enabled": true,
+            "cwnd_x100": 2589,
+            "srtt_ms": 99,
+            "rtt_samples": 1909,
+            "loss_events": 1,
+            "paced_new": 1923,
+            "backpressure": 0
+          },
+          "cc_flow2": {
+            "enabled": true,
+            "cwnd_x100": 3200,
+            "srtt_ms": 100,
+            "rtt_samples": 1917,
+            "loss_events": 1,
+            "paced_new": 1935,
+            "backpressure": 0
+          },
+          "retransmits": [
+            1,
+            1
+          ],
+          "relay_stats": {
+            "datagrams": 7774,
+            "bytes_in": 4753448,
+            "bytes_out": 4753480,
+            "data_in": 7770,
+            "deliver_out": 7770,
+            "status_out": 7770,
+            "data_bytes_in": 4255912,
+            "data_bytes_out": 4255912,
+            "bandwidth_limited": 0,
+            "bandwidth_limited_bytes": 0,
+            "per_session_limited": 0,
+            "per_session_limited_bytes": 0,
+            "per_session_shaped": 0,
+            "per_session_shaped_bytes": 0,
+            "per_session_dropped": 0,
+            "rate_limited": 0,
+            "replay": 0,
+            "mac_fail": 0,
+            "sessions_active": 4,
+            "sessions_expired": 0
+          }
+        }
+      ]
+    }
+  ],
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "verdict_wording": "component-level fairness measurement only; not G2 unlock"
+}

@@ -1,0 +1,32 @@
+{
+  "recorded_at": "2026-11-24T16:55:17+08:00",
+  "scope": "diagnostic only: whether existing public endpoints already have TCP DNAT; no punch verdict, no gate change",
+  "observations": [
+    {
+      "node": "221",
+      "lan": "192.168.1.221/24 (alias 192.168.1.239/32)",
+      "wan_egress": "112.5.60.4",
+      "route_to_public_ip": "112.5.60.4 via 192.168.1.254 dev ens160",
+      "public_ip_bound_locally": false,
+      "nat_prerouting_rules": "none",
+      "listener": "python socket 0.0.0.0:19910, printed READY",
+      "external_probe": "TCP connect 112.5.60.4:19910 from 192.168.1.210 timed out after 5s",
+      "gateway": "192.168.1.254: web 80/443 open, SSH 22 timed out"
+    },
+    {
+      "node": "222",
+      "lan_mgmt": "192.168.1.222/24",
+      "wan_lan": "192.168.34.222/24",
+      "wan_egress": "112.5.32.34",
+      "default_route": "default via 192.168.34.1 dev ens160",
+      "nat_prerouting_rules": "none",
+      "gateway": "192.168.34.1: SSH 22 timed out from 222; web 80/443 closed"
+    }
+  ],
+  "verdict": "BLOCKED",
+  "reason": "Both public egress addresses are on upstream NAT gateways, not on the experiment hosts. No inbound TCP DNAT exists for 19910/19920, and the gateways are not reachable with the available SSH key. DNAT must be created by the owner of each upstream gateway.",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}

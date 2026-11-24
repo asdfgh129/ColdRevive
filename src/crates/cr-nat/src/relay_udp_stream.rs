@@ -13,8 +13,9 @@
 //!   每个 datagram 由 `UdpRelayClient::send` 递增；重传必须换新的 UDP 头 seq（否则会被
 //!   当重放丢掉）。本层的 **app seq** 是另一套空间，专用于可靠交付，两者绝不混用。
 //! - **STATUS 不是 ACK**：中继的 `UdpKind::Status` 只说明「中继是否转出」，不代表对端
-//!   应用收到。本层**只认对端 `Segment` 里 piggyback 的 ACK**，收到 STATUS 只记数，
-//!   绝不滑动发送窗口。把 STATUS 当 ACK 会让「中继转了但对端没收到」被误判为送达。
+//!   应用收到。本层**只认对端 `Segment` 里 piggyback 的 ACK**，绝不滑动发送窗口。
+//!   `BandwidthLimited` 例外：它是中继明确说「这帧没转」的背压信号，用于尽快重发，
+//!   仍然**不计送达、不计 ACK**。把它当 ACK 会让「中继转了但对端没收到」被误判为送达。
 //! - **有界内存**：乱序重组窗口、在飞队列都受限；超出窗口的乱序段直接丢弃并计数，
 //!   不无限缓存（ADR-024 否决条件之一是「无限重传 / 无界内存」）。
 //! - **std-only**：只用 `std`，不引入 tokio / 第三方可靠传输库（ADR-015 依赖分层表）。
@@ -37,7 +38,7 @@
 //! 一并计入字节预算。这是保守口径——不会让数据面绕过 ADR-014。
 
 use crate::relay::NODE_ID_LEN;
-use crate::relay_udp::UDP_MAX_PAYLOAD;
+use crate::relay_udp::{UdpStatus, UDP_MAX_PAYLOAD};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -108,6 +109,8 @@ pub struct CcStats {
     pub loss_events: u64,
     pub rtt_samples: u64,
     pub paced_new_segments: u64,
+    /// 中继明确回 `BandwidthLimited` 的次数（背压，不计入 loss_events）。
+    pub relay_backpressure_events: u64,
 }
 
 // ---- u32 序列号环绕比较（经典 TCP 差值法；窗口 32 « 2^31，安全）----
@@ -237,6 +240,9 @@ pub struct StreamCore {
     rtt_samples: u64,
     next_send_at: Option<Instant>,
     paced_new_segments: u64,
+    /// 中继背压：短时间内的多个 STATUS 只触发一次快重传，避免风暴。
+    last_backpressure_at: Option<Instant>,
+    relay_backpressure_events: u64,
     // ---- 接收侧 ----
     /// 下一个期望收到的 app seq（累积确认值）。
     expected: u32,
@@ -300,6 +306,8 @@ impl StreamCore {
             rtt_samples: 0,
             next_send_at: None,
             paced_new_segments: 0,
+            last_backpressure_at: None,
+            relay_backpressure_events: 0,
             expected: start_seq,
             incoming: BTreeMap::new(),
             peer_closed: false,
@@ -528,12 +536,36 @@ impl StreamCore {
             loss_events: self.loss_events,
             rtt_samples: self.rtt_samples,
             paced_new_segments: self.paced_new_segments,
+            relay_backpressure_events: self.relay_backpressure_events,
         }
     }
 
     /// STATUS 帧：中继转发的回执，**不是 ACK**，只记数，绝不滑动窗口。
     pub fn note_status_ignored(&mut self) {
         self.status_ignored += 1;
+    }
+
+    /// 中继明确拒收（`BandwidthLimited`）：这是背压而不是丢包。
+    /// 只尽快重发被卡住的 base 段、把已经膨胀的 RTO 拉回 RTT 派生值；
+    /// **不**乘性减 cwnd、**不**指数退避 RTO，否则令牌桶会把 RTT 反馈环推到秒级，
+    /// 两条同速率竞争流会因随机退避错配而长期不公平。短时间内重复 STATUS
+    /// 只记数，不重复入队快重传，避免中继拒收风暴。
+    pub fn note_relay_backpressure(&mut self, now: Instant) {
+        self.relay_backpressure_events += 1;
+        let due = self
+            .last_backpressure_at
+            .map(|t| now.duration_since(t) >= Duration::from_millis(5))
+            .unwrap_or(true);
+        if !due {
+            return;
+        }
+        self.last_backpressure_at = Some(now);
+        self.fast_retransmit = true;
+        self.rto = if self.cc.enabled && self.srtt.is_some() {
+            self.derived_rto()
+        } else {
+            RTO_INIT
+        };
     }
 
     pub fn note_peer_closed(&mut self) {
@@ -687,6 +719,7 @@ struct StreamCounters {
     cc_loss_events: AtomicU64,
     cc_rtt_samples: AtomicU64,
     cc_paced_new: AtomicU64,
+    cc_backpressure: AtomicU64,
     last_error: std::sync::Mutex<Option<String>>,
 }
 
@@ -821,6 +854,8 @@ impl UdpRelayStream {
                     c.cc_loss_events.store(cc_s.loss_events, Ordering::Relaxed);
                     c.cc_rtt_samples.store(cc_s.rtt_samples, Ordering::Relaxed);
                     c.cc_paced_new.store(cc_s.paced_new_segments, Ordering::Relaxed);
+                    c.cc_backpressure
+                        .store(cc_s.relay_backpressure_events, Ordering::Relaxed);
 
                     // 3) 收对端帧：只认 DELIVER 里的 ACK / DATA；STATUS 忽略。
                     match client.recv_frame(STREAM_POLL) {
@@ -859,8 +894,16 @@ impl UdpRelayStream {
                                 }
                             }
                             crate::relay_udp::UdpKind::Status => {
-                                // 中继回执：只记数，绝不滑动发送窗口。
-                                core.note_status_ignored();
+                                // 中继回执默认只记数，绝不滑动发送窗口。
+                                // BandwidthLimited 是「这帧被中继拒了」的明确信号：
+                                // 触发一次快重传并拉回 RTO，但不算 ACK、不算丢包。
+                                if frame.payload.first().copied()
+                                    == Some(UdpStatus::BandwidthLimited.code())
+                                {
+                                    core.note_relay_backpressure(Instant::now());
+                                } else {
+                                    core.note_status_ignored();
+                                }
                                 c.status_ignored.store(core.status_ignored(), Ordering::Relaxed);
                             }
                             _ => {}
@@ -967,6 +1010,7 @@ impl UdpRelayStream {
             loss_events: g(&c.cc_loss_events),
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
+            relay_backpressure_events: g(&c.cc_backpressure),
         }
     }
 
@@ -995,6 +1039,7 @@ impl UdpStreamRead {
             loss_events: g(&c.cc_loss_events),
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
+            relay_backpressure_events: g(&c.cc_backpressure),
         }
     }
 
@@ -1061,6 +1106,7 @@ impl UdpStreamWrite {
             loss_events: g(&c.cc_loss_events),
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
+            relay_backpressure_events: g(&c.cc_backpressure),
         }
     }
 
@@ -1381,6 +1427,33 @@ mod tests {
         assert_eq!(core.cc_stats().loss_events, 2);
         assert_eq!(core.cc_stats().cwnd_x100, after_first);
         assert!(after_first < before);
+    }
+
+    #[test]
+    fn relay_backpressure_fast_retransmits_without_loss_or_rto_backoff() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, cc_config());
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 8]);
+        core.take_transmissions(t0);
+        let cwnd_before = core.cc_stats().cwnd_x100;
+
+        core.note_relay_backpressure(t0 + Duration::from_millis(10));
+        let out = core.take_transmissions(t0 + Duration::from_millis(11));
+        assert!(out.iter().any(|s| matches!(s, Segment::Data { seq: 0, .. })));
+        assert_eq!(core.retransmits(), 1);
+        let s = core.cc_stats();
+        assert_eq!(s.relay_backpressure_events, 1);
+        assert_eq!(s.loss_events, 0, "中继背压不是丢包，不得乘性减窗口");
+        assert_eq!(s.cwnd_x100, cwnd_before);
+        assert_eq!(core.rto(), RTO_INIT, "背压不得触发 RTO 指数退避");
+
+        // 5 ms 内的重复 STATUS 只记数，避免拒收风暴。
+        core.fast_retransmit = false;
+        core.note_relay_backpressure(t0 + Duration::from_millis(12));
+        assert_eq!(core.cc_stats().relay_backpressure_events, 2);
+        assert!(!core.fast_retransmit);
+        core.note_relay_backpressure(t0 + Duration::from_millis(20));
+        assert!(core.fast_retransmit);
     }
 
     fn seg_data(seq: u32, s: &str) -> Segment {

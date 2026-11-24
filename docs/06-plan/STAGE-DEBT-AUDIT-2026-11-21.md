@@ -699,12 +699,58 @@ Jain ≥ 0.95、两条流稳态份额均在 [0.45, 0.55]，且 `all_rounds_must_
   `hash_matches/content_matches/completed=true`，落地 md5 一致。
 - 测试后 221 aMule 为 `active`。这是生产 daemon 路径的组件级公网证据，不等于 G2/S6。
 
-### 20.3 公网 TCP 打洞：前置仍缺
+### 20.3 公网 TCP 打洞：前置仍缺（DNAT 建立步骤）
 
-复核证据 `public-tcp-dnat-recheck-20261124.json`：独立主机连 `112.5.60.4:19910`
-与 `112.5.32.34:19920` 均超时，221/222 本地 `iptables -t nat` 均无 1991x 规则。
-CPE 的 endpoint-independent TCP DNAT 属所有者动作；未建之前不重跑、不改判据、不外推。
+复核证据 `tests/ARCHIVE/evidence/tcp-dnat-reachability-20261124.json`：
+221 的 `112.5.60.4` 不是本机地址，`ip route get 112.5.60.4` 经 `192.168.1.254`；
+本机 `0.0.0.0:19910` 监听已 READY，但外部 TCP 连 `112.5.60.4:19910` 5 s 超时。
+222 的默认路由是 `192.168.34.1`，`112.5.32.34:19920` 同样没有入向映射。
+两侧 `iptables -t nat` 均无 1991x DNAT；现有 SSH key 也进不了两台上游网关
+（221 网关只有 Web 80/443，222 网关 22/80/443 全闭）。必须由**公网地址的所有者**
+在上游网关建 endpoint-independent 固定映射：
 
-全量 `cargo test --workspace --offline` 仍为 519 passed / 0 failed / 3 ignored。
+1. 221 侧网关（持有 `112.5.60.4`）：TCP `112.5.60.4:19910` → `192.168.1.221:19910`。
+2. 222 侧网关（持有 `112.5.32.34`，对称 NAT）：TCP `112.5.32.34:19920`
+   → `192.168.34.222:19920`。**不能**填管理网卡 `192.168.1.222`。
+3. 两侧网关放行 FORWARD，开启 `ip_forward`；若从同 LAN 测公网地址，再补 hairpin MASQUERADE。
+4. Linux 网关（iptables）等价命令：
+   `iptables -t nat -A PREROUTING -d <公网IP> -p tcp --dport <端口> -j DNAT --to-destination <内网IP>:<端口>`；
+   `iptables -I FORWARD -p tcp -d <内网IP> --dport <端口> -j ACCEPT`。
+   nftables 等价规则写在 `inet nat prerouting`。
+5. 验收：外部主机 `nc -vz 112.5.60.4 19910` 与 `nc -vz 112.5.32.34 19920` 都连上，
+   再跑 `python3 tests/e2e/w56/public_tcp_punch_probe.py --report-out <报告路径>`。
+   只有两侧都 `ok=true` 且 `bytes_roundtrip=true` 才算 TCP punch 证据。
+
+在规则建立并可连通之前不重跑、不改判据、不外推；门禁常量不变。
+
+### 20.4 公平性根因修复与同阈值重跑：仍整体 FAIL
+
+§20.1 的 cap arms 失败不是「令牌桶天然不公平」，而是实现选择造成的 RTO 反馈环：
+每会话预算耗尽时中继直接 `BandwidthLimited` 拒收并丢帧，发送端只能等
+ACK 缺口超时；`loss_events` 与 SRTT 一起涨到数百毫秒，cwnd 落到下限，
+两条同速率流被随机退避错配成 0.4/0.6 长期失衡，L1 还有 2 轮整轮超时。
+先用 STATUS 码做快重传（不算 ACK、不算丢包）仍不够；最终改为
+**有界整形**：超会话预算的 DATA 进入每会话 64 帧、总 256 帧的队列等令牌，
+只有队首按令牌放行才转发，队列满才带原因拒绝。计数拆为
+`per_session_limited / per_session_shaped / per_session_dropped`，
+`/health.data_plane.udp_cc_backpressure` 与探针 JSON 同步暴露背压次数。
+冒烟：L1 0.501/0.499、L2 0.500/0.500，`dropped=0`、`backpressure=0`。
+
+用**同一份** `tests/fixtures/g2-fairness-thresholds.toml`（sha256 `0671a173…`
+未变）在 221 完整重跑 80 轮，原始报告
+`tests/e2e/w61/reports/g2-fairness-20261124T085447Z/`：
+
+| shape | arm | 达标轮 | 结果 |
+| :--- | :--- | :--- | :--- |
+| L1 | cc_off / cc_on / cc_paced / cc_on_per_session_cap | 10/10 各 | PASS |
+| L2 | cc_off / cc_on_per_session_cap | 10/10 各 | PASS |
+| L2 | cc_on / cc_paced | 9/10 各 | FAIL |
+
+L2 cc_on 第 7 轮份额 0.430/0.570（Jain 0.981），L2 cc_paced 第 8 轮
+0.433/0.567（Jain 0.983）；其余 78 轮全部达标。按预注册
+`all_rounds_must_pass` 仍判 **整体 FAIL**。不再通过再次抽样「碰运气」改成通过，
+也不改阈值或窗口；脚本继续写 `component-level fairness measurement only; not G2 unlock`。
+
+全量 `cargo test --workspace --offline` 为 521 passed / 0 failed / 3 ignored（新增 2 条单测）。
 所有成功、失败、BLOCKED 与日志更正均写入 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
 下一次 G2 复评仍必须由所有者基于真实证据书面决定。
