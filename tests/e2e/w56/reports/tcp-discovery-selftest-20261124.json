@@ -1,0 +1,161 @@
+{
+  "recorded_at": "2026-11-24T12:23:16.794579+00:00",
+  "scope": "Loopback CLI smoke for tcp_discovery control path; NOT NAT EIM evidence.",
+  "bin": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\debug\\coldrevive-nat.exe",
+  "cases": [
+    {
+      "name": "two_observers_consistent_eim",
+      "pass": true,
+      "expect": {
+        "eim": true,
+        "discovered_port": 55428,
+        "g2_claim": false,
+        "s6_status": "not_run",
+        "auto_pass": false
+      },
+      "actual": {
+        "mode": "discover-tcp-port",
+        "local": "127.0.0.1:55428",
+        "observations": [
+          {
+            "observer": "127.0.0.1:55424",
+            "mapped_endpoint": "127.0.0.1:55428",
+            "error": null
+          },
+          {
+            "observer": "127.0.0.1:55425",
+            "mapped_endpoint": "127.0.0.1:55428",
+            "error": null
+          }
+        ],
+        "eim": true,
+        "discovered_endpoint": "127.0.0.1:55428",
+        "discovered_port": 55428,
+        "reason": "2 个独立 observer 回写同一映射端点 → EIM 成立",
+        "s6_status": "not_run",
+        "g2_claim": false,
+        "auto_pass": false
+      },
+      "failures": []
+    },
+    {
+      "name": "two_observers_same_mapped_endpoint",
+      "pass": true,
+      "expect": {
+        "endpoints": [
+          "127.0.0.1:55428",
+          "127.0.0.1:55428"
+        ]
+      },
+      "actual": {
+        "endpoints": [
+          "127.0.0.1:55428",
+          "127.0.0.1:55428"
+        ]
+      },
+      "failures": []
+    },
+    {
+      "name": "single_observer_is_unproven",
+      "pass": true,
+      "expect": {
+        "eim": null,
+        "discovered_port": 55429
+      },
+      "actual": {
+        "mode": "discover-tcp-port",
+        "local": "127.0.0.1:55429",
+        "observations": [
+          {
+            "observer": "127.0.0.1:55424",
+            "mapped_endpoint": "127.0.0.1:55429",
+            "error": null
+          }
+        ],
+        "eim": null,
+        "discovered_endpoint": "127.0.0.1:55429",
+        "discovered_port": 55429,
+        "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+        "s6_status": "not_run",
+        "g2_claim": false,
+        "auto_pass": false
+      },
+      "failures": []
+    },
+    {
+      "name": "unreachable_observer_is_blocked",
+      "pass": true,
+      "expect": {
+        "eim": false,
+        "discovered_port": null
+      },
+      "actual": {
+        "mode": "discover-tcp-port",
+        "local": "127.0.0.1:55431",
+        "observations": [
+          {
+            "observer": "127.0.0.1:55430",
+            "mapped_endpoint": null,
+            "error": "connect: No connection could be made because the target machine actively refused it. (os error 10061)"
+          }
+        ],
+        "eim": false,
+        "discovered_endpoint": null,
+        "discovered_port": null,
+        "reason": "所有 observer 均未回写映射端点；无证据，不合成端口",
+        "s6_status": "not_run",
+        "g2_claim": false,
+        "auto_pass": false
+      },
+      "failures": []
+    },
+    {
+      "name": "inconsistent_observers_have_no_port",
+      "pass": true,
+      "expect": {
+        "eim": false,
+        "discovered_port": null
+      },
+      "actual": {
+        "mode": "discover-tcp-port",
+        "local": "127.0.0.1:55434",
+        "observations": [
+          {
+            "observer": "127.0.0.1:55432",
+            "mapped_endpoint": "198.51.100.1:1111",
+            "error": null
+          },
+          {
+            "observer": "127.0.0.1:55433",
+            "mapped_endpoint": "198.51.100.2:2222",
+            "error": null
+          }
+        ],
+        "eim": false,
+        "discovered_endpoint": null,
+        "discovered_port": null,
+        "reason": "2 个 observer 回写不一致 → 非 EIM，映射随目的变化，发现端口不可外推",
+        "s6_status": "not_run",
+        "g2_claim": false,
+        "auto_pass": false
+      },
+      "failures": []
+    },
+    {
+      "name": "inconsistent_reason_is_explicit",
+      "pass": true,
+      "expect": {
+        "hit": true
+      },
+      "actual": {
+        "hit": true
+      },
+      "failures": []
+    }
+  ],
+  "status": "PASS",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}

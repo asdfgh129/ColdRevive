@@ -1,3 +1,25 @@
+## [2.4.121] - 2026-11-24 — tcp_discovery 文档化与定点测试：EIM 判定四态固化
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮不新增公网证据，不外推 G2/S6。
+
+- 新增 [DOC-30 TCP 映射端口发现与 EIM 判定 Runbook](docs/07-operations/TCP-DISCOVERY-RUNBOOK.md)：
+  固化 EIM 四态判定、`--serve-observer` / `--observer-secs` /
+  `--discover-tcp-port` / `--timeout` / `--json` 参数与输出字段；把本办法写成
+  「常规打洞失效时先判断是否适用」的应对流程，含适用前提、不适用信号、
+  标准操作、回退与证据边界。TEST §11 / 审计 §20.5 同步引用。
+- `cr_nat::tcp_discovery::judge_observations` 抽出纯判定函数：0 观测、全失败、
+  单观测、`>=2` 一致 / 不一致各自结论可单测；**不一致时不再返回
+  `discovered_port`**，避免把不可外推端口当信令。`parse_port` 拒绝端口 0。
+- 定点测试：9 条 `cr-nat` 单测（原 4 条 + 5 条）+ 新增
+  `tests/e2e/w56/tcp_discovery_selftest.py` 6/6 PASS（双观测一致 EIM、
+  同端点、单观测 `eim=null`、不可达 `eim=false`、假 observer 不一致不出端口、
+  reason 明确）。命令见 DOC-30 §6；全量串行仅作最终回归，不替代定点测试。
+- 文档同步：DOC-00 索引与 `index.html` DOCS 清单新增 DOC-30。
+- 全量串行回归 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`
+  为 **530 passed / 0 failed / 3 ignored**（比 v2.4.120 多 5 条定点单测）。
+  定点与全量结果均已归档 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+
 ## [2.4.120] - 2026-11-24 — 动态 TCP 映射端口发现：发现端口作信令后 simultaneous-open 实测 PASS（组件级）
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

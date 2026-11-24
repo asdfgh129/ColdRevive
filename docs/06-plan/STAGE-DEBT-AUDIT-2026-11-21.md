@@ -2,15 +2,15 @@
 doc_id: DOC-29
 title: P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 category: 计划
-version: 1.3
+version: 1.4
 status: 有效
 owner: 架构组
-updated: 2026-11-22
+updated: 2026-11-24
 ---
 
 # P0/P1/P2 与 M1/M2 欠账复核（2026-11-21）
 
-> 编号 DOC-29 · 版本 1.3 · 状态 **有效** · 更新 2026-11-22
+> 编号 DOC-29 · 版本 1.4 · 状态 **有效** · 更新 2026-11-24
 > 基线：仓库 HEAD `5e3e17f`；本日复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（12:00 GMT+8 左右，停止本地守护进程后执行）。
 > 口径不变：**`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`**。
@@ -771,7 +771,10 @@ L2 cc_on 第 7 轮份额 0.430/0.570（Jain 0.981），L2 cc_paced 第 8 轮
 - 新模块 `cr_nat::tcp_discovery`：`--serve-observer` 对每个入向连接回写
   `CR-MAPPED <ip>:<port>`（它看到的源端点）；`--discover-tcp-port` 从固定本地端口
   向 observer 发真 TCP 连接读回映射端点，>=2 个 observer 一致才判 EIM，单 observer
-  只给端口、EIM 记 `null`（不冒充已证）。4 条单测覆盖回写/单观测/一致性/不可达。
+  只给端口、EIM 记 `null`（不冒充已证）；>=2 个不一致则 `eim=false` 且不返回端口。
+  判定已抽为纯函数 `judge_observations`，9 条定点单测覆盖四态判定/回写/异常行/
+  端口解析/JSON 门禁常量；CLI 回环冒烟 6/6 PASS。完整口径与适用性判断见
+  [DOC-30](../07-operations/TCP-DISCOVERY-RUNBOOK.md)。
 - observer 只做「你被映射成了什么」的 in-band 信令源，不改 TCP punch 判据。
 
 实测：在 `82.157.68.159` 用 `iptables -t nat` REDIRECT 把来自 221 的 `7100`
@@ -793,8 +796,9 @@ BT-over-punched-TCP 已接线（ADR-015 缺口不变）。单 observer 下工具
 `evidence_valid_for_pass=false`、`auto_pass=false`。下一次 G2 复评必须由所有者
 基于真实证据书面决定。
 
-全量 `cargo test --workspace --offline -- --test-threads=1` 为
-525 passed / 0 failed / 3 ignored（新增 4 条单测）。默认并行下有 2 次既存的
+v2.4.120 时全量 `cargo test --workspace --offline -- --test-threads=1` 为
+525 passed / 0 failed / 3 ignored（当时新增 4 条单测）。默认并行下有 2 次既存的
 计时型 flaky 失败（`per_session_cap` / `amule_block_accounting`），隔离与串行均通过，
-已如实归档。所有成功、失败、BLOCKED 与日志更正均写入
-`tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+已如实归档。v2.4.121 又补 5 条定点单测（累计 9 条）和 6 项 CLI 回环冒烟；
+定点结果见 [DOC-30 §6](../07-operations/TCP-DISCOVERY-RUNBOOK.md)。所有成功、
+失败、BLOCKED 与日志更正均写入 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。

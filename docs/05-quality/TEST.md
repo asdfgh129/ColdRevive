@@ -2,15 +2,17 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 3.0
+version: 3.1
 status: 待评审
 owner: 测试组
-updated: 2026-11-20
+updated: 2026-11-24
 ---
 
 # 测试计划（TEST）
 
-> 编号 DOC-12 · 版本 3.0 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-20
+> 编号 DOC-12 · 版本 3.1 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-24
+> **v3.1**：§11 补 [DOC-30](../07-operations/TCP-DISCOVERY-RUNBOOK.md) 引用、9 条
+> `tcp_discovery` 定点单测与 6 项 CLI 回环冒烟；全量串行只作最终回归，不再是唯一判据。
 > **v3.0**：补 §2.12–§2.15（W62 FR-11 握手拦截 / W14 FR-14 空闲休眠 / W24+W24-pub FR-24
 > 关键词检索 / W25+W25-live FR-25 与真实 aMule 双向互通）。均不改门禁口径：
 > `g2_claim=false`、`s6_status=not_run`；全量 `cargo test --workspace --offline`
@@ -868,7 +870,12 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 - **端口发现工具**：新增 `coldrevive-nat --serve-observer <ip:port>`（回写
   `CR-MAPPED <ip>:<port>`）与 `--discover-tcp-port <本地 ip:port> <observer...>`。
   单 observer 返回 `discovered_port` 但 `eim=null`（不冒充 EIM 已证），>=2 个一致才
-  判 `eim=true`。4 条 `cr-nat` 单测覆盖回写/判定/不可达。
+  判 `eim=true`；>=2 个不一致则 `eim=false` 且**不返回端口**。判定口径、CLI 参数与
+  适用性判断见 [DOC-30](../07-operations/TCP-DISCOVERY-RUNBOOK.md)。
+  `cr-nat` 定点单测 9 条（回写 / 四态判定 / 异常行 / 端口解析 / JSON 门禁常量）：
+  `CARGO_INCREMENTAL=0 cargo test --offline -p cr-nat tcp_discovery -- --nocapture`；
+  CLI 回环冒烟 `tests/e2e/w56/tcp_discovery_selftest.py` 6/6 PASS，不依赖全量串行，
+  也不冒充 NAT EIM 证据。
 - **发现端口作信令的 TCP 打洞（PASS，组件级）**：用 82 上的临时 REDIRECT
   （来自 221 的 `7100`→本地 `19110`，跑完撤销）让 221 发现 `112.5.60.4:<P>`，
   把 P 交给 222 取代固定 19910。`python3 tests/e2e/w56/public_tcp_punch_discovered.py`

@@ -45,8 +45,10 @@ impl Observation {
     }
 }
 
-/// 发现报告。`discovered_port` 是给对端的信令字段；`eim` 只在 >=2 个 observer
-/// 一致回写时为 true，单 observer 时是 `null`（不冒充 EIM 已证）。
+/// 发现报告。`discovered_port` 是给对端的信令字段，只在「至少 1 个 observer
+/// 成功且未被反证」时给出；>=2 个 observer 回写不一致时一律为 `None`，避免把
+/// 不可外推的端口当信令。`eim` 只在 >=2 个 observer 一致回写时为 true，
+/// 单 observer 时是 `null`（不冒充 EIM 已证）。
 #[derive(Debug, Clone)]
 pub struct DiscoveryReport {
     pub mode: &'static str,
@@ -88,41 +90,7 @@ pub fn discover_tcp_port(
     for obs in observers {
         observations.push(observe_one(local, *obs, timeout));
     }
-    let got: Vec<&str> = observations
-        .iter()
-        .filter_map(|o| o.mapped_endpoint.as_deref())
-        .collect();
-    let (eim, discovered_endpoint, discovered_port, reason) = if got.is_empty() {
-        (
-            Some(false),
-            None,
-            None,
-            "所有 observer 均未回写映射端点；无证据，不合成端口".to_string(),
-        )
-    } else if got.len() == 1 {
-        (
-            None,
-            Some(got[0].to_string()),
-            parse_port(got[0]),
-            "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）".to_string(),
-        )
-    } else {
-        let first = got[0];
-        let all_same = got.iter().all(|m| *m == first);
-        (
-            Some(all_same),
-            Some(first.to_string()),
-            parse_port(first),
-            if all_same {
-                format!("{} 个独立 observer 回写同一映射端点 → EIM 成立", got.len())
-            } else {
-                format!(
-                    "{} 个 observer 回写不一致 → 非 EIM，映射随目的变化，发现端口不可外推",
-                    got.len()
-                )
-            },
-        )
-    };
+    let (eim, discovered_endpoint, discovered_port, reason) = judge_observations(&observations);
     DiscoveryReport {
         mode: "discover-tcp-port",
         local: local.to_string(),
@@ -131,6 +99,73 @@ pub fn discover_tcp_port(
         discovered_endpoint,
         discovered_port,
         reason,
+    }
+}
+
+/// 纯判定函数：把 observer 回写结果收敛为 EIM 结论与「可外推」的发现端口。
+///
+/// 与网络 I/O 解耦，便于用合成观测做定点测试。返回顺序为
+/// `(eim, discovered_endpoint, discovered_port, reason)`：
+/// - 0 个观测 / 全部失败 → `eim=false` 且无端口；
+/// - 1 个成功 → `eim=null`，端口可用但未证 EIM；
+/// - >=2 个成功且一致 → `eim=true`，端口可用；
+/// - >=2 个成功但不一致 → `eim=false` 且**无端口**（映射随目的变化，不可外推）。
+pub fn judge_observations(
+    observations: &[Observation],
+) -> (Option<bool>, Option<String>, Option<u16>, String) {
+    let got: Vec<&str> = observations
+        .iter()
+        .filter_map(|o| o.mapped_endpoint.as_deref())
+        .collect();
+    if observations.is_empty() {
+        return (
+            Some(false),
+            None,
+            None,
+            "未提供 observer；无证据，不合成端口".to_string(),
+        );
+    }
+    if got.is_empty() {
+        return (
+            Some(false),
+            None,
+            None,
+            "所有 observer 均未回写映射端点；无证据，不合成端口".to_string(),
+        );
+    }
+    if got.len() == 1 {
+        return (
+            None,
+            Some(got[0].to_string()),
+            parse_port(got[0]),
+            "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）".to_string(),
+        );
+    }
+    let first = got[0];
+    if !got.iter().all(|m| *m == first) {
+        return (
+            Some(false),
+            None,
+            None,
+            format!(
+                "{} 个 observer 回写不一致 → 非 EIM，映射随目的变化，发现端口不可外推",
+                got.len()
+            ),
+        );
+    }
+    match parse_port(first) {
+        Some(port) => (
+            Some(true),
+            Some(first.to_string()),
+            Some(port),
+            format!("{} 个独立 observer 回写同一映射端点 → EIM 成立", got.len()),
+        ),
+        None => (
+            Some(false),
+            None,
+            None,
+            format!("映射端点 {first} 无法解析出端口；不合成信令"),
+        ),
     }
 }
 
@@ -240,7 +275,13 @@ pub fn serve_observer_for(bind: SocketAddr, secs: u64) -> io::Result<(ObserverSt
 
 fn parse_port(endpoint: &str) -> Option<u16> {
     let (_, port) = endpoint.rsplit_once(':')?;
-    port.parse::<u16>().ok()
+    let port = port.parse::<u16>().ok()?;
+    // 端口 0 不是可连接的映射端点；观测到它等价于没有可用端口。
+    if port == 0 {
+        None
+    } else {
+        Some(port)
+    }
 }
 
 fn json_str(s: &str) -> String {
@@ -277,6 +318,35 @@ mod tests {
         p
     }
 
+    fn free_port_except(used: &[u16]) -> u16 {
+        loop {
+            let p = free_port();
+            if !used.contains(&p) {
+                return p;
+            }
+        }
+    }
+
+    /// 单连接 observer：按测试 intent 回写任意一行，用来覆盖异常输入路径。
+    fn one_shot_observer(line: &'static str) -> (SocketAddr, std::thread::JoinHandle<()>) {
+        let bind: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+        let handle = std::thread::spawn(move || {
+            let listener = TcpListener::bind(bind).expect("bind");
+            let (mut stream, _) = listener.accept().expect("accept");
+            stream.write_all(line.as_bytes()).expect("write");
+            stream.flush().expect("flush");
+        });
+        (bind, handle)
+    }
+
+    fn observation(endpoint: Option<&str>) -> Observation {
+        Observation {
+            observer: "test-observer".into(),
+            mapped_endpoint: endpoint.map(str::to_string),
+            error: None,
+        }
+    }
+
     #[test]
     fn observer_writes_back_source_endpoint() {
         let port = free_port();
@@ -310,50 +380,144 @@ mod tests {
         let s2 = stop.clone();
         let server = std::thread::spawn(move || serve_observer(bind, s2).expect("serve"));
         // 回环上 source 就是 local，映射端点 == 本地端点。
-        let local: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+        let local_port = free_port_except(&[port]);
+        let local: SocketAddr = format!("127.0.0.1:{local_port}").parse().unwrap();
         let report = discover_tcp_port(local, &[bind], Duration::from_secs(2));
         assert_eq!(report.observations.len(), 1);
         assert!(report.observations[0].mapped_endpoint.is_some());
         assert_eq!(report.eim, None, "单 observer 不得宣称 EIM");
-        assert!(report.discovered_port.is_some());
+        assert_eq!(report.discovered_port, Some(local_port));
+        assert!(report.to_json().contains("\"eim\":null"));
         stop.store(true, Ordering::Relaxed);
         server.join().expect("join");
     }
 
     #[test]
-    fn eim_requires_consistent_endpoints() {
-        let a = Observation {
-            observer: "a".into(),
-            mapped_endpoint: Some("1.2.3.4:5000".into()),
-            error: None,
-        };
-        let b_same = Observation {
-            observer: "b".into(),
-            mapped_endpoint: Some("1.2.3.4:5000".into()),
-            error: None,
-        };
-        let b_diff = Observation {
-            observer: "b".into(),
-            mapped_endpoint: Some("1.2.3.4:6000".into()),
-            error: None,
-        };
-        // 直接测判定逻辑：构造最小报告。
-        let mk = |obs: Vec<Observation>| {
-            let got: Vec<&str> = obs.iter().filter_map(|o| o.mapped_endpoint.as_deref()).collect();
-            got.len() >= 2 && got.iter().all(|m| *m == got[0])
-        };
-        assert!(mk(vec![a.clone(), b_same]));
-        assert!(!mk(vec![a.clone(), b_diff]));
+    fn two_loopback_observers_report_same_mapped_endpoint() {
+        // 回环不经过 NAT：这里验证的是「双观测 + 一致判定」控制路径，
+        // 不冒充真实 NAT 的 EIM 证据（公网证据另见 tcp-eim-two-observers-tcpdump）。
+        let p1 = free_port();
+        let p2 = free_port_except(&[p1]);
+        let local_port = free_port_except(&[p1, p2]);
+        let b1: SocketAddr = format!("127.0.0.1:{p1}").parse().unwrap();
+        let b2: SocketAddr = format!("127.0.0.1:{p2}").parse().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let s1 = stop.clone();
+        let s2 = stop.clone();
+        let h1 = std::thread::spawn(move || serve_observer(b1, s1).expect("serve"));
+        let h2 = std::thread::spawn(move || serve_observer(b2, s2).expect("serve"));
+
+        let local: SocketAddr = format!("127.0.0.1:{local_port}").parse().unwrap();
+        let report = discover_tcp_port(local, &[b1, b2], Duration::from_secs(2));
+        assert_eq!(report.eim, Some(true), "observations={:?}", report.observations);
+        assert_eq!(report.discovered_port, Some(local_port));
+        assert_eq!(report.observations.len(), 2);
+        assert!(report.observations.iter().all(|o| o.error.is_none()));
+
+        stop.store(true, Ordering::Relaxed);
+        h1.join().expect("join h1");
+        h2.join().expect("join h2");
+    }
+
+    #[test]
+    fn judge_requires_two_consistent_observers() {
+        let same = "112.5.60.4:20811";
+        let diff = "112.5.60.4:20812";
+
+        let (eim, ep, port, reason) = judge_observations(&[]);
+        assert_eq!(eim, Some(false));
+        assert!(ep.is_none() && port.is_none());
+        assert!(reason.contains("未提供 observer"));
+
+        let (eim, ep, port, _) = judge_observations(&[observation(None), observation(None)]);
+        assert_eq!(eim, Some(false));
+        assert!(ep.is_none() && port.is_none());
+
+        let (eim, ep, port, _) = judge_observations(&[observation(Some(same))]);
+        assert_eq!(eim, None, "单 observer 不得宣称 EIM");
+        assert_eq!(ep.as_deref(), Some(same));
+        assert_eq!(port, Some(20811));
+
+        let (eim, ep, port, _) =
+            judge_observations(&[observation(Some(same)), observation(Some(same))]);
+        assert_eq!(eim, Some(true));
+        assert_eq!(ep.as_deref(), Some(same));
+        assert_eq!(port, Some(20811));
+
+        let (eim, ep, port, reason) =
+            judge_observations(&[observation(Some(same)), observation(Some(diff))]);
+        assert_eq!(eim, Some(false));
+        assert!(ep.is_none(), "非 EIM 不得给出可外推端点");
+        assert!(port.is_none(), "非 EIM 不得给出可外推端口");
+        assert!(reason.contains("不一致"));
+    }
+
+    #[test]
+    fn judge_rejects_unparsable_mapped_endpoint() {
+        let bad = "1.2.3.4:not-a-port";
+        let (eim, ep, port, reason) =
+            judge_observations(&[observation(Some(bad)), observation(Some(bad))]);
+        assert_eq!(eim, Some(false));
+        assert!(ep.is_none() && port.is_none());
+        assert!(reason.contains("无法解析"));
+    }
+
+    #[test]
+    fn parse_port_rejects_zero_and_garbage() {
+        assert_eq!(parse_port("112.5.60.4:20811"), Some(20811));
+        assert_eq!(parse_port("112.5.60.4:0"), None);
+        assert_eq!(parse_port("112.5.60.4:"), None);
+        assert_eq!(parse_port("112.5.60.4:65536"), None);
+        assert_eq!(parse_port("no-colon"), None);
+    }
+
+    #[test]
+    fn malformed_observer_lines_are_errors_not_success() {
+        // 覆盖无前缀、坏端口、空回写三条失败路径；任何一条都不许合成 discovered_port。
+        for line in ["NOT-MAPPED 112.5.60.4:20811", "CR-MAPPED 112.5.60.4:oops", ""] {
+            let (bind, server) = one_shot_observer(line);
+            let local: SocketAddr =
+                SocketAddr::new(Ipv4Addr::LOCALHOST.into(), free_port_except(&[bind.port()]));
+            let report = discover_tcp_port(local, &[bind], Duration::from_secs(2));
+            assert_eq!(report.eim, Some(false), "line={line:?}");
+            assert!(report.discovered_port.is_none(), "line={line:?}");
+            assert!(report.observations[0].error.is_some(), "line={line:?}");
+            server.join().expect("join");
+        }
     }
 
     #[test]
     fn unreachable_observer_is_recorded_as_error_not_success() {
         let local: SocketAddr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), free_port());
-        // 一个几乎肯定无人监听的端口。
-        let dead: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+        let dead: SocketAddr = format!("127.0.0.1:{}", free_port_except(&[local.port()]))
+            .parse()
+            .unwrap();
         let report = discover_tcp_port(local, &[dead], Duration::from_millis(400));
         assert_eq!(report.eim, Some(false));
         assert!(report.discovered_port.is_none());
         assert!(report.observations[0].error.is_some());
+    }
+
+    #[test]
+    fn report_json_keeps_gate_constants() {
+        let observations = vec![
+            observation(Some("112.5.60.4:20811")),
+            observation(Some("112.5.60.4:20811")),
+        ];
+        let (eim, ep, port, reason) = judge_observations(&observations);
+        let report = DiscoveryReport {
+            mode: "discover-tcp-port",
+            local: "192.168.1.221:19910".into(),
+            observations,
+            eim,
+            discovered_endpoint: ep,
+            discovered_port: port,
+            reason,
+        };
+        let json = report.to_json();
+        assert!(json.contains("\"eim\":true"));
+        assert!(json.contains("\"s6_status\":\"not_run\""));
+        assert!(json.contains("\"g2_claim\":false"));
+        assert!(json.contains("\"auto_pass\":false"));
     }
 }

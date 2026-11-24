@@ -1,0 +1,16 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running unittests src\lib.rs (target\debug\deps\cr_nat-9c86f9ed92695f52.exe)
+
+running 9 tests
+test tcp_discovery::tests::judge_rejects_unparsable_mapped_endpoint ... ok
+test tcp_discovery::tests::judge_requires_two_consistent_observers ... ok
+test tcp_discovery::tests::report_json_keeps_gate_constants ... ok
+test tcp_discovery::tests::parse_port_rejects_zero_and_garbage ... ok
+test tcp_discovery::tests::malformed_observer_lines_are_errors_not_success ... ok
+test tcp_discovery::tests::discover_single_observer_reports_port_but_not_eim ... ok
+test tcp_discovery::tests::observer_writes_back_source_endpoint ... ok
+test tcp_discovery::tests::two_loopback_observers_report_same_mapped_endpoint ... ok
+test tcp_discovery::tests::unreachable_observer_is_recorded_as_error_not_success ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 203 filtered out; finished in 0.44s
+
