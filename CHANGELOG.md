@@ -1,3 +1,24 @@
+## [2.4.117] - 2026-11-24 — G2 欠账推进第二轮：公平性阈值实测、FR-25 daemon 公网闭环
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。全量回归 **519 passed / 0 failed / 3 ignored**。
+
+- **公平性证据（预注册判据，整体 FAIL）**：先写入 `tests/fixtures/g2-fairness-thresholds.toml`
+  （sha256 `0671a173…`，Jain ≥ 0.95 且两流份额均在 [0.45,0.55]，每轮都必须达标，
+  4 arms × 2 链路形状 × 10 轮）再采样；新增 `coldrevive-fairness-probe` 真
+  `UdpRelayStream` 双流探针、`tests/e2e/w61/run_g2_fairness.sh`（veth+HTB+netem）
+  与 `analyze_g2_fairness.py`。L1 的 cc_off/cc_on/cc_paced 与 L2 cc_off 全 10 轮达标；
+  L2 cc_on、cc_paced 各 1 轮越界；两个每会话上限档多轮失败（含 2 次超时）。
+  按预注册 `all_rounds_must_pass` 判 **FAIL**，阈值未事后修改，仍不写「公平性达标」。
+  工具配置失败（1 B/s 桶、cap 未触发、CRLF）均已归档后修正重跑。
+- **FR-25 daemon 公网闭环**：`ed2k-download` 新增 opt-in `--out`，只在
+  `hash_matches/content_matches/completed` 全真时 `.part`→rename 落盘，结果带
+  `out_path/landed_bytes`；真 daemon `/cli` 公网 A/B 两臂 PASS：
+  221 daemon→222 daemon 跨分片 9,736,192 B、221 真 aMule→222 daemon 262,144 B，
+  落地 md5 全部一致。测试期间暂停的 221 aMule 已用 `systemd-run` 恢复 active。
+- **公网 TCP 打洞前置复核**：19910/19920 仍不可达且两端无本地 DNAT，保持 BLOCKED；
+  需要所有者在 CPE 建 endpoint-independent TCP DNAT 后重测，symmetric 不可直连是正确结论。
+
 ## [2.4.116] - 2026-11-24 — G2 欠账推进：拥塞语义、DHT 治理、打洞 handoff、FR-25 公网
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

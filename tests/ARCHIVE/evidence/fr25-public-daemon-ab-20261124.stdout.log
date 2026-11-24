@@ -1,0 +1,5 @@
+{
+  "report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\reports\\public-daemon-ab-20261124161245.json",
+  "status": "BLOCKED",
+  "reason": "KeyError: 'id'"
+}

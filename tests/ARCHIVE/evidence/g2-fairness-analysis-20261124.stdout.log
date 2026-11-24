@@ -1,0 +1,16 @@
+  File "<stdin>", line 7
+    print(f"{s[\"shape\"]} {s[\"arm\"]}: rounds={s[\"rounds_seen\"]} valid={s[\"rounds_valid\"]} pass={s[\"rounds_pass\"]} met={s[\"criterion_met\"]} jain_min={min(js) if js else 0:.4f} min_share={sh:.4f}")
+                                                                                                                                                                                                             ^
+SyntaxError: f-string expression part cannot include a backslash
+Error in sys.excepthook:
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 110, in apport_excepthook
+    pr["ExecutableTimestamp"] = str(int(os.stat(binary).st_mtime))
+                                        ^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/opt/cr-current/-'
+
+Original exception was:
+  File "<stdin>", line 7
+    print(f"{s[\"shape\"]} {s[\"arm\"]}: rounds={s[\"rounds_seen\"]} valid={s[\"rounds_valid\"]} pass={s[\"rounds_pass\"]} met={s[\"criterion_met\"]} jain_min={min(js) if js else 0:.4f} min_share={sh:.4f}")
+                                                                                                                                                                                                             ^
+SyntaxError: f-string expression part cannot include a backslash

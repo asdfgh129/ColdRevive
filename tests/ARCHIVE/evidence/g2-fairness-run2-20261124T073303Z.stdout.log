@@ -1,0 +1,4 @@
+=== 0) cleanup ===
+=== 1) veth + netns ===
+=== 2) shapes and arms ===
+SHAPE L1 rate=16mbit delay=20msms jitter=2msms

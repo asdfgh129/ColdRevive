@@ -655,3 +655,56 @@ FR-24 口径不变：历史 w51g 报告已证明真实公网闭环可达；要�
 `fr25-public-download-shared-20261124.log`、`fr25-public-upload-{server,client}-final-20261124.log`、
 `workspace-test-20261124-v24116-final.log`（519 passed / 0 failed / 3 ignored）。
 所有脚本仍禁止自动 pass；下一次 G2 复评必须是所有者基于真实证据的书面决定。
+
+## 20. G2 欠账推进第二轮复核（2026-11-24，v2.4.117）
+
+**门禁口径仍不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+`auto_pass=false`。本节记录证据与反例，不构成解禁。
+
+### 20.1 公平性：按预注册判据实测，整体 FAIL
+
+先在 `tests/fixtures/g2-fairness-thresholds.toml` 写入判据（时间戳
+`2026-11-24T14:55:21+08:00`，sha256 `0671a173…`）并单独提交（`25e4f64`），
+之后才采集任何样本。判据：n=2、3 s 预热 + 10 s 稳态、每 arm 10 轮、
+Jain ≥ 0.95、两条流稳态份额均在 [0.45, 0.55]，且 `all_rounds_must_pass`。
+
+实验用 221 的 veth + HTB + netem（L1 16 Mbit/20 ms、L2 8 Mbit/50 ms），
+真 `coldrevive-fairness-probe` 跑两条独立 `UdpRelayStream`（各含独立 ACK 接收端），
+4 arms：cc_off / cc_on / cc_paced / cc_on_per_session_cap（cap=链路速率 1/8，
+确保令牌桶真触发）。原始 645 个文件、7.8 MiB 全量保存在
+`tests/e2e/w61/reports/g2-fairness-20261124T073344Z/`。
+
+| shape | arm | 达标轮 | 结果 |
+| :--- | :--- | :--- | :--- |
+| L1 | cc_off / cc_on / cc_paced | 10/10、10/10、10/10 | PASS |
+| L1 | cc_on_per_session_cap | 2/8 有效（另 2 轮超时） | FAIL |
+| L2 | cc_off | 10/10 | PASS |
+| L2 | cc_on / cc_paced | 9/10、9/10 | FAIL |
+| L2 | cc_on_per_session_cap | 4/10 | FAIL |
+
+按预注册聚合规则**整体 FAIL**。不能挑 L1 达标或「多数轮达标」改称公平性通过；
+也不能把每会话令牌桶限流冒充协议退让。中途发现的量具缺陷（接收方过早 CLOSE、
+`data-rate=0` 被夹成 1 B/s、cap 高于自然速率、CRLF、分析脚本 f-string）均已归档后修正，
+阈值始终未改。机制实现仍只有 `nat.udp_cc_*` 与 per-session cap，不能写「公平性达标」。
+
+### 20.2 FR-25 daemon 公网闭环
+
+`ed2k_tasks::download_cmd` 新增 opt-in `--out`：只有 `hash_matches`、`content_matches`、
+`completed` 全真才写 `.part` 后 rename，结果 JSON 带 `out_path/landed_bytes`。
+真 daemon `/cli` 公网 A/B（报告 `public-daemon-ab-20261124162437.json`）：
+
+- A：221 daemon `ed2k-serve --compressed-parts` 占映射 TCP 4662 → 222 daemon
+  `ed2k-download --out`：`bytes_sent=bytes_received=landed_bytes=9,736,192`，落地 md5 一致。
+- B：恢复 221 真 aMule → 222 daemon 从公网 `112.5.60.4:4662` 下载 262,144 B：
+  `hash_matches/content_matches/completed=true`，落地 md5 一致。
+- 测试后 221 aMule 为 `active`。这是生产 daemon 路径的组件级公网证据，不等于 G2/S6。
+
+### 20.3 公网 TCP 打洞：前置仍缺
+
+复核证据 `public-tcp-dnat-recheck-20261124.json`：独立主机连 `112.5.60.4:19910`
+与 `112.5.32.34:19920` 均超时，221/222 本地 `iptables -t nat` 均无 1991x 规则。
+CPE 的 endpoint-independent TCP DNAT 属所有者动作；未建之前不重跑、不改判据、不外推。
+
+全量 `cargo test --workspace --offline` 仍为 519 passed / 0 failed / 3 ignored。
+所有成功、失败、BLOCKED 与日志更正均写入 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+下一次 G2 复评仍必须由所有者基于真实证据书面决定。

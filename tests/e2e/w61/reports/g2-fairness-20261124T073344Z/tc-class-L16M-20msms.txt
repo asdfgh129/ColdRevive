@@ -1,0 +1,1 @@
+class htb 1:10 root leaf 10: prio 0 rate 16Mbit ceil 16Mbit burst 64Kb cburst 1600b 

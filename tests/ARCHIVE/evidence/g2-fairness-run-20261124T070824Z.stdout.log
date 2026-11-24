@@ -1,0 +1,34 @@
+=== 0) cleanup ===
+=== 1) veth + netns ===
+=== 2) shapes and arms ===
+SHAPE L1 rate=16mbit delay=20msms jitter=2msms
+ROUND_DONE L1-cc_off-r1
+ROUND_DONE L1-cc_off-r2
+ROUND_DONE L1-cc_off-r3
+ROUND_DONE L1-cc_off-r4
+ROUND_DONE L1-cc_off-r5
+ROUND_DONE L1-cc_off-r6
+ROUND_DONE L1-cc_off-r7
+ROUND_DONE L1-cc_off-r8
+ROUND_DONE L1-cc_off-r9
+ROUND_DONE L1-cc_off-r10
+ROUND_DONE L1-cc_on-r1
+ROUND_DONE L1-cc_on-r2
+ROUND_DONE L1-cc_on-r3
+ROUND_DONE L1-cc_on-r4
+ROUND_DONE L1-cc_on-r5
+ROUND_DONE L1-cc_on-r6
+ROUND_DONE L1-cc_on-r7
+ROUND_DONE L1-cc_on-r8
+ROUND_DONE L1-cc_on-r9
+ROUND_DONE L1-cc_on-r10
+ROUND_DONE L1-cc_paced-r1
+ROUND_DONE L1-cc_paced-r2
+ROUND_DONE L1-cc_paced-r3
+ROUND_DONE L1-cc_paced-r4
+ROUND_DONE L1-cc_paced-r5
+ROUND_DONE L1-cc_paced-r6
+ROUND_DONE L1-cc_paced-r7
+ROUND_DONE L1-cc_paced-r8
+ROUND_DONE L1-cc_paced-r9
+ROUND_DONE L1-cc_paced-r10

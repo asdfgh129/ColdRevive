@@ -1,0 +1,17 @@
+{
+  "recorded_at": "2026-11-24T15:09:42+08:00",
+  "probes": {
+    "221:19910": {
+      "reachable": false,
+      "error": "TimeoutError: timed out"
+    },
+    "222:19920": {
+      "reachable": false,
+      "error": "TimeoutError: timed out"
+    }
+  },
+  "host_nat_rules": {
+    "221": "none",
+    "222": "none"
+  }
+}

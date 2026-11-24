@@ -803,6 +803,25 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 - 每次门禁输出：测试报告、指标快照（RSS/CPU/上行/唤醒时延 P95）、兼容性矩阵结果、未通过项与豁免说明。
 - 性能与 Soak 用例必须输出原始采样数据，作为门禁证据归档。
 
+## 8. v2.4.117 新增证据（G2 第二轮）
+
+- **公平性（预注册 FAIL）**：判据 `tests/fixtures/g2-fairness-thresholds.toml`
+  （sha256 `0671a173…`）先于样本写入并提交。命令：
+  `bash tests/e2e/w61/run_g2_fairness.sh`（221，2 形状 × 4 arms × 10 轮）→
+  `python3 tests/e2e/w61/analyze_g2_fairness.py --dir <OUT> --fixture <TOML>`。
+  结果：L1 三个非 cap arms 与 L2 cc_off 各 10/10 达标；L2 cc_on/cc_paced 各 9/10；
+  cap arms 多轮失败。按 `all_rounds_must_pass` 判 **FAIL**，阈值未改。原始报告
+  `tests/e2e/w61/reports/g2-fairness-20261124T073344Z/`，汇总 `summary.json`。
+- **FR-25 daemon 公网 A/B（PASS）**：`python3 tests/e2e/w25-daemon/public_daemon_ab.py`。
+  221 daemon→222 daemon 跨分片 9,736,192 B、221 真 aMule→222 daemon 262,144 B
+  均落地 md5 一致；报告 `tests/e2e/w25-daemon/reports/public-daemon-ab-20261124162437.json`。
+  `ed2k-download --out` 单测 `daemon_serve_download_roundtrip_records_real_result` 覆盖落盘。
+- **公网 TCP 打洞前置（BLOCKED）**：`tests/ARCHIVE/evidence/public-tcp-dnat-recheck-20261124.json`；
+  19910/19920 不可达且无本地 DNAT，待所有者建 CPE 映射后重测。
+- **全量回归**：`CARGO_INCREMENTAL=0 cargo test --workspace --offline`
+  **519 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/workspace-test-20261124-final2.log`）。
+  门禁常量不变；脚本禁止自动 pass。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

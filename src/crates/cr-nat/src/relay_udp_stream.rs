@@ -983,6 +983,31 @@ impl UdpRelayStream {
 }
 
 impl UdpStreamRead {
+    /// 读半边也能读 CC 快照（split 后量具/看板仍可观测）。
+    pub fn cc_stats(&self) -> CcStats {
+        let c = &self.shared.counters;
+        let g = |a: &AtomicU64| a.load(Ordering::Relaxed);
+        CcStats {
+            enabled: c.cc_enabled.load(Ordering::Relaxed),
+            cwnd_x100: g(&c.cc_cwnd_x100),
+            srtt_ms: g(&c.cc_srtt_ms),
+            rttvar_ms: 0,
+            loss_events: g(&c.cc_loss_events),
+            rtt_samples: g(&c.cc_rtt_samples),
+            paced_new_segments: g(&c.cc_paced_new),
+        }
+    }
+
+    /// 读半边观测到的应用字节数（split 后仍可读；量具/看板用）。
+    pub fn bytes_read(&self) -> u64 {
+        self.shared.counters.bytes_read.load(Ordering::Relaxed)
+    }
+
+    /// 读半边所属流的重传计数（split 后仍可读）。
+    pub fn retransmits(&self) -> u64 {
+        self.shared.counters.retransmits.load(Ordering::Relaxed)
+    }
+
     /// 带超时的精确读（握手用）。std `Read::read_exact` 没有超时，而对端不回 OPENED
     /// 时必须如实超时失败、不能永久阻塞——这是 attach 不登记空隧道的前提。
     pub fn read_exact_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> io::Result<()> {
@@ -1014,6 +1039,16 @@ impl UdpStreamRead {
 }
 
 impl UdpStreamWrite {
+    /// 写半边已经纳入流的字节数（split 后仍可读；量具/看板用）。
+    pub fn bytes_written(&self) -> u64 {
+        self.shared.counters.bytes_written.load(Ordering::Relaxed)
+    }
+
+    /// 写半边所属流的重传计数（split 后仍可读）。
+    pub fn retransmits(&self) -> u64 {
+        self.shared.counters.retransmits.load(Ordering::Relaxed)
+    }
+
     /// 写半边也能读 CC 快照（split 后看板仍可观测）。
     pub fn cc_stats(&self) -> CcStats {
         let c = &self.shared.counters;

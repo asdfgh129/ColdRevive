@@ -1,0 +1,10 @@
+BEFORE=active
+LISTEN 0      4096         0.0.0.0:4662       0.0.0.0:*          
+AFTER=inactive inactive
+PORT_FREE
+Running as unit: fr25pub221.service
+HEALTH={"status":"ok","node":"A","host":"127.0.0.1","machine_id":"unknown","pid":623138,"seed_tasks":1,"seed_active":0,"served_bytes":0,"seeding":{"cap":8,"scheduled":0,"evictions":0},"limits":{"max_hot_seed
+PAYLOAD={"command": "ed2k-serve", "args": ["--file", "/opt/g3-clients/amule-config/Incoming/w25-reverse-20261124102018.bin", "--name", "diag.bin", "--port", "4662", "--timeout-ms", "20000", "--compressed-parts"]}
+{"schema":"coldrevive.fr25.daemon-task-started/v1","id":"ed2k-1795508304-serve-0000","kind":"serve","file":"/opt/g3-clients/amule-config/Incoming/w25-reverse-20261124102018.bin","port":4662}
+Running as unit: cr-amuled3.service
+AMULE_RESTORED=active

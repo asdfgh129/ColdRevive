@@ -1,0 +1,18 @@
+{
+  "schema": "coldrevive.fr25.public-daemon-ab/v1",
+  "generated_at": "2026-11-24T16:12:45+08:00",
+  "scope": "221/222 真公网路径；两端 daemon /cli 生产栈；判据=对端落地 md5",
+  "arms": {},
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "samples": {
+    "big_md5": "10016b4bd7f61d25bfafc7b2de311e5c",
+    "small_md5": "76a67c22faf07f3c3be56dfed332bbf8"
+  },
+  "status": "BLOCKED",
+  "reason": "KeyError: 'id'"
+}

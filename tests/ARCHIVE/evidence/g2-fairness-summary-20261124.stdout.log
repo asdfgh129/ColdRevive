@@ -1,0 +1,8 @@
+L1 cc_off: rounds=10 valid=10 pass=10 met=True jain_min=1.0000 min_share=0.4981
+L1 cc_on: rounds=10 valid=10 pass=10 met=True jain_min=0.9965 min_share=0.4702
+L1 cc_on_per_session_cap: rounds=9 valid=8 pass=2 met=False jain_min=0.9469 min_share=0.3815
+L1 cc_paced: rounds=10 valid=10 pass=10 met=True jain_min=0.9999 min_share=0.4949
+L2 cc_off: rounds=10 valid=10 pass=10 met=True jain_min=1.0000 min_share=0.4989
+L2 cc_on: rounds=10 valid=10 pass=9 met=False jain_min=0.9735 min_share=0.4174
+L2 cc_on_per_session_cap: rounds=10 valid=10 pass=4 met=False jain_min=0.8731 min_share=0.3094
+L2 cc_paced: rounds=10 valid=10 pass=9 met=False jain_min=0.9893 min_share=0.4480

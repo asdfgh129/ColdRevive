@@ -1,0 +1,5 @@
+Observed 2026-11-24 ~15:31 +08:00 on 221:
+- 30/80 flow reports written; L1 cc_on_per_session_cap-r1 flow processes alive 12m41s.
+- Relay stats file existed but flows never completed.
+- Runner default G2F_PER_BURST=1 caused ByteBucket burst=1 byte; per-session cap rejected data and write_all blocked waiting for ACK.
+Conclusion: harness configuration failure; run aborted and rerun with G2F_PER_BURST=65536. No fairness verdict from this run.

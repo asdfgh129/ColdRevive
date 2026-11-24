@@ -1,0 +1,9 @@
+   Compiling coldrevived v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevived)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.99s
+     Running unittests src\main.rs (target\debug\deps\coldrevived-d5ecf526f23e0e24.exe)
+
+running 1 test
+test ed2k_tasks::tests::daemon_serve_download_roundtrip_records_real_result ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 75 filtered out; finished in 3.14s
+

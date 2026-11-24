@@ -1,0 +1,5 @@
+{
+  "report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\reports\\public-daemon-ab-20261124161902.json",
+  "status": "BLOCKED",
+  "reason": "RuntimeError: A download 未登记任务，真实响应: {\"error\": \"读取 /tmp/fr25-pub-daemon-big.bin: No such file or directory (os error 2)\"}"
+}

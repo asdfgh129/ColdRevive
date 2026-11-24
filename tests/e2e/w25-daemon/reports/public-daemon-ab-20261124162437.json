@@ -1,0 +1,199 @@
+{
+  "schema": "coldrevive.fr25.public-daemon-ab/v1",
+  "generated_at": "2026-11-24T16:24:37+08:00",
+  "scope": "221/222 真公网路径；两端 daemon /cli 生产栈；判据=对端落地 md5",
+  "arms": {
+    "A_started": {
+      "serve": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508689-serve-0000",
+        "kind": "serve",
+        "file": "/opt/g3-clients/amule-config/Incoming/w25-reverse-20261124102018.bin",
+        "port": 4662
+      },
+      "download": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508689-download-0000",
+        "kind": "download",
+        "file": "/tmp/fr25-pub-daemon-big.bin",
+        "host": "112.5.60.4:4662"
+      }
+    },
+    "A_daemon_to_daemon_public": {
+      "serve_started": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508689-serve-0000",
+        "kind": "serve",
+        "file": "/opt/g3-clients/amule-config/Incoming/w25-reverse-20261124102018.bin",
+        "port": 4662
+      },
+      "serve_task": {
+        "schema": "coldrevive.fr25.daemon-task/v1",
+        "id": "ed2k-1795508689-serve-0000",
+        "kind": "serve",
+        "status": "complete",
+        "created_unix": 1795508689,
+        "file": "/opt/g3-clients/amule-config/Incoming/w25-reverse-20261124102018.bin",
+        "host": "0.0.0.0",
+        "port": 4662,
+        "result": {
+          "peer": "112.5.32.34:2065",
+          "connections": 1,
+          "peer_hello": true,
+          "queue_granted": true,
+          "blocks_sent": 53,
+          "bytes_sent": 9736192,
+          "idle_resends": 0,
+          "deferred_bytes": 0,
+          "max_in_flight_peak": 552960,
+          "request_gated_pacing": false,
+          "ed2k_link": "ed2k://|file|fr25-daemon-pub-20261124162437.bin|9736192|b2d43cf63dc096543ba43e1b8227220b|/",
+          "log_tail": [
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 73, opcode_name: \"OP_END_OF_DOWNLOAD\", payload_len: 16 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2202 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }"
+          ]
+        },
+        "error": ""
+      },
+      "download_started": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508689-download-0000",
+        "kind": "download",
+        "file": "/tmp/fr25-pub-daemon-big.bin",
+        "host": "112.5.60.4:4662"
+      },
+      "download_task": {
+        "schema": "coldrevive.fr25.daemon-task/v1",
+        "id": "ed2k-1795508689-download-0000",
+        "kind": "download",
+        "status": "complete",
+        "created_unix": 1795508689,
+        "file": "/tmp/fr25-pub-daemon-big.bin",
+        "host": "112.5.60.4:4662",
+        "port": 4662,
+        "result": {
+          "host": "112.5.60.4:4662",
+          "file_name": "fr25-daemon-pub-20261124162437.bin",
+          "file_size": 9736192,
+          "file_id": "b2d43cf63dc096543ba43e1b8227220b",
+          "ed2k_link": "ed2k://|file|fr25-daemon-pub-20261124162437.bin|9736192|b2d43cf63dc096543ba43e1b8227220b|/",
+          "peer_hello": true,
+          "peer_filename": "fr25-daemon-pub-20261124162437.bin",
+          "hashset_verified": true,
+          "queue_rank_seen": "",
+          "bytes_received": 9736192,
+          "blocks_received": 53,
+          "hash_matches": true,
+          "content_matches": true,
+          "completed": true,
+          "log_tail": [
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 73, opcode_name: \"OP_END_OF_DOWNLOAD\", payload_len: 16 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2202 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 197, opcode: 64, opcode_name: \"OP_COMPRESSEDPART\", payload_len: 2617 }",
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 71, opcode_name: \"OP_REQUESTPARTS\", payload_len: 40 }"
+          ],
+          "out_path": "/tmp/fr25-pub-daemon/222/landed-big.bin",
+          "landed_bytes": 9736192
+        },
+        "error": ""
+      },
+      "landed_md5": "10016b4bd7f61d25bfafc7b2de311e5c",
+      "expected_md5": "10016b4bd7f61d25bfafc7b2de311e5c",
+      "pass": true
+    },
+    "B_started": {
+      "download": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508704-download-0001",
+        "kind": "download",
+        "file": "/tmp/fr25-pub-daemon-small.bin",
+        "host": "112.5.60.4:4662"
+      }
+    },
+    "B_amule_to_daemon_public": {
+      "download_started": {
+        "schema": "coldrevive.fr25.daemon-task-started/v1",
+        "id": "ed2k-1795508704-download-0001",
+        "kind": "download",
+        "file": "/tmp/fr25-pub-daemon-small.bin",
+        "host": "112.5.60.4:4662"
+      },
+      "download_task": {
+        "schema": "coldrevive.fr25.daemon-task/v1",
+        "id": "ed2k-1795508704-download-0001",
+        "kind": "download",
+        "status": "complete",
+        "created_unix": 1795508704,
+        "file": "/tmp/fr25-pub-daemon-small.bin",
+        "host": "112.5.60.4:4662",
+        "port": 4662,
+        "result": {
+          "host": "112.5.60.4:4662",
+          "file_name": "ed2k-sample-small.bin",
+          "file_size": 262144,
+          "file_id": "19f7adefd986c9b959728aa1ce0fe53a",
+          "ed2k_link": "ed2k://|file|ed2k-sample-small.bin|262144|19f7adefd986c9b959728aa1ce0fe53a|/",
+          "peer_hello": true,
+          "peer_filename": "ed2k-sample-small.bin",
+          "hashset_verified": false,
+          "queue_rank_seen": "",
+          "bytes_received": 262144,
+          "blocks_received": 25,
+          "hash_matches": true,
+          "content_matches": true,
+          "completed": true,
+          "log_tail": [
+            "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 73, opcode_name: \"OP_END_OF_DOWNLOAD\", payload_len: 16 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11146 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 11141 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+            "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }"
+          ],
+          "out_path": "/tmp/fr25-pub-daemon/222/landed-small.bin",
+          "landed_bytes": 262144
+        },
+        "error": ""
+      },
+      "landed_md5": "76a67c22faf07f3c3be56dfed332bbf8",
+      "expected_md5": "76a67c22faf07f3c3be56dfed332bbf8",
+      "pass": true
+    }
+  },
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "samples": {
+    "big_md5": "10016b4bd7f61d25bfafc7b2de311e5c",
+    "small_md5": "76a67c22faf07f3c3be56dfed332bbf8"
+  },
+  "amule_restored": "active",
+  "status": "PASS"
+}

@@ -1,0 +1,6 @@
+tests/e2e/w61/run_g2_fairness.sh: line 4: set: pipefail: invalid option name
+tests/e2e/w61/run_g2_fairness.sh: line 5: $'\r': command not found
+tests/e2e/w61/run_g2_fairness.sh: line 21: $'\r': command not found
+tests/e2e/w61/run_g2_fairness.sh: line 28: $'\r': command not found
+tests/e2e/w61/run_g2_fairness.sh: line 29: syntax error near unexpected token `$'{\r''
+tests/e2e/w61/run_g2_fairness.sh: line 29: `cleanup() {'

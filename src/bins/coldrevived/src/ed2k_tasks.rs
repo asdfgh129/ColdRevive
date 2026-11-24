@@ -342,6 +342,8 @@ pub fn download_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
         Err(_) => return Json::obj(vec![("error", Json::s(format!("非法 --host {host}")))]),
     };
     let timeout_ms: u64 = opt(args, "--timeout-ms").and_then(|s| s.parse().ok()).unwrap_or(60_000);
+    // 公网 A/B 的判据是对端落地 md5；默认不写盘保持旧行为，显式 --out 才落盘。
+    let out_path = opt(args, "--out").filter(|p| !p.is_empty());
     let data = match fs::read(&path) {
         Ok(b) => b,
         Err(e) => return Json::obj(vec![("error", Json::s(format!("读取 {path}: {e}")))]),
@@ -359,13 +361,30 @@ pub fn download_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
     let file_id = hex(&expected.hash());
     let link = expected.link();
     let size = expected.data.len();
+    let out_path2 = out_path.clone();
     thread::spawn(move || {
         let outcome: Result<(Json, String), String> = (|| {
             let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(8))
                 .map_err(|e| format!("连接 {addr}: {e}"))?;
             let out = download(stream, &expected, &hello(4662), Duration::from_millis(timeout_ms));
             let err = out.error.clone().unwrap_or_default();
-            let result = Json::obj(vec![
+            // 只有 ed2k_hash 与参考字节都一致才落盘；失败时绝不留一个看似完成的假文件。
+            let landed = if out.completed {
+                match &out_path2 {
+                    Some(p) => {
+                        let tmp = format!("{p}.part");
+                        fs::write(&tmp, &out.data)
+                            .map_err(|e| format!("写落地文件 {tmp}: {e}"))?;
+                        fs::rename(&tmp, p)
+                            .map_err(|e| format!("落地文件改名 {tmp} -> {p}: {e}"))?;
+                        Some((p.clone(), out.data.len()))
+                    }
+                    None => None,
+                }
+            } else {
+                None
+            };
+            let mut fields = vec![
                 ("host", Json::s(addr.to_string())),
                 ("file_name", Json::s(&expected.name)),
                 ("file_size", Json::n(size as f64)),
@@ -382,7 +401,12 @@ pub fn download_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
                 ("completed", Json::b(out.completed)),
                 ("log_tail", Json::arr(out.log.iter().rev().take(12)
                     .map(|e| Json::s(format!("{e:?}"))).collect())),
-            ]);
+            ];
+            if let Some((p, n)) = landed {
+                fields.push(("out_path", Json::s(&p)));
+                fields.push(("landed_bytes", Json::n(n as f64)));
+            }
+            let result = Json::obj(fields);
             Ok((result, err))
         })();
         match outcome {
@@ -443,10 +467,12 @@ mod tests {
         let sid = started.get("id").and_then(Json::as_str).unwrap().to_string();
         assert!(!sid.is_empty(), "{started:?}");
 
+        let landed = dir.join("landed.bin");
         let dstarted = download_cmd(&tasks, &[
             "--file".into(), path.to_string_lossy().into_owned(),
             "--host".into(), format!("127.0.0.1:{port}"),
             "--timeout-ms".into(), "8000".into(),
+            "--out".into(), landed.to_string_lossy().into_owned(),
         ]);
         let did = dstarted.get("id").and_then(Json::as_str).unwrap().to_string();
 
@@ -471,6 +497,8 @@ mod tests {
         assert_eq!(d.get("hash_matches").and_then(Json::as_bool), Some(true), "{djson:?}");
         assert_eq!(d.get("content_matches").and_then(Json::as_bool), Some(true), "{djson:?}");
         assert_eq!(d.get("bytes_received").and_then(Json::as_i64), Some(4096));
+        assert_eq!(d.get("landed_bytes").and_then(Json::as_i64), Some(4096), "{djson:?}");
+        assert_eq!(fs::read(&landed).unwrap(), sample(4096), "落地文件必须逐字节一致");
         fs::remove_dir_all(&dir).ok();
     }
 
