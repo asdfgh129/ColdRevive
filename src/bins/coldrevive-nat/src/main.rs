@@ -41,6 +41,9 @@ fn main() {
     let mut vantage_alt: Option<u16> = None;
     let mut classify: Option<String> = None;
     let mut classify_alt: Option<u16> = None;
+    let mut discover_tcp_port: Option<(String, Vec<String>)> = None;
+    let mut serve_observer: Option<String> = None;
+    let mut observer_secs: u64 = 20;
 
     let mut i = 0;
     while i < args.len() {
@@ -171,6 +174,38 @@ fn main() {
                 match v.parse::<u16>() {
                     Ok(n) => vantage_alt = Some(n),
                     Err(_) => fail(&format!("非法 --vantage-alt 端口: {}", v)),
+                }
+                i += 1;
+            }
+            "--discover-tcp-port" => {
+                let local = args.get(i + 1).cloned().unwrap_or_default();
+                let observers_raw = args.get(i + 2).cloned().unwrap_or_default();
+                if local.is_empty() || observers_raw.is_empty() {
+                    fail("--discover-tcp-port 需要 <本地 ip:port> <observer ip:port[,ip:port...]>");
+                }
+                let observers: Vec<String> = observers_raw
+                    .split(',')
+                    .map(|p| p.trim().to_string())
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                if observers.is_empty() {
+                    fail("--discover-tcp-port 至少需要一个 observer");
+                }
+                discover_tcp_port = Some((local, observers));
+                i += 2;
+            }
+            "--serve-observer" => {
+                serve_observer = args.get(i + 1).cloned();
+                if serve_observer.is_none() {
+                    fail("--serve-observer 需要 <ip:port>");
+                }
+                i += 1;
+            }
+            "--observer-secs" => {
+                let v = args.get(i + 1).cloned().unwrap_or_default();
+                match v.parse::<u64>() {
+                    Ok(n) => observer_secs = n,
+                    Err(_) => fail(&format!("非法 --observer-secs 值: {}", v)),
                 }
                 i += 1;
             }
@@ -388,6 +423,70 @@ fn main() {
             if probe.outcome == cr_nat::FilterOutcome::PortNotFiltered {
                 println!("NOTE=端口轴已实测（入向不禁异端口）；地址轴缺第二个公网 IP，未测，故不称 full-cone");
             }
+        }
+        return;
+    }
+
+    // TCP 映射端口发现（observer 端）：对每个入向连接回写它看到的源端点。
+    // 这是 in-band 的「你被映射成了什么」信令源，本身不做打洞、不改判据。
+    if let Some(bind_text) = serve_observer.as_deref() {
+        let bind = match bind_text.parse::<std::net::SocketAddr>() {
+            Ok(a) => a,
+            Err(e) => fail(&format!("--serve-observer 地址 {} 非法: {}", bind_text, e)),
+        };
+        match cr_nat::tcp_discovery::serve_observer_for(bind, observer_secs) {
+            Ok((stats, elapsed_ms)) => {
+                let served = stats.served.load(std::sync::atomic::Ordering::Relaxed);
+                let failed = stats.write_failed.load(std::sync::atomic::Ordering::Relaxed);
+                if as_json {
+                    println!(
+                        "{{\"mode\":\"serve-observer\",\"bind\":{},\"served\":{},\"write_failed\":{},\"elapsed_ms\":{},\"s6_status\":\"not_run\"}}",
+                        jstr(bind_text), served, failed, elapsed_ms
+                    );
+                } else {
+                    println!(
+                        "OBSERVER bind={} served={} write_failed={} elapsed_ms={}",
+                        bind_text, served, failed, elapsed_ms
+                    );
+                }
+            }
+            Err(e) => fail(&format!("observer 监听失败: {}", e)),
+        }
+        return;
+    }
+
+    // TCP 映射端口发现（客户端）：从固定本地端口向 observer 发真 TCP 连接，
+    // 读回映射端点作为信令字段；>=2 个 observer 一致才判 EIM。
+    if let Some((local_text, observers_text)) = discover_tcp_port {
+        let local = match local_text.parse::<std::net::SocketAddr>() {
+            Ok(a) => a,
+            Err(e) => fail(&format!("本地地址 {} 非法: {}", local_text, e)),
+        };
+        let mut observers = Vec::new();
+        for p in &observers_text {
+            match p.parse::<std::net::SocketAddr>() {
+                Ok(a) => observers.push(a),
+                Err(e) => fail(&format!("observer 地址 {} 非法: {}", p, e)),
+            }
+        }
+        let report = cr_nat::tcp_discovery::discover_tcp_port(
+            local,
+            &observers,
+            Duration::from_millis(timeout_ms.max(500)),
+        );
+        if as_json {
+            println!("{}", report.to_json());
+        } else {
+            println!("DISCOVER local={} eim={} discovered_port={}",
+                report.local,
+                report.eim.map(|b| b.to_string()).unwrap_or_else(|| "unproven".into()),
+                report.discovered_port.map(|p| p.to_string()).unwrap_or_else(|| "-".into()));
+            for o in &report.observations {
+                println!("  OBS {} -> {} {}", o.observer,
+                    o.mapped_endpoint.as_deref().unwrap_or("-"),
+                    o.error.as_deref().map(|e| format!("({e})")).unwrap_or_default());
+            }
+            println!("REASON={}", report.reason);
         }
         return;
     }
@@ -826,6 +925,11 @@ fn print_help() {
   coldrevive-nat --tcp-punch <本地 ip:port> <对端 ip:port[,..]> \\\n\
                 [--echo | --echo-responder] [--timeout <毫秒>] [--json]\n\
 \n\
+  # 5b) 动态 TCP 映射端口发现（STUN 语义，给对端的信令字段）\n\
+  coldrevive-nat --serve-observer <ip:port> [--observer-secs <秒>] [--json]\n\
+  coldrevive-nat --discover-tcp-port <本地 ip:port> <observer ip:port[,ip:port...]> \\\n\
+                [--timeout <毫秒>] [--json]\n\
+\n\
 选项:\n\
   --json            以 JSON 输出（字段顺序稳定，供脚本解析）\n\
   --timeout <毫秒>  每次探测超时（默认 3000）\n\
@@ -839,6 +943,9 @@ fn print_help() {
   --tcp-punch <l> <p...>  TCP 同时打开：绑定本地端口，向对端公网映射端口并发 SYN\n\
   --echo            打通后发 PING 并等 PONG（发起方）\n\
   --echo-responder  打通后等 PING 并回 PONG（应答方）\n\
+  --serve-observer <ip:port>  端口发现 observer：回写看到的源端点\n\
+  --observer-secs <秒>  observer 服务时长（默认 20）\n\
+  --discover-tcp-port <l> <obs...>  从本地端口发现映射端点；>=2 observer 判 EIM\n\
   --tag k=v         样本元信息，可多次；egress 必填\n\
   -h, --help        显示本帮助\n\
 \n\

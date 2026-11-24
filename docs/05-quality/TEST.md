@@ -859,6 +859,27 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   无法匹配本地 4 元组。要满足原判据需上游保持源端口或由所有者书面改判据；
   本轮不改判据、不外推。门禁常量不变。
 
+## 11. v2.4.120 新增证据（动态 TCP 映射端口发现 → simultaneous-open 组件级 PASS）
+
+- **EIM 前置证明（PASS）**：221 从 `192.168.1.221:19910` 分别连两个独立公网 IP
+  （`82.157.68.159` / `119.29.150.254`），两边 tcpdump 都看到映射源端点
+  `112.5.60.4:20811`。同一本地端口对不同目的映射一致 → endpoint-independent mapping。
+  证据 `tests/ARCHIVE/evidence/tcp-eim-two-observers-tcpdump-20261124.json`。
+- **端口发现工具**：新增 `coldrevive-nat --serve-observer <ip:port>`（回写
+  `CR-MAPPED <ip>:<port>`）与 `--discover-tcp-port <本地 ip:port> <observer...>`。
+  单 observer 返回 `discovered_port` 但 `eim=null`（不冒充 EIM 已证），>=2 个一致才
+  判 `eim=true`。4 条 `cr-nat` 单测覆盖回写/判定/不可达。
+- **发现端口作信令的 TCP 打洞（PASS，组件级）**：用 82 上的临时 REDIRECT
+  （来自 221 的 `7100`→本地 `19110`，跑完撤销）让 221 发现 `112.5.60.4:<P>`，
+  把 P 交给 222 取代固定 19910。`python3 tests/e2e/w56/public_tcp_punch_discovered.py`
+  首次与随后连续 3 轮均判 PASS：两侧 `ok=true`、`bytes_roundtrip=true`；
+  tcpdump 抓到真实同时打开 SYN 交叉，222 侧入向 SYN 源端口恰为发现端口。
+  证据 `tests/ARCHIVE/evidence/tcp-punch-discovered-3rounds-verify-20261124.json`。
+  这是组件级证据，不等于 S6/G2 达标；门禁常量不变。
+- **全量回归**：`CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`
+  **525 passed / 0 failed / 3 ignored**。默认并行下 2 次既存计时型 flaky 失败
+  （`per_session_cap` / `amule_block_accounting`）已归档，隔离与串行均通过。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

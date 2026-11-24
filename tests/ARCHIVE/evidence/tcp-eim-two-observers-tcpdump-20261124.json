@@ -1,0 +1,43 @@
+{
+  "recorded_at": "2026-11-24T19:42:45+08:00",
+  "scope": "Determine whether host 221 TCP source-port mapping is endpoint-independent, using two independent public observers and real SYN packets. Not a G2/S6 claim.",
+  "method": {
+    "client": "ssh root@192.168.1.221 'python3 /tmp/mapped_connect.py' - binds TCP socket to 0.0.0.0:19910, connects to two distinct public IPs on already-allowed port 22",
+    "observers": [
+      "tcpdump -ni eth0 on 82.157.68.159 (independent public IP, internal 10.2.0.16)",
+      "tcpdump -ni eth0 on 119.29.150.254 (independent public IP, internal 10.1.0.2)"
+    ],
+    "filter": "tcp[tcpflags] & tcp-syn != 0 and src host 112.5.60.4 and tcp port 22"
+  },
+  "client_stdout": [
+    "CONNECTED 82.157.68.159:22 local=192.168.1.221:19910",
+    "CONNECTED 119.29.150.254:22 local=192.168.1.221:19910"
+  ],
+  "observer_A": {
+    "host": "82.157.68.159",
+    "syn": "19:42:43.322617 IP 112.5.60.4.20811 > 10.2.0.16.22: Flags [S], seq 836293541"
+  },
+  "observer_B": {
+    "host": "119.29.150.254",
+    "syn": "19:42:45.357118 IP 112.5.60.4.20811 > 10.1.0.2.22: Flags [S], seq 1159882349"
+  },
+  "mapping_axis": {
+    "destination_1": "82.157.68.159:22",
+    "mapped_endpoint_1": "112.5.60.4:20811",
+    "destination_2": "119.29.150.254:22",
+    "mapped_endpoint_2": "112.5.60.4:20811",
+    "consistent": true,
+    "verdict": "endpoint-independent mapping (EIM) for these two destinations at this instant"
+  },
+  "interpretation": "221 TCP source port 19910 is mapped to a single public port (here 20811) regardless of destination IP. The earlier 18011 was the mapping port for that earlier session; the port can change between sessions but is consistent across destinations within a session. This is the prerequisite for telling the peer to connect to the discovered port instead of 19910.",
+  "boundaries": [
+    "Two destinations only; strong EIM evidence but not an exhaustive NAT taxonomy proof.",
+    "TCP EIM evidence does not imply 222 TCP EIM; 222 remains symmetric and must stay the active connector.",
+    "Mapping lifetime is finite; discovered port must be used promptly while the mapping is alive.",
+    "Does not by itself establish a TCP punch or any G2/S6 gate."
+  ],
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false
+}

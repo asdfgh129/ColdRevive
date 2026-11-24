@@ -24,6 +24,7 @@ pub mod secure;
 pub mod relay_server;
 pub mod stun;
 pub mod stun_server;
+pub mod tcp_discovery;
 pub mod tcp_punch;
 pub mod upnp;
 

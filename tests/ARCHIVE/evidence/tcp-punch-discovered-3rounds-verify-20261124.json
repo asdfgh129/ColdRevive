@@ -1,0 +1,116 @@
+{
+  "observer_stdout": "{\"mode\":\"serve-observer\",\"bind\":\"0.0.0.0:19110\",\"served\":3,\"write_failed\":0,\"elapsed_ms\":100032,\"s6_status\":\"not_run\"}",
+  "rounds": [
+    {
+      "round": 1,
+      "probe_stdout": "{\"verdict\": \"PASS\", \"reason\": \"两侧用发现端口完成 TCP 同时打开并双向回环成功\", \"discovered_port\": 21249, \"report\": \"C:\\\\Users\\\\bemin\\\\WorkBuddy\\\\ColdRevive\\\\tests\\\\e2e\\\\w56\\\\reports\\\\public-tcp-punch-discovered-verify-r1-20261124T115345Z.json\"}",
+      "verdict": "PASS",
+      "discovered_port": 21249,
+      "results": {
+        "222": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.34.222:19920",
+          "peer": "112.5.60.4:21249",
+          "attempts": 1,
+          "elapsed_ms": 6,
+          "bytes_roundtrip": true
+        },
+        "221": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.1.221:19910",
+          "peer": "112.5.32.34:19920",
+          "attempts": 1,
+          "elapsed_ms": 3,
+          "bytes_roundtrip": true
+        }
+      },
+      "cap221_syn_synack": [
+        "11:53:46.654118 ens160 Out IP 192.168.1.221.19910 > 82.157.68.159.7100: Flags [S], seq 1384355818, win 64240, options [mss 1460,sackOK,TS val 3969521952 ecr 0,nop,wscale 7], length 0",
+        "11:53:46.697647 ens160 In  IP 82.157.68.159.7100 > 192.168.1.221.19910: Flags [S.], seq 3097714309, ack 1384355819, win 65160, options [mss 1424,sackOK,TS val 1185784812 ecr 3969521952,nop,wscale 7], length 0",
+        "11:53:47.057410 ens160 Out IP 192.168.1.221.19910 > 112.5.32.34.19920: Flags [S], seq 1703733595, win 64240, options [mss 1460,sackOK,TS val 3069265110 ecr 0,nop,wscale 7], length 0",
+        "11:53:47.059734 ens160 In  IP 112.5.32.34.19920 > 192.168.1.221.19910: Flags [S.], seq 717376947, ack 1703733596, win 64240, options [mss 1460,sackOK,TS val 545179864 ecr 3069265110,nop,wscale 7], length 0"
+      ],
+      "cap222_syn_synack": [
+        "11:53:47.055870 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S], seq 717376947, win 64240, options [mss 1460,sackOK,TS val 545179861 ecr 0,nop,wscale 7], length 0",
+        "11:53:47.058561 ens160 In  IP 112.5.60.4.21249 > 192.168.34.222.19920: Flags [S], seq 1703733595, win 64240, options [mss 1460,sackOK,TS val 3069265110 ecr 0,nop,wscale 7], length 0",
+        "11:53:47.058581 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S.], seq 717376947, ack 1703733596, win 64240, options [mss 1460,sackOK,TS val 545179864 ecr 3069265110,nop,wscale 7], length 0"
+      ]
+    },
+    {
+      "round": 2,
+      "probe_stdout": "{\"verdict\": \"PASS\", \"reason\": \"两侧用发现端口完成 TCP 同时打开并双向回环成功\", \"discovered_port\": 21249, \"report\": \"C:\\\\Users\\\\bemin\\\\WorkBuddy\\\\ColdRevive\\\\tests\\\\e2e\\\\w56\\\\reports\\\\public-tcp-punch-discovered-verify-r2-20261124T115350Z.json\"}",
+      "verdict": "PASS",
+      "discovered_port": 21249,
+      "results": {
+        "222": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.34.222:19920",
+          "peer": "112.5.60.4:21249",
+          "attempts": 1,
+          "elapsed_ms": 21,
+          "bytes_roundtrip": true
+        },
+        "221": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.1.221:19910",
+          "peer": "112.5.32.34:19920",
+          "attempts": 1,
+          "elapsed_ms": 3,
+          "bytes_roundtrip": true
+        }
+      },
+      "cap221_syn_synack": [
+        "11:53:51.729048 ens160 Out IP 192.168.1.221.19910 > 82.157.68.159.7100: Flags [S], seq 1463651372, win 64240, options [mss 1460,sackOK,TS val 3969527027 ecr 0,nop,wscale 7], length 0",
+        "11:53:51.772293 ens160 In  IP 82.157.68.159.7100 > 192.168.1.221.19910: Flags [S.], seq 3177005496, ack 1463651373, win 65160, options [mss 1424,sackOK,TS val 1185789887 ecr 3969527027,nop,wscale 7], length 0",
+        "11:53:52.118130 ens160 Out IP 192.168.1.221.19910 > 112.5.32.34.19920: Flags [S], seq 1782807089, win 64240, options [mss 1460,sackOK,TS val 3069270170 ecr 0,nop,wscale 7], length 0",
+        "11:53:52.120567 ens160 In  IP 112.5.32.34.19920 > 192.168.1.221.19910: Flags [S.], seq 717442490, ack 1782807090, win 65160, options [mss 1460,sackOK,TS val 545184925 ecr 3069270170,nop,wscale 7], length 0"
+      ],
+      "cap222_syn_synack": [
+        "11:53:52.101520 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S], seq 717442490, win 65160, options [mss 1460,sackOK,TS val 545184907 ecr 3069265116,nop,wscale 7], length 0",
+        "11:53:52.119376 ens160 In  IP 112.5.60.4.21249 > 192.168.34.222.19920: Flags [S], seq 1782807089, win 64240, options [mss 1460,sackOK,TS val 3069270170 ecr 0,nop,wscale 7], length 0",
+        "11:53:52.119397 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S.], seq 717442490, ack 1782807090, win 65160, options [mss 1460,sackOK,TS val 545184925 ecr 3069270170,nop,wscale 7], length 0"
+      ]
+    },
+    {
+      "round": 3,
+      "probe_stdout": "{\"verdict\": \"PASS\", \"reason\": \"两侧用发现端口完成 TCP 同时打开并双向回环成功\", \"discovered_port\": 21249, \"report\": \"C:\\\\Users\\\\bemin\\\\WorkBuddy\\\\ColdRevive\\\\tests\\\\e2e\\\\w56\\\\reports\\\\public-tcp-punch-discovered-verify-r3-20261124T115355Z.json\"}",
+      "verdict": "PASS",
+      "discovered_port": 21249,
+      "results": {
+        "222": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.34.222:19920",
+          "peer": "112.5.60.4:21249",
+          "attempts": 1,
+          "elapsed_ms": 18,
+          "bytes_roundtrip": true
+        },
+        "221": {
+          "mode": "tcp-punch",
+          "ok": true,
+          "local": "192.168.1.221:19910",
+          "peer": "112.5.32.34:19920",
+          "attempts": 1,
+          "elapsed_ms": 3,
+          "bytes_roundtrip": true
+        }
+      },
+      "cap221_syn_synack": [
+        "11:53:56.830423 ens160 Out IP 192.168.1.221.19910 > 82.157.68.159.7100: Flags [S], seq 1543360576, win 64240, options [mss 1460,sackOK,TS val 3969532129 ecr 0,nop,wscale 7], length 0",
+        "11:53:56.873322 ens160 In  IP 82.157.68.159.7100 > 192.168.1.221.19910: Flags [S.], seq 3256709084, ack 1543360577, win 65160, options [mss 1424,sackOK,TS val 1185794988 ecr 3969532129,nop,wscale 7], length 0",
+        "11:53:57.245135 ens160 Out IP 192.168.1.221.19910 > 112.5.32.34.19920: Flags [S], seq 1782872632, win 65160, options [mss 1460,sackOK,TS val 3069275297 ecr 545184931,nop,wscale 7], length 0",
+        "11:53:57.247450 ens160 In  IP 112.5.32.34.19920 > 192.168.1.221.19910: Flags [S.], seq 717508033, ack 1782872633, win 65160, options [mss 1460,sackOK,TS val 545190052 ecr 3069275297,nop,wscale 7], length 0"
+      ],
+      "cap222_syn_synack": [
+        "11:53:57.230922 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S], seq 717508033, win 65160, options [mss 1460,sackOK,TS val 545190036 ecr 3069270177,nop,wscale 7], length 0",
+        "11:53:57.246226 ens160 In  IP 112.5.60.4.21249 > 192.168.34.222.19920: Flags [S], seq 1782872632, win 65160, options [mss 1460,sackOK,TS val 3069275297 ecr 545184931,nop,wscale 7], length 0",
+        "11:53:57.246258 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.21249: Flags [S.], seq 717508033, ack 1782872633, win 65160, options [mss 1460,sackOK,TS val 545190052 ecr 3069275297,nop,wscale 7], length 0"
+      ]
+    }
+  ]
+}

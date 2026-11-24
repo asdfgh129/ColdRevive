@@ -755,6 +755,46 @@ L2 cc_on 第 7 轮份额 0.430/0.570（Jain 0.981），L2 cc_paced 第 8 轮
 `all_rounds_must_pass` 仍判 **整体 FAIL**。不再通过再次抽样「碰运气」改成通过，
 也不改阈值或窗口；脚本继续写 `component-level fairness measurement only; not G2 unlock`。
 
-全量 `cargo test --workspace --offline` 为 521 passed / 0 failed / 3 ignored（新增 2 条单测）。
-所有成功、失败、BLOCKED 与日志更正均写入 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
-下一次 G2 复评仍必须由所有者基于真实证据书面决定。
+### 20.5 动态 TCP 映射端口发现：发现端口作信令字段后 simultaneous-open 实测 PASS（组件级）
+
+§20.3 的 `Connection refused` 根因是 221 绑定源端口 `19910` 经上游 NAT 被改写成
+另一端口（当时抓到 `18011`），222 仍按固定 `112.5.60.4:19910` 回 SYN，4 元组失配被 RST。
+关键澄清：**映射端口会随会话变化，但在同一会话内对目的无关**。用两个独立公网观测点
+（`82.157.68.159` / `119.29.150.254`）在 221 从 `19910` 同时发 SYN，两边 tcpdump
+都看到 `112.5.60.4:20811` → EIM 成立（证据
+`tests/ARCHIVE/evidence/tcp-eim-two-observers-tcpdump-20261124.json`）。
+换言之不是「没有稳定端口」，而是「该用发现出来的端口，不是配置里的 19910」。
+
+实现（本次唯一 Rust 改动，门禁常量不变）：
+- `cr_nat::tcp_punch::connect_bound_blocking`：绑定源端口的阻塞连接，复用
+  `poll(POLLOUT)+SO_ERROR` 判据，不把 SYN_SENT 当成功。
+- 新模块 `cr_nat::tcp_discovery`：`--serve-observer` 对每个入向连接回写
+  `CR-MAPPED <ip>:<port>`（它看到的源端点）；`--discover-tcp-port` 从固定本地端口
+  向 observer 发真 TCP 连接读回映射端点，>=2 个 observer 一致才判 EIM，单 observer
+  只给端口、EIM 记 `null`（不冒充已证）。4 条单测覆盖回写/单观测/一致性/不可达。
+- observer 只做「你被映射成了什么」的 in-band 信令源，不改 TCP punch 判据。
+
+实测：在 `82.157.68.159` 用 `iptables -t nat` REDIRECT 把来自 221 的 `7100`
+临时引到本地 `19110`（中继对其他源不受影响，跑完即撤销并复测 7100 可连）；
+221 从 `19910` 发现 `112.5.60.4:21211`，把该端口作为信令字段交给 222，
+222 连 `112.5.60.4:21211`（而非固定 19910），221 仍连 `112.5.32.34:19920`。
+`tests/e2e/w56/public_tcp_punch_discovered.py` 报告
+`public-tcp-punch-discovered-20261124T115231Z.json`：两侧 `ok=true`、
+`bytes_roundtrip=true`；再连续 3 轮带 tcpdump 验证全部 PASS，抓包显示真实
+同时打开：222 的 SYN→`112.5.60.4:<discovered>` 与 221 的 SYN→`112.5.32.34:19920`
+交叉，222 侧入向 SYN 源恰为 `112.5.60.4:<discovered>`（= 发现端口），证实 EIM 端口复用。
+证据 `tests/ARCHIVE/evidence/tcp-punch-discovered-3rounds-verify-20261124.json`。
+
+**边界**：这是组件级真实 TCP 同时打开 + 双向字节验证，依赖 221 的 EIM 与
+观察者提供的映射端口；不等于 S6/G2 达标，不折算 NAT 矩阵覆盖率，不宣称
+BT-over-punched-TCP 已接线（ADR-015 缺口不变）。单 observer 下工具自身 EIM 记
+`null`，EIM 由独立双观测点 tcpdump 证据证明。发现端口有生命周期，必须即时使用。
+门禁常量仍全部不变：`g2_claim=false`、`s6_status=not_run`、
+`evidence_valid_for_pass=false`、`auto_pass=false`。下一次 G2 复评必须由所有者
+基于真实证据书面决定。
+
+全量 `cargo test --workspace --offline -- --test-threads=1` 为
+525 passed / 0 failed / 3 ignored（新增 4 条单测）。默认并行下有 2 次既存的
+计时型 flaky 失败（`per_session_cap` / `amule_block_accounting`），隔离与串行均通过，
+已如实归档。所有成功、失败、BLOCKED 与日志更正均写入
+`tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。

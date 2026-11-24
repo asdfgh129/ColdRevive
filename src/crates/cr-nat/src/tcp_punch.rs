@@ -131,6 +131,38 @@ pub fn punch_tcp(local: SocketAddr, peers: &[SocketAddr], timeout: Duration) -> 
     report
 }
 
+/// 绑定 `local` 并向 `peer` 发起连接，阻塞等待三次握手完成，返回已建连的流。
+///
+/// 供 TCP 映射端口发现（STUN 语义）复用：observer 需要客户端**从固定源端口**发起
+/// 真实 TCP 连接，才能观察到该端口被 NAT 改写后的公网端点。这里复用与 punch 相同的
+/// bind-before-connect FFI 与 `poll(POLLOUT)+SO_ERROR` 判据，绝不把 SYN_SENT 当成功。
+pub fn connect_bound_blocking(
+    local: SocketAddr,
+    peer: SocketAddr,
+    timeout: Duration,
+) -> io::Result<TcpStream> {
+    let stream = open_pending(local, peer)?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match sys::completion(&stream, 50) {
+            sys::Completion::Done => {
+                stream.set_nonblocking(false)?;
+                stream.set_nodelay(true)?;
+                return Ok(stream);
+            }
+            sys::Completion::Failed(e) => return Err(e),
+            sys::Completion::Pending => {
+                if Instant::now() >= deadline {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "绑定源端口的 TCP 连接超时（未完成三次握手）",
+                    ));
+                }
+            }
+        }
+    }
+}
+
 /// 绑定 `local` 并向 `peer` 发起非阻塞 connect，返回处于「连接中」的流。
 fn open_pending(local: SocketAddr, peer: SocketAddr) -> io::Result<TcpStream> {
     let (local_ip, peer_ip) = match (local.ip(), peer.ip()) {

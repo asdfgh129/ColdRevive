@@ -1,3 +1,24 @@
+## [2.4.120] - 2026-11-24 — 动态 TCP 映射端口发现：发现端口作信令后 simultaneous-open 实测 PASS（组件级）
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。这是组件级证据，不是 G2 解锁。
+
+- 新增 `cr_nat::tcp_discovery` 与 `tcp_punch::connect_bound_blocking`。
+  `--serve-observer` 回写 `CR-MAPPED <ip>:<port>`；`--discover-tcp-port` 从固定本地
+  端口向 observer 发真 TCP 连接读回映射端点，>=2 observer 一致才判 EIM，
+  单 observer 只给端口、EIM 记 `null`。4 条单测。
+- 双公网观测点 tcpdump 证据（`82.157.68.159` / `119.29.150.254`）证明 221 从
+  `19910` 到不同目的都映射成 `112.5.60.4:20811` → EIM 成立。这是 §20.3
+  `Connection refused` 的真正原因：该用发现的映射端口，不是配置里的 19910。
+- `tests/e2e/w56/public_tcp_punch_discovered.py` 把发现端口作为信令字段交给 222，
+  222 连 `112.5.60.4:<discovered>`，221 连 `112.5.32.34:19920`。首次报告判 **PASS**
+  （两侧 `ok=true`、`bytes_roundtrip=true`），再连续 3 轮带 tcpdump 全部 PASS；
+  抓包显示真实同时打开 SYN 交叉且源端口 == 发现端口。证据见审计 §20.5。
+- 82 上用于发现的临时 REDIRECT 已撤销，中继 7100 复测可连。
+- 全量 `cargo test --workspace --offline -- --test-threads=1` 为
+  525 passed / 0 failed / 3 ignored。默认并行下 2 次既存计时型 flaky 失败
+  已如实归档，隔离/串行通过。
+
 ## [2.4.119] - 2026-11-24 — 公网 TCP DNAT 验收：环回 PASS，simultaneous-open 仍 BLOCKED
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

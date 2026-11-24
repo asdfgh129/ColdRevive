@@ -1,0 +1,6 @@
+{
+  "report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w56\\reports\\public-tcp-punch-discovered-20261124T115231Z.json",
+  "observer_stdout": "{\"mode\":\"serve-observer\",\"bind\":\"0.0.0.0:19110\",\"served\":1,\"write_failed\":0,\"elapsed_ms\":38036,\"s6_status\":\"not_run\"}",
+  "observer_stderr": "",
+  "probe_returncode": 0
+}
