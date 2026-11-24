@@ -1,0 +1,55 @@
+{
+  "schema": "coldrevive.fr25.reverse-ab/v1",
+  "generated_at_unix": 1795485662,
+  "scope": "RFC1918 LAN; same sample and same downloader, two uploaders",
+  "gate_constants_untouched": true,
+  "sample": {
+    "name": "w25-reverse-20261124100102.bin",
+    "bytes": 9736192,
+    "md5": "646bd6621496a7cc824e9ecca276f8ae"
+  },
+  "criteria": {
+    "A": "our daemon uploader stalls/lands no md5 under the same paced run",
+    "B": "stock aMule uploader lands the exact same file on the same downloader",
+    "conclusion": "only a real landed md5 is evidence; no PASS/FAIL promotion"
+  },
+  "second_uploader_setup": {
+    "config_dir": "/opt/g3-clients/amule-config-fr25-second",
+    "tcp_port": 4664,
+    "ec_port": 4713,
+    "incoming": "/opt/g3-clients/amule-config-fr25-second/Incoming/w25-reverse-20261124100102.bin"
+  },
+  "second_uploader_ready": true,
+  "arm_a": {
+    "uploader": "coldrevived serve via transparent proxy 192.168.1.210:4663",
+    "exit_code": 0,
+    "stdout_log": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\reverse-ab-A-20261124100102.stdout.log",
+    "report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\reports\\upload-diag-20261124100107.json",
+    "pace_bps": 200000,
+    "amule_percent": null,
+    "bytes_sent": 9736192,
+    "reason": "",
+    "verdict": "STALLED_WITH_PENDING_BLOCKS"
+  },
+  "arm_b": {
+    "uploader": "192.168.1.221:4664 (second stock amuled)",
+    "downloader": "192.168.1.221:4712 (same primary amulecmd)",
+    "link": "ed2k://|file|w25-reverse-20261124100102.bin|9736192|04804527e4515ce37f869ae32b3ef057|/|sources,192.168.1.221:4664|/",
+    "cancelled_before": [],
+    "add_rc": 0,
+    "add_stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n",
+    "timeline": [
+      {
+        "t": 0.4,
+        "percent": null,
+        "state": null
+      }
+    ],
+    "elapsed_sec": 1.5,
+    "landed_md5": "646bd6621496a7cc824e9ecca276f8ae",
+    "md5_matches": true,
+    "second_show_ul": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n",
+    "second_connections": ""
+  },
+  "second_uploader_cleanup": "stopped"
+}

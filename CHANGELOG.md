@@ -1,3 +1,24 @@
+## [2.4.114] - 2026-11-24 — FR-25 上传方向 LAN 闭环：同构 OP_COMPRESSEDPART
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。**公网仍未测，不宣称公网性能。**
+
+- `cr-ed2k::wire` 新增 stock-aMule 同构的 `OP_COMPRESSEDPART(0x40)/PROT_EMULE(0xC5)`：
+  `hash(16)+start(u32 LE)+compressed_len(u32 LE)+zlib 流`，每请求块一帧。
+  字节布局由真 stock amuled 的抓包逐帧定死（`compressed-frames-20261124.hex`，
+  54 帧、解压后与样本逐字节一致），并与 aMule `CreatePackedPackets` /
+  `ProcessBlockPacket` 源码核对。
+- 压缩用 std-only 的贪心 LZ77 + 固定 Huffman（`zlib_compact`）；不可压数据时回退
+  stored DEFLATE。stored-only 版本虽然小块能落地，但整文件 A/B 不稳定（帧反而变大，
+  与 stock「压不小就回退 0x46」的决策相反），已保留失败证据，不冒充通过。
+- `ServeConfig.compressed_parts`（默认 false）与 daemon/CLI `--compressed-parts` 为
+  opt-in。重复 `REQUESTPARTS` 现在立即重发该区间（stock 行为）；旧的「3 轮 + 2 s」
+  抑制会让 aMule 反复请求同一批块并饿死。
+- 同一 >PARTSIZE 样本、同一下载端，paced 200 kB/s 与 unpaced 两轮 A/B：
+  A（我们 daemon + `--compressed-parts`）落地 md5 一致，B（第二 stock amuled）也一致；
+  9,736,192 B 文件只走 408,507 B 压缩载荷。诊断脚本改用「对端落地 md5」判 PASS，
+  不再把 `Show DL` 清空误报为停滞。全量回归 **504 passed / 0 failed / 3 ignored**。
+
 ## [2.4.113] - 2026-11-24 — FR-25 第二上传端反向 A/B：定位到帧形态差异
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、

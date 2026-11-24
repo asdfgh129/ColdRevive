@@ -1,0 +1,4 @@
+Exception in thread Thread-11 (pipe):
+report: C:\Users\bemin\WorkBuddy\ColdRevive\tests\e2e\w25-daemon\reports\upload-diag-20261124101938.json
+trace:  C:\Users\bemin\WorkBuddy\ColdRevive\tests\e2e\w25-daemon\run\diag-upload-frames-20261124101938.log
+verdict: PASS | amule 0.0% | sent=18432 completed=1 pending=0 dropped_exceeds=0 dropped_unknown=0

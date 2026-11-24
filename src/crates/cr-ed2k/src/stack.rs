@@ -13,7 +13,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -342,12 +342,6 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(10);
 /// 180 KiB 块的传输时间，不会把正常的流水线停顿误判成丢包。
 const IDLE_RESEND: Duration = Duration::from_secs(3);
 
-struct SentRange {
-    sent_at: Instant,
-    sent_req: u64,
-    last_req: u64,
-}
-
 /// Split one requested block into wire frames of `chunk` bytes. Real eMule/aMule
 /// uploaders send 10 KiB frames even when the peer requested a whole 180 KiB
 /// block, so a compliant client must accept that granularity.
@@ -446,6 +440,13 @@ pub struct ServeConfig {
     /// 默认 `false`：默认路径保留已修好的 watchdog 与写超时，不把未验证的假说
     /// 当成默认行为。真实 aMule 是否有效必须由外部 e2e 判定，本 crate 不宣称。
     pub request_gated_pacing: bool,
+
+    /// Opt-in：用 stock aMule 同构的 `OP_COMPRESSEDPART(0x40)/PROT_EMULE(0xC5)`
+    /// 每块一帧回送，而不是 `OP_SENDINGPART(0x46)/0xE3` 10 KiB 分片。
+    /// 2026-11-24 反向 A/B 实测同一下载端能完整消费 stock 上传端、却停在我们
+    /// 的 0x46 分片上；该开关用于同一 A/B 验证帧形态是否是根因。
+    /// 使用 std-only 的 stored-DEFLATE zlib 流，不宣称压缩率。
+    pub compressed_parts: bool,
 }
 
 impl Default for ServeConfig {
@@ -453,6 +454,7 @@ impl Default for ServeConfig {
         ServeConfig {
             max_in_flight_bytes: Some(3 * w::BLOCKSIZE as usize),
             request_gated_pacing: false,
+            compressed_parts: false,
         }
     }
 }
@@ -556,12 +558,21 @@ fn emit_planned(
     hash: &Hash16,
     file: &SharedFile,
     out: &mut UploadResult,
+    compressed: bool,
 ) -> Result<usize, String> {
     let mut bytes = 0usize;
     for &(cs, ce) in frames {
         let (s, e) = (cs as usize, ce as usize);
-        link.send_frame(&w::sending_part(hash, cs, ce, &file.data[s..e]))?;
+        let frame = if compressed {
+            // Stock aMule expects one complete compressed stream per requested
+            // block, not 10 KiB fragments of a plain SENDINGPART stream.
+            w::compressed_part(hash, cs, &file.data[s..e])
+        } else {
+            w::sending_part(hash, cs, ce, &file.data[s..e])
+        };
+        link.send_frame(&frame)?;
         out.blocks_sent += 1;
+        // Honest counters: uncompressed payload bytes accepted by our stack.
         out.bytes_sent += e - s;
         bytes += e - s;
     }
@@ -608,9 +619,9 @@ pub fn serve_with_config(
     // 184,320 B 块；不是 10,240 B 的 OP_SENDINGPART(0x46)。当前实现仍用
     // 0x46/10,240 B，aMule 下载端会在接近完成时停止请求（97.6% 停住）。
     // 旧注释「aMule 按 10240 字节一帧」是误判，保留此更正以防再次走偏。
-    // 记账按「请求区间」而不是帧：同一区间重复请求多是流水线，但若连续多轮
-    // 仍在 pending 里，就按重传再发一次（eD2k 无块级 ACK，只能这样自愈）。
-    let mut sent_ranges: HashMap<(u32, u32), SentRange> = HashMap::new();
+    // 2026-11-24 第二次反向 A/B 更正：eD2k 没有块级 ACK，**对端重复请求就是
+    // 唯一的丢包信号**。旧实现的「3 轮 + 2 s 才允许重传」会让 aMule 反复
+    // 请求同一批块却永久饿死（89.1% 停住）；stock aMule 是「请求即重发」。
     let mut request_seq: u64 = 0;
     // 对端停手时的自愈（W25 实测 aMule 2.3.3 停在 10.1% 不动：窗口填满后
     // 既不确认也不再请求，eD2k 又没有块级 ACK）。读超时不再意味着「没事发生」，
@@ -621,6 +632,10 @@ pub fn serve_with_config(
     // 请求驱动窗口：对端请求但未送完的区间留在这里，只有新的 REQUESTPARTS
     // （或默认配置下的 idle watchdog）才授权继续送出。这是我们的「有界在途」。
     let mut pending_sends: VecDeque<PendingSend> = VecDeque::new();
+    // 0x40 sends one whole requested block per frame; 0x46 keeps the audited
+    // 10 KiB granularity. A requested range is never larger than BLOCKSIZE,
+    // so passing BLOCKSIZE as the chunk yields exactly one frame per block.
+    let send_chunk = if config.compressed_parts { w::BLOCKSIZE } else { w::UPLOAD_CHUNK };
 
     let run = (|| -> Result<(), String> {
         while Instant::now() < deadline {
@@ -644,17 +659,12 @@ pub fn serve_with_config(
                                             if end <= start || end as usize > f.data.len() {
                                                 continue;
                                             }
-                                            sent_ranges.insert((start, end), SentRange {
-                                                sent_at: Instant::now(),
-                                                sent_req: request_seq,
-                                                last_req: request_seq,
-                                            });
                                             if !queue_range(&mut pending_sends, start, end, request_seq) {
                                                 rewind_range(&mut pending_sends, start, end);
                                             }
                                         }
-                                        let (frames, used) = plan_sends(&mut pending_sends, budget, w::UPLOAD_CHUNK);
-                                        let bytes = emit_planned(&mut link, &frames, &f.hash(), &f, &mut out)?;
+                                        let (frames, used) = plan_sends(&mut pending_sends, budget, send_chunk);
+                                        let bytes = emit_planned(&mut link, &frames, &f.hash(), &f, &mut out, config.compressed_parts)?;
                                         idle_resend_bytes += bytes;
                                         if bytes > 0 {
                                             out.idle_resends += 1;
@@ -743,23 +753,9 @@ pub fn serve_with_config(
                         if *end <= *start || *end as usize > f.data.len() {
                             continue;
                         }
-                        let send_now = match sent_ranges.get_mut(&(*start, *end)) {
-                            None => true,
-                            Some(s) => {
-                                s.last_req = request_seq;
-                                // 连续 3 轮仍在 pending 且距上次发送 ≥2s：
-                                // 对端确实没收到，重传一次，避免永久饿死。
-                                request_seq >= s.sent_req + 3
-                                    && s.sent_at.elapsed() >= Duration::from_secs(2)
-                            }
-                        };
-                        if !send_now {
-                            continue;
-                        }
-                        sent_ranges.insert(
-                            (*start, *end),
-                            SentRange { sent_at: Instant::now(), sent_req: request_seq, last_req: request_seq },
-                        );
+                        // 请求即授权：重复请求说明对端没收到那一块，立即从头
+                        // 重发。aMule 的 WriteToBuffer 会忽略已经完整的区间，
+                        // 重复帧不会破坏文件；不重发才会永久饿死。
                         if !queue_range(&mut pending_sends, *start, *end, request_seq) {
                             rewind_range(&mut pending_sends, *start, *end);
                         }
@@ -767,8 +763,8 @@ pub fn serve_with_config(
                     // 新请求是本回合唯一「对端仍在消费」的信号：按窗口预算放字节。
                     // 超出预算的部分留在 pending_sends 里，等下一次请求再送。
                     let budget = turn_budget(&config);
-                    let (frames, used) = plan_sends(&mut pending_sends, budget, w::UPLOAD_CHUNK);
-                    emit_planned(&mut link, &frames, &h, &f, &mut out)?;
+                    let (frames, used) = plan_sends(&mut pending_sends, budget, send_chunk);
+                    emit_planned(&mut link, &frames, &h, &f, &mut out, config.compressed_parts)?;
                     out.max_in_flight_bytes = out.max_in_flight_bytes.max(used);
                 }
                 w::op::END_OF_DOWNLOAD | w::op::CANCELTRANSFER | w::op::OUTOFPARTREQS => return Ok(()),

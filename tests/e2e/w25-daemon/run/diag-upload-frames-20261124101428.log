@@ -1,0 +1,11 @@
+02:14:28 proxy listening 0.0.0.0:4663 -> 127.0.0.1:4763
+02:14:31 proxy accepted ('192.168.1.221', 55512)
+02:14:31 C->S proto=0xe3 op=HELLO(0x1) len=123
+02:14:31 S->C proto=0xe3 op=HELLOANSWER(0x4c) len=61
+02:14:31 C->S proto=0xe3 op=REQUESTFILENAME(0x58) len=16
+02:14:31 S->C proto=0xe3 op=REQFILENAMEANSWER(0x59) len=45
+02:14:31 C->S proto=0xe3 op=STARTUPLOADREQ(0x54) len=16
+02:14:31 S->C proto=0xe3 op=ACCEPTUPLOADREQ(0x55) len=0
+02:14:31 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 18432)]
+02:14:31 S->C proto=0xc5 op=COMPRESSEDPART(0x40) len=18467 start=0 declared=18443 zlen=18443 zhead=7801010048ffb7dc
+02:14:31 C->S proto=0xe3 op=CANCELTRANSFER(0x56) len=0

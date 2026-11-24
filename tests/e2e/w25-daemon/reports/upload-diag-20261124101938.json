@@ -1,0 +1,99 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795486778,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "pace_bps": 0,
+  "compressed_parts": true,
+  "sample": {
+    "name": "w25-diag-20261124101938.bin",
+    "bytes": 18432,
+    "md5": "a47c4a9619392f061bb2dee57c7d9335",
+    "source": "generated",
+    "path": ""
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.8,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261124101938.bin",
+    "name": "w25-diag-20261124101938.bin",
+    "size": 18432,
+    "file_id": "f73ad6697587da998cce76b15d4c39df",
+    "ed2k_link": "ed2k://|file|w25-diag-20261124101938.bin|18432|f73ad6697587da998cce76b15d4c39df|/",
+    "hashset_required": false
+  },
+  "serve_id": "ed2k-1795486779-serve-0000",
+  "amule_cancelled_before": [],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "landed_md5": "a47c4a9619392f061bb2dee57c7d9335",
+  "md5_matches": true,
+  "stalled": false,
+  "amule_percent_at_stop": 0.0,
+  "accounting": {
+    "requests": 1,
+    "request_pairs": 1,
+    "sends": 1,
+    "bytes_sent": 18432,
+    "compressed_wire_bytes": 493,
+    "blocks_completed": 1,
+    "blocks_pending_at_stop": 0,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": []
+  },
+  "events_tail": [
+    {
+      "kind": "request",
+      "start": 0,
+      "end": 18432,
+      "block": [
+        0,
+        18431
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        0,
+        18431
+      ]
+    }
+  ],
+  "recv_q_at_stop": "ESTAB 0      0               192.168.1.221:50308          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795486779-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795486779,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261124101938.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "PASS"
+}

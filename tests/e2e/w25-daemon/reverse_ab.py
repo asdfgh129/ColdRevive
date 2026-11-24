@@ -207,6 +207,8 @@ def main() -> int:
                           if a_data.get("timeline") else None,
             "reason": a_data.get("reason", ""),
             "verdict": a_data.get("verdict", ""),
+            "landed_md5": a_data.get("landed_md5", ""),
+            "md5_matches": a_data.get("md5_matches", False),
         }
         link = (a_data.get("link") or {}).get("ed2k_link", "")
         if not link:

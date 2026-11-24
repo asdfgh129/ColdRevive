@@ -604,6 +604,21 @@ ssh 去读 aMule 落地目录的 md5，读不到记 BLOCKED 不记 pass）：
 跨分片与 `OP_HASHSETREQUEST` 校验未覆盖；`queue_rank_sent=""` 是队列立即授予，
 `OP_QUEUERANKING` 分支未被真实客户端触发过。
 
+### 2.16 W25-daemon FR-25 上传方向闭环（2026-11-24 新增，LAN PASS，公网未测）
+
+`OP_SENDINGPART(0x46)` / 10 KiB 分片在 >`PARTSIZE` 文件上会让真 aMule 停在
+97.6%。第二上传端反向 A/B 证明同一下载端能完整消费 stock 上传端，故实现
+stock 同构的 `OP_COMPRESSEDPART(0x40)` / `PROT_EMULE(0xC5)`：
+`hash(16)+start(u32 LE)+compressed_len(u32 LE)+zlib 流`，每请求块一帧；
+std-only 的贪心 LZ77 + 固定 Huffman 压缩，压不小才回退 stored DEFLATE。
+`--compressed-parts` 为 opt-in，默认仍 0x46。
+
+判据只看**对端落地 md5**：`reverse-ab-20261124101956.json`（paced 0）与
+`reverse-ab-20261124102018.json`（paced 200 kB/s）中 A 臂我们 daemon 与 B 臂
+第二 stock amuled 都落地同一 md5；9,736,192 B 文件只走 408,507 B 压缩载荷。
+原始抓包 `tests/e2e/w25-daemon/run/compressed-frames-20261124.hex` 与逐次归档在
+`tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。**公网未测，门禁常量不变。**
+
 ## 3. 兼容性矩阵（必须全绿）
 
 | 对端 | 场景 | 预期 |

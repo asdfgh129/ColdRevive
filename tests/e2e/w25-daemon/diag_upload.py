@@ -44,6 +44,7 @@ import subprocess
 import sys
 import threading
 import time
+import zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -62,7 +63,14 @@ MAX_WAIT = int(os.environ.get("FR25_MAX_WAIT_SECS", "300"))
 # If a paced run completes while the unpaced run stalls, the peer's stop-read
 # is a receive-buffer/consumption issue, not a frame-format issue.
 PACE_BPS = int(os.environ.get("FR25_PACE_BPS", "0"))
+# Opt-in stock-aMule-compatible OP_COMPRESSEDPART upload frames.
+COMPRESSED_PARTS = os.environ.get("FR25_COMPRESSED_PARTS", "") in ("1", "true", "yes")
+# Optional raw OP_COMPRESSEDPART dump, used only to pin down the stock
+# uploader's byte layout. Off by default; never written into a verdict.
+DUMP_COMPRESSED = os.environ.get("FR25_DUMP_COMPRESSED", "")
+RAW_LOCK = threading.Lock()
 OUR_LAN = h.OUR_LAN
+REMOTE_INCOMING = "/opt/g3-clients/amule-config/Incoming"
 PROXY_PORT = 4663
 DAEMON_PORT = 4763
 
@@ -89,6 +97,7 @@ STATE = {
     "request_pairs": 0,
     "sends": 0,
     "bytes_sent": 0,
+    "compressed_wire_bytes": 0,
     "events": [],         # bounded tail of interesting events
 }
 
@@ -182,6 +191,23 @@ def pipe(src, dst, direction, log):
                 s, e = u32(payload, 16), u32(payload, 20)
                 detail = " range=%d..%d bytes=%d" % (s, e, e - s)
                 on_send(s, e)
+            elif op == 0x40 and len(payload) >= 24:
+                # hash(16) | start(u32 LE) | declared-block-size(u32 LE) | zlib
+                s, declared = u32(payload, 16), u32(payload, 20)
+                detail = " start=%d declared=%d zlen=%d zhead=%s" % (
+                    s, declared, len(payload) - 24, payload[24:32].hex())
+                try:
+                    unz = zlib.decompress(payload[24:])
+                except zlib.error as exc:
+                    ev("compressed_decode_error", error=str(exc))
+                else:
+                    STATE["compressed_wire_bytes"] += len(payload) - 24
+                    on_send(s, s + len(unz))
+                if DUMP_COMPRESSED:
+                    with RAW_LOCK:
+                        with open(DUMP_COMPRESSED, "a", encoding="ascii") as f:
+                            f.write("%s %d %d %s\n" % (
+                                direction, s, declared, payload.hex()))
             elif op == 0x50:
                 detail = " payload_len=%d" % len(payload)
             log("%s proto=%#x op=%s(%#02x) len=%d%s" % (
@@ -255,6 +281,12 @@ def recv_q() -> str:
     return (r.stdout or "").strip()
 
 
+def remote_md5(path: str) -> str:
+    r = h.ssh("md5sum", path)
+    out = (r.stdout or "").strip().split()
+    return out[0] if out and r.returncode == 0 else ""
+
+
 def main() -> int:
     RUN.mkdir(parents=True, exist_ok=True)
     REPORTS.mkdir(parents=True, exist_ok=True)
@@ -288,6 +320,7 @@ def main() -> int:
         "generated_at_unix": int(time.time()),
         "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
         "pace_bps": PACE_BPS,
+        "compressed_parts": COMPRESSED_PARTS,
         "sample": {"name": name, "bytes": SAMPLE_BYTES,
                    "md5": hashlib.md5(sample.read_bytes()).hexdigest(),
                    "source": "external" if external else "generated",
@@ -335,8 +368,11 @@ def main() -> int:
             return 2
 
         linked = h.cli(cli_url, "ed2k-link", "--file", str(sample), "--name", name)
-        started = h.cli(cli_url, "ed2k-serve", "--file", str(sample), "--name", name,
-                        "--port", str(DAEMON_PORT), "--timeout-ms", "300000")
+        serve_args = ["ed2k-serve", "--file", str(sample), "--name", name,
+                      "--port", str(DAEMON_PORT), "--timeout-ms", "300000"]
+        if COMPRESSED_PARTS:
+            serve_args.append("--compressed-parts")
+        started = h.cli(cli_url, *serve_args)
         sid = started.get("id", "")
         link = linked.get("ed2k_link", "")
         report["link"] = linked
@@ -355,7 +391,18 @@ def main() -> int:
         last_pct = -1.0
         last_change = time.time()
         stalled = False
+        landed = ""
+        expected_md5 = report["sample"]["md5"]
+        report["landed_md5"] = ""
+        report["md5_matches"] = False
         while time.time() - t0 < MAX_WAIT:
+            # 唯一闭环判据：对端落地文件的 md5。`amulecmd Show DL` 在完成后会
+            # 清空列表，旧的停滞判定会把成功误报成 STALLED（2026-11-24）。
+            landed = remote_md5(f"{REMOTE_INCOMING}/{name}")
+            if landed == expected_md5:
+                report["landed_md5"] = landed
+                report["md5_matches"] = True
+                break
             prog = amule_progress()
             st = h.cli(cli_url, "ed2k-status", "--task", sid)
             res = st.get("result") or {}
@@ -393,6 +440,7 @@ def main() -> int:
                 "request_pairs": STATE["request_pairs"],
                 "sends": STATE["sends"],
                 "bytes_sent": STATE["bytes_sent"],
+                "compressed_wire_bytes": STATE["compressed_wire_bytes"],
                 "blocks_completed": STATE["completed"],
                 "blocks_pending_at_stop": len(STATE["pending"]),
                 "dropped_exceeds_boundaries": STATE["dropped_exceeds"],
@@ -419,6 +467,8 @@ def main() -> int:
             verdict = "NO_DATA_SENT"
         else:
             verdict = "UNCLASSIFIED"
+        if report["md5_matches"]:
+            verdict = "PASS"  # only the peer's landed md5 promotes the verdict
         report["verdict"] = verdict
         return 0
     except Exception as exc:  # noqa: BLE001

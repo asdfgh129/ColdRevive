@@ -1,0 +1,36 @@
+{
+  "schema": "coldrevive.fr25.stock-upload-capture/v1",
+  "sample": {
+    "name": "w25-zlib-cap-20261124095340.bin",
+    "bytes": 9736192,
+    "md5": "6327e60713bf9fe8e8a577b1afd7cf5c"
+  },
+  "source": "second stock amuled 192.168.1.221:4664 via proxy 4665",
+  "trace": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\stock-upload-frames-20261124095345.log",
+  "gate_constants_untouched": true,
+  "setup": {
+    "config_dir": "/opt/g3-clients/amule-config-fr25-second",
+    "tcp_port": 4664,
+    "ec_port": 4713,
+    "incoming": "/opt/g3-clients/amule-config-fr25-second/Incoming/w25-zlib-cap-20261124095340.bin"
+  },
+  "cancelled_before": [],
+  "add_rc": 0,
+  "elapsed_sec": 30.8,
+  "landed_md5": "6327e60713bf9fe8e8a577b1afd7cf5c",
+  "md5_matches": true,
+  "accounting": {
+    "requests": 54,
+    "request_pairs": 159,
+    "sends": 0,
+    "bytes_sent": 0,
+    "completed": 0,
+    "pending": 54,
+    "dropped_exceeds": 0,
+    "dropped_unknown": 0
+  },
+  "cleanup": "stopped",
+  "opcode_counts": {
+    "HELLO(0x1": 1
+  }
+}

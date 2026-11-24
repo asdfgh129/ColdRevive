@@ -505,9 +505,29 @@ FR-25 上传侧获得有界在途与真实编解码，但真 aMule 闭环仍未�
   我们的栈发 `OP_SENDINGPART(0x46)` / protocol `0xE3`、10,240 B 未压缩帧。
 - 因此 §17 早期「blocker 在对端消费逻辑、不是帧格式」的推断**过宽**：
   对端能消费 stock 帧；差异落在我们的帧 opcode/压缩格式/粒度。
-  **FR-25 上传方向仍 BLOCKED**；下一步是让 serve 端产出与 aMule 同构的
-  `OP_COMPRESSEDPART` 帧（zlib 流可用 stored DEFLATE 块，仍 std-only），再重跑同一 A/B。
+  **FR-25 上传方向当时仍 BLOCKED**；§17.2 记录同构帧实现后的闭环结果。
   门禁常量与 `evidence_valid_for_pass=false` 不变。
+
+### 17.2 同构 OP_COMPRESSEDPART 后的上传闭环（2026-11-24，v2.4.114）
+
+**结论：FR-25 上传方向在 RFC1918 LAN 上闭环——判据是对端落地 md5 一致。**
+同一样本、同一下载端、两轮 A/B（paced 200 kB/s 与 unpaced）都 PASS：
+
+- A：`coldrevived ed2k-serve --compressed-parts` → 透明代理 → 221 aMule。
+  `reverse-ab-20261124101956.json`（unpaced，落地 `3a22401f…64b7`）与
+  `reverse-ab-20261124102018.json`（paced，落地 `10016b4b…1e5c`）中
+  `arm_a.md5_matches=true`；`upload-diag-20261124101959.json` /
+  `upload-diag-20261124102021.json` 给出 `verdict=PASS`。
+- B：第二台 stock amuled 在两轮都落地同一 md5，链路与 §17.1 相同。
+- 帧格式来自真 stock 抓包 `run/compressed-frames-20261124.hex`：54 帧、
+  `hash(16)+start(u32 LE)+compressed_len(u32 LE)+完整 zlib 流`、`PROT_EMULE 0xC5`，
+  解压后与样本逐字节一致。aMule 源码 `CreatePackedPackets` 仅在压缩确实变小时
+  使用 0x40，否则回退 0x46；`unzip` 支持流式 inflate 与 `Z_STREAM_END`。
+- 中间失败路径已如实归档：stored DEFLATE（帧比原块大）整文件 A/B 在
+  89.1% / 26.6% / 15.2% 停住；「3 轮 + 2 s」重传抑制会导致同一批块永久饿死。
+  修复为「请求即重发」，并以 `congestion.rs` 的重复请求测试锁定。
+- **边界**：证据仅在 RFC1918 LAN + 真 aMule 2.3.3 release 构建；`--compressed-parts`
+  为 opt-in；公网 server/peer 与 G2/S6 门禁均未因此改变。
 
 ## 18. FR-24 跨公网 try-2 HELLO 验证与索引静默再定位（2026-11-23，v2.4.108）
 

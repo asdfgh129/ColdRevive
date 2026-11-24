@@ -1,0 +1,119 @@
+{
+  "schema": "coldrevive.fr25.reverse-ab/v1",
+  "generated_at_unix": 1795486366,
+  "scope": "RFC1918 LAN; same sample and same downloader, two uploaders",
+  "gate_constants_untouched": true,
+  "sample": {
+    "name": "w25-reverse-20261124101246.bin",
+    "bytes": 9736192,
+    "md5": "8bfa85c3d5bc0cc8d201a81a3acd7b4c"
+  },
+  "criteria": {
+    "A": "our daemon uploader stalls/lands no md5 under the same paced run",
+    "B": "stock aMule uploader lands the exact same file on the same downloader",
+    "conclusion": "only a real landed md5 is evidence; no PASS/FAIL promotion"
+  },
+  "second_uploader_setup": {
+    "config_dir": "/opt/g3-clients/amule-config-fr25-second",
+    "tcp_port": 4664,
+    "ec_port": 4713,
+    "incoming": "/opt/g3-clients/amule-config-fr25-second/Incoming/w25-reverse-20261124101246.bin"
+  },
+  "second_uploader_ready": true,
+  "arm_a": {
+    "uploader": "coldrevived serve via transparent proxy 192.168.1.210:4663",
+    "exit_code": 0,
+    "stdout_log": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\reverse-ab-A-20261124101246.stdout.log",
+    "report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\reports\\upload-diag-20261124101251.json",
+    "pace_bps": 0,
+    "amule_percent": 15.2,
+    "bytes_sent": null,
+    "reason": "",
+    "verdict": "ALL_BLOCKS_COMPLETED_BUT_PEER_STOPPED",
+    "landed_md5": "",
+    "md5_matches": false
+  },
+  "arm_b": {
+    "uploader": "192.168.1.221:4664 (second stock amuled)",
+    "downloader": "192.168.1.221:4712 (same primary amulecmd)",
+    "link": "ed2k://|file|w25-reverse-20261124101246.bin|9736192|7844465971a4a30a27b508b31f3d2187|/|sources,192.168.1.221:4664|/",
+    "cancelled_before": [
+      {
+        "hash": "7844465971A4A30A27B508B31F3D2187",
+        "name": "w25-reverse-20261124101246.bin",
+        "rc": 0,
+        "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 7844465971A4A30A27B508B31F3D2187\n > Operation was successful.\n"
+      }
+    ],
+    "add_rc": 0,
+    "add_stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n",
+    "timeline": [
+      {
+        "t": 0.4,
+        "percent": 0.0,
+        "state": "Waiting"
+      },
+      {
+        "t": 3.0,
+        "percent": 0.0,
+        "state": "Downloading"
+      },
+      {
+        "t": 5.7,
+        "percent": 7.7,
+        "state": "Downloading"
+      },
+      {
+        "t": 8.4,
+        "percent": 17.1,
+        "state": "Downloading"
+      },
+      {
+        "t": 11.1,
+        "percent": 28.5,
+        "state": "Downloading"
+      },
+      {
+        "t": 13.8,
+        "percent": 39.8,
+        "state": "Downloading"
+      },
+      {
+        "t": 16.6,
+        "percent": 49.3,
+        "state": "Downloading"
+      },
+      {
+        "t": 19.3,
+        "percent": 58.8,
+        "state": "Downloading"
+      },
+      {
+        "t": 22.7,
+        "percent": 73.9,
+        "state": "Downloading"
+      },
+      {
+        "t": 25.4,
+        "percent": 83.4,
+        "state": "Downloading"
+      },
+      {
+        "t": 28.2,
+        "percent": 92.8,
+        "state": "Downloading"
+      },
+      {
+        "t": 31.0,
+        "percent": null,
+        "state": null
+      }
+    ],
+    "elapsed_sec": 32.2,
+    "landed_md5": "8bfa85c3d5bc0cc8d201a81a3acd7b4c",
+    "md5_matches": true,
+    "second_show_ul": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n",
+    "second_connections": "ESTAB 0      0               192.168.1.221:56602          192.168.1.221:4664        \nESTAB 0      0               192.168.1.221:4664           192.168.1.221:56602"
+  },
+  "second_uploader_cleanup": "stopped"
+}

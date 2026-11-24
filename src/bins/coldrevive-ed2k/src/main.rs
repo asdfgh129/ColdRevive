@@ -520,6 +520,8 @@ fn run_serve(args: &[String]) -> Result<Json, String> {
     }
     // 未对真 aMule 验证的假说：每请求回合只送一块、不主动 idle 重传。
     serve_config.request_gated_pacing = args.iter().any(|a| a == "--request-gated-pacing");
+    // stock aMule 同构的 OP_COMPRESSEDPART 每块一帧（std-only stored-DEFLATE）。
+    serve_config.compressed_parts = args.iter().any(|a| a == "--compressed-parts");
     let data = std::fs::read(&path).map_err(|e| format!("读取共享文件 {path}: {e}"))?;
     let name = opt("--name").unwrap_or_else(|| {
         std::path::Path::new(&path).file_name()

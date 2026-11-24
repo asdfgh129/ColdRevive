@@ -1,0 +1,9 @@
+   Compiling cr-ed2k v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-ed2k)
+   Compiling coldrevive-dht v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-dht)
+   Compiling coldrevive-relaybench v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-relaybench)
+   Compiling coldrevive-relay v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-relay)
+   Compiling coldrevive-nat v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-nat)
+   Compiling coldrevive-cli v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-cli)
+   Compiling coldrevive-ed2k v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-ed2k)
+   Compiling coldrevived v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevived)
+    Finished `release` profile [optimized] target(s) in 15.89s

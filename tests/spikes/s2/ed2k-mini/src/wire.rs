@@ -526,6 +526,209 @@ pub fn sending_part(hash: &Hash16, start: u32, end: u32, data: &[u8]) -> Vec<u8>
     frame(PROT_EDONKEY, op::SENDINGPART, &b.0)
 }
 
+/// A complete, valid zlib stream built only from DEFLATE *stored* blocks.
+///
+/// `aMule 2.3.3` receives `OP_COMPRESSEDPART` through its streaming `inflate`
+/// path; a stored stream is legal zlib and keeps this crate dependency-free.
+/// It makes no compression-ratio claim -- `transize` is only used by aMule for
+/// transfer accounting (`CPartFile::WriteToBuffer`); the written range comes
+/// from the decompressed byte count.
+pub fn zlib_stored(data: &[u8]) -> Vec<u8> {
+    // CM=8, CINFO=7, FCHECK chosen so the first two bytes are a multiple of 31.
+    let mut out = vec![0x78, 0x01];
+    if data.is_empty() {
+        // One empty final stored block: BFINAL=1, BTYPE=00, LEN=0, NLEN=0xffff.
+        out.extend_from_slice(&[0x01, 0x00, 0x00, 0xff, 0xff]);
+    }
+    let mut pos = 0usize;
+    while pos < data.len() {
+        let n = (data.len() - pos).min(u16::MAX as usize);
+        let len = n as u16;
+        out.push(if pos + n == data.len() { 0x01 } else { 0x00 });
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(&data[pos..pos + n]);
+        pos += n;
+    }
+    let (mut a, mut b) = (1u32, 0u32);
+    for &byte in data {
+        a = (a + byte as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+    out.extend_from_slice(&(((b << 16) | a) as u32).to_be_bytes());
+    out
+}
+
+// --------------------------------------------------- minimal zlib compressor --
+//
+// aMule's stock uploader falls back to OP_SENDINGPART when compression does
+// not actually shrink a block (`CreatePackedPackets`: `togo <= newsize`).
+// Stored DEFLATE is legal zlib but always grows the frame, so it cannot
+// reproduce that behaviour. This small greedy LZ77 + fixed-Huffman encoder
+// keeps the crate dependency-free and gives a real ratio on the patterned
+// samples used by FR-25; `zlib_stored` remains the honest fallback.
+
+const L_BASE: [u16; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83,
+    99, 115, 131, 163, 195, 227, 258,
+];
+const L_EXTRA: [u8; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const D_BASE: [u16; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025,
+    1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const D_EXTRA: [u8; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11,
+    12, 12, 13, 13,
+];
+
+struct BitWriter {
+    out: Vec<u8>,
+    bit: u8,
+    acc: u8,
+}
+
+impl BitWriter {
+    fn new() -> Self {
+        BitWriter { out: Vec::new(), bit: 0, acc: 0 }
+    }
+    fn raw_bit(&mut self, v: bool) {
+        if v { self.acc |= 1 << self.bit; }
+        self.bit += 1;
+        if self.bit == 8 {
+            self.out.push(self.acc);
+            self.acc = 0;
+            self.bit = 0;
+        }
+    }
+    /// Huffman codes are packed MSB-first; the byte stream itself is LSB-first.
+    fn code(&mut self, value: u16, len: u8) {
+        for i in (0..len).rev() {
+            self.raw_bit((value >> i) & 1 != 0);
+        }
+    }
+    /// Extra bits are plain integer bits, LSB-first.
+    fn extra(&mut self, value: u32, len: u8) {
+        for i in 0..len {
+            self.raw_bit((value >> i) & 1 != 0);
+        }
+    }
+    fn literal(&mut self, sym: u16) {
+        match sym {
+            0..=143 => self.code(0x30 + sym, 8),
+            144..=255 => self.code(0x190 + sym - 144, 9),
+            256..=279 => self.code(sym - 256, 7),
+            _ => self.code(0xc0 + sym - 280, 8),
+        }
+    }
+    fn finish(mut self) -> Vec<u8> {
+        if self.bit != 0 {
+            self.out.push(self.acc);
+        }
+        self.out
+    }
+}
+
+fn h3(data: &[u8], i: usize) -> usize {
+    (((data[i] as usize) << 10) ^ ((data[i + 1] as usize) << 5) ^ (data[i + 2] as usize)) & 0x7fff
+}
+
+fn adler32(data: &[u8]) -> u32 {
+    let (mut a, mut b) = (1u32, 0u32);
+    for &byte in data {
+        a = (a + byte as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+    (b << 16) | a
+}
+
+/// A real (deflated) zlib stream with fixed Huffman tables. When the result is
+/// not smaller than the input we emit the stored form instead, mirroring
+/// aMule's `CreatePackedPackets` decision.
+pub fn zlib_compact(data: &[u8]) -> Vec<u8> {
+    let deflated = zlib_fixed_deflate(data);
+    if deflated.len() < data.len() { deflated } else { zlib_stored(data) }
+}
+
+fn zlib_fixed_deflate(data: &[u8]) -> Vec<u8> {
+    let mut w = BitWriter::new();
+    w.raw_bit(true); // BFINAL
+    w.raw_bit(true); // BTYPE=01, low bit first
+    w.raw_bit(false);
+
+    let mut table = vec![0u32; 32768];
+    let mut pos = 0usize;
+    while pos < data.len() {
+        let mut best_len = 0usize;
+        let mut best_dist = 0usize;
+        if pos + 2 < data.len() {
+            let key = h3(data, pos);
+            let prev = table[key] as usize;
+            if prev > 0 {
+                let p = prev - 1;
+                let dist = pos - p;
+                if dist <= 32768 {
+                    let limit = (258).min(data.len() - pos);
+                    let mut n = 0;
+                    while n < limit && data[p + n] == data[pos + n] {
+                        n += 1;
+                    }
+                    if n >= 3 {
+                        best_len = n;
+                        best_dist = dist;
+                    }
+                }
+            }
+            table[key] = (pos + 1) as u32;
+        }
+        if best_len >= 3 {
+            let li = (0..29)
+                .rev()
+                .find(|&i| best_len >= L_BASE[i] as usize)
+                .unwrap_or(0);
+            w.literal(257 + li as u16);
+            if L_EXTRA[li] > 0 {
+                w.extra((best_len - L_BASE[li] as usize) as u32, L_EXTRA[li]);
+            }
+            let di = (0..30)
+                .rev()
+                .find(|&i| best_dist >= D_BASE[i] as usize)
+                .unwrap_or(0);
+            w.code(di as u16, 5);
+            if D_EXTRA[di] > 0 {
+                w.extra((best_dist - D_BASE[di] as usize) as u32, D_EXTRA[di]);
+            }
+            pos += best_len;
+        } else {
+            w.literal(data[pos] as u16);
+            pos += 1;
+        }
+    }
+    w.literal(256); // end of block
+
+    let mut out = vec![0x78, 0x01];
+    out.extend_from_slice(&w.finish());
+    out.extend_from_slice(&adler32(data).to_be_bytes());
+    out
+}
+
+/// Stock-aMule-compatible compressed block frame, verified byte-for-byte
+/// against a 2026-11-24 capture of a second stock amuled uploader:
+/// `hash(16) | start(u32 LE) | compressed_len(u32 LE) | zlib stream`, sent with
+/// `PROT_EMULE (0xC5)`. One frame carries one requested block; `start` is the
+/// request's exclusive start offset (the block's own start).
+pub fn compressed_part(hash: &Hash16, start: u32, data: &[u8]) -> Vec<u8> {
+    let z = zlib_compact(data);
+    let mut b = Buf::new();
+    b.id(hash);
+    b.u32(start);
+    b.u32(z.len() as u32);
+    b.raw(&z);
+    frame(PROT_EMULE, op::COMPRESSEDPART, &b.0)
+}
+
 pub fn parse_sending_part(payload: &[u8]) -> Result<(Hash16, u32, u32, Vec<u8>), String> {
     let mut c = Cur::new(payload);
     let hash = c.id()?;
@@ -664,5 +867,50 @@ mod tests {
         let p = parse_frame(&file_name_answer(&h, "a.txt")).unwrap();
         assert_eq!(p.opcode, op::REQFILENAMEANSWER);
         assert_eq!(parse_file_name_answer(&p.payload).unwrap(), (h, "a.txt".into()));
+    }
+
+    #[test]
+    fn zlib_compact_beats_stored_on_patterned_block() {
+        let block: Vec<u8> = (0..184_320).map(|i| ((i * 137 + 5) % 256) as u8).collect();
+        let compact = zlib_compact(&block);
+        let stored = zlib_stored(&block);
+        assert_eq!(&compact[..2], &[0x78, 0x01]);
+        assert!(compact.len() < block.len() / 10, "compact={}", compact.len());
+        assert!(stored.len() > block.len());
+        // aMule falls back to 0x46 when compression does not shrink the block.
+        assert_eq!(zlib_compact(&[]).len(), zlib_stored(&[]).len());
+    }
+
+    #[test]
+    fn compressed_part_matches_stock_field_layout() {
+        let h = [9u8; 16];
+        let data = vec![0x5a; 184_320];
+        let p = parse_frame(&compressed_part(&h, 184_320, &data)).unwrap();
+        assert_eq!(p.protocol, PROT_EMULE);
+        assert_eq!(p.opcode, op::COMPRESSEDPART);
+        assert_eq!(&p.payload[..16], &h);
+        assert_eq!(u32::from_le_bytes(p.payload[16..20].try_into().unwrap()), 184_320);
+        let zlen = u32::from_le_bytes(p.payload[20..24].try_into().unwrap()) as usize;
+        assert_eq!(zlen, p.payload.len() - 24);
+        assert_eq!(&p.payload[24..26], &[0x78, 0x01]);
+        // FCHECK is verified on the big-endian 16-bit header value, not the
+        // arithmetic sum of its two bytes: 0x7801 % 31 == 0.
+        assert_eq!(u16::from_be_bytes([p.payload[24], p.payload[25]]) % 31, 0);
+    }
+
+    #[test]
+    fn zlib_stored_uses_final_block_and_adler32() {
+        let z = zlib_stored(b"hello");
+        // 2-byte zlib header, 5-byte stored block header, 5 data bytes, 4-byte adler32.
+        assert_eq!(z.len(), 16);
+        assert_eq!(&z[2..7], &[0x01, 0x05, 0x00, 0xfa, 0xff]);
+        assert_eq!(&z[7..12], b"hello");
+        // adler32("hello") = 0x062c0215, big endian on the wire.
+        assert_eq!(&z[12..], &[0x06, 0x2c, 0x02, 0x15]);
+        // Multi-block data (>65535) must keep earlier blocks non-final.
+        let big = vec![7u8; 70_000];
+        let zb = zlib_stored(&big);
+        assert_eq!(zb[2], 0x00);
+        assert_eq!(zb[2 + 5 + 65_535], 0x01);
     }
 }

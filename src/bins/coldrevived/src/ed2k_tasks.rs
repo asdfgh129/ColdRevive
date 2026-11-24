@@ -166,7 +166,8 @@ pub fn link_cmd(args: &[String]) -> Json {
 }
 
 /// `ed2k-serve <file> [--port 4663] [--timeout-ms 120000] [--name NAME]
-///   [--max-in-flight-bytes N | --in-flight-unlimited] [--request-gated-pacing]`
+///   [--max-in-flight-bytes N | --in-flight-unlimited] [--request-gated-pacing]
+///   [--compressed-parts]`
 ///
 /// 监听与 accept 之前的步骤同步完成（端口冲突当场报错）；真正的单次供片在后台线程。
 pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
@@ -185,6 +186,8 @@ pub fn serve_cmd(tasks: &SharedEd2kTasks, args: &[String]) -> Json {
     }
     // Opt-in 假说：每请求回合只送一个块，不主动 idle 重传；未对真 aMule 验证。
     serve_config.request_gated_pacing = args.iter().any(|a| a == "--request-gated-pacing");
+    // FR-25 反向 A/B：stock aMule 同构的 0x40/0xC5 每块一帧（std-only zlib）。
+    serve_config.compressed_parts = args.iter().any(|a| a == "--compressed-parts");
     let data = match fs::read(&path) {
         Ok(b) => b,
         Err(e) => return Json::obj(vec![("error", Json::s(format!("读取 {path}: {e}")))]),

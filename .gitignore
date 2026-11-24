@@ -83,6 +83,8 @@ tests/e2e/w25-daemon/run/*
 !tests/e2e/w25-daemon/reports/*.json
 !tests/e2e/w25-daemon/run/diag-upload-frames-*.log
 !tests/e2e/w25-daemon/run/stock-upload-frames-*.log
+!tests/e2e/w25-daemon/run/compressed-frames-*.hex
+!tests/e2e/w25-daemon/run/our-compressed-frames-*.hex
 !tests/e2e/w25-daemon/run/trace_frames.log
 !tests/e2e/w25-daemon/run/trace_download_frames.log
 
