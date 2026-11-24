@@ -14,6 +14,9 @@ updated: 2026-11-22
 > 基线：仓库 HEAD `5e3e17f`；本日复跑 `CARGO_INCREMENTAL=0 cargo test --workspace --offline`
 > **384 passed / 0 failed / 3 ignored**（12:00 GMT+8 左右，停止本地守护进程后执行）。
 > 口径不变：**`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`**。
+> **2026-11-24 复跑更新**：`CARGO_INCREMENTAL=0 cargo test --workspace --offline`
+> **499 passed / 0 failed / 3 ignored**，原始输出归档在
+> `tests/ARCHIVE/evidence/cargo-test-workspace-20261124.log`。门禁口径不变。
 > 本文复核 [DOC-28 状态盘点](STATUS-INVENTORY-2026-11-20.md)、
 > [DOC-27 阶段小结](PHASE-SUMMARY-2026-11-20.md) 与 [ROADMAP](ROADMAP.md)，
 > 并与 `tests/spikes/spikes.json`、`tests/fixtures/g2-spike-verdicts.toml`、
@@ -44,7 +47,7 @@ updated: 2026-11-22
 | FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
 | FR-15 资源阈值 | **五条阈值全部接线** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` / `max_seeding_cpu_millipct` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽与 CPU 是滞后指标；RSS/CPU 读不到的平台显式 `unavailable` 而非按 0 处理（§10/§11）。这里只说**接线齐**，不承诺公网性能或自动通过 | 否（代码） |
-| FR-24 公共 KAD 检索 | 部分（行政阻塞已解除） | LAN 真实 aMuleD `0x33` 检索 12/12；公网 5 节点 `answer_count=0`（`tests/e2e/w24-pub/reports/public-search.json`） | **部分**：G0 `protocol_scope` 已于 2026-11-22 由项目所有者书面解除（`g0_review.protocol_scope_relaxation_2026_11_22`）；实现与公网证据仍须重测，不得拿 LAN 外推 |
+| FR-24 公共 KAD 检索 | **技术闭环已复现（2026-11-24 v2.4.111，见 §18.3）** | LAN 真 aMuleD 检索 12/12；真 eMule 上 `0x4B` ACK + `0x3B` 命中；222→公网 `112.5.60.4:41296` 同样 ACK + 命中并有 0/0 无 HELLO 对照；早期公网 5 节点 0 命中由当时的 firewalled/空索引目标解释 | 行政阻塞已解除；**不构成 G2/S6 证据**，门禁常量不变 |
 | FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
 
 治理债：SRS 已于 2026-11-22 评审至 v2.1（口径确认）；原重复 FR-24 的信誉行已改为 FR-26，实现仍为骨架。
@@ -76,8 +79,8 @@ updated: 2026-11-22
 | 公平性 | v0/v1 量具只出原始计数（TCP 19.8–32.4%、UDP 23.1–26.8%、RTO 200→3200 ms）；可靠层无拥塞语义 | 跨公网丢包/时延梯度多组样本 + 阈值讨论；**在此之前不宣称公平性达标** |
 | Mainline DHT | 自有节点闭环；公共引导节点无可用 token | 找到确实签发 token 的邻居，独立节点 get_peers 回查；否则维持 BLOCKED |
 | TCP 打洞 | 原语通过，BT 数据面未接线，公网双侧 BLOCKED | 先解决公网双侧，再谈接线；symmetric 不可直连保留为正确结论 |
-| 守护进程多样种 | 组件级 `Cold→Hot→Cold→Hot` 已证；daemon 仍单任务 | 多 infohash + cap 触发 e2e |
-| FR-24 公网 | 5 节点全超时 | G0 `protocol_scope` 已书面解除（2026-11-22）；下一步是生产实现 + 真实公网节点重测 |
+| 守护进程多样种 | **已由 P0 e2e 覆盖**：两个 infohash 在 daemon 内分别登记任务，cap=1 下真实 BT 握手唤醒第二个任务触发 `evictions>=1`、`scheduled<=1`、`seed_active<=cap` | 无需另建 daemon 多任务 e2e；`tests/e2e/p0/run_p0.py` phase A 即判据来源 |
+| FR-24 公网 | **技术闭环已复现**（§18.3） | 不是 G2 证据；不因闭环改 `g2_claim` / `s6_status` |
 | FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 下载方向 10/10 闭环，上传方向推进到 19.2%–85.3% 后静置 | 定位 aMule 上传侧停止追加请求的判据 → 双轨发布 → 公网证据 |
 | 外推边界 | W61 的 `rst-path-verified` 只指 `119.29.150.254` 这一条路径 | 不得写成“所有 RST 部署已验证” |
 | 性能 | 跨公网只有单次 1 MiB 样本；4 MiB 公网 143–235 s 成因未定位 | 多组样本，按 ADR-012 不折算速率 |
@@ -132,7 +135,7 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
 
 ## 7. 建议顺序（不因新增环境而重排）
 
-1. **先补代码债的头部**：FR-25 的 >`PARTSIZE` 跨分片闭环（daemon 接线已完成）；FR-10 守护进程多样种；FR-11/14 的默认策略与 µTP 覆盖。
+1. **先补代码债的头部**：FR-25 的 >`PARTSIZE` 上传方向跨分片闭环（daemon 接线与下载方向已完成）；FR-11/14 的默认策略与 µTP 覆盖。FR-10 守护进程多样种 + cap 逐出已由 P0 e2e 覆盖，不再列为头部欠账。
 2. **授权/治理（已完成 2026-11-22）**：G0 `protocol_scope` 已书面解除；SRS v2.1 评审与编号去重已完成。R-02/R-11 仍按 M4 前复核。
 3. **最后用家宽样本补环境面**：把新 NAT 分类、DHT/KAD 只读结果作为描述性证据归档；即使结果理想也不改 `g2_claim`、`s6_status`。
 4. 公平性阈值、Mainline 邻居发现、TCP 打洞接数据面继续按 DOC-27 的下一步执行，不因为 kit 有输出就提前宣称达标。

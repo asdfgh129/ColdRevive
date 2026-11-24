@@ -531,8 +531,15 @@
 
 ## 2026-11-24
 
-- source: `.workbuddy/memory/2026-11-24.md` (sha256 `327cb9d351186b8b78cb7218ef4d29eda93952356e3fa3aa330457df742b77ba`)
-- archived test-related lines: 1
+- source: `.workbuddy/memory/2026-11-24.md` (sha256 `0917fb02a91fe96e06e46d99fab8c5a1a1fc25e7900581a39ef8b0570bd19afa`)
+- archived test-related lines: 5
 
 - - SSH 可用性测试：209（`192.168.1.209`，Windows 10 19044.3693）用用户给的用户名/密码
   - evidence: log-only (no durable raw path recorded)
+- - 审计结论：此前**没有统一测试归档**，过程主要在 gitignored 工作日志/会话里，
+  - evidence: log-only (no durable raw path recorded)
+- - P1 e2e 重跑并修 `tests/e2e/p1/run_p1.py`：新增 `--report-out`，`free_port()`
+  - evidence: log-only (no durable raw path recorded)
+- - 审计中「daemon 仍单任务」是旧口径：`tests/e2e/p0/run_p0.py` phase A 已用
+  - evidence: log-only (no durable raw path recorded)
+- - 更正文档：审计 §2/M2/§7 删除「daemon 仍单任务 / FR-24 公网 BLOCKED」旧说法；

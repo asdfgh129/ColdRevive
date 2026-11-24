@@ -1,3 +1,22 @@
+## [2.4.112] - 2026-11-24 — 建立测试归档账本；更正 FR-10 / FR-24 陈旧口径
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+
+- 新增 `tests/ARCHIVE/`：每次真实测试必须登记命令、判据、结果、证据路径 + sha256
+  与门禁影响；`scripts/archive_test_run.py` 负责追加并脱敏，
+  `scripts/build_test_archive_backfill.py` 从 gitignored 工作日志生成历史补档，
+  `NOT-TESTED.md` 区分「测过但证据缺失」与「未测」。
+- 已归档此前只在本机的 FR-25 报告/帧日志、w51g 干净 A/B 基线、P1/P0 重跑、
+  全量 Rust 499/0/3 原始输出；家宽私有回传只留哈希清单，不入库。
+  FR-15 被覆盖快照与缺失 tcpdump pcap 明确记为 MISSING，不补造。
+- `tests/e2e/p1/run_p1.py` 加 `--report-out`，并修复 `free_port()`：同时验证 TCP/UDP
+  绑定，避开 Windows 排除端口导致的 WSAEACCES 10013；P1 重跑 5/5 PASS。
+- P0 重跑 77/77：FR-10 守护进程多样种 + cap 逐出已由 phase A 真实 BT 握手覆盖
+  （wake1 `evictions=0` → wake2 `evictions=1`，`seed_active<=cap=1`），
+  审计 §2/M2/§7 与 TEST §2.14 中「daemon 仍单任务 / 公网 BLOCKED」的历史口径已更正。
+- 归档提交 `8d30d05` 已推送；本次文档更正另提交。
+
 ## [2.4.111] - 2026-11-24 — FR-24 在非 firewalled 的 209 eMule 上完成真实 publish→search 闭环
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、

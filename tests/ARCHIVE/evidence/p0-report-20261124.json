@@ -1,0 +1,706 @@
+{
+  "schema": "coldrevive.p0.e2e/v1",
+  "scope": "FR-01/02/04/05/06/07/09/10/12/13/15 运行期行为，本机回环双进程，真实文件/HTTP/BT 握手/进程 RSS/进程 CPU/Unicode 脚本判定",
+  "generated_at": "2026-11-24T08:42:01",
+  "elapsed_sec": 25.3,
+  "checks": [
+    {
+      "name": "startup_indexes_both_samples",
+      "ok": true,
+      "detail": "open_status=fresh schema=2 entries=2"
+    },
+    {
+      "name": "startup_entries_are_the_two_samples",
+      "ok": true,
+      "detail": "['sample_primary.bin', 'sample_second.bin']"
+    },
+    {
+      "name": "startup_entries_carry_multi_hash",
+      "ok": true,
+      "detail": "[('sample_second.bin', 40, 32), ('sample_primary.bin', 40, 32)]"
+    },
+    {
+      "name": "startup_entries_carry_infohash",
+      "ok": true,
+      "detail": "[40, 40]"
+    },
+    {
+      "name": "seeding_cap_from_config",
+      "ok": true,
+      "detail": "{'cap': 1, 'scheduled': 0, 'evictions': 0}"
+    },
+    {
+      "name": "starts_cold",
+      "ok": true,
+      "detail": "seed_active=0 seed_tasks=2"
+    },
+    {
+      "name": "index_missing_file_is_reported",
+      "ok": true,
+      "detail": "status=200 indexed=False error=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\p0\\run\\share\\dropped_late.bin: The system cannot find the file specified. (os error 2)"
+    },
+    {
+      "name": "watcher_indexed_dropped_file",
+      "ok": true,
+      "detail": "entries=3"
+    },
+    {
+      "name": "watcher_used_real_digests",
+      "ok": true,
+      "detail": "sha1=b90dd73adfbe… expect=b90dd73adfbe…"
+    },
+    {
+      "name": "watcher_entry_size_matches",
+      "ok": true,
+      "detail": "98304 vs 98304"
+    },
+    {
+      "name": "explicit_index_matches_watcher",
+      "ok": true,
+      "detail": "already_known=True sha1_ok=True"
+    },
+    {
+      "name": "ed2k_link_from_index",
+      "ok": true,
+      "detail": "link_source=index backfilled=0"
+    },
+    {
+      "name": "ed2k_fileid_independently_recomputed",
+      "ok": true,
+      "detail": "md4=129bacec4fcb4a00d243e2b772a282f9 index=129bacec4fcb4a00d243e2b772a282f9 link=129bacec4fcb4a00d243e2b772a282f9"
+    },
+    {
+      "name": "ed2k_link_shape_matches_file",
+      "ok": true,
+      "detail": "ed2k://|file|dropped_late.bin|98304|129bacec4fcb4a00d243e2b772a282f9"
+    },
+    {
+      "name": "watcher_removed_deleted_file",
+      "ok": true,
+      "detail": "剩余条目=['sample_second.bin', 'sample_primary.bin']"
+    },
+    {
+      "name": "kad_republish_cycles_grew",
+      "ok": true,
+      "detail": "1"
+    },
+    {
+      "name": "kad_republish_frame_acked",
+      "ok": true,
+      "detail": "{'sent': True, 'due': 2, 'keys': 5, 'ttl_secs': 9, 'refresh_failed': 0, 'elapsed_ms': 0, 'ack_t': 'KAD_PUBLISH_ACK', 'ack_status': ''}"
+    },
+    {
+      "name": "kad_republish_is_ttl_driven",
+      "ok": true,
+      "detail": "{'ttl_secs': 9, 'due': 2, 'refresh_failed': 0}"
+    },
+    {
+      "name": "kad_health_readable",
+      "ok": true,
+      "detail": "{'ttl_secs': 9, 'published_entries': 2, 'keys_total': 8, 'keys_unique': 5}"
+    },
+    {
+      "name": "first_sample_wakes_hot",
+      "ok": true,
+      "detail": "handshake=True seed_active=1 seeding={'cap': 1, 'scheduled': 1, 'evictions': 0}"
+    },
+    {
+      "name": "wake_count_never_exceeds_cap",
+      "ok": true,
+      "detail": "active=1 cap=1"
+    },
+    {
+      "name": "second_infohash_wakes_its_own_task",
+      "ok": true,
+      "detail": "handshake=True"
+    },
+    {
+      "name": "lru_evicted_under_cap",
+      "ok": true,
+      "detail": "{'cap': 1, 'scheduled': 1, 'evictions': 1}"
+    },
+    {
+      "name": "seed_active_still_within_cap",
+      "ok": true,
+      "detail": "active=1 cap=1"
+    },
+    {
+      "name": "scheduler_tracks_single_slot",
+      "ok": true,
+      "detail": "{'cap': 1, 'scheduled': 1, 'evictions': 1}"
+    },
+    {
+      "name": "restart_loads_schema_v2",
+      "ok": true,
+      "detail": "open_status=loaded_v2 schema=2"
+    },
+    {
+      "name": "restart_keeps_sample_entries",
+      "ok": true,
+      "detail": "['sample_second.bin', 'sample_primary.bin']"
+    },
+    {
+      "name": "restart_keeps_deleted_file_out",
+      "ok": true,
+      "detail": "['sample_second.bin', 'sample_primary.bin']"
+    },
+    {
+      "name": "restart_keeps_multi_hash",
+      "ok": true,
+      "detail": "[('sample_second.bin', '5655035c'), ('sample_primary.bin', '5cdf870f')]"
+    },
+    {
+      "name": "burst_gets_rate_limited",
+      "ok": true,
+      "detail": "limits=20/24 statuses=[200, 200, 200, 200, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429]"
+    },
+    {
+      "name": "rate_limit_reason_is_explicit",
+      "ok": true,
+      "detail": "['rate_limited']"
+    },
+    {
+      "name": "rate_limit_reports_retry_after",
+      "ok": true,
+      "detail": "[26, 27, 28, 29, 30, 62]"
+    },
+    {
+      "name": "rate_limit_reports_configured_rate",
+      "ok": true,
+      "detail": "[4]"
+    },
+    {
+      "name": "burst_lets_some_through",
+      "ok": true,
+      "detail": "200=4"
+    },
+    {
+      "name": "health_never_rate_limited",
+      "ok": true,
+      "detail": "['ok', 'ok', 'ok', 'ok']"
+    },
+    {
+      "name": "rate_limit_recovers",
+      "ok": true,
+      "detail": "after_wait status=200"
+    },
+    {
+      "name": "limit_reported_in_health",
+      "ok": true,
+      "detail": "limits={'max_hot_seeds': 1, 'hot': 0, 'max_peers': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'peers'}, 'max_upload_bytes_per_sec': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'B/s'}, 'max_rss_mb': {'enabled': False, 'limit': None, 'current': None, 'unit': 'MiB'}, 'max_seeding_cpu_millipct': {'enabled': False, 'limit': None, 'current': None, 'unit': 'milli-percent', 'current_percent': None}, 'sample_at_secs': 0} cap=2"
+    },
+    {
+      "name": "unconfigured_thresholds_report_disabled",
+      "ok": true,
+      "detail": "{'max_peers': False, 'max_upload_bytes_per_sec': False, 'max_rss_mb': False, 'max_seeding_cpu_millipct': False}"
+    },
+    {
+      "name": "first_wake_admitted",
+      "ok": true,
+      "detail": "OK"
+    },
+    {
+      "name": "first_wake_became_hot",
+      "ok": true,
+      "detail": "{'max_hot_seeds': 1, 'hot': 1, 'max_peers': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'peers'}, 'max_upload_bytes_per_sec': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'B/s'}, 'max_rss_mb': {'enabled': False, 'limit': None, 'current': None, 'unit': 'MiB'}, 'max_seeding_cpu_millipct': {'enabled': False, 'limit': None, 'current': None, 'unit': 'milli-percent', 'current_percent': None}, 'sample_at_secs': 0} seed_active=1"
+    },
+    {
+      "name": "repeat_wake_of_hot_sample_still_ok",
+      "ok": true,
+      "detail": "OK"
+    },
+    {
+      "name": "second_wake_refused_over_threshold",
+      "ok": true,
+      "detail": "REJECT_RESOURCE_LIMIT"
+    },
+    {
+      "name": "refusal_names_limit_and_numbers",
+      "ok": true,
+      "detail": "{'limit_name': 'max_hot_seeds', 'limit': 1, 'current': 1}"
+    },
+    {
+      "name": "refusal_is_not_eviction",
+      "ok": true,
+      "detail": "evictions=0 hot=1 seed_active=1"
+    },
+    {
+      "name": "guard_handshake_honours_threshold",
+      "ok": true,
+      "detail": "hot=1 missed=1"
+    },
+    {
+      "name": "tokenizer_used_when_config_has_no_keywords",
+      "ok": true,
+      "detail": "source=tokenized keywords=['cold', 'revive', 'alpha']"
+    },
+    {
+      "name": "tokenizer_drops_noise_and_digits",
+      "ok": true,
+      "detail": "['cold', 'revive', 'alpha']"
+    },
+    {
+      "name": "second_file_indexed",
+      "ok": true,
+      "detail": "d921f01606cbaf76f7b10032cddd7a10f15d2807446c468b6a215b41b08543e3 vs 7e9e6cfd8c02a012328b5a422c896aebf4614b8a31f3d44723326cc9211ea59d"
+    },
+    {
+      "name": "kad_health_counts_tokens",
+      "ok": true,
+      "detail": "{'tokenized_entries': 2, 'keywords_total': 6, 'keywords_unique': 4}"
+    },
+    {
+      "name": "kad_health_reports_duplicate_keys",
+      "ok": true,
+      "detail": "{'keys_total': 10, 'keys_unique': 8, 'duplicate_keys': 2}"
+    },
+    {
+      "name": "kad_health_does_not_claim_public_search",
+      "ok": true,
+      "detail": "AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public"
+    },
+    {
+      "name": "rss_threshold_reads_real_process_memory",
+      "ok": true,
+      "detail": "{'enabled': True, 'limit': 1, 'current': 19, 'unit': 'MiB'}"
+    },
+    {
+      "name": "rss_threshold_refuses_wake",
+      "ok": true,
+      "detail": "REJECT_RESOURCE_LIMIT"
+    },
+    {
+      "name": "rss_refusal_names_limit_and_numbers",
+      "ok": true,
+      "detail": "{'limit_name': 'max_rss_mb', 'limit': 1, 'current': 19, 'limit_unit': 'MiB'}"
+    },
+    {
+      "name": "rss_refusal_leaves_no_hot_state",
+      "ok": true,
+      "detail": "hot=0 seed_active=0"
+    },
+    {
+      "name": "cpu_threshold_reads_real_process_cpu",
+      "ok": true,
+      "detail": "{'enabled': True, 'limit': 1, 'current': 4700, 'unit': 'milli-percent', 'limit_percent': 0.001, 'current_percent': 4.7}"
+    },
+    {
+      "name": "cpu_threshold_reports_percent_and_millipct_consistently",
+      "ok": true,
+      "detail": "{'current': 4700, 'current_percent': 4.7, 'unit': 'milli-percent'}"
+    },
+    {
+      "name": "cpu_threshold_refuses_wake",
+      "ok": true,
+      "detail": "REJECT_RESOURCE_LIMIT"
+    },
+    {
+      "name": "cpu_refusal_names_limit_and_numbers",
+      "ok": true,
+      "detail": "{'limit_name': 'max_seeding_cpu_millipct', 'limit': 1, 'current': 4700, 'limit_unit': 'milli-percent'}"
+    },
+    {
+      "name": "cpu_refusal_leaves_no_hot_state",
+      "ok": true,
+      "detail": "hot=0 seed_active=0"
+    },
+    {
+      "name": "log_shows_cpu_refusal",
+      "ok": true,
+      "detail": "node-A6.log / node-B6.log"
+    },
+    {
+      "name": "latin_synonyms_are_deterministic",
+      "ok": true,
+      "detail": "{'language': 'en', 'keywords': ['movie', 'film', 'collection'], 'keywords_expanded': ['movie', 'film', 'collection', 'cinema'], 'synonym_added': 1}"
+    },
+    {
+      "name": "synonyms_do_not_pollute_source_keywords",
+      "ok": true,
+      "detail": "['movie', 'film', 'collection']"
+    },
+    {
+      "name": "cjk_synonyms_use_cjk_table",
+      "ok": true,
+      "detail": "{'language': 'zh', 'keywords': ['冷启动复活', '电影', '测试样本'], 'keywords_expanded': ['冷启动复活', '电影', '测试样本', '影片', '片子']}"
+    },
+    {
+      "name": "cjk_run_is_not_split_per_character",
+      "ok": true,
+      "detail": "['冷启动复活', '电影', '测试样本']"
+    },
+    {
+      "name": "reindex_is_byte_for_byte_deterministic",
+      "ok": true,
+      "detail": "['movie', 'film', 'collection', 'cinema'] vs ['movie', 'film', 'collection', 'cinema']"
+    },
+    {
+      "name": "publish_requires_real_kad_publish_ack",
+      "ok": true,
+      "detail": "{'published': True, 'ack_t': 'KAD_PUBLISH_ACK', 'keys': 5}"
+    },
+    {
+      "name": "synonym_reaches_published_kad_keys",
+      "ok": true,
+      "detail": "{'expected': '76be3e593e1e3947b9468c40d333deae1aba9d55', 'keys': ['08aa3b585f6697d5c3223f7b64a41f523c17d00d', '410d03826f71e008133249d0621348174cd5e1a5', '75863e7371e02d1abe48aa327cb699538683b4a3', '76be3e593e1e3947b9468c40d333deae1aba9d55', '8e8d1d177799ba6368a7780219133a22bcea13ed', 'd30e2f41d526830eb679bc4e9ef0c6cc63385842', 'd87ecf9a104252b0799e8646feccaba122f02bb6']}"
+    },
+    {
+      "name": "kad_health_reports_languages_and_synonyms",
+      "ok": true,
+      "detail": "{'languages': {'en': 3, 'zh': 1}, 'synonym_added': 3}"
+    },
+    {
+      "name": "synonym_expansion_does_not_claim_public_hit",
+      "ok": true,
+      "detail": "AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public"
+    },
+    {
+      "name": "log_shows_watch_ingest",
+      "ok": true,
+      "detail": "node-A.log"
+    },
+    {
+      "name": "log_shows_watch_removal",
+      "ok": true,
+      "detail": "node-A.log"
+    },
+    {
+      "name": "log_shows_republish_cycle",
+      "ok": true,
+      "detail": "node-A.log"
+    },
+    {
+      "name": "log_shows_watch_started",
+      "ok": true,
+      "detail": "node-A.log"
+    },
+    {
+      "name": "log_shows_wake_refusal",
+      "ok": true,
+      "detail": "node-A3.log"
+    },
+    {
+      "name": "log_shows_guard_refusal",
+      "ok": true,
+      "detail": "node-A3.log"
+    },
+    {
+      "name": "log_shows_rss_refusal",
+      "ok": true,
+      "detail": "node-A5.log"
+    }
+  ],
+  "passed": 77,
+  "total": 77,
+  "boundary": "本机回环：A(holder)+B(member) 两个真实进程，样本 < PARTSIZE（跨分片见 W25）。FR-05/06 的 sent=true 仅表示「发出 KAD_PUBLISH 并收到对端 ACK」，**不等于公网可 KAD 检索**（FR-24 的 G0 scope 已于 2026-11-22 书面解除，但本机回环 ACK 仍不构成公网命中证据，须另跑 coldrevive-ed2k search --public）。FR-09 只覆盖按来源 IP 的令牌桶，不含分布式/全局配额。FR-15 的带宽阈值靠 1s 采样差分，是滞后指标，只作拒绝新唤醒的理由。FR-01 后端是轮询快照，不是内核目录通知（Windows ReadDirectoryChangesW 未接入）。门禁常量不变：g2_claim=false、s6_status=not_run。",
+  "phase_a": {
+    "entries": {
+      "open_status": "fresh",
+      "schema_version": 2,
+      "entries": [
+        {
+          "file_hash": "32202f434fa8e09cd69913023563771ca28193d8d46a2a17a2cd88d04f3a49e7",
+          "name": "sample_second.bin",
+          "path": "\\\\?\\C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\p0\\run\\share\\sample_second.bin",
+          "size": 196608,
+          "state": "HOT",
+          "infohash": "0c18309f1170e1f444e3db332b59ba738db7f66c",
+          "sha1": "ec280cb81887e6619a8c5813dd7ef6ca6cd23c16",
+          "ed2k_hash": "5655035c79e988a6b9c4813accb5f699",
+          "kad_published": true,
+          "published_keys": 4
+        },
+        {
+          "file_hash": "7b2b72330ad6b4eae5a2b38344ebf5a83717e23b960867493268e22c31ae9402",
+          "name": "sample_primary.bin",
+          "path": "\\\\?\\C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\p0\\run\\share\\sample_primary.bin",
+          "size": 262144,
+          "state": "HOT",
+          "infohash": "c080fe2cce604728edd81bcae99053ff52188c45",
+          "sha1": "dc5888eafbecb069245b371d2ca159140aaceaed",
+          "ed2k_hash": "5cdf870f94458eddf5e4bb66d4a0cc66",
+          "kad_published": true,
+          "published_keys": 4
+        }
+      ]
+    },
+    "health": {
+      "status": "ok",
+      "node": "A",
+      "host": "127.0.0.1",
+      "machine_id": "DESKTOP-DJQSC95",
+      "pid": 14420,
+      "seed_tasks": 2,
+      "seed_active": 1,
+      "served_bytes": 0,
+      "seeding": {
+        "cap": 1,
+        "scheduled": 1,
+        "evictions": 1
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 2,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "punch_route": {
+        "enabled": false,
+        "attempts": 0,
+        "direct": 0,
+        "relay": 0,
+        "failed": 0,
+        "relay_data_plane": "tcp-carrier-implemented",
+        "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+        "is_s6_evidence": false,
+        "g2_claim": false,
+        "s6_status": "not_run"
+      },
+      "data_plane": {
+        "enabled": false,
+        "carrier": "none"
+      },
+      "holder_data": {
+        "enabled": false,
+        "carrier": "none",
+        "opens": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "duplicate_open": 0,
+        "peer_mismatch": 0,
+        "unknown_channel": 0,
+        "data_frames": 0,
+        "bytes_to_engine": 0,
+        "bytes_from_engine": 0,
+        "splices_done": 0
+      },
+      "guard": {
+        "enabled": true,
+        "handshakes": 2,
+        "woken": 2,
+        "missed": 0
+      },
+      "idle": {
+        "enabled": false,
+        "threshold_secs": 0,
+        "idle_secs": 0,
+        "sleeps": 0,
+        "last_slept": []
+      },
+      "api": {
+        "rpc_secret": {
+          "enabled": false,
+          "note": "token 值不会出现在 /health 或任何响应中"
+        },
+        "web_ui": {
+          "enabled": false
+        },
+        "websocket": {
+          "enabled": false
+        }
+      },
+      "nat": {
+        "enabled": false,
+        "status": "disabled",
+        "attempts": [],
+        "note": "映射仅来自路由器真实应答；不改变 s6_status"
+      },
+      "qos": {
+        "enabled": true,
+        "background_upload_ratio": 0.02,
+        "reference_link_bps": 12500000,
+        "cap_bps": 250000,
+        "observed_bytes": 0,
+        "allowed_bytes": 0,
+        "denied_bytes": 0,
+        "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+      },
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "cross_protocol": {
+        "enabled": false,
+        "status": "not_implemented",
+        "bt_to_ed2k": "invalid_input",
+        "ed2k_to_bt": "invalid_input",
+        "note": "跨协议补源未实现；不生成来源、不伪造成功"
+      },
+      "reputation": {
+        "enabled": false,
+        "status": "not_implemented",
+        "score": null,
+        "note": "只记账不评分；信誉/激励尚未实现"
+      },
+      "kad_publish": {
+        "cycles": 1,
+        "last": {
+          "sent": true,
+          "due": 2,
+          "keys": 5,
+          "ttl_secs": 9,
+          "refresh_failed": 0,
+          "elapsed_ms": 0,
+          "ack_t": "KAD_PUBLISH_ACK",
+          "ack_status": ""
+        }
+      }
+    }
+  },
+  "phase_b": {
+    "rate": {
+      "limited": 20,
+      "ok": 4
+    }
+  },
+  "phase_c": {
+    "limits": {
+      "ack_ok": "OK",
+      "ack_refused": "REJECT_RESOURCE_LIMIT"
+    }
+  },
+  "phase_d": {
+    "kad_health": {
+      "entries": 4,
+      "by_state": {
+        "COLD": 4
+      },
+      "published_entries": 2,
+      "ttl_secs": 9,
+      "due": 2,
+      "expired": 0,
+      "expiring_soon": 0,
+      "keys_total": 10,
+      "keys_unique": 8,
+      "duplicate_keys": 2,
+      "duplicates": [
+        {
+          "key": "2fb25b90455749980e9bee9dfe315df5ef2618cf",
+          "entries": 2
+        },
+        {
+          "key": "f7c2d706dd6c67c14518a72a6a96f716b459892b",
+          "entries": 2
+        }
+      ],
+      "keywords_total": 6,
+      "keywords_unique": 4,
+      "tokenized_entries": 2,
+      "languages": {
+        "en": 2
+      },
+      "synonym_added": 0,
+      "refresh_failures": 0,
+      "public_search": "AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public"
+    }
+  },
+  "phase_e": {
+    "ack": {
+      "v": 1,
+      "type": "WAKEUP_ACK",
+      "trace_id": "9451956c-f2d3-644e-c2d9-40805ddde21b",
+      "status": "REJECT_RESOURCE_LIMIT",
+      "limit_name": "max_rss_mb",
+      "limit": 1,
+      "current": 19,
+      "limit_unit": "MiB"
+    }
+  },
+  "phase_f": {
+    "health": {
+      "enabled": true,
+      "limit": 1,
+      "current": 4700,
+      "unit": "milli-percent",
+      "limit_percent": 0.001,
+      "current_percent": 4.7
+    },
+    "ack": {
+      "v": 1,
+      "type": "WAKEUP_ACK",
+      "trace_id": "0a4cf6cd-d287-34ec-63d5-2e6058764a4a",
+      "status": "REJECT_RESOURCE_LIMIT",
+      "limit_name": "max_seeding_cpu_millipct",
+      "limit": 1,
+      "current": 4700,
+      "limit_unit": "milli-percent"
+    }
+  },
+  "phase_g": {
+    "publish": {
+      "published": true,
+      "file_hash": "6494053ea2d14eb0e19faf4d9d567c7ff1719a63ef4748a26e05f15eb000fc9b",
+      "keys": 5,
+      "elapsed_ms": 0,
+      "ack_t": "KAD_PUBLISH_ACK",
+      "saved": true
+    },
+    "kad_health": {
+      "entries": 6,
+      "by_state": {
+        "COLD": 6
+      },
+      "published_entries": 3,
+      "ttl_secs": 9,
+      "due": 2,
+      "expired": 0,
+      "expiring_soon": 0,
+      "keys_total": 21,
+      "keys_unique": 19,
+      "duplicate_keys": 2,
+      "duplicates": [
+        {
+          "key": "2fb25b90455749980e9bee9dfe315df5ef2618cf",
+          "entries": 2
+        },
+        {
+          "key": "f7c2d706dd6c67c14518a72a6a96f716b459892b",
+          "entries": 2
+        }
+      ],
+      "keywords_total": 12,
+      "keywords_unique": 10,
+      "tokenized_entries": 4,
+      "languages": {
+        "en": 3,
+        "zh": 1
+      },
+      "synonym_added": 3,
+      "refresh_failures": 0,
+      "public_search": "AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public"
+    }
+  }
+}

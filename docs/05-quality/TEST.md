@@ -14,7 +14,9 @@ updated: 2026-11-20
 > **v3.0**：补 §2.12–§2.15（W62 FR-11 握手拦截 / W14 FR-14 空闲休眠 / W24+W24-pub FR-24
 > 关键词检索 / W25+W25-live FR-25 与真实 aMule 双向互通）。均不改门禁口径：
 > `g2_claim=false`、`s6_status=not_run`；全量 `cargo test --workspace --offline`
-> **384 passed / 0 failed / 3 ignored**（2026-11-20）。
+> **384 passed / 0 failed / 3 ignored**（2026-11-20）；2026-11-24 复跑
+> **499 passed / 0 failed / 3 ignored**（原始输出 `tests/ARCHIVE/evidence/cargo-test-workspace-20261124.log`）。
+> 每次测试的过程与结果必须按 `tests/ARCHIVE/README.md` 归档。
 > 本文是 [SRS KPI](../01-product/SRS.md) 与 [ROADMAP 质量门禁 G0～G4](../06-plan/ROADMAP.md) 的判定依据。测试代码落位于 [tests/](../../tests/README.md)。
 
 > **【当前状态更正 · 2026-11-14 / v2.4.47】本文 §2.2、§6 之前的状态描述保留 2026-11-13 时点口径，不是现状。**
@@ -557,7 +559,7 @@ ssh 退出会带走它，首轮 0 行；③ `-c 80` 被 aMule 自身的 KAD 流�
 **边界**：只有空闲计时触发，**没有** CPU/内存/带宽阈值触发；仅回环；
 `seed_active=0` 但影子索引与 KAD Key 保留——**「KAD 还查得到」不等于还在做种**。
 
-### 2.14 W24/W24-pub FR-24 eD2k 关键词检索（2026-11-20 新增，公共轨 PASS，公网 BLOCKED）
+### 2.14 W24/W24-pub FR-24 eD2k 关键词检索（2026-11-20 新增；公共轨 PASS；公网闭环 2026-11-24 已复现，仍非 G2 证据）
 
 本地轨 `tests/e2e/w24/`：`/cli ed2k` 从真实文件算 `ed2k_hash` 输出标准链接，独立纯 Python
 MD4 复算 **2/2**。公共轨 `tests/e2e/w24-pub/`（**12/12**）：生产 `coldrevive-ed2k search`
@@ -574,8 +576,13 @@ MD4 复算 **2/2**。公共轨 `tests/e2e/w24-pub/`（**12/12**）：生产 `col
 **关键观测**：**aMule 不 bootstrap 就不理 `0x33`**——第一版直接发 `0x33` 得 0 结果，
 补上 `0x01/0x09` 后同一请求立即有应答。KAD `ReadTag` 必须拒 `STR1..STR22` 与 `BLOB`，
 否则条目整包解析失败（aMule `CFileDataIO::ReadTag` 不认这些类型）。
-**公网仍 BLOCKED**：A 主机直连 5 个公网 KAD 节点全部超时、`answer_count=0`，
-记 `public-search.json`（`public_kad_contacted=true`、`answer_count=0`），不改成通过。
+**当时的公网 BLOCKED（历史记录，已被 2026-11-24 v2.4.111 更正）**：A 主机直连 5 个
+公网 KAD 节点全部超时、`answer_count=0`，记 `public-search.json`
+（`public_kad_contacted=true`、`answer_count=0`）。根因后来定位为目标 aMule
+firewalled + 空索引，并在非 firewalled 的真 eMule（209）上复现完整
+`PUBLISH_RES → SEARCH_RES` 闭环，见审计 §18.3 与
+`tests/e2e/w24-pub/reports/public-209-*-20261124.json`。**技术闭环不等于 G2 通过**，
+门禁常量不变。
 
 ### 2.15 W25/W25-live FR-25 与真实 aMule 2.3.3 双向互通（2026-11-20 新增，LAN PASS，公网 BLOCKED）
 

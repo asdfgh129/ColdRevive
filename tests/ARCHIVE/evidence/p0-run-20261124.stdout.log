@@ -1,0 +1,79 @@
+[OK] startup_indexes_both_samples: open_status=fresh schema=2 entries=2
+[OK] startup_entries_are_the_two_samples: ['sample_primary.bin', 'sample_second.bin']
+[OK] startup_entries_carry_multi_hash: [('sample_second.bin', 40, 32), ('sample_primary.bin', 40, 32)]
+[OK] startup_entries_carry_infohash: [40, 40]
+[OK] seeding_cap_from_config: {'cap': 1, 'scheduled': 0, 'evictions': 0}
+[OK] starts_cold: seed_active=0 seed_tasks=2
+[OK] index_missing_file_is_reported: status=200 indexed=False error=C:\Users\bemin\WorkBuddy\ColdRevive\tests\e2e\p0\run\share\dropped_late.bin: The system cannot find the file specified. (os error 2)
+[OK] watcher_indexed_dropped_file: entries=3
+[OK] watcher_used_real_digests: sha1=b90dd73adfbe… expect=b90dd73adfbe…
+[OK] watcher_entry_size_matches: 98304 vs 98304
+[OK] explicit_index_matches_watcher: already_known=True sha1_ok=True
+[OK] ed2k_link_from_index: link_source=index backfilled=0
+[OK] ed2k_fileid_independently_recomputed: md4=129bacec4fcb4a00d243e2b772a282f9 index=129bacec4fcb4a00d243e2b772a282f9 link=129bacec4fcb4a00d243e2b772a282f9
+[OK] ed2k_link_shape_matches_file: ed2k://|file|dropped_late.bin|98304|129bacec4fcb4a00d243e2b772a282f9
+[OK] watcher_removed_deleted_file: 剩余条目=['sample_second.bin', 'sample_primary.bin']
+[OK] kad_republish_cycles_grew: 1
+[OK] kad_republish_frame_acked: {'sent': True, 'due': 2, 'keys': 5, 'ttl_secs': 9, 'refresh_failed': 0, 'elapsed_ms': 0, 'ack_t': 'KAD_PUBLISH_ACK', 'ack_status': ''}
+[OK] kad_republish_is_ttl_driven: {'ttl_secs': 9, 'due': 2, 'refresh_failed': 0}
+[OK] kad_health_readable: {'ttl_secs': 9, 'published_entries': 2, 'keys_total': 8, 'keys_unique': 5}
+[OK] first_sample_wakes_hot: handshake=True seed_active=1 seeding={'cap': 1, 'scheduled': 1, 'evictions': 0}
+[OK] wake_count_never_exceeds_cap: active=1 cap=1
+[OK] second_infohash_wakes_its_own_task: handshake=True
+[OK] lru_evicted_under_cap: {'cap': 1, 'scheduled': 1, 'evictions': 1}
+[OK] seed_active_still_within_cap: active=1 cap=1
+[OK] scheduler_tracks_single_slot: {'cap': 1, 'scheduled': 1, 'evictions': 1}
+[OK] restart_loads_schema_v2: open_status=loaded_v2 schema=2
+[OK] restart_keeps_sample_entries: ['sample_second.bin', 'sample_primary.bin']
+[OK] restart_keeps_deleted_file_out: ['sample_second.bin', 'sample_primary.bin']
+[OK] restart_keeps_multi_hash: [('sample_second.bin', '5655035c'), ('sample_primary.bin', '5cdf870f')]
+[OK] burst_gets_rate_limited: limits=20/24 statuses=[200, 200, 200, 200, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429, 429]
+[OK] rate_limit_reason_is_explicit: ['rate_limited']
+[OK] rate_limit_reports_retry_after: [26, 27, 28, 29, 30, 62]
+[OK] rate_limit_reports_configured_rate: [4]
+[OK] burst_lets_some_through: 200=4
+[OK] health_never_rate_limited: ['ok', 'ok', 'ok', 'ok']
+[OK] rate_limit_recovers: after_wait status=200
+[OK] limit_reported_in_health: limits={'max_hot_seeds': 1, 'hot': 0, 'max_peers': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'peers'}, 'max_upload_bytes_per_sec': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'B/s'}, 'max_rss_mb': {'enabled': False, 'limit': None, 'current': None, 'unit': 'MiB'}, 'max_seeding_cpu_millipct': {'enabled': False, 'limit': None, 'current': None, 'unit': 'milli-percent', 'current_percent': None}, 'sample_at_secs': 0} cap=2
+[OK] unconfigured_thresholds_report_disabled: {'max_peers': False, 'max_upload_bytes_per_sec': False, 'max_rss_mb': False, 'max_seeding_cpu_millipct': False}
+[OK] first_wake_admitted: OK
+[OK] first_wake_became_hot: {'max_hot_seeds': 1, 'hot': 1, 'max_peers': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'peers'}, 'max_upload_bytes_per_sec': {'enabled': False, 'limit': None, 'current': 0, 'unit': 'B/s'}, 'max_rss_mb': {'enabled': False, 'limit': None, 'current': None, 'unit': 'MiB'}, 'max_seeding_cpu_millipct': {'enabled': False, 'limit': None, 'current': None, 'unit': 'milli-percent', 'current_percent': None}, 'sample_at_secs': 0} seed_active=1
+[OK] repeat_wake_of_hot_sample_still_ok: OK
+[OK] second_wake_refused_over_threshold: REJECT_RESOURCE_LIMIT
+[OK] refusal_names_limit_and_numbers: {'limit_name': 'max_hot_seeds', 'limit': 1, 'current': 1}
+[OK] refusal_is_not_eviction: evictions=0 hot=1 seed_active=1
+[OK] guard_handshake_honours_threshold: hot=1 missed=1
+[OK] tokenizer_used_when_config_has_no_keywords: source=tokenized keywords=['cold', 'revive', 'alpha']
+[OK] tokenizer_drops_noise_and_digits: ['cold', 'revive', 'alpha']
+[OK] second_file_indexed: d921f01606cbaf76f7b10032cddd7a10f15d2807446c468b6a215b41b08543e3 vs 7e9e6cfd8c02a012328b5a422c896aebf4614b8a31f3d44723326cc9211ea59d
+[OK] kad_health_counts_tokens: {'tokenized_entries': 2, 'keywords_total': 6, 'keywords_unique': 4}
+[OK] kad_health_reports_duplicate_keys: {'keys_total': 10, 'keys_unique': 8, 'duplicate_keys': 2}
+[OK] kad_health_does_not_claim_public_search: AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public
+[OK] rss_threshold_reads_real_process_memory: {'enabled': True, 'limit': 1, 'current': 19, 'unit': 'MiB'}
+[OK] rss_threshold_refuses_wake: REJECT_RESOURCE_LIMIT
+[OK] rss_refusal_names_limit_and_numbers: {'limit_name': 'max_rss_mb', 'limit': 1, 'current': 19, 'limit_unit': 'MiB'}
+[OK] rss_refusal_leaves_no_hot_state: hot=0 seed_active=0
+[OK] cpu_threshold_reads_real_process_cpu: {'enabled': True, 'limit': 1, 'current': 4700, 'unit': 'milli-percent', 'limit_percent': 0.001, 'current_percent': 4.7}
+[OK] cpu_threshold_reports_percent_and_millipct_consistently: {'current': 4700, 'current_percent': 4.7, 'unit': 'milli-percent'}
+[OK] cpu_threshold_refuses_wake: REJECT_RESOURCE_LIMIT
+[OK] cpu_refusal_names_limit_and_numbers: {'limit_name': 'max_seeding_cpu_millipct', 'limit': 1, 'current': 4700, 'limit_unit': 'milli-percent'}
+[OK] cpu_refusal_leaves_no_hot_state: hot=0 seed_active=0
+[OK] log_shows_cpu_refusal: node-A6.log / node-B6.log
+[OK] latin_synonyms_are_deterministic: {'language': 'en', 'keywords': ['movie', 'film', 'collection'], 'keywords_expanded': ['movie', 'film', 'collection', 'cinema'], 'synonym_added': 1}
+[OK] synonyms_do_not_pollute_source_keywords: ['movie', 'film', 'collection']
+[OK] cjk_synonyms_use_cjk_table: {'language': 'zh', 'keywords': ['冷启动复活', '电影', '测试样本'], 'keywords_expanded': ['冷启动复活', '电影', '测试样本', '影片', '片子']}
+[OK] cjk_run_is_not_split_per_character: ['冷启动复活', '电影', '测试样本']
+[OK] reindex_is_byte_for_byte_deterministic: ['movie', 'film', 'collection', 'cinema'] vs ['movie', 'film', 'collection', 'cinema']
+[OK] publish_requires_real_kad_publish_ack: {'published': True, 'ack_t': 'KAD_PUBLISH_ACK', 'keys': 5}
+[OK] synonym_reaches_published_kad_keys: {'expected': '76be3e593e1e3947b9468c40d333deae1aba9d55', 'keys': ['08aa3b585f6697d5c3223f7b64a41f523c17d00d', '410d03826f71e008133249d0621348174cd5e1a5', '75863e7371e02d1abe48aa327cb699538683b4a3', '76be3e593e1e3947b9468c40d333deae1aba9d55', '8e8d1d177799ba6368a7780219133a22bcea13ed', 'd30e2f41d526830eb679bc4e9ef0c6cc63385842', 'd87ecf9a104252b0799e8646feccaba122f02bb6']}
+[OK] kad_health_reports_languages_and_synonyms: {'languages': {'en': 3, 'zh': 1}, 'synonym_added': 3}
+[OK] synonym_expansion_does_not_claim_public_hit: AUTHORIZED: 公共 KAD 0x33/0x43 已获所有者书面解除（2026-11-22）；本地健康度不含公网命中，请另跑 coldrevive-ed2k search --public
+[OK] log_shows_watch_ingest: node-A.log
+[OK] log_shows_watch_removal: node-A.log
+[OK] log_shows_republish_cycle: node-A.log
+[OK] log_shows_watch_started: node-A.log
+[OK] log_shows_wake_refusal: node-A3.log
+[OK] log_shows_guard_refusal: node-A3.log
+[OK] log_shows_rss_refusal: node-A5.log
+
+passed=77/77  elapsed=25.3s

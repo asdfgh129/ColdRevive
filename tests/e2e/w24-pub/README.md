@@ -130,8 +130,9 @@ S2 `PLAN.md` §6/§20 已给出机制：aMule `Process2*IndexRequest` 用
 
 实测：222 → 221 公网路径上 try-2 HELLO 已真成功
 （`reports/public-try2-hello-verified-20261123.json`），但 `0x33`/`0x43`
-在三种信封下都静默（`top_chunk=0` 排除越界），**索引命中仍 BLOCKED**；
-详见审计 §18。
+在三种信封下都静默（`top_chunk=0` 排除越界），**当时**记为索引命中 BLOCKED；
+该结论已于 v2.4.109/§18.1 推翻，并由 2026-11-24 的非 firewalled eMule 闭环复现
+（见下与审计 §18.3）。保留此段仅为记录当时的判据与误判过程。
 
 ## 更正：0x33/0x43 静默 ≠ 索引接纳门（v2.4.109）
 

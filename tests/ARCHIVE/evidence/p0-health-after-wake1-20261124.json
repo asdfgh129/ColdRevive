@@ -1,0 +1,155 @@
+{
+  "status": "ok",
+  "node": "A",
+  "host": "127.0.0.1",
+  "machine_id": "DESKTOP-DJQSC95",
+  "pid": 14420,
+  "seed_tasks": 2,
+  "seed_active": 1,
+  "served_bytes": 0,
+  "seeding": {
+    "cap": 1,
+    "scheduled": 1,
+    "evictions": 0
+  },
+  "limits": {
+    "max_hot_seeds": null,
+    "hot": 1,
+    "max_peers": {
+      "enabled": false,
+      "limit": null,
+      "current": 0,
+      "unit": "peers"
+    },
+    "max_upload_bytes_per_sec": {
+      "enabled": false,
+      "limit": null,
+      "current": 0,
+      "unit": "B/s"
+    },
+    "max_rss_mb": {
+      "enabled": false,
+      "limit": null,
+      "current": null,
+      "unit": "MiB"
+    },
+    "max_seeding_cpu_millipct": {
+      "enabled": false,
+      "limit": null,
+      "current": null,
+      "unit": "milli-percent",
+      "current_percent": null
+    },
+    "sample_at_secs": 0
+  },
+  "punch_route": {
+    "enabled": false,
+    "attempts": 0,
+    "direct": 0,
+    "relay": 0,
+    "failed": 0,
+    "relay_data_plane": "tcp-carrier-implemented",
+    "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+    "is_s6_evidence": false,
+    "g2_claim": false,
+    "s6_status": "not_run"
+  },
+  "data_plane": {
+    "enabled": false,
+    "carrier": "none"
+  },
+  "holder_data": {
+    "enabled": false,
+    "carrier": "none",
+    "opens": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "duplicate_open": 0,
+    "peer_mismatch": 0,
+    "unknown_channel": 0,
+    "data_frames": 0,
+    "bytes_to_engine": 0,
+    "bytes_from_engine": 0,
+    "splices_done": 0
+  },
+  "guard": {
+    "enabled": true,
+    "handshakes": 1,
+    "woken": 1,
+    "missed": 0
+  },
+  "idle": {
+    "enabled": false,
+    "threshold_secs": 0,
+    "idle_secs": 0,
+    "sleeps": 0,
+    "last_slept": []
+  },
+  "api": {
+    "rpc_secret": {
+      "enabled": false,
+      "note": "token 值不会出现在 /health 或任何响应中"
+    },
+    "web_ui": {
+      "enabled": false
+    },
+    "websocket": {
+      "enabled": false
+    }
+  },
+  "nat": {
+    "enabled": false,
+    "status": "disabled",
+    "attempts": [],
+    "note": "映射仅来自路由器真实应答；不改变 s6_status"
+  },
+  "qos": {
+    "enabled": true,
+    "background_upload_ratio": 0.02,
+    "reference_link_bps": 12500000,
+    "cap_bps": 250000,
+    "observed_bytes": 0,
+    "allowed_bytes": 0,
+    "denied_bytes": 0,
+    "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+  },
+  "dht": {
+    "enabled": false,
+    "status": "disabled",
+    "local_addr": null,
+    "bootstrap": [],
+    "seeds": 0,
+    "attempts": 0,
+    "verified": 0,
+    "no_token": 0,
+    "failed": 0,
+    "last_error": "",
+    "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+  },
+  "cross_protocol": {
+    "enabled": false,
+    "status": "not_implemented",
+    "bt_to_ed2k": "invalid_input",
+    "ed2k_to_bt": "invalid_input",
+    "note": "跨协议补源未实现；不生成来源、不伪造成功"
+  },
+  "reputation": {
+    "enabled": false,
+    "status": "not_implemented",
+    "score": null,
+    "note": "只记账不评分；信誉/激励尚未实现"
+  },
+  "kad_publish": {
+    "cycles": 1,
+    "last": {
+      "sent": true,
+      "due": 2,
+      "keys": 5,
+      "ttl_secs": 9,
+      "refresh_failed": 0,
+      "elapsed_ms": 0,
+      "ack_t": "KAD_PUBLISH_ACK",
+      "ack_status": ""
+    }
+  }
+}

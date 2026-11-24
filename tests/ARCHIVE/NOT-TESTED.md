@@ -17,7 +17,7 @@
 | 项 | 状态 | 前置条件 |
 | :--- | :--- | :--- |
 | FR-25 第二个 aMule 上传端反向 A/B | **未启动** | 需用户明确确认；当前上传方向仍 BLOCKED |
-| FR-10 守护进程多样种 + cap 逐出 e2e | 仅组件级 `LruScheduler` 有证据（`/health` 可观测），daemon 多任务 e2e 未跑 | 见 `TEST-RUNS-2026-11-24.md` 的后续条目 |
+| FR-10 守护进程多样种 + cap 逐出 e2e | **已于 2026-11-24 重跑并归档**：P0 77/77，wake1 `evictions=0` → wake2 `evictions=1`，`seed_active<=cap=1` | 见 `TEST-RUNS-2026-11-24.md` 与 `evidence/p0-health-after-wake*-20261124.json` |
 | 公平性阈值 / 拥塞语义 | 只有量具原始计数，无阈值判定 | 多组公网丢包/时延梯度样本 + 阈值讨论 |
 | Mainline DHT 公共引导邻居发现 | 自有节点闭环；公共节点无可用 token | 找到确实签发 token 的邻居 |
 | TCP 打洞接 BT 数据面 | 原语通过，公网双侧 BLOCKED | 先解决公网双侧；symmetric 不可直连是正确结论 |
