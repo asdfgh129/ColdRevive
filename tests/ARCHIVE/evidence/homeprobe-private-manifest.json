@@ -1,0 +1,155 @@
+{
+  "note": "local-only raw homeprobe results; private addresses, never commit raw files",
+  "items": [
+    {
+      "file": "kad-lan-probe-20261121122940.json",
+      "bytes": 4452,
+      "sha256": "eb7a44805e4d998087cde28e521c8e28b40516a16096286e3059239b404a61de"
+    },
+    {
+      "file": "kad-positive-control.json",
+      "bytes": 8462,
+      "sha256": "69e803ea822609f8ed121b5bef1fbaec27de2b1925a3f4a650ebf35c7c7f24bb"
+    },
+    {
+      "file": "dht.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "dht.json",
+      "bytes": 2148,
+      "sha256": "3e80782c23f5139006e80ad260c81b907bf201cff2dd0a11d5bae5ace831dce8"
+    },
+    {
+      "file": "kad_egress.exit",
+      "bytes": 2,
+      "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3"
+    },
+    {
+      "file": "kad_egress.json",
+      "bytes": 1955,
+      "sha256": "ad67dd7c28f0ffd5da2f40f78acf7ed9777ebe5c188595355f6a30d5b27aace3"
+    },
+    {
+      "file": "nat_behavior.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "nat_behavior.json",
+      "bytes": 21583,
+      "sha256": "dad0ff477acbbe327be6aeeeede87a92470399a08dc40c4be95f5f557f737858"
+    },
+    {
+      "file": "nat_selftest.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "platform.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "platform.json",
+      "bytes": 1078,
+      "sha256": "d059a825828b88434693e70cd01c2a76ff4eb3e5b20183501b1a89bcd5e4ba32"
+    },
+    {
+      "file": "selftests.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "stun.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "stun.json",
+      "bytes": 7338,
+      "sha256": "54bb704167f0b5bf5722f04f23f963727182d1ad68555c132b90deed00a326b6"
+    },
+    {
+      "file": "summary.json",
+      "bytes": 2363,
+      "sha256": "bc1ed32406ed64470f3bd8d2f651b12cdc2a72969aada0b4afde714134e364ac"
+    },
+    {
+      "file": "dht.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "dht.json",
+      "bytes": 1976,
+      "sha256": "f2453356a34abca8acdf73e6ea3e859dd72ab8ba095af65d381bccdf5ff1a241"
+    },
+    {
+      "file": "kad_egress.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "kad_egress.json",
+      "bytes": 8205,
+      "sha256": "2bca8df8e9123d06f9bae75855e7c9d572bd3681f951242e16a9378602a0a0fd"
+    },
+    {
+      "file": "nat_behavior.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "nat_behavior.json",
+      "bytes": 21402,
+      "sha256": "da15219f6cd795d0f8a62b240e73764fa18460baafd0f2557da0b2f66a87cd9a"
+    },
+    {
+      "file": "nat_selftest.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "platform.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "platform.json",
+      "bytes": 1078,
+      "sha256": "e21c2040930ddf52bf336ed69c00d28684438eca1e2993e0068ab265d3cf4104"
+    },
+    {
+      "file": "report.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "selftests.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "stun.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "file": "stun.json",
+      "bytes": 7184,
+      "sha256": "aefec4312f52cce9dec485eeaad626fac560c8a3d4529806237ce14ae006a69b"
+    },
+    {
+      "file": "summary.json",
+      "bytes": 2249,
+      "sha256": "e8cb272a1fd30555f5ed7064fe4432e46250de031e9173c0f7b5bac509ef303e"
+    },
+    {
+      "file": "results.zip",
+      "bytes": 13589,
+      "sha256": "de10f89ef6b2009192ab149c0823268eb0260d22494234395591ad973547af3a"
+    }
+  ]
+}

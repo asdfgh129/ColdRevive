@@ -1,0 +1,223 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795325106,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "sample": {
+    "name": "w25-diag-20261122132505.bin",
+    "bytes": 9736192,
+    "md5": "f121080b51b5f08c103035d71ea3d63d"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.3,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.7,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.1,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 10.5,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 13.9,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 17.3,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 20.7,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 24.1,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 27.5,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 30.9,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122132505.bin",
+    "name": "w25-diag-20261122132505.bin",
+    "size": 9736192,
+    "file_id": "7e50ab5694cb54db8a9686a44a91debb",
+    "ed2k_link": "ed2k://|file|w25-diag-20261122132505.bin|9736192|7e50ab5694cb54db8a9686a44a91debb|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795325106-serve-0000",
+  "amule_cancelled_before": [
+    {
+      "hash": "824D2496338F10D94A6B6BF7DF1FFC35",
+      "name": "w25-diag-20261122132356.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 824D2496338F10D94A6B6BF7DF1FFC35\n > Operation was successful.\n"
+    },
+    {
+      "hash": "0FBBB591799FD36B86C3EA878BD68E54",
+      "name": "w25-diag-20261122131820.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 0FBBB591799FD36B86C3EA878BD68E54\n > Operation was successful.\n"
+    }
+  ],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Request failed with the following error: Invalid link or already on list.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": -1.0,
+  "accounting": {
+    "requests": 0,
+    "request_pairs": 0,
+    "sends": 0,
+    "bytes_sent": 0,
+    "blocks_completed": 0,
+    "blocks_pending_at_stop": 0,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": []
+  },
+  "events_tail": [],
+  "recv_q_at_stop": "",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795325106-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795325106,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122132505.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "NO_DATA_SENT"
+}

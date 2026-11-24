@@ -1,0 +1,63 @@
+{
+  "kind": "p1-local-loopback",
+  "scope": "no full p0 e2e, no external network probes",
+  "binary": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\debug\\coldrevived",
+  "checks": {
+    "health_exposes_flags_not_secret": {
+      "ok": true,
+      "detail": {
+        "node": "A",
+        "cap_bps": 250000
+      }
+    },
+    "openapi_lists_endpoints": {
+      "ok": true,
+      "detail": {
+        "paths": [
+          "/",
+          "/announce",
+          "/cli",
+          "/health",
+          "/inject",
+          "/jsonrpc",
+          "/nat/advertise",
+          "/nat/public",
+          "/openapi.json",
+          "/scrape",
+          "/torrent/{key}",
+          "/ws"
+        ]
+      }
+    },
+    "webui_does_not_shadow_health": {
+      "ok": true,
+      "detail": {
+        "root_html": true,
+        "health_not_shadowed": true
+      }
+    },
+    "rpc_secret_gates_mutating_calls": {
+      "ok": true,
+      "detail": {
+        "mutating_denied": true,
+        "mutating_allowed": true,
+        "readonly_free": true
+      }
+    },
+    "websocket_handshake_and_frame": {
+      "ok": true,
+      "detail": {
+        "opcode": 129,
+        "frame_keys": [
+          "node",
+          "seed_tasks",
+          "served_bytes",
+          "ts_ms"
+        ]
+      }
+    }
+  },
+  "passed": 5,
+  "total": 5,
+  "gate_constants_untouched": true
+}

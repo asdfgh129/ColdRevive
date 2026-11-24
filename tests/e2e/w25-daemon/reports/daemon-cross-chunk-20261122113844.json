@@ -1,0 +1,65 @@
+{
+  "schema": "coldrevive.fr25.daemon-cross-chunk/v1",
+  "generated_at_unix": 1795318724,
+  "scope": "RFC1918 LAN, real aMule 2.3.3, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-cross-20261122113844.bin",
+    "bytes": 9736192,
+    "sha256": "7b168daed8a69d37b8d5971c1cf9f1089512dff26995edab7a5175db39ffac6d",
+    "part_size": 9728000,
+    "above_part_size": true
+  },
+  "checks": [
+    {
+      "name": "daemon_health",
+      "ok": true
+    },
+    {
+      "name": "link_real_hash_and_hashset_required",
+      "ok": true
+    },
+    {
+      "name": "serve_task_registered",
+      "ok": true
+    },
+    {
+      "name": "amule_add_link",
+      "ok": true
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-cross-20261122113844.bin",
+    "name": "w25-cross-20261122113844.bin",
+    "size": 9736192,
+    "file_id": "8b5d6924ba7e80f60d0bfebb580007ed",
+    "ed2k_link": "ed2k://|file|w25-cross-20261122113844.bin|9736192|8b5d6924ba7e80f60d0bfebb580007ed|/",
+    "hashset_required": true
+  },
+  "serve_started": {
+    "schema": "coldrevive.fr25.daemon-task-started/v1",
+    "id": "ed2k-1795318725-serve-0000",
+    "kind": "serve",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-cross-20261122113844.bin",
+    "port": 4663
+  },
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n",
+    "stderr": ""
+  },
+  "amule_add_retries": [
+    {
+      "attempt": 1,
+      "rc": 0,
+      "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+    },
+    {
+      "attempt": 2,
+      "rc": 0,
+      "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+    }
+  ],
+  "status": "FAIL",
+  "reason": "URLError: <urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>"
+}

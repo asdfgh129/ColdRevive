@@ -1,0 +1,53 @@
+{
+  "schema": "coldrevive.fr25.daemon-cross-chunk/v1",
+  "generated_at_unix": 1795270139,
+  "scope": "RFC1918 LAN, real aMule 2.3.3, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-cross-20261121220858.bin",
+    "bytes": 9736192,
+    "sha256": "eecdd720acebf080ce8d3ea18a61101cd44ea224c3e42bd8190329cfd8dbeab5",
+    "part_size": 9728000,
+    "above_part_size": true
+  },
+  "checks": [
+    {
+      "name": "daemon_health",
+      "ok": true
+    },
+    {
+      "name": "link_real_hash_and_hashset_required",
+      "ok": true
+    },
+    {
+      "name": "serve_task_registered",
+      "ok": true
+    },
+    {
+      "name": "amule_add_link",
+      "ok": false
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-cross-20261121220858.bin",
+    "name": "w25-cross-20261121220858.bin",
+    "size": 9736192,
+    "file_id": "a5b6e62f00e101045aec239c511f23a9",
+    "ed2k_link": "ed2k://|file|w25-cross-20261121220858.bin|9736192|a5b6e62f00e101045aec239c511f23a9|/",
+    "hashset_required": true
+  },
+  "serve_started": {
+    "schema": "coldrevive.fr25.daemon-task-started/v1",
+    "id": "ed2k-1795270139-serve-0000",
+    "kind": "serve",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-cross-20261121220858.bin",
+    "port": 4663
+  },
+  "amule_add": {
+    "rc": 126,
+    "stdout": "",
+    "stderr": " -C [-m <magicfiles>]\n       file [--help]\nUnexpected parameter 'ed2k://'\nUsage: amulecmd [--help] [-h <str>] [-p <num>] [-P <str>] [-f <str>] [-q] [-v] [-l <str>] [-w] [--create-config-from <str>] [--version] [-c <str>]\n  --help                    \tShow this help text.\n  -h, --host=<str>          \tHost where aMule is running. (default: localhost)\n  -p, --port=<num>          \taMule's port for External Connection. (default: 4712)\n  -P, --password=<str>      \tExternal Connection password.\n  -f, --config-file=<str>   \tRead configuration from file.\n  -q, --quiet               \tDo not print any output to stdout.\n  -v, --verbose             \tBe verbose - show also debug messages.\n  -l, --locale=<str>        \tSets program locale (language).\n  -w, --write-config        \tWrite command line options to config file.\n  --create-config-from=<str>\tCreates config file based on aMule's config file.\n  --version                 \tPrint program version.\n  -c, --command=<str>       \tExecute <str> and exit.\n"
+  },
+  "status": "FAIL",
+  "reason": "NameError: name 'cli_url' is not defined"
+}

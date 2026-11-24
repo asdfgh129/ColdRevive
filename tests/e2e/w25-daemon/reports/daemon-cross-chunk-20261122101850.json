@@ -1,0 +1,40 @@
+{
+  "schema": "coldrevive.fr25.daemon-cross-chunk/v1",
+  "generated_at_unix": 1795313930,
+  "scope": "RFC1918 LAN, real aMule 2.3.3, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-cross-20261122101850.bin",
+    "bytes": 9736192,
+    "sha256": "2c8da7e7c797cab2266c6dfc8875811239af3e4573b88521d1c650f2539e875c",
+    "part_size": 9728000,
+    "above_part_size": true
+  },
+  "checks": [
+    {
+      "name": "daemon_health",
+      "ok": true
+    },
+    {
+      "name": "link_real_hash_and_hashset_required",
+      "ok": true
+    },
+    {
+      "name": "serve_task_registered",
+      "ok": false
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-cross-20261122101850.bin",
+    "name": "w25-cross-20261122101850.bin",
+    "size": 9736192,
+    "file_id": "db45b3c0d739e40a671462010e4ec30d",
+    "ed2k_link": "ed2k://|file|w25-cross-20261122101850.bin|9736192|db45b3c0d739e40a671462010e4ec30d|/",
+    "hashset_required": true
+  },
+  "serve_started": {
+    "error": "监听 4663: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)"
+  },
+  "status": "FAIL",
+  "reason": "ed2k-serve 未登记任务: {'error': '监听 4663: Only one usage of each socket address (protocol/network address/port) is normally permitted. (os error 10048)'}"
+}

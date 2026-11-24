@@ -1,0 +1,90 @@
+02:01:28 scp rc=0 ''
+02:01:29 amule reload rc=0
+02:01:31 proxy listening 127.0.0.1:4663 -> 192.168.1.221:4662
+02:01:31 download id=ed2k-1795312891-download-0000
+02:01:31 proxy accepted ('127.0.0.1', 59766)
+02:01:31 C->S proto=0xe3 op=HELLO(0x1) len=62
+02:01:31 S->C proto=0xe3 op=HELLOANSWER(0x4c) len=122
+02:01:31 C->S proto=0xe3 op=REQUESTFILENAME(0x58) len=16
+02:01:31 S->C proto=0xe3 op=REQFILENAMEANSWER(0x59) len=48
+02:01:31 C->S proto=0xe3 op=HASHSETREQUEST(0x51) len=16
+02:01:31 S->C proto=0xe3 op=HASHSETANSWER(0x52) len=50
+02:01:31 C->S proto=0xe3 op=STARTUPLOADREQ(0x54) len=16
+02:01:31 S->C proto=0xe3 op=ACCEPTUPLOADREQ(0x55) len=0
+02:01:31 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:01:33 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=0..10240 bytes=10240
+02:01:35 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=10240..20480 bytes=10240
+02:01:36 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=20480..30720 bytes=10240
+02:01:38 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=30720..40960 bytes=10240
+02:01:39 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=40960..51200 bytes=10240
+02:01:41 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=51200..61440 bytes=10240
+02:01:42 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=61440..71680 bytes=10240
+02:01:44 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=71680..81920 bytes=10240
+02:01:45 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=81920..92160 bytes=10240
+02:01:46 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=92160..102400 bytes=10240
+02:01:47 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=102400..112640 bytes=10240
+02:01:48 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=112640..122880 bytes=10240
+02:01:50 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=122880..133120 bytes=10240
+02:01:51 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=133120..143360 bytes=10240
+02:01:52 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=143360..153600 bytes=10240
+02:01:53 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=153600..163840 bytes=10240
+02:01:54 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=163840..174080 bytes=10240
+02:01:55 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=174080..184320 bytes=10240
+02:01:56 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=184320..194560 bytes=10240
+02:01:57 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=194560..204800 bytes=10240
+02:01:57 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=204800..215040 bytes=10240
+02:01:58 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=215040..225280 bytes=10240
+02:01:59 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=225280..235520 bytes=10240
+02:02:00 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=235520..245760 bytes=10240
+02:02:01 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=245760..256000 bytes=10240
+02:02:01 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=256000..266240 bytes=10240
+02:02:02 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=266240..276480 bytes=10240
+02:02:03 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=276480..286720 bytes=10240
+02:02:03 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=286720..296960 bytes=10240
+02:02:04 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=296960..307200 bytes=10240
+02:02:05 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=307200..317440 bytes=10240
+02:02:06 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=317440..327680 bytes=10240
+02:02:06 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=327680..337920 bytes=10240
+02:02:07 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=337920..348160 bytes=10240
+02:02:08 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=348160..358400 bytes=10240
+02:02:08 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=358400..368640 bytes=10240
+02:02:09 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=368640..378880 bytes=10240
+02:02:10 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=378880..389120 bytes=10240
+02:02:10 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=389120..399360 bytes=10240
+02:02:11 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=399360..409600 bytes=10240
+02:02:11 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=409600..419840 bytes=10240
+02:02:12 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=419840..430080 bytes=10240
+02:02:13 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=430080..440320 bytes=10240
+02:02:13 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=440320..450560 bytes=10240
+02:02:14 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=450560..460800 bytes=10240
+02:02:14 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=460800..471040 bytes=10240
+02:02:15 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=471040..481280 bytes=10240
+02:02:15 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=481280..491520 bytes=10240
+02:02:16 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=491520..501760 bytes=10240
+02:02:17 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=501760..512000 bytes=10240
+02:02:17 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=512000..522240 bytes=10240
+02:02:18 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=522240..532480 bytes=10240
+02:02:18 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=532480..542720 bytes=10240
+02:02:19 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=542720..552960 bytes=10240
+02:02:24 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:27 S->C END TimeoutError: timed out
+02:02:27 S->C CLOSED total_payload=554476
+02:02:28 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:32 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:36 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:40 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:44 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:48 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:52 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:02:56 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:00 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:04 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:08 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:12 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:16 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:20 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:24 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:28 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(0, 184320), (184320, 368640), (368640, 552960)]
+02:03:31 C->S CLOSED total_payload=830
+02:03:31 task status=error error='read eD2k header: connection closed'
+02:03:31 result={"bytes_received": 552960, "blocks_received": 54, "hashset_verified": true, "completed": false, "hash_matches": false, "content_matches": false}

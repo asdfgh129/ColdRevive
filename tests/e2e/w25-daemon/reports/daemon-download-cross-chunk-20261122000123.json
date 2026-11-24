@@ -1,0 +1,107 @@
+{
+  "schema": "coldrevive.fr25.daemon-download-cross-chunk/v1",
+  "generated_at_unix": 1795276883,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 uploader, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-down-20261122000123.bin",
+    "bytes": 9736192,
+    "sha256": "28704c2220f0c30dcc6cb299ad22251b12636f8570516c2b63fea2f1e22b380a",
+    "md5": "c75f5e4626483786dbb0d5c8f6bd4dbc",
+    "part_size": 9728000
+  },
+  "checks": [
+    {
+      "name": "sample_shared_by_real_amule",
+      "ok": true
+    },
+    {
+      "name": "daemon_health",
+      "ok": true
+    },
+    {
+      "name": "download_task_registered",
+      "ok": true
+    },
+    {
+      "name": "hashset_verified",
+      "ok": true
+    },
+    {
+      "name": "download_completed",
+      "ok": false
+    },
+    {
+      "name": "hash_matches",
+      "ok": false
+    },
+    {
+      "name": "content_matches",
+      "ok": false
+    },
+    {
+      "name": "bytes_received_covers_sample",
+      "ok": false
+    },
+    {
+      "name": "jsonrpc_exposes_same_task",
+      "ok": true
+    },
+    {
+      "name": "real_amule_file_size",
+      "ok": true
+    }
+  ],
+  "scp": {
+    "rc": 0,
+    "stderr": ""
+  },
+  "reload_shared": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "download_started": {
+    "schema": "coldrevive.fr25.daemon-task-started/v1",
+    "id": "ed2k-1795276888-download-0000",
+    "kind": "download",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-down-20261122000123.bin",
+    "host": "192.168.1.221:4662"
+  },
+  "download_result": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795276888-download-0000",
+    "kind": "download",
+    "status": "error",
+    "created_unix": 1795276888,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-down-20261122000123.bin",
+    "host": "192.168.1.221:4662",
+    "port": 4662,
+    "result": {
+      "host": "192.168.1.221:4662",
+      "file_name": "w25-down-20261122000123.bin",
+      "file_size": 9736192,
+      "file_id": "30b6aa1ffb0e683416c245096cec3298",
+      "ed2k_link": "ed2k://|file|w25-down-20261122000123.bin|9736192|30b6aa1ffb0e683416c245096cec3298|/",
+      "peer_hello": true,
+      "peer_filename": "w25-down-20261122000123.bin",
+      "hashset_verified": true,
+      "queue_rank_seen": "",
+      "bytes_received": 0,
+      "blocks_received": 0,
+      "hash_matches": false,
+      "content_matches": false,
+      "completed": false,
+      "log_tail": [
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 84, opcode_name: \"OP_STARTUPLOADREQ\", payload_len: 16 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 82, opcode_name: \"OP_HASHSETANSWER\", payload_len: 50 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 81, opcode_name: \"OP_HASHSETREQUEST\", payload_len: 16 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 89, opcode_name: \"OP_REQFILENAMEANSWER\", payload_len: 45 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 88, opcode_name: \"OP_REQUESTFILENAME\", payload_len: 16 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 76, opcode_name: \"OP_HELLOANSWER\", payload_len: 122 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 1, opcode_name: \"OP_HELLO\", payload_len: 62 }"
+      ]
+    },
+    "error": "read eD2k header: connection closed"
+  },
+  "remote_size_ok": true,
+  "status": "FAIL"
+}

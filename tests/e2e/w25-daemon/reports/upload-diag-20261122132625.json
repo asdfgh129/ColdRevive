@@ -1,0 +1,509 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795325185,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "sample": {
+    "name": "w25-diag-20261122132625.bin",
+    "bytes": 9736192,
+    "md5": "9b589f57f9afd7733908c0b1d956e127"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.4,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.7,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.1,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 10.5,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 13.9,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 17.3,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 20.7,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 24.1,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 27.5,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 30.9,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 34.3,
+      "amule_percent": 10.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 7,
+      "request_pairs": 21,
+      "sends": 145,
+      "bytes_sent": 1482752,
+      "completed": 9,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122132625.bin",
+    "name": "w25-diag-20261122132625.bin",
+    "size": 9736192,
+    "file_id": "8a4941c86a632f97fe3d75fb6d154f23",
+    "ed2k_link": "ed2k://|file|w25-diag-20261122132625.bin|9736192|8a4941c86a632f97fe3d75fb6d154f23|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795325185-serve-0000",
+  "amule_cancelled_before": [],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": 10.1,
+  "accounting": {
+    "requests": 7,
+    "request_pairs": 21,
+    "sends": 145,
+    "bytes_sent": 1482752,
+    "blocks_completed": 9,
+    "blocks_pending_at_stop": 6,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": [
+      {
+        "start": 0,
+        "end_incl": 184319,
+        "bytes": 0
+      },
+      {
+        "start": 184320,
+        "end_incl": 368639,
+        "bytes": 0
+      },
+      {
+        "start": 368640,
+        "end_incl": 552959,
+        "bytes": 0
+      },
+      {
+        "start": 552960,
+        "end_incl": 737279,
+        "bytes": 0
+      },
+      {
+        "start": 737280,
+        "end_incl": 921599,
+        "bytes": 0
+      },
+      {
+        "start": 921600,
+        "end_incl": 1105919,
+        "bytes": 0
+      }
+    ]
+  },
+  "events_tail": [
+    {
+      "kind": "request",
+      "start": 9728000,
+      "end": 9736192,
+      "block": [
+        9728000,
+        9736191
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 0,
+      "end": 184320,
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        9728000,
+        9736191
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 0,
+      "end": 184320,
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1105920,
+      "end": 1290240,
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1105920,
+      "end": 1290240,
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1290240,
+      "end": 1474560,
+      "block": [
+        1290240,
+        1474559
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1290240,
+        1474559
+      ]
+    }
+  ],
+  "recv_q_at_stop": "CLOSE-WAIT 492961 0               192.168.1.221:56236          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 8A4941C86A632F97FE3D75FB6D154F23 w25-diag-20261122132625.bin\n > \t [10.1%]    1/   1     (01) - Downloading - 001.part.met - Auto [Hi] - 94.55 kB/s\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795325185-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795325185,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122132625.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "STALLED_WITH_PENDING_BLOCKS"
+}

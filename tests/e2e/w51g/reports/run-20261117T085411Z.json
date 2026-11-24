@@ -1,0 +1,1145 @@
+{
+  "schema": "coldrevive.w51g.amule-wan-kad/v1",
+  "generated_at": "2026-11-17T08:57:36+00:00",
+  "status": "fail",
+  "summary": "14/18",
+  "checks": [
+    {
+      "label": "载体：221 可 ssh",
+      "ok": true,
+      "actual": ""
+    },
+    {
+      "label": "载体：222 可 ssh 且有 python3",
+      "ok": true,
+      "actual": "__ok__\n/usr/bin/python3"
+    },
+    {
+      "label": "aMule 在监听 4662/TCP 与 4672/UDP",
+      "ok": true,
+      "actual": "count=2"
+    },
+    {
+      "label": "公网 TCP 4662 可连（222 → 公网地址）",
+      "ok": true,
+      "actual": "112.5.32.34:2051"
+    },
+    {
+      "label": "221 看到的对端是公网 IP（不是 LAN 捷径）",
+      "ok": true,
+      "actual": "对端=['112.5.32.34:2051'] 期望含 112.5.32.34"
+    },
+    {
+      "label": "探针已在 222 就位且自检通过（--skip-build）",
+      "ok": true,
+      "actual": "{\"schema\":\"coldrevive.m0.s2-kad-wire-selftest/v1\",\"generated_at\":\"2026-11-17T08:"
+    },
+    {
+      "label": "抓包：UDP 4672 入向来自公网 IP",
+      "ok": false,
+      "actual": "0 行相关报文"
+    },
+    {
+      "label": "抓包：aMule 回包指向同一公网源（非 LAN 捷径）",
+      "ok": false,
+      "actual": "无对应回包"
+    },
+    {
+      "label": "抓包：UDP 4672 入向来自公网 IP",
+      "ok": true,
+      "actual": "112.5.32.34.2058 > 192.168.1.221.4672: UDP, length 2"
+    },
+    {
+      "label": "抓包：aMule 回包指向同一公网源（非 LAN 捷径）",
+      "ok": true,
+      "actual": "192.168.1.221.4672 > 112.5.32.34.2058: UDP, length 523"
+    },
+    {
+      "label": "公网 KAD：PUBLISH ACK + SEARCH 取回（2/2 轮）",
+      "ok": true,
+      "actual": "verdicts=['wan_confirmed_publish_then_retrieve', 'wan_confirmed_publish_then_retrieve']"
+    },
+    {
+      "label": "公网 KAD：索引键在 SEARCHTOLERANCE 内（按构造排除越界分支）",
+      "ok": true,
+      "actual": "distances=[0, 0]"
+    },
+    {
+      "label": "负对照：未监听端口零回包（ack 不是凭空造的）",
+      "ok": true,
+      "actual": "reachable=False"
+    },
+    {
+      "label": "LAN 对照：PUBLISH 被 ACK",
+      "ok": true,
+      "actual": "verdict=confirmed_publish_then_retrieve"
+    },
+    {
+      "label": "LAN 对照：SEARCH 取回本轮描述符",
+      "ok": true,
+      "actual": "answers=1"
+    },
+    {
+      "label": "命名空间：两个键各自写入成功（含重试明细）",
+      "ok": true,
+      "actual": "A=True B=True tries=1/1"
+    },
+    {
+      "label": "命名空间：四次交叉回查均有应答（不是靠超时凑出的「无别名」）",
+      "ok": false,
+      "actual": "answered=[False, False, False, False]"
+    },
+    {
+      "label": "命名空间：键 A 只回 A、键 B 只回 B（无别名）",
+      "ok": false,
+      "actual": "A:A=False A:B=False B:A=False B:B=False"
+    }
+  ],
+  "target": "112.5.60.4:4672/udp (aMule) | 192.168.1.221:4662/tcp",
+  "public_kad_contacted": true,
+  "target_scope": "single_host_through_wan",
+  "g3_verdict": "not_run",
+  "evidence_valid_for_pass": false,
+  "observations": {
+    "wan": [
+      {
+        "schema": "coldrevive.m0.s2-kad-wan-index-probe/v1",
+        "generated_at": "2026-11-17T08:54:21Z",
+        "mode": "wan-index-probe",
+        "target": "112.5.60.4:4672",
+        "target_scope": "single_host_through_wan",
+        "target_is_private": false,
+        "public_kad_contacted": true,
+        "attested": true,
+        "evidence_valid_for_pass": false,
+        "s2_status": "not_run",
+        "rate_limit_pps": 0.2,
+        "label": "w51g-wan-085411-0",
+        "key_source": "near_remote_id",
+        "key_distance_top32": 0,
+        "searchtolerance": 16777216,
+        "key_in_tolerance": true,
+        "local_kad_id": "5085e7df5e0861defa7cb23860978605",
+        "peer_kad_id": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "peer_id_source": "bootstrap_res",
+        "bootstrap_self_id": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "hello_id": "",
+        "hello_id_mismatch": false,
+        "peer_kad_version": 0,
+        "peer_udp_from_tag": 0,
+        "key_logical": "w51g-wan-085411-0:1794905661344",
+        "key_id": "27d3ccfa6c729e4e4fed8262b21fda17",
+        "descriptor_id": "33fbd38e73641b56e6f2b03ae9484c04",
+        "reachable": true,
+        "bootstrap_contacts": 20,
+        "bootstrap_rtt_ms": 478.14729900000003,
+        "bootstrap_error": "",
+        "hello_rtt_ms": 0,
+        "hello_error": "Resource temporarily unavailable (os error 11)",
+        "publish_sent": true,
+        "publish_frame_bytes": 256,
+        "publish_frame_sha1": "e44327d3ccfa6c729e4e4fed8262b21fda17010033fbd38e73641b56e6f2b03ae9484c0405020100012d00436f6c645265766976655f56313a773531672d77616e2d3038353431312d303a313739343930353636313334340301000200040000080100fcf7d5021800436f6c645265766976655f56313a64657363726970746f725300763d313b6e6f64653d773531672d77616e2d3038353431312d303b77616b655f706f72743d35343737353b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+        "publish_acked": true,
+        "publish_load": 0,
+        "publish_rtt_ms": 326.61292,
+        "publish_error": "",
+        "search_responded": true,
+        "search_rtt_ms": 484.348791,
+        "search_answers": 8,
+        "answers_detail": [
+          {
+            "source_id": "41011737a3f23c61befa702070609a07",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-4:1794905291762"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:60527"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-4;wake_port=60527;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842918"
+              }
+            ]
+          },
+          {
+            "source_id": "27a2cd3743db2529e49c23ae70de28b0",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:g3-amule-wan-c:1794904981086"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:46768"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=g3-amule-wan-c;wake_port=46768;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842877"
+              }
+            ]
+          },
+          {
+            "source_id": "4f6788429ae35b910698e96c95d792eb",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-5:1794905319783"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:60657"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-5;wake_port=60657;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842894"
+              }
+            ]
+          },
+          {
+            "source_id": "da668f656ee7466e01e31d912702f84c",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:w51g-wan-084444-0:1794905093747"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:42951"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=w51g-wan-084444-0;wake_port=42951;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843252"
+              }
+            ]
+          },
+          {
+            "source_id": "10d9c786b3464af9095a9e7f052c0e50",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-1:1794905208567"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:39197"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-1;wake_port=39197;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843085"
+              }
+            ]
+          },
+          {
+            "source_id": "ac375988e62b8c70b062ce7e87d1d267",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-2:1794905236053"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:53355"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-2;wake_port=53355;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843002"
+              }
+            ]
+          },
+          {
+            "source_id": "33fbd38e73641b56e6f2b03ae9484c04",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:w51g-wan-085411-0:1794905661344"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:54775"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=w51g-wan-085411-0;wake_port=54775;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842877"
+              }
+            ]
+          },
+          {
+            "source_id": "bbeb86c2e4243fbec9cff785fa50c5fc",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-3:1794905263499"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:46902"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-3;wake_port=46902;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842952"
+              }
+            ]
+          }
+        ],
+        "our_entry_returned": true,
+        "namespace_tag_matches": true,
+        "sel_label_present": true,
+        "search_error": "",
+        "verdict": "wan_confirmed_publish_then_retrieve",
+        "raw_records": [
+          {
+            "at_unix_ms": 1794905661344,
+            "at_utc": "2026-11-17T08:54:21Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x01",
+            "opcode_name": "KADEMLIA2_BOOTSTRAP_REQ",
+            "bytes": 2,
+            "wire_hex": "e401",
+            "detail": "wan-index: BOOTSTRAP_REQ"
+          },
+          {
+            "at_unix_ms": 1794905661822,
+            "at_utc": "2026-11-17T08:54:21Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x09",
+            "opcode_name": "KADEMLIA2_BOOTSTRAP_RES",
+            "bytes": 523,
+            "wire_hex": "e40927d3ccfa6c729e4e4fed8262b21fda163612081400a38e28fc95c05055b4c7523d6cba941fc203a55f4012361208c37027fc99dc08f88d175c35b0baea96ce3a4f7c4d75361208141a25fc755753a2748795dba2c4bdb4368a104fdc1fae3909e36813fced382aee6239a1c2be86a3131d872c5d80ae76ae0887ea0efc6484429c627b592b0a2f5749adb592b0c92e2c9809608f09fc0c8e092c983779d7b9afe1c39a55974fee860ff308fc773bfc6ad33b3f038b98c2f2eea0dd236208cc7d177d170aedcd30fced8b0d8470f1a7d4f5507880c347fbb24012361208e5202dfca148edfc910e123e3c8eab0a03f32c5d9fad9cad090cc82dfc8b8fd237e0a3e22816c6136370fd250e4012361208d720a7f16900d4433c0454cca58119df33b772534515451508d8b68ff1f646f419c1885b6fd84948178de5c66ffc3836120897158af1b6c9e5216347a53e6351affda26be7c3401236120af54385f1f107b265fb5096fe3a2d21548d25125f4012361208401f4ef109139d35101d386be01f8f16b59329513912391209447945f1a3ea83e281e7648116c56211dadc5e0595f281f208100643f1d9c923e74620c83e3a562e41faee204f4012361208fca71ff13a4d8c7dfeeace99c00457905d5a755d4012361209661cf5f15689dc42937811bc91d09c3b14e4145f40123612081cc2bef191bcfa929a30d7d36211c010937420c318120e1208",
+            "detail": "wan-index: BOOTSTRAP_RES"
+          },
+          {
+            "at_unix_ms": 1794905666344,
+            "at_utc": "2026-11-17T08:54:26Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x11",
+            "opcode_name": "KADEMLIA2_HELLO_REQ",
+            "bytes": 28,
+            "wire_hex": "e4115085e7df5e0861defa7cb2386097860500000801080100fcf7d5",
+            "detail": "wan-index: HELLO_REQ"
+          },
+          {
+            "at_unix_ms": 1794905671344,
+            "at_utc": "2026-11-17T08:54:31Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x43",
+            "opcode_name": "KADEMLIA2_PUBLISH_KEY_REQ",
+            "bytes": 256,
+            "wire_hex": "e44327d3ccfa6c729e4e4fed8262b21fda17010033fbd38e73641b56e6f2b03ae9484c0405020100012d00436f6c645265766976655f56313a773531672d77616e2d3038353431312d303a313739343930353636313334340301000200040000080100fcf7d5021800436f6c645265766976655f56313a64657363726970746f725300763d313b6e6f64653d773531672d77616e2d3038353431312d303b77616b655f706f72743d35343737353b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+            "detail": "wan-index: PUBLISH_KEY_REQ"
+          },
+          {
+            "at_unix_ms": 1794905671671,
+            "at_utc": "2026-11-17T08:54:31Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x4b",
+            "opcode_name": "KADEMLIA2_PUBLISH_RES",
+            "bytes": 19,
+            "wire_hex": "e44b27d3ccfa6c729e4e4fed8262b21fda1700",
+            "detail": "wan-index: PUBLISH_RES"
+          },
+          {
+            "at_unix_ms": 1794905676344,
+            "at_utc": "2026-11-17T08:54:36Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x33",
+            "opcode_name": "KADEMLIA2_SEARCH_KEY_REQ",
+            "bytes": 20,
+            "wire_hex": "e43327d3ccfa6c729e4e4fed8262b21fda170000",
+            "detail": "wan-index: SEARCH_KEY_REQ"
+          },
+          {
+            "at_unix_ms": 1794905676828,
+            "at_utc": "2026-11-17T08:54:36Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x3b",
+            "opcode_name": "KADEMLIA2_SEARCH_RES",
+            "bytes": 591,
+            "wire_hex": "e53b78da53bf7ce6574ed13c3fffb74d499be46f89a9a3f2c539181c19c5cd177fb249dcf7ab40a12061163b1b132303a32283737e4e4a506a5966596a7c98a155516a81ae8995a1b9a589a581a991a5a1b9991107230313030b90fc93ff8649024d7d4a6a7172516641497e913b4399ada1755e7e4aaa2dd810ebf2c4ecd4f882fca2125b33a051e6d60545f925f9f1693989e9c5b64925baf9793995d6997969f91989c519f10545a9699915b679f979a94ce26876e425e6a616172426a7f2a149303332182f636064545f74d6dcf9b6aae69339caeb0aee696c00fb4c0b4d71bab16e626e694eaa6e79629e6e32d48b26961686061666082f6ed886c78b01082fa29a86e457133373330b1af9b516e857fff40ea7598fa327b2cd789933f5faa4d73863d114168bc68696e616c6082f7e2421164d5162d1cc9456b1d807f4d9adb4fed4bce76e798c8f6527aa33fdf001fb4c174d71b9a9613a38cc0d2c4c8040d700e64b034b63731373842f8f2fc7e3cb60842f310c448e4b234b53431af9f80b2323a3c0cde36d9bddbc7e7246cdab67d5e10bc0199786f01c6960616a86e44bd999c4c7a52192cf8c2d818982463ef305fa6c8d7964c733ed9e820d49e7eada2f5e4ac7e93323b8cf8c81a504522acdbe40bccf8c907c666a6c6c6a4a239ffd02a652e3df97fb8a53a4c39e7dda60f5d2c38785502a3535313444a452333343631313842fbf5f253995420c44f6b189b9b9290d4b9cddafdb0e3d51b1df77f2fcf7d65f0147ffe08c4b63785c9a199b585a227c69b69df8b83446294b2d0d8c68e4b313409f010038825b68",
+            "detail": "wan-index: SEARCH_RES"
+          }
+        ],
+        "note": "单目标、经真实 NAT/公网：BOOTSTRAP 证明 UDP 双向通，HELLO 取对端 KadID，索引键贴着该 ID 取（top32 距离 0）以排除 SEARCHTOLERANCE 分支，再做 PUBLISH/SEARCH。PUBLISH 静默时只剩 firewalled 一个解释；这是行为证据，不读 aMule 自报状态。不是公共 KAD 网络样本，不构成 S2/G3 结论。"
+      },
+      {
+        "schema": "coldrevive.m0.s2-kad-wan-index-probe/v1",
+        "generated_at": "2026-11-17T08:54:40Z",
+        "mode": "wan-index-probe",
+        "target": "112.5.60.4:4672",
+        "target_scope": "single_host_through_wan",
+        "target_is_private": false,
+        "public_kad_contacted": true,
+        "attested": true,
+        "evidence_valid_for_pass": false,
+        "s2_status": "not_run",
+        "rate_limit_pps": 0.2,
+        "label": "w51g-wan-085411-1",
+        "key_source": "near_remote_id",
+        "key_distance_top32": 0,
+        "searchtolerance": 16777216,
+        "key_in_tolerance": true,
+        "local_kad_id": "5085e7df5e0861defa7cb23860978605",
+        "peer_kad_id": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "peer_id_source": "bootstrap_res",
+        "bootstrap_self_id": "27d3ccfa6c729e4e4fed8262b21fda16",
+        "hello_id": "",
+        "hello_id_mismatch": false,
+        "peer_kad_version": 0,
+        "peer_udp_from_tag": 0,
+        "key_logical": "w51g-wan-085411-1:1794905680886",
+        "key_id": "27d3ccfa6c729e4e4fed8262b21fda17",
+        "descriptor_id": "a0fa168f95dbfb394f5d78585438b6ef",
+        "reachable": true,
+        "bootstrap_contacts": 20,
+        "bootstrap_rtt_ms": 506.42277700000005,
+        "bootstrap_error": "",
+        "hello_rtt_ms": 0,
+        "hello_error": "Resource temporarily unavailable (os error 11)",
+        "publish_sent": true,
+        "publish_frame_bytes": 256,
+        "publish_frame_sha1": "e44327d3ccfa6c729e4e4fed8262b21fda170100a0fa168f95dbfb394f5d78585438b6ef05020100012d00436f6c645265766976655f56313a773531672d77616e2d3038353431312d313a313739343930353638303838360301000200040000080100fc7ac4021800436f6c645265766976655f56313a64657363726970746f725300763d313b6e6f64653d773531672d77616e2d3038353431312d313b77616b655f706f72743d35303239383b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+        "publish_acked": true,
+        "publish_load": 0,
+        "publish_rtt_ms": 758.881922,
+        "publish_error": "",
+        "search_responded": true,
+        "search_rtt_ms": 323.679258,
+        "search_answers": 9,
+        "answers_detail": [
+          {
+            "source_id": "41011737a3f23c61befa702070609a07",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-4:1794905291762"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:60527"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-4;wake_port=60527;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842918"
+              }
+            ]
+          },
+          {
+            "source_id": "27a2cd3743db2529e49c23ae70de28b0",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:g3-amule-wan-c:1794904981086"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:46768"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=g3-amule-wan-c;wake_port=46768;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842877"
+              }
+            ]
+          },
+          {
+            "source_id": "4f6788429ae35b910698e96c95d792eb",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-5:1794905319783"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:60657"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-5;wake_port=60657;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842894"
+              }
+            ]
+          },
+          {
+            "source_id": "da668f656ee7466e01e31d912702f84c",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:w51g-wan-084444-0:1794905093747"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:42951"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=w51g-wan-084444-0;wake_port=42951;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843252"
+              }
+            ]
+          },
+          {
+            "source_id": "10d9c786b3464af9095a9e7f052c0e50",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-1:1794905208567"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:39197"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-1;wake_port=39197;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843085"
+              }
+            ]
+          },
+          {
+            "source_id": "ac375988e62b8c70b062ce7e87d1d267",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-2:1794905236053"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:53355"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-2;wake_port=53355;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16843002"
+              }
+            ]
+          },
+          {
+            "source_id": "33fbd38e73641b56e6f2b03ae9484c04",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:w51g-wan-085411-0:1794905661344"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:54775"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=w51g-wan-085411-0;wake_port=54775;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842877"
+              }
+            ]
+          },
+          {
+            "source_id": "a0fa168f95dbfb394f5d78585438b6ef",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:w51g-wan-085411-1:1794905680886"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:50298"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=w51g-wan-085411-1;wake_port=50298;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842863"
+              }
+            ]
+          },
+          {
+            "source_id": "bbeb86c2e4243fbec9cff785fa50c5fc",
+            "tags": [
+              {
+                "name": "\\x01",
+                "value": "str:ColdRevive_V1:rep-3:1794905263499"
+              },
+              {
+                "name": "\\x02",
+                "value": "u16:1024"
+              },
+              {
+                "name": "\\xfc",
+                "value": "u16:46902"
+              },
+              {
+                "name": "ColdRevive_V1:descriptor",
+                "value": "str:v=1;node=rep-3;wake_port=46902;proto_flags=bt-only;infohash_prefix=none"
+              },
+              {
+                "name": "ColdRevive_V1:namespace",
+                "value": "str:ColdRevive_V1:"
+              },
+              {
+                "name": "3",
+                "value": "u32:16842952"
+              }
+            ]
+          }
+        ],
+        "our_entry_returned": true,
+        "namespace_tag_matches": true,
+        "sel_label_present": true,
+        "search_error": "",
+        "verdict": "wan_confirmed_publish_then_retrieve",
+        "raw_records": [
+          {
+            "at_unix_ms": 1794905680886,
+            "at_utc": "2026-11-17T08:54:40Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x01",
+            "opcode_name": "KADEMLIA2_BOOTSTRAP_REQ",
+            "bytes": 2,
+            "wire_hex": "e401",
+            "detail": "wan-index: BOOTSTRAP_REQ"
+          },
+          {
+            "at_unix_ms": 1794905681393,
+            "at_utc": "2026-11-17T08:54:41Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x09",
+            "opcode_name": "KADEMLIA2_BOOTSTRAP_RES",
+            "bytes": 523,
+            "wire_hex": "e40927d3ccfa6c729e4e4fed8262b21fda163612081400628cbaf978c0cdb88d2b57b289ee0579e5401b4fdc06db060aaa40adf93bb351009c13f2040ad2a011f4ec755b41123e120abbd4adf9795c3cd11c9cae746c95aed69cce315d4012361208215baff912ca2ab66a95f069cfb5006af4bf744f28161e1608a0e4b4f9077282e03a9d417374b46885ca771a5846c545c5094bf3b4f9a9fb1f6039128b490c02b1902739062e2114fdd90987f7b6f92790b989d6f71d1448a6e609d103ec4df4b5361208c4abb7f9d1f8cd00a0cd7a45f78c63ed1d02335d1606c30608b14ab1f9f7483e08a8fdc68f5c21a79cc97240575efa5dfa08c35eb1f93fe4db8221379deab624936d4ee3b95c401236120a009eaef457ba1023fab45883829b561137de075740123612082589e8f4416122cbf76f1b38872065c6763ba85afa2ef92e09c20deaf46741a42489d54377a2e7c21b42be744f7ca2aab20aa846e4f47cbcac1aaaf93da74d4a1738f71e5852e8fd010009e092d8f41b0383f6749d856904d7efc34ed413586dc699b40af059bcf42dc9ea37acc37068b698b140324f894f8abd271609df8ab5f462469daae9cb20a2fb99413c8b2eb72520411641081127abf4658fa7b8f4b9c366c7c4671b2e542c51686bd8c1084a3c94f498233fc570b8394afb2e4e446462ab58535818d209f40890eeb83531ead8ff2bbb54b2fd91452822724012361208",
+            "detail": "wan-index: BOOTSTRAP_RES"
+          },
+          {
+            "at_unix_ms": 1794905685886,
+            "at_utc": "2026-11-17T08:54:45Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x11",
+            "opcode_name": "KADEMLIA2_HELLO_REQ",
+            "bytes": 28,
+            "wire_hex": "e4115085e7df5e0861defa7cb2386097860500000801080100fc7ac4",
+            "detail": "wan-index: HELLO_REQ"
+          },
+          {
+            "at_unix_ms": 1794905690886,
+            "at_utc": "2026-11-17T08:54:50Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x43",
+            "opcode_name": "KADEMLIA2_PUBLISH_KEY_REQ",
+            "bytes": 256,
+            "wire_hex": "e44327d3ccfa6c729e4e4fed8262b21fda170100a0fa168f95dbfb394f5d78585438b6ef05020100012d00436f6c645265766976655f56313a773531672d77616e2d3038353431312d313a313739343930353638303838360301000200040000080100fc7ac4021800436f6c645265766976655f56313a64657363726970746f725300763d313b6e6f64653d773531672d77616e2d3038353431312d313b77616b655f706f72743d35303239383b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+            "detail": "wan-index: PUBLISH_KEY_REQ"
+          },
+          {
+            "at_unix_ms": 1794905691645,
+            "at_utc": "2026-11-17T08:54:51Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x4b",
+            "opcode_name": "KADEMLIA2_PUBLISH_RES",
+            "bytes": 19,
+            "wire_hex": "e44b27d3ccfa6c729e4e4fed8262b21fda1700",
+            "detail": "wan-index: PUBLISH_RES"
+          },
+          {
+            "at_unix_ms": 1794905695886,
+            "at_utc": "2026-11-17T08:54:55Z",
+            "endpoint": "wan-index-probe",
+            "direction": "send",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x33",
+            "opcode_name": "KADEMLIA2_SEARCH_KEY_REQ",
+            "bytes": 20,
+            "wire_hex": "e43327d3ccfa6c729e4e4fed8262b21fda170000",
+            "detail": "wan-index: SEARCH_KEY_REQ"
+          },
+          {
+            "at_unix_ms": 1794905696210,
+            "at_utc": "2026-11-17T08:54:56Z",
+            "endpoint": "wan-index-probe",
+            "direction": "recv",
+            "peer": "112.5.60.4:4672",
+            "opcode": "0x3b",
+            "opcode_name": "KADEMLIA2_SEARCH_RES",
+            "bytes": 637,
+            "wire_hex": "e53b78da53bf7ce6574ed13c3fffb74d499be46f89a9a3f2c539191c19c5cd177fb249dcf7ab40a12061163b1b132303a32283737e4e4a506a5966596a7c98a155516a81ae8995a1b9a589a581a991a5a1b9991107230313030b90fc93ff8649024d7d4a6a7172516641497e913b4399ada1755e7e4aaa2dd810ebf2c4ecd4f882fca2125b33a051e6d60545f925f9f1693989e9c5b64925baf9793995d6997969f91989c519f10545a9699915b679f979a94ce26876e425e6a616172426a7f2a149303332182f636064545f74d6dcf9b6aae69339caeb0aee696c00fb4c0b4d71bab16e626e694eaa6e79629e6e32d48b26961686061666082f6ed886c78b01082fa29a86e457133373330b1af9b516e857fff40ea7598fa327b2cd789933f5faa4d73863d114168bc68696e616c6082f7e2421164d5162d1cc9456b1d807f4d9adb4fed4bce76e798c8f6527aa33fdf001fb4c174d71b9a9613a38cc0d2c4c8040d700e64b034b63731373842f8f2fc7e3cb60842f310c448e4b234b53431af9f80b2323a3c0cde36d9bddbc7e7246cdab67d5e10bc0199786f01c6960616a86e44bd999c4c7a52192cf8c2d818982463ef305fa6c8d7964c733ed9e820d49e7eada2f5e4ac7e93323b8cf8c81a504522acdbe40bccf8c907c666a6c6c6a4a239ffd02a652e3df97fb8a53a4c39e7dda60f5d2c38785502a3535313444a452333343631313842fbf5f253995420c44f6b189b9b9290d4b9c05bfc4faa7defe6de91f5b111162b1ed3d513e86a758330b030be402b6ea08793e464ebda6064696b42a63f3813edefdbaedd01315fb7d27cf7f6ffd1570f40fced46b0c4fbd66c6269696085f9a6d273ef51aa3d41e96064634f2d909a0cf000fc2a861",
+            "detail": "wan-index: SEARCH_RES"
+          }
+        ],
+        "note": "单目标、经真实 NAT/公网：BOOTSTRAP 证明 UDP 双向通，HELLO 取对端 KadID，索引键贴着该 ID 取（top32 距离 0）以排除 SEARCHTOLERANCE 分支，再做 PUBLISH/SEARCH。PUBLISH 静默时只剩 firewalled 一个解释；这是行为证据，不读 aMule 自报状态。不是公共 KAD 网络样本，不构成 S2/G3 结论。"
+      }
+    ],
+    "lan": {
+      "schema": "coldrevive.m0.s2-kad-lan-index-probe/v1",
+      "generated_at": "2026-11-17T08:55:01Z",
+      "mode": "lan-index-probe",
+      "target": "192.168.1.221:4672",
+      "target_is_private": true,
+      "public_kad_contacted": false,
+      "evidence_valid_for_pass": false,
+      "s2_status": "not_run",
+      "publish_sent": true,
+      "search_only": false,
+      "label": "w51g-lan-1794905701",
+      "key_source": "namespaced",
+      "rate_limit_pps": 0.2,
+      "local_kad_id": "0508706197bbe8ce2af30d27149cd6ed",
+      "key_logical": "w51g-lan-1794905701:1794905701288",
+      "key_id": "9f0e34f26862601d15002cf6171d5a7d",
+      "descriptor_id": "65bf07f9077faf0a7fead300a9ce0229",
+      "publish_frame_bytes": 260,
+      "publish_frame_hex": "e4439f0e34f26862601d15002cf6171d5a7d010065bf07f9077faf0a7fead300a9ce022905020100012f00436f6c645265766976655f56313a773531672d6c616e2d313739343930353730313a313739343930353730313238380301000200040000080100fc6df1021800436f6c645265766976655f56313a64657363726970746f725500763d313b6e6f64653d773531672d6c616e2d313739343930353730313b77616b655f706f72743d36313830353b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+      "distance_top32": 2584102035,
+      "lan_bypass_required": true,
+      "reachable": true,
+      "bootstrap_contacts": 20,
+      "bootstrap_rtt_ms": 197.73489999999998,
+      "bootstrap_error": "",
+      "publish_acked": true,
+      "publish_key_echo_matches": true,
+      "publish_load": 1,
+      "publish_rtt_ms": 541.398,
+      "publish_error": "",
+      "search_responded": true,
+      "search_answers": 1,
+      "answers_detail": [
+        {
+          "source_id": "65bf07f9077faf0a7fead300a9ce0229",
+          "tags": [
+            {
+              "name": "\\x01",
+              "value": "str:ColdRevive_V1:w51g-lan-1794905701:1794905701288"
+            },
+            {
+              "name": "\\x02",
+              "value": "u16:1024"
+            },
+            {
+              "name": "\\xfc",
+              "value": "u16:61805"
+            },
+            {
+              "name": "ColdRevive_V1:descriptor",
+              "value": "str:v=1;node=w51g-lan-1794905701;wake_port=61805;proto_flags=bt-only;infohash_prefix=none"
+            },
+            {
+              "name": "ColdRevive_V1:namespace",
+              "value": "str:ColdRevive_V1:"
+            },
+            {
+              "name": "3",
+              "value": "u32:16842918"
+            }
+          ]
+        }
+      ],
+      "sel_label_present": true,
+      "our_entry_returned": true,
+      "namespace_tag_matches": true,
+      "tag_bisect": [],
+      "search_attempts": [
+        {
+          "attempt": 0,
+          "search_ok": true,
+          "rtt_ms": 322.5743,
+          "answers": 1,
+          "target_echo_matches": true,
+          "our_descriptor_returned": true,
+          "label_present": true,
+          "namespace_tag_matches": true,
+          "responder_id": "27d3ccfa6c729e4e4fed8262b21fda16"
+        }
+      ],
+      "verdict": "confirmed_publish_then_retrieve",
+      "raw_records": [
+        {
+          "at_unix_ms": 1794905701288,
+          "at_utc": "2026-11-17T08:55:01Z",
+          "endpoint": "lan-index-probe",
+          "direction": "send",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x01",
+          "opcode_name": "KADEMLIA2_BOOTSTRAP_REQ",
+          "bytes": 2,
+          "wire_hex": "e401",
+          "detail": "lan-index: BOOTSTRAP_REQ"
+        },
+        {
+          "at_unix_ms": 1794905701486,
+          "at_utc": "2026-11-17T08:55:01Z",
+          "endpoint": "lan-index-probe",
+          "direction": "recv",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x09",
+          "opcode_name": "KADEMLIA2_BOOTSTRAP_RES",
+          "bytes": 523,
+          "wire_hex": "e40927d3ccfa6c729e4e4fed8262b21fda163612081400628cbaf978c0cdb88d2b57b289ee0579e5401b4fdc06db060aaa40adf93bb351009c13f2040ad2a011f4ec755b41123e120abbd4adf9795c3cd11c9cae746c95aed69cce315d4012361208215baff912ca2ab66a95f069cfb5006af4bf744f28161e1608a0e4b4f9077282e03a9d417374b46885ca771a5846c545c5094bf3b4f9a9fb1f6039128b490c02b1902739062e2114fdd90987f7b6f92790b989d6f71d1448a6e609d103ec4df4b5361208c4abb7f9d1f8cd00a0cd7a45f78c63ed1d02335d1606c30608b14ab1f9f7483e08a8fdc68f5c21a79cc97240575efa5dfa08c35eb1f93fe4db8221379deab624936d4ee3b95c401236120a2ae030f2f25d638e8f0b466702b2940ee44d20537256685609a91745f233029d9a89943864218a5cba049a2659a1239723095a7e57f201e58e69283f210f061f36c4c676fb5540123612097cf654f2a68b307e9847f0e67294e664bc607e3be9fde9fd0aa77c03f26e2d9c757bba23e56e8f7d8f1e811a2e401236120842e20af2b160bbbf8d6935afc028548dcb243b529fc59ec50947551bf2b7aee0bef09da507c601298e154df468ac196619080aaa1ef2f71fc844c7d1524e0ba107f3aeacd5ab40123612086b222ff2d2364772529a8c5a65e515812045bd1f4012361209b3942cf2144668e3765aef589b681247ad7ffeaa027a027a09",
+          "detail": "lan-index: BOOTSTRAP_RES"
+        },
+        {
+          "at_unix_ms": 1794905706289,
+          "at_utc": "2026-11-17T08:55:06Z",
+          "endpoint": "lan-index-probe",
+          "direction": "send",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x43",
+          "opcode_name": "KADEMLIA2_PUBLISH_KEY_REQ",
+          "bytes": 260,
+          "wire_hex": "e4439f0e34f26862601d15002cf6171d5a7d010065bf07f9077faf0a7fead300a9ce022905020100012f00436f6c645265766976655f56313a773531672d6c616e2d313739343930353730313a313739343930353730313238380301000200040000080100fc6df1021800436f6c645265766976655f56313a64657363726970746f725500763d313b6e6f64653d773531672d6c616e2d313739343930353730313b77616b655f706f72743d36313830353b70726f746f5f666c6167733d62742d6f6e6c793b696e666f686173685f7072656669783d6e6f6e65021700436f6c645265766976655f56313a6e616d6573706163650e00436f6c645265766976655f56313a",
+          "detail": "lan-index: PUBLISH_KEY_REQ"
+        },
+        {
+          "at_unix_ms": 1794905706831,
+          "at_utc": "2026-11-17T08:55:06Z",
+          "endpoint": "lan-index-probe",
+          "direction": "recv",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x4b",
+          "opcode_name": "KADEMLIA2_PUBLISH_RES",
+          "bytes": 19,
+          "wire_hex": "e44b9f0e34f26862601d15002cf6171d5a7d01",
+          "detail": "lan-index: PUBLISH_RES"
+        },
+        {
+          "at_unix_ms": 1794905711290,
+          "at_utc": "2026-11-17T08:55:11Z",
+          "endpoint": "lan-index-probe",
+          "direction": "send",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x33",
+          "opcode_name": "KADEMLIA2_SEARCH_KEY_REQ",
+          "bytes": 20,
+          "wire_hex": "e4339f0e34f26862601d15002cf6171d5a7d0000",
+          "detail": "lan-index: SEARCH_KEY_REQ"
+        },
+        {
+          "at_unix_ms": 1794905711613,
+          "at_utc": "2026-11-17T08:55:11Z",
+          "endpoint": "lan-index-probe",
+          "direction": "recv",
+          "peer": "192.168.1.221:4672",
+          "opcode": "0x3b",
+          "opcode_name": "KADEMLIA2_SEARCH_RES",
+          "bytes": 227,
+          "wire_hex": "e53b78da53bf7ce6574ed13c3fffb74d499be46f89cde733f9949194202bcaa0f34d5c36aa969121753ffb4ff6faf55cf5af2e33ac3cc7a4c9c6c4c8c0a8cfe09c9f9312945a9659961a1f6668556e6a98ae9b9398a76b686e696269606a6e606885601a59587030323031b000c93fb91f9924d074a7a4162717651694e417853294d91a5ae7e5a7a4da6231d2ba3c313b35be20bfa8c4d6ccd0c2c0d4baa028bf243f3e2d2731bdd836a944373f2fa7d23a332f2d3f23b13823bea028352db3c2362f3f2f95491ccdc6bcc4dcd4e282c4e4543e3409664606e3650c8c8c00c4585a9d",
+          "detail": "lan-index: SEARCH_RES"
+        }
+      ],
+      "note": "局域网真实 aMule 的索引面互操作探测（PLAN §18.6 选项 D）：先 BOOTSTRAP 证明双向 UDP 可达，再 0x43 发布一个从未存在过的命名空间 Key，随后 0x33 取回。LAN 源地址走 aMule 的 IsLanIP 豁免，因此距离判据不参与，剩下的只是「真实 aMule 是否接收并服务我们的索引条目」。public_kad_contacted=false、evidence_valid_for_pass=false，不能作为 S2 公共 KAD 结论。发布条目只落在该局域网节点上；但 aMule 会为自己持有的索引条目做 TTL 续期，若它同时连着公共 KAD，该条目未来可能被它自己重发一次。"
+    },
+    "namespace": {
+      "key_a": "1de0b15cfef1f75aaef7f555a3e289d3",
+      "key_b": "9f86d081884c7d659a2feaa0c55ad015",
+      "labels": [
+        "ns-a-1794905711",
+        "ns-b-1794905711"
+      ],
+      "writes": {
+        "ns-a-1794905711": [
+          {
+            "attempt": 1,
+            "verdict": "confirmed_publish_then_retrieve",
+            "ack": true,
+            "error": ""
+          }
+        ],
+        "ns-b-1794905711": [
+          {
+            "attempt": 1,
+            "verdict": "confirmed_publish_then_retrieve",
+            "ack": true,
+            "error": ""
+          }
+        ]
+      },
+      "reads": {
+        "ns-a-1794905711@1de0b15c": [
+          {
+            "attempt": 1,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 2,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 3,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          }
+        ],
+        "ns-b-1794905711@1de0b15c": [
+          {
+            "attempt": 1,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 2,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 3,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          }
+        ],
+        "ns-a-1794905711@9f86d081": [
+          {
+            "attempt": 1,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 2,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 3,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          }
+        ],
+        "ns-b-1794905711@9f86d081": [
+          {
+            "attempt": 1,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 2,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          },
+          {
+            "attempt": 3,
+            "verdict": "unreachable",
+            "answered": false,
+            "label": false
+          }
+        ]
+      }
+    }
+  },
+  "note": "单目标、经真实 NAT：公网侧 PUBLISH/SEARCH 与 LAN 对照同时成立，并用未监听端口做负对照、用两个 16B 键做交叉回查。本报告不写 g3 结论、不含速率数字；结论由实验执行人回填。"
+}

@@ -1,0 +1,30 @@
+05:35:21 proxy listening 0.0.0.0:4663 -> 127.0.0.1:4763
+05:35:29 proxy accepted ('192.168.1.221', 50418)
+05:35:30 C->S proto=0xe3 op=HELLO(0x1) len=107
+05:35:30 S->C proto=0xe3 op=HELLOANSWER(0x4c) len=61
+05:35:30 C->S proto=0xe3 op=REQUESTFILENAME(0x58) len=16
+05:35:30 S->C proto=0xe3 op=REQFILENAMEANSWER(0x59) len=45
+05:35:30 C->S proto=0xe3 op=SETREQFILEID(0x4f) len=16
+05:35:30 S->C proto=0xe3 op=FILESTATUS(0x50) len=18 payload_len=18
+05:35:30 C->S proto=0xe3 op=HASHSETREQUEST(0x51) len=16
+05:35:30 S->C proto=0xe3 op=HASHSETANSWER(0x52) len=50
+05:35:30 C->S proto=0xe3 op=STARTUPLOADREQ(0x54) len=16
+05:35:30 S->C proto=0xe3 op=ACCEPTUPLOADREQ(0x55) len=0
+05:35:30 C->S proto=0xe3 op=REQUESTPARTS(0x47) len=40 ranges=[(9728000, 9736192), (0, 184320), (184320, 368640)]
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=8216 range=9728000..9736192 bytes=8192
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=0..10240 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=10240..20480 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=20480..30720 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=30720..40960 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=40960..51200 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=51200..61440 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=61440..71680 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=71680..81920 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=81920..92160 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=92160..102400 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=102400..112640 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=112640..122880 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=122880..133120 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=133120..143360 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=143360..153600 bytes=10240
+05:35:30 S->C proto=0xe3 op=SENDINGPART(0x46) len=10264 range=153600..163840 bytes=10240

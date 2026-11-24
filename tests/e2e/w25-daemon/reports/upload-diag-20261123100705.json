@@ -1,0 +1,665 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795399625,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "pace_bps": 0,
+  "sample": {
+    "name": "w25-diag-20261123100705.bin",
+    "bytes": 9736192,
+    "md5": "d44ed00f5c10b04202e1def2d697dbe2"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.3,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.7,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 163,
+      "bytes_sent": 1667072,
+      "completed": 10,
+      "pending": 7,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.1,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 217,
+      "bytes_sent": 2220032,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 36
+    },
+    {
+      "t": 10.4,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 271,
+      "bytes_sent": 2772992,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 90
+    },
+    {
+      "t": 13.8,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 379,
+      "bytes_sent": 3878912,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 198
+    },
+    {
+      "t": 17.2,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 433,
+      "bytes_sent": 4431872,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 252
+    },
+    {
+      "t": 20.5,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 487,
+      "bytes_sent": 4984832,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 306
+    },
+    {
+      "t": 23.9,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 541,
+      "bytes_sent": 5537792,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 360
+    },
+    {
+      "t": 27.4,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 571,
+      "bytes_sent": 5844992,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 390
+    },
+    {
+      "t": 30.8,
+      "amule_percent": null,
+      "amule_state": null,
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 571,
+      "bytes_sent": 5844992,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 390
+    },
+    {
+      "t": 34.1,
+      "amule_percent": 12.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 571,
+      "bytes_sent": 5844992,
+      "completed": 11,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 390
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261123100705.bin",
+    "name": "w25-diag-20261123100705.bin",
+    "size": 9736192,
+    "file_id": "6b63bf412553bd9cf530f94eb6fbae01",
+    "ed2k_link": "ed2k://|file|w25-diag-20261123100705.bin|9736192|6b63bf412553bd9cf530f94eb6fbae01|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795399626-serve-0000",
+  "amule_cancelled_before": [
+    {
+      "hash": "EC217B107AA7A1C38CA2E60250F36EFF",
+      "name": "w25-diag-20261123083416.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: EC217B107AA7A1C38CA2E60250F36EFF\n > Operation was successful.\n"
+    }
+  ],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": 12.7,
+  "accounting": {
+    "requests": 8,
+    "request_pairs": 24,
+    "sends": 571,
+    "bytes_sent": 5844992,
+    "blocks_completed": 11,
+    "blocks_pending_at_stop": 6,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 390,
+    "pending_list": [
+      {
+        "start": 0,
+        "end_incl": 184319,
+        "bytes": 0
+      },
+      {
+        "start": 184320,
+        "end_incl": 368639,
+        "bytes": 0
+      },
+      {
+        "start": 368640,
+        "end_incl": 552959,
+        "bytes": 0
+      },
+      {
+        "start": 552960,
+        "end_incl": 737279,
+        "bytes": 0
+      },
+      {
+        "start": 737280,
+        "end_incl": 921599,
+        "bytes": 0
+      },
+      {
+        "start": 921600,
+        "end_incl": 1105919,
+        "bytes": 0
+      }
+    ]
+  },
+  "events_tail": [
+    {
+      "kind": "send_no_pending",
+      "start": 1146880,
+      "end": 1157120
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1157120,
+      "end": 1167360
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1167360,
+      "end": 1177600
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1177600,
+      "end": 1187840
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1187840,
+      "end": 1198080
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1198080,
+      "end": 1208320
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1208320,
+      "end": 1218560
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1218560,
+      "end": 1228800
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1228800,
+      "end": 1239040
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1239040,
+      "end": 1249280
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1249280,
+      "end": 1259520
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1259520,
+      "end": 1269760
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1269760,
+      "end": 1280000
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1280000,
+      "end": 1290240
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1290240,
+      "end": 1300480
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1300480,
+      "end": 1310720
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1310720,
+      "end": 1320960
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1320960,
+      "end": 1331200
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1331200,
+      "end": 1341440
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1341440,
+      "end": 1351680
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1351680,
+      "end": 1361920
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1361920,
+      "end": 1372160
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1372160,
+      "end": 1382400
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1382400,
+      "end": 1392640
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1392640,
+      "end": 1402880
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1402880,
+      "end": 1413120
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1413120,
+      "end": 1423360
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1423360,
+      "end": 1433600
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1433600,
+      "end": 1443840
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1443840,
+      "end": 1454080
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1454080,
+      "end": 1464320
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1464320,
+      "end": 1474560
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1474560,
+      "end": 1484800
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1484800,
+      "end": 1495040
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1495040,
+      "end": 1505280
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1505280,
+      "end": 1515520
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1515520,
+      "end": 1525760
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1525760,
+      "end": 1536000
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1536000,
+      "end": 1546240
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1546240,
+      "end": 1556480
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1556480,
+      "end": 1566720
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1566720,
+      "end": 1576960
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1576960,
+      "end": 1587200
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1587200,
+      "end": 1597440
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1597440,
+      "end": 1607680
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1607680,
+      "end": 1617920
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1617920,
+      "end": 1628160
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1628160,
+      "end": 1638400
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1638400,
+      "end": 1648640
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1648640,
+      "end": 1658880
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1105920,
+      "end": 1116160
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1116160,
+      "end": 1126400
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1126400,
+      "end": 1136640
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1136640,
+      "end": 1146880
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1146880,
+      "end": 1157120
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1157120,
+      "end": 1167360
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1167360,
+      "end": 1177600
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1177600,
+      "end": 1187840
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1187840,
+      "end": 1198080
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1198080,
+      "end": 1208320
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1208320,
+      "end": 1218560
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1218560,
+      "end": 1228800
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1228800,
+      "end": 1239040
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1239040,
+      "end": 1249280
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1249280,
+      "end": 1259520
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1259520,
+      "end": 1269760
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1269760,
+      "end": 1280000
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1280000,
+      "end": 1290240
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1290240,
+      "end": 1300480
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1300480,
+      "end": 1310720
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1310720,
+      "end": 1320960
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1320960,
+      "end": 1331200
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1331200,
+      "end": 1341440
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1341440,
+      "end": 1351680
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1351680,
+      "end": 1361920
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1361920,
+      "end": 1372160
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1372160,
+      "end": 1382400
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1382400,
+      "end": 1392640
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1392640,
+      "end": 1402880
+    },
+    {
+      "kind": "send_no_pending",
+      "start": 1402880,
+      "end": 1413120
+    }
+  ],
+  "recv_q_at_stop": "ESTAB 4070974 0               192.168.1.221:57770          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 6B63BF412553BD9CF530F94EB6FBAE01 w25-diag-20261123100705.bin\n > \t [12.7%]    1/   1     (01) - Downloading - 001.part.met - Auto [Hi] - 120.80 kB/s\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795399626-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795399626,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261123100705.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "STALLED_WITH_PENDING_BLOCKS"
+}

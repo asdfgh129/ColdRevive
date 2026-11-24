@@ -1,0 +1,1035 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795399667,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "pace_bps": 200000,
+  "sample": {
+    "name": "w25-diag-20261123100746.bin",
+    "bytes": 9736192,
+    "md5": "c86a484a317c70c71d27036fceead708"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.3,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.7,
+      "amule_percent": 0.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 2,
+      "request_pairs": 6,
+      "sends": 8,
+      "bytes_sent": 79872,
+      "completed": 1,
+      "pending": 3,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.1,
+      "amule_percent": 7.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 5,
+      "request_pairs": 15,
+      "sends": 73,
+      "bytes_sent": 745472,
+      "completed": 5,
+      "pending": 3,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 10.5,
+      "amule_percent": 14.4,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 138,
+      "bytes_sent": 1411072,
+      "completed": 8,
+      "pending": 3,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 13.9,
+      "amule_percent": 21.2,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 12,
+      "request_pairs": 36,
+      "sends": 203,
+      "bytes_sent": 2076672,
+      "completed": 12,
+      "pending": 4,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 17.8,
+      "amule_percent": 29.2,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 16,
+      "request_pairs": 48,
+      "sends": 280,
+      "bytes_sent": 2865152,
+      "completed": 16,
+      "pending": 5,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 21.2,
+      "amule_percent": 36.1,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 345,
+      "bytes_sent": 3530752,
+      "completed": 20,
+      "pending": 7,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 24.6,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 28.0,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 31.4,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 34.8,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 38.2,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 41.6,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 44.9,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 48.3,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 51.7,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 55.1,
+      "amule_percent": 36.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 21,
+      "request_pairs": 63,
+      "sends": 368,
+      "bytes_sent": 3766272,
+      "completed": 21,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261123100746.bin",
+    "name": "w25-diag-20261123100746.bin",
+    "size": 9736192,
+    "file_id": "080e7e1f444fa39f90223a49d0b7c0b4",
+    "ed2k_link": "ed2k://|file|w25-diag-20261123100746.bin|9736192|080e7e1f444fa39f90223a49d0b7c0b4|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795399667-serve-0000",
+  "amule_cancelled_before": [
+    {
+      "hash": "6B63BF412553BD9CF530F94EB6FBAE01",
+      "name": "w25-diag-20261123100705.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 6B63BF412553BD9CF530F94EB6FBAE01\n > Operation was successful.\n"
+    }
+  ],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": 36.6,
+  "accounting": {
+    "requests": 21,
+    "request_pairs": 63,
+    "sends": 368,
+    "bytes_sent": 3766272,
+    "blocks_completed": 21,
+    "blocks_pending_at_stop": 6,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": [
+      {
+        "start": 368640,
+        "end_incl": 552959,
+        "bytes": 0
+      },
+      {
+        "start": 1290240,
+        "end_incl": 1474559,
+        "bytes": 0
+      },
+      {
+        "start": 2027520,
+        "end_incl": 2211839,
+        "bytes": 0
+      },
+      {
+        "start": 2764800,
+        "end_incl": 2949119,
+        "bytes": 0
+      },
+      {
+        "start": 3686400,
+        "end_incl": 3870719,
+        "bytes": 71680
+      },
+      {
+        "start": 3870720,
+        "end_incl": 4055039,
+        "bytes": 0
+      }
+    ]
+  },
+  "events_tail": [
+    {
+      "kind": "request",
+      "start": 0,
+      "end": 184320,
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 368640,
+      "end": 552960,
+      "block": [
+        368640,
+        552959
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 552960,
+      "end": 737280,
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        552960,
+        737279
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 737280,
+      "end": 921600,
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1105920,
+      "end": 1290240,
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        737280,
+        921599
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 921600,
+      "end": 1105920,
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1105920,
+      "end": 1290240,
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1290240,
+      "end": 1474560,
+      "block": [
+        1290240,
+        1474559
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        921600,
+        1105919
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1105920,
+      "end": 1290240,
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1290240,
+      "end": 1474560,
+      "block": [
+        1290240,
+        1474559
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1474560,
+      "end": 1658880,
+      "block": [
+        1474560,
+        1658879
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1105920,
+        1290239
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1290240,
+        1474559
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1290240,
+      "end": 1474560,
+      "block": [
+        1290240,
+        1474559
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1474560,
+      "end": 1658880,
+      "block": [
+        1474560,
+        1658879
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1658880,
+      "end": 1843200,
+      "block": [
+        1658880,
+        1843199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1474560,
+      "end": 1658880,
+      "block": [
+        1474560,
+        1658879
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1658880,
+      "end": 1843200,
+      "block": [
+        1658880,
+        1843199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1843200,
+      "end": 2027520,
+      "block": [
+        1843200,
+        2027519
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1474560,
+        1658879
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1658880,
+      "end": 1843200,
+      "block": [
+        1658880,
+        1843199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1843200,
+      "end": 2027520,
+      "block": [
+        1843200,
+        2027519
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2027520,
+      "end": 2211840,
+      "block": [
+        2027520,
+        2211839
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1658880,
+        1843199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 1843200,
+      "end": 2027520,
+      "block": [
+        1843200,
+        2027519
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2027520,
+      "end": 2211840,
+      "block": [
+        2027520,
+        2211839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2211840,
+      "end": 2396160,
+      "block": [
+        2211840,
+        2396159
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        1843200,
+        2027519
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2027520,
+        2211839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2027520,
+      "end": 2211840,
+      "block": [
+        2027520,
+        2211839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2211840,
+      "end": 2396160,
+      "block": [
+        2211840,
+        2396159
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2396160,
+      "end": 2580480,
+      "block": [
+        2396160,
+        2580479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2211840,
+      "end": 2396160,
+      "block": [
+        2211840,
+        2396159
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2396160,
+      "end": 2580480,
+      "block": [
+        2396160,
+        2580479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2580480,
+      "end": 2764800,
+      "block": [
+        2580480,
+        2764799
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2211840,
+        2396159
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2396160,
+      "end": 2580480,
+      "block": [
+        2396160,
+        2580479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2580480,
+      "end": 2764800,
+      "block": [
+        2580480,
+        2764799
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2764800,
+      "end": 2949120,
+      "block": [
+        2764800,
+        2949119
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2396160,
+        2580479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2580480,
+      "end": 2764800,
+      "block": [
+        2580480,
+        2764799
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2764800,
+      "end": 2949120,
+      "block": [
+        2764800,
+        2949119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2949120,
+      "end": 3133440,
+      "block": [
+        2949120,
+        3133439
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2580480,
+        2764799
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2764800,
+        2949119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2764800,
+      "end": 2949120,
+      "block": [
+        2764800,
+        2949119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2949120,
+      "end": 3133440,
+      "block": [
+        2949120,
+        3133439
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3133440,
+      "end": 3317760,
+      "block": [
+        3133440,
+        3317759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 2949120,
+      "end": 3133440,
+      "block": [
+        2949120,
+        3133439
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3133440,
+      "end": 3317760,
+      "block": [
+        3133440,
+        3317759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3317760,
+      "end": 3502080,
+      "block": [
+        3317760,
+        3502079
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        2949120,
+        3133439
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3133440,
+      "end": 3317760,
+      "block": [
+        3133440,
+        3317759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3317760,
+      "end": 3502080,
+      "block": [
+        3317760,
+        3502079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3502080,
+      "end": 3686400,
+      "block": [
+        3502080,
+        3686399
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        3133440,
+        3317759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3317760,
+      "end": 3502080,
+      "block": [
+        3317760,
+        3502079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3502080,
+      "end": 3686400,
+      "block": [
+        3502080,
+        3686399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3686400,
+      "end": 3870720,
+      "block": [
+        3686400,
+        3870719
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        3317760,
+        3502079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3502080,
+      "end": 3686400,
+      "block": [
+        3502080,
+        3686399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3686400,
+      "end": 3870720,
+      "block": [
+        3686400,
+        3870719
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 3870720,
+      "end": 4055040,
+      "block": [
+        3870720,
+        4055039
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        3502080,
+        3686399
+      ]
+    }
+  ],
+  "recv_q_at_stop": "ESTAB 133336 0               192.168.1.221:34632          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 080E7E1F444FA39F90223A49D0B7C0B4 w25-diag-20261123100746.bin\n > \t [36.6%]    1/   1     (01) - Downloading - 001.part.met - Auto [Hi] - 161.18 kB/s\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795399667-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795399667,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261123100746.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "STALLED_WITH_PENDING_BLOCKS"
+}

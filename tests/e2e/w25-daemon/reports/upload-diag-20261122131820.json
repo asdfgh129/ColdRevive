@@ -1,0 +1,531 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v1",
+  "generated_at_unix": 1795324701,
+  "sample": {
+    "name": "w25-diag-20261122131820.bin",
+    "bytes": 9736192,
+    "md5": "3b35988dec666c7c6f0757164f49041e"
+  },
+  "amule_log": "/tmp/amuled.log",
+  "timeline": [
+    {
+      "t": 0.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 2.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 4.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 6.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 8.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 10.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 12.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 14.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 16.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 18.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 20.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 22.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 24.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 26.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 28.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 30.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 32.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 34.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 36.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 38.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 40.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 42.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 44.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 46.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 48.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 50.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 52.3,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 54.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 56.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 58.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 60.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 62.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 64.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 66.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 68.4,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 70.5,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 72.5,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 74.5,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 76.5,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 78.5,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 80.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 82.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 84.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 86.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 88.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 90.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 92.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 94.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 96.6,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 98.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 100.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 102.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 104.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 106.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 108.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 110.7,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 112.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 114.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 116.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 118.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 120.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 122.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 124.8,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 126.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 128.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 130.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 132.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 134.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 136.9,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 139.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 141.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 143.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 145.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 147.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 149.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 151.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 153.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 155.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 157.0,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 159.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 161.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 163.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 165.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 167.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 169.1,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 171.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 173.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 175.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 177.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 179.2,
+      "status": "running",
+      "bytes_sent": 0
+    },
+    {
+      "t": 181.3,
+      "status": "complete",
+      "bytes_sent": 2404352
+    }
+  ],
+  "verdict": "STOPPED_EARLY",
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122131820.bin",
+    "name": "w25-diag-20261122131820.bin",
+    "size": 9736192,
+    "file_id": "0fbbb591799fd36b86c3ea878bd68e54",
+    "ed2k_link": "ed2k://|file|w25-diag-20261122131820.bin|9736192|0fbbb591799fd36b86c3ea878bd68e54|/",
+    "hashset_required": true
+  },
+  "serve_started": {
+    "schema": "coldrevive.fr25.daemon-task-started/v1",
+    "id": "ed2k-1795324702-serve-0000",
+    "kind": "serve",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122131820.bin",
+    "port": 4663
+  },
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n",
+    "stderr": ""
+  },
+  "stalled": false,
+  "bytes_sent_at_stop": 0,
+  "percent_at_stop": 0.0,
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 0FBBB591799FD36B86C3EA878BD68E54 w25-diag-20261122131820.bin\n > \t [19.3%]    1/   1          - Waiting - 001.part.met - Auto [Hi]\n",
+  "amule_sockets": "",
+  "remote_partfile": "",
+  "remote_incoming_listing": "-rw-r--r-- 1 root root 9736192 Nov 21 16:01 w25-down-20261122000123.bin\n-rw-r--r-- 1 root root 9736192 Nov 21 16:07 w25-down-20261122000729.bin\n-rw-r--r-- 1 root root 9736192 Nov 22 02:05 w25-down-20261122100535.bin\n-rw-r--r-- 1 root root   65536 Nov 20 13:45 w25-upload.bin\n-rw-r--r-- 1 root root  262144 Nov 20 13:46 w25-upload-multi.bin\n",
+  "amule_log_tail": "=== diag 20261122131820 ===\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795324702-serve-0000",
+    "kind": "serve",
+    "status": "complete",
+    "created_unix": 1795324702,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122131820.bin",
+    "host": "0.0.0.0",
+    "port": 4663,
+    "result": {
+      "peer": "192.168.1.221:38608",
+      "connections": 1,
+      "peer_hello": true,
+      "queue_granted": true,
+      "blocks_sent": 235,
+      "bytes_sent": 2404352,
+      "ed2k_link": "ed2k://|file|w25-diag-20261122131820.bin|9736192|0fbbb591799fd36b86c3ea878bd68e54|/",
+      "log_tail": [
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }"
+      ]
+    },
+    "error": ""
+  }
+}

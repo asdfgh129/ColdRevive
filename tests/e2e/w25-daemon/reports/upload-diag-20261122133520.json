@@ -1,0 +1,338 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795325721,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "sample": {
+    "name": "w25-diag-20261122133520.bin",
+    "bytes": 9736192,
+    "md5": "ee7b9ddabea158ce7ec77afeed7b5db2"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.4,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.8,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.2,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 10.6,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 14.0,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 17.4,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 20.7,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 24.1,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 27.5,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 30.9,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 34.3,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 37.7,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 41.1,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 44.5,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 47.9,
+      "amule_percent": 0.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 1,
+      "request_pairs": 3,
+      "sends": 17,
+      "bytes_sent": 172032,
+      "completed": 1,
+      "pending": 2,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122133520.bin",
+    "name": "w25-diag-20261122133520.bin",
+    "size": 9736192,
+    "file_id": "98d5b2d3ace6d6d7eaae24047d02d75c",
+    "ed2k_link": "ed2k://|file|w25-diag-20261122133520.bin|9736192|98d5b2d3ace6d6d7eaae24047d02d75c|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795325721-serve-0000",
+  "amule_cancelled_before": [
+    {
+      "hash": "3A73559279D1455DF1840784F0C09081",
+      "name": "w25-diag-20261122133145.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 3A73559279D1455DF1840784F0C09081\n > Operation was successful.\n"
+    }
+  ],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": 0.0,
+  "accounting": {
+    "requests": 1,
+    "request_pairs": 3,
+    "sends": 17,
+    "bytes_sent": 172032,
+    "blocks_completed": 1,
+    "blocks_pending_at_stop": 2,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": [
+      {
+        "start": 0,
+        "end_incl": 184319,
+        "bytes": 163840
+      },
+      {
+        "start": 184320,
+        "end_incl": 368639,
+        "bytes": 0
+      }
+    ]
+  },
+  "events_tail": [
+    {
+      "kind": "request",
+      "start": 9728000,
+      "end": 9736192,
+      "block": [
+        9728000,
+        9736191
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 0,
+      "end": 184320,
+      "block": [
+        0,
+        184319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 184320,
+      "end": 368640,
+      "block": [
+        184320,
+        368639
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        9728000,
+        9736191
+      ]
+    }
+  ],
+  "recv_q_at_stop": "ESTAB 94934  0               192.168.1.221:50418          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 98D5B2D3ACE6D6D7EAAE24047D02D75C w25-diag-20261122133520.bin\n > \t [0.0%]    1/   1     (01) - Downloading - 001.part.met - Auto [Hi] - 0 bytes/sec\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795325721-serve-0000",
+    "kind": "serve",
+    "status": "running",
+    "created_unix": 1795325721,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-diag-20261122133520.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": null,
+    "error": ""
+  },
+  "verdict": "STALLED_WITH_PENDING_BLOCKS"
+}

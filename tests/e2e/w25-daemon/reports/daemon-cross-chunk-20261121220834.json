@@ -1,0 +1,20 @@
+{
+  "schema": "coldrevive.fr25.daemon-cross-chunk/v1",
+  "generated_at_unix": 1795270114,
+  "scope": "RFC1918 LAN, real aMule 2.3.3, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-cross-20261121220834.bin",
+    "bytes": 9736192,
+    "sha256": "eecdd720acebf080ce8d3ea18a61101cd44ea224c3e42bd8190329cfd8dbeab5",
+    "part_size": 9728000,
+    "above_part_size": true
+  },
+  "checks": [
+    {
+      "name": "daemon_health",
+      "ok": true
+    }
+  ],
+  "status": "FAIL",
+  "reason": "HTTPError: HTTP Error 404: Not Found"
+}

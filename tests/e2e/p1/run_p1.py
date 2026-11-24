@@ -31,11 +31,25 @@ WS_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
 
 def free_port():
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    p = s.getsockname()[1]
-    s.close()
-    return p
+    """Pick a port that can actually be bound for both TCP and UDP.
+
+    Windows reserves/excludes some ephemeral UDP ports; a TCP-only probe can
+    return a port that later fails with WSAEACCES (10013) for the UDP socket.
+    """
+    for _ in range(50):
+        tcp = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            tcp.bind(("127.0.0.1", 0))
+            port = tcp.getsockname()[1]
+            udp.bind(("127.0.0.1", port))
+            return port
+        except OSError:
+            continue
+        finally:
+            tcp.close()
+            udp.close()
+    raise RuntimeError("no free TCP+UDP port pair found")
 
 
 def get_json(url):
@@ -110,6 +124,8 @@ def websocket_status(port):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bin", default=os.path.join(ROOT, "target", "debug", "coldrevived"))
+    ap.add_argument("--report-out", default="",
+                    help="optional stable path for the JSON report; default is the temp workdir")
     args = ap.parse_args()
     binary = os.path.abspath(args.bin)
     if not os.path.isfile(binary):
@@ -253,7 +269,8 @@ def main():
         "total": len(checks),
         "gate_constants_untouched": True,
     }
-    out = os.path.join(work, "report.json")
+    out = args.report_out or os.path.join(work, "report.json")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
     for name, value in checks.items():

@@ -1,0 +1,112 @@
+{
+  "schema": "coldrevive.fr25.daemon-download-cross-chunk/v1",
+  "generated_at_unix": 1795313135,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 uploader, daemon /cli + /jsonrpc",
+  "sample": {
+    "name": "w25-down-20261122100535.bin",
+    "bytes": 9736192,
+    "sha256": "abde4b881385ae27bda811267153d4a8dec573457bbb325331cd51c4cffb577a",
+    "md5": "d0c912adec7b0acc9ef083ffb1de556a",
+    "part_size": 9728000
+  },
+  "checks": [
+    {
+      "name": "sample_shared_by_real_amule",
+      "ok": true
+    },
+    {
+      "name": "daemon_health",
+      "ok": true
+    },
+    {
+      "name": "download_task_registered",
+      "ok": true
+    },
+    {
+      "name": "hashset_verified",
+      "ok": true
+    },
+    {
+      "name": "download_completed",
+      "ok": true
+    },
+    {
+      "name": "hash_matches",
+      "ok": true
+    },
+    {
+      "name": "content_matches",
+      "ok": true
+    },
+    {
+      "name": "bytes_received_covers_sample",
+      "ok": true
+    },
+    {
+      "name": "jsonrpc_exposes_same_task",
+      "ok": true
+    },
+    {
+      "name": "real_amule_file_size",
+      "ok": true
+    }
+  ],
+  "scp": {
+    "rc": 0,
+    "stderr": ""
+  },
+  "reload_shared": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "download_started": {
+    "schema": "coldrevive.fr25.daemon-task-started/v1",
+    "id": "ed2k-1795313140-download-0000",
+    "kind": "download",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-down-20261122100535.bin",
+    "host": "192.168.1.221:4662"
+  },
+  "download_result": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795313140-download-0000",
+    "kind": "download",
+    "status": "complete",
+    "created_unix": 1795313140,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-down-20261122100535.bin",
+    "host": "192.168.1.221:4662",
+    "port": 4662,
+    "result": {
+      "host": "192.168.1.221:4662",
+      "file_name": "w25-down-20261122100535.bin",
+      "file_size": 9736192,
+      "file_id": "2a1ccddb914fead0a5e8a1a21c2532fb",
+      "ed2k_link": "ed2k://|file|w25-down-20261122100535.bin|9736192|2a1ccddb914fead0a5e8a1a21c2532fb|/",
+      "peer_hello": true,
+      "peer_filename": "w25-down-20261122100535.bin",
+      "hashset_verified": true,
+      "queue_rank_seen": "",
+      "bytes_received": 9736192,
+      "blocks_received": 950,
+      "hash_matches": true,
+      "content_matches": true,
+      "completed": true,
+      "log_tail": [
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 73, opcode_name: \"OP_END_OF_DOWNLOAD\", payload_len: 16 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10851 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }",
+        "LogEntry { at_ms: 0, direction: \"recv\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10849 }"
+      ]
+    },
+    "error": ""
+  },
+  "remote_size_ok": true,
+  "status": "PASS"
+}
