@@ -880,9 +880,16 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             }
             let peer_label = p.first().cloned().unwrap_or_default();
             let bind_hint = p.get(1).cloned();
+            // DOC-30：发现端口作信令字段。第三个参数可覆盖对端 endpoint：
+            // 只允许替换**端口**，IP 必须仍等于已登记的对端公网 IP，避免把
+            // 任意攻击者地址塞进打洞目标。未提供时保持原行为（静态 bt_external）。
+            let discovered_port = match parse_discovered_port(p.get(2)) {
+                Ok(v) => v,
+                Err(e) => return Json::obj(vec![("error", Json::s(e))]),
+            };
             if peer_label.is_empty() {
                 return Json::obj(vec![("error", Json::s(
-                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port]"))]);
+                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port] [发现端口]"))]);
             }
             let relay_addr = cfg.nat_relays.first().cloned()
                 .or_else(|| cfg.nat_relay.clone());
@@ -899,7 +906,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 .as_deref()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_else(|| format!("{}:0", cfg.bind).parse().unwrap());
-            let target: SocketAddr = match state.lock().unwrap().nat.peer_adv.as_ref()
+            let base_target: SocketAddr = match state.lock().unwrap().nat.peer_adv.as_ref()
                 .and_then(|a| a.bt_external.as_ref())
             {
                 Some(ep) => match ep.addr().parse() {
@@ -907,6 +914,10 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     Err(_) => return Json::obj(vec![("error", Json::s("对端 BT 地址非法"))]),
                 },
                 None => return Json::obj(vec![("error", Json::s("对端无公网 BT 映射，先 nat peer"))]),
+            };
+            let target: SocketAddr = match discovered_port {
+                Some(port) => SocketAddr::new(base_target.ip(), port),
+                None => base_target,
             };
             let punched = cr_nat::tcp_punch::punch_tcp(local, &[target], timeout);
             let Some(mut stream) = punched.established.map(|p| p.stream) else {
@@ -1001,6 +1012,10 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 ("peer", Json::s(&peer_label)),
                 ("punched_socket_registered", Json::b(punched_registered)),
                 ("tcp_punch_established", Json::b(true)),
+                ("discovered_port_used", match discovered_port {
+                    Some(port) => Json::n(port as f64),
+                    None => Json::Null,
+                }),
                 ("relay_data_plane", Json::s("tcp-carrier-implemented")),
                 ("relay_data_plane_udp", Json::s("udp-carrier-implemented-rst-path-verified")),
                 ("is_s6_evidence", Json::b(false)),
@@ -1081,6 +1096,18 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             ])
         }
         other => Json::obj(vec![("error", Json::s(format!("未知 nat 子命令 {}", other)))]),
+    }
+}
+
+/// DOC-30：发现端口只替换端口，不替换 IP。拒绝 0 / 非数字 / 越界，
+/// 未给参数时返回 None（保持静态 bt_external 的旧行为）。
+fn parse_discovered_port(raw: Option<&String>) -> Result<Option<u16>, String> {
+    match raw {
+        None => Ok(None),
+        Some(s) => match s.parse::<u16>() {
+            Ok(port) if port != 0 => Ok(Some(port)),
+            _ => Err("第三个参数必须是 1..65535 的发现端口".into()),
+        },
     }
 }
 
@@ -1208,5 +1235,22 @@ mod tests {
         assert_eq!(on.get("inbound_verified").and_then(Json::as_bool), Some(false));
         assert_eq!(on.get("s6_status").and_then(Json::as_str), Some("not_run"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discovered_port_override_accepts_only_nonzero_u16() {
+        assert_eq!(parse_discovered_port(None), Ok(None));
+        let p = |s: &str| Some(s.to_string());
+        assert_eq!(parse_discovered_port(p("21249").as_ref()), Ok(Some(21249)));
+        assert_eq!(parse_discovered_port(p("65535").as_ref()), Ok(Some(65535)));
+        assert!(parse_discovered_port(p("0").as_ref()).is_err());
+        assert!(parse_discovered_port(p("65536").as_ref()).is_err());
+        assert!(parse_discovered_port(p("1.2.3.4:19910").as_ref()).is_err());
+        assert!(parse_discovered_port(p("abc").as_ref()).is_err());
+        // 只换端口，IP 必须保留已登记的对端公网地址。
+        let base: std::net::SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let overridden = std::net::SocketAddr::new(base.ip(), 21249);
+        assert_eq!(overridden.ip(), base.ip());
+        assert_eq!(overridden.port(), 21249);
     }
 }

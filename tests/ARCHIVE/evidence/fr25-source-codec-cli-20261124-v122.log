@@ -1,0 +1,5 @@
+# source-codec CLI evidence
+command: ./target/debug/coldrevive-ed2k.exe source-codec --file tests/ARCHIVE/BACKFILL-TEST-RUNS.md --tcp-port 4662 --udp-port 4672
+{"mode":"codec_only_not_kad_accepted","file":"tests/ARCHIVE/BACKFILL-TEST-RUNS.md","file_id":"b2660aff3f2eb8179b15a7deb4f73c74","publish_opcode":68,"publish_frame_len":56,"indexable":true,"search_opcode":52,"search_wire_len":26,"search_roundtrip_ok":true,"note":"只验证 PROTO §2.2.1 线格式与 aMule 接纳前置条件；未发包、未取得 0x4B ACK，不等于源字典已发布或公网可下载。","server_login":"unsupported eD2k feature eD2k LoginServer TCP login: no verified packet layout in this repo; guessing one would be silent-drop bait","credit":"unsupported eD2k feature eMule credit / secure identification: PROTO.md lists credit as unimplemented and pins no tag/opcode layout","aich":"unsupported eD2k feature AICH hash set / integrity exchange: no verified request/response opcode or payload layout in this repo"}
+negative (--tcp-port 0):
+coldrevive-ed2k: 源条目的 TCP/UDP 端口都不能为 0（aMule AddSources 会静默拒绝）

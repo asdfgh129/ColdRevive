@@ -283,6 +283,9 @@ impl DataPlane {
             ("socks5_registered", cr_core::Json::n(self.bridge.registered() as f64)),
             ("served_registered", cr_core::Json::n(self.bridge.served_registered() as f64)),
             ("bytes_relayed", cr_core::Json::n(self.bridge.bytes_relayed() as f64)),
+            // 口径标注：bytes_relayed 是写入本地 SOCKS5/隧道的字节，不是对端确认收到。
+            // 真正的"对端落地"证据只能是 e2e 里读对端文件 md5（见 W59/W61）。
+            ("bytes_relayed_scope", cr_core::Json::s("local_tunnel_writes_not_peer_receipt")),
             ("tunnels", cr_core::Json::n(total as f64)),
             ("tunnels_alive", cr_core::Json::n(alive as f64)),
             ("carrier", cr_core::Json::s(self.carrier)),

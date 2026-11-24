@@ -1074,6 +1074,12 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                 ("note", Json::s("只记账不评分；信誉/激励尚未实现")),
             ])
         };
+        let holder_json = relay_sub::holder_stats_json();
+        let byte_accounting = byte_accounting_json(
+            served_bytes,
+            data_plane_json.get("bytes_relayed").and_then(Json::as_i64).unwrap_or(0) as u64,
+            holder_json.get("bytes_from_engine").and_then(Json::as_i64).unwrap_or(0) as u64,
+        );
         ("200 OK".into(),
          Json::obj(vec![
              ("status", Json::s("ok")),
@@ -1097,7 +1103,9 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
              ("data_plane", data_plane_json),
              // 持有者侧（被下载的一方）的 splice 计数：真实 OPEN/拨号/字节数。
              // 「接了但没有数据流过」在这几个字段上一眼可见。
-             ("holder_data", relay_sub::holder_stats_json()),
+             ("holder_data", holder_json),
+             // 字节口径对照：显式标注哪些是本进程写入、哪些缺失对端证明。
+             ("byte_accounting", byte_accounting),
              // FR-11：握手拦截的可观测面。默认 opt-in 关闭，stats 全 0。
              // 只有 (woken>0) 才能证明「旧客户端直接连入触发了唤醒」。
              ("guard", {
@@ -1977,6 +1985,44 @@ fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
     None
 }
 
+/// 字节口径对照块。刻意不提供"对端实际收到字节"字段——本进程观测不到：
+/// 本地写入（隧道/SOCKS5/splice）与引擎自报上传都不是对端确认，对端落地
+/// 只能由 e2e 读对端文件 md5 证明（W59/W60/W61 就是这么判的）。
+/// 这里把能测的三项各自标注 scope，并明确写出缺哪一项，避免再次把
+/// `bytes_relayed` / `bytes_from_engine` 误读成"对面收到了"。
+fn byte_accounting_json(engine_reported_uploaded: u64,
+                        tunnel_written: u64,
+                        splice_written: u64) -> Json {
+    Json::obj(vec![
+        ("engine_reported_uploaded", Json::n(engine_reported_uploaded as f64)),
+        ("tunnel_written", Json::n(tunnel_written as f64)),
+        ("splice_written", Json::n(splice_written as f64)),
+        ("peer_received_bytes", Json::Null),
+        ("peer_received_status", Json::s("not_observable_from_this_process")),
+        ("note", Json::s(concat!(
+            "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；",
+            "splice_written=写入本地 socket。三者都不是对端确认字节。",
+            "对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"))),
+    ])
+}
+
+#[cfg(test)]
+mod byte_accounting_tests {
+    use super::*;
+
+    #[test]
+    fn byte_accounting_never_claims_peer_receipt() {
+        let j = byte_accounting_json(10, 20, 30);
+        assert_eq!(j.get("engine_reported_uploaded").and_then(Json::as_i64), Some(10));
+        assert_eq!(j.get("tunnel_written").and_then(Json::as_i64), Some(20));
+        assert_eq!(j.get("splice_written").and_then(Json::as_i64), Some(30));
+        // 关键：绝不伪造"对端收到"数字。
+        assert!(matches!(j.get("peer_received_bytes"), Some(Json::Null)));
+        assert_eq!(j.get("peer_received_status").and_then(Json::as_str),
+                   Some("not_observable_from_this_process"));
+    }
+}
+
 #[cfg(test)]
 mod rpc_tests {
     use super::*;
@@ -2099,6 +2145,8 @@ mod rpc_tests {
         assert!(text.contains("\"punch_route\""), "{}", text);
         assert!(text.contains("\"data_plane\""), "{}", text);
         assert!(text.contains("\"holder_data\""), "{}", text);
+        assert!(text.contains("\"byte_accounting\""), "{}", text);
+        assert!(text.contains("\"peer_received_bytes\":null"), "{}", text);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

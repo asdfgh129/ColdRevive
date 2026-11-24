@@ -617,8 +617,78 @@ fn run_download(args: &[String]) -> Result<Json, String> {
     ]))
 }
 
+/// FR-25 源字典编解码自检：用真实文件内容导出 fileID，按 PROTO §2.2.1 的
+/// 0x44 格式编解码并验证 aMule 接纳条件（TAG_SOURCETYPE / TCP+UDP 端口非零）。
+/// 只证明**线格式正确**，不发包、不宣称 KAD 已接受源条目。
+fn run_source_codec(args: &[String]) -> Result<Json, String> {
+    let opt = |key: &str| -> Option<String> {
+        args.iter().position(|a| a == key).and_then(|i| args.get(i + 1)).cloned()
+    };
+    let path = opt("--file").ok_or("source-codec 缺 --file <样本>")?;
+    let tcp_port: u16 = opt("--tcp-port").unwrap_or_else(|| "4662".into())
+        .parse().map_err(|e| format!("--tcp-port 非法: {e}"))?;
+    let udp_port: u16 = opt("--udp-port").unwrap_or_else(|| "4672".into())
+        .parse().map_err(|e| format!("--udp-port 非法: {e}"))?;
+    if tcp_port == 0 || udp_port == 0 {
+        return Err("源条目的 TCP/UDP 端口都不能为 0（aMule AddSources 会静默拒绝）".into());
+    }
+    let data = fs::read(&path).map_err(|e| format!("读取 {path}: {e}"))?;
+    let file_id = SharedFile::new(
+        Path::new(&path).file_name().map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "sample".into()),
+        data.clone(),
+    ).hash();
+    use cr_ed2k::codecs::source_exchange as sx;
+    use cr_ed2k::kad::Tag as KTag;
+    let req = sx::PublishSourceRequest {
+        file_id,
+        source_id: file_id,
+        tags: vec![
+            KTag::int1(sx::TAG_SOURCETYPE, 1),
+            KTag::int2(sx::TAG_SOURCEPORT, tcp_port),
+            KTag::int2(sx::TAG_SOURCEUPORT, udp_port),
+        ],
+    };
+    let wire = sx::encode_publish_source(&req);
+    let frame = cr_ed2k::wire::frame(cr_ed2k::wire::PROT_EDONKEY,
+                                     sx::PUBLISH_SOURCE_REQ, &wire);
+    let parsed = cr_ed2k::wire::parse_frame(&frame)
+        .map_err(|e| format!("自产帧解析失败: {e}"))?;
+    let back = sx::decode_publish_source(&parsed.payload)
+        .map_err(|e| format!("0x44 回解失败: {e}"))?;
+    let search = sx::SearchSourceRequest {
+        file_id, raw_start_position: 0, file_size: data.len() as u64,
+    };
+    let search_wire = sx::encode_search_source(&search);
+    let search_back = sx::decode_search_source(&search_wire)
+        .map_err(|e| format!("0x34 回解失败: {e}"))?;
+    Ok(Json::obj(vec![
+        ("mode", Json::s("codec_only_not_kad_accepted")),
+        ("file", Json::s(&path)),
+        ("file_id", Json::s(&hex(&file_id))),
+        ("publish_opcode", Json::n(sx::PUBLISH_SOURCE_REQ as f64)),
+        ("publish_frame_len", Json::n(frame.len() as f64)),
+        ("indexable", Json::b(back.is_indexable())),
+        ("search_opcode", Json::n(sx::SEARCH_SOURCE_REQ as f64)),
+        ("search_wire_len", Json::n(search_wire.len() as f64)),
+        ("search_roundtrip_ok", Json::b(search_back == search)),
+        ("note", Json::s(concat!(
+            "只验证 PROTO §2.2.1 线格式与 aMule 接纳前置条件；",
+            "未发包、未取得 0x4B ACK，不等于源字典已发布或公网可下载。"))),
+        ("server_login", Json::s(cr_ed2k::codecs::feature_status(
+            &cr_ed2k::codecs::SERVER_LOGIN).to_string())),
+        ("credit", Json::s(cr_ed2k::codecs::feature_status(
+            &cr_ed2k::codecs::CREDIT).to_string())),
+        ("aich", Json::s(cr_ed2k::codecs::feature_status(
+            &cr_ed2k::codecs::AICH).to_string())),
+    ]))
+}
+
 fn run() -> Result<Json, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(|s| s.as_str()) == Some("source-codec") {
+        return run_source_codec(&args[1..]);
+    }
     if args.first().map(|s| s.as_str()) == Some("download") {
         return run_download(&args[1..]);
     }

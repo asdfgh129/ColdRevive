@@ -1,3 +1,33 @@
+## [2.4.122] - 2026-11-24 — 字节口径标注、发现端口接线、公平性失败轮根因
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮无公网新证据，不外推 G2/S6。
+
+- **`/health` 字节口径**（PHASE-SUMMARY §4 可观测性项）：新增顶层
+  `byte_accounting`，显式区分 `engine_reported_uploaded`（引擎自报）、
+  `tunnel_written`（写入本地 SOCKS5/隧道）、`splice_written`（写入本地 socket）。
+  `peer_received_bytes` 恒为 `null`、`peer_received_status=not_observable_from_this_process`
+  ——本进程观测不到对端落地，绝不伪造数字；对端实际收到仍只由 e2e 读对端文件 md5
+  证明。`data_plane.bytes_relayed_scope` 与 `holder_data.bytes_scope` 同步标注口径。
+- **`nat punch-route` 接发现端口**（DOC-30 控制面接线）：第三个可选参数接受
+  EIM `discovered_port`，**只替换端口、IP 仍取已登记 `bt_external`**，拒绝 0 /
+  越界 / 非数字 / `ip:port` 字符串；成功结果带 `discovered_port_used` 便于审计。
+  不给参数时行为不变。仍是组件级控制面，`s6_status=not_run`。
+- **公平性失败轮根因**（不抽样、不改阈值）：从 221 原始 `summary.stdout.json`
+  定位 L2 cc_on 第 7 轮 cwnd 19.19/22.01（丢包 7/5）、L2 cc_paced 第 8 轮
+  cwnd 27.24/32.00 封顶（丢包 3/0）——份额 0.43/0.57 来自独立 per-ACK AIMD
+  的 cwnd 漂移，不是丢包不对称，也不是中继整形（shaped/dropped/limited 全 0）。
+  原始证据归档 `tests/ARCHIVE/evidence/g2-fairness-summary-20261124-v121.json`。
+  阈值 sha `0671a173…` 未变，不重跑抽样「碰运气」。
+- **FR-25 源字典编解码接线**：`coldrevive-ed2k source-codec --file <样本>`
+  新增子命令，用真实 MD4 fileID 按 PROTO §2.2.1 编码 `0x44`/`0x34` 并回解，
+  校验 aMule 接纳前置条件（TAG_SOURCETYPE + TCP/UDP 端口非零，端口 0 报错）。
+  输出对 server login / credit / AICH 如实回 `Unsupported`——仓库无已验证线格式，
+  不猜包。只证线格式，**不发包、无 0x4B ACK、不等于源字典已发布**。
+- 全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`
+  为 **532 passed / 0 failed / 3 ignored**（v121 530 + 2 新单测）。
+  定点与全量结果均已归档 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+
 ## [2.4.121] - 2026-11-24 — tcp_discovery 文档化与定点测试：EIM 判定四态固化
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

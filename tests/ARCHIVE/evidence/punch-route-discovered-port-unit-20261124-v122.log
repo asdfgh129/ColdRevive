@@ -1,0 +1,8 @@
+test ed2k_tasks::tests::daemon_serve_download_roundtrip_records_real_result ... ok
+test ed2k_tasks::tests::serve_accepts_parallel_connections_and_reaps_queued_peers ... ok
+test relay_sub::tests::udp_subscription_survives_idle_reaping_and_still_delivers ... ok
+test nat_auto::tests::explicit_unavailable_location_reports_real_failure ... ok
+test relay_sub::tests::all_relays_down_reports_every_endpoint ... ok
+
+test result: ok. 78 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.15s
+

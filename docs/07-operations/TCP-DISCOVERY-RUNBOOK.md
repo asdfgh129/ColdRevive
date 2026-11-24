@@ -147,6 +147,27 @@ A 覆盖 `judge_observations` 的全部四态、`parse_port` 拒绝 0/垃圾值�
 
 **B 的回环 PASS 只证明控制路径正确，不证明 NAT EIM。** NAT EIM 仍必须由公网双观测点证据（`tcp-eim-two-observers-tcpdump-20261124.json`）或等价真实抓包证明。
 
+## 6.1 守护进程 punch-route 使用发现端口（v2.4.122）
+
+发现端口不只属于独立探针：守护进程的 `nat punch-route` 控制命令接受第三个
+可选参数作为**发现端口覆盖**：
+
+```bash
+# 先用第 5 节拿到 discovered_port（例如 21249），确认 eim=true，立即调用：
+curl -X POST http://127.0.0.1:17800/cli -d '{"method":"nat punch-route","params":["B","192.168.1.221:19910","21249"]}'
+```
+
+安全约束（已由 `parse_discovered_port` 单测覆盖）：
+
+- 只替换**端口**，IP 仍取已登记的对端 `bt_external`，不接 `ip:port` 字符串，
+  防止把任意地址塞进打洞目标。
+- 端口必须是 1..65535；0、越界、非数字一律报错，不静默回退。
+- 不给第三个参数时行为与旧版逐字节相同。
+- 成功结果带 `discovered_port_used`，便于审计本次是否用了发现端口。
+
+边界不变：这仍是控制面接线，返回 `s6_status=not_run` / `g2_claim=false`；
+必须有真实 EIM 观测、发现端口即时使用，且不外推到对称 NAT 的对端。
+
 ## 7. 实测边界与回退
 
 - v2.4.120 首次发现端口 `112.5.60.4:21211` 作信令，222 回连该端口而非固定 `19910`，两侧 `ok=true` + `bytes_roundtrip=true`，连续 3 轮带 tcpdump 全 PASS；证据 `tests/ARCHIVE/evidence/tcp-punch-discovered-3rounds-verify-20261124.json`。

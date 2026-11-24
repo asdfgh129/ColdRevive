@@ -148,6 +148,9 @@ impl Bridge {
     }
 
     /// 双向搬运的总字节数。
+    /// 本进程经 SOCKS5 桥**写入本地隧道**的字节数。
+    /// 口径：不是对端实际收到的字节；对端落地只能由 e2e 读对端文件 md5 证明。
+    /// `/health.byte_accounting.tunnel_written_bytes` 引用此值并显式标注口径。
     pub fn bytes_relayed(&self) -> u64 {
         self.bytes_relayed.load(Ordering::Relaxed)
     }

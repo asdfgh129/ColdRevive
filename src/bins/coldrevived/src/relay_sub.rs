@@ -143,6 +143,9 @@ pub fn holder_stats_json() -> cr_core::Json {
         ("data_frames", get(&HOLDER.data_frames)),
         ("bytes_to_engine", get(&HOLDER.bytes_to_engine)),
         ("bytes_from_engine", get(&HOLDER.bytes_from_engine)),
+        // 口径：上面两个计数都是**本进程 splice 写入本地 socket** 的字节，
+        // 不是对端实际收到的字节。对端落地只能用 e2e 读对端文件 md5 证明。
+        ("bytes_scope", Json::s("local_socket_writes_not_peer_receipt")),
         ("splices_done", get(&HOLDER.splices_done)),
     ])
 }
