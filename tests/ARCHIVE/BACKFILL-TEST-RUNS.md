@@ -531,8 +531,8 @@
 
 ## 2026-11-24
 
-- source: `.workbuddy/memory/2026-11-24.md` (sha256 `c96e687935295a07d4ba4246d23d4b45c46e2f1597a6a6a96f5a1ac69bbc6804`)
-- archived test-related lines: 7
+- source: `.workbuddy/memory/2026-11-24.md` (sha256 `e55c20c4072032437bb4ff89d4eb27b4d7040c6295b50acd94b38003444bf058`)
+- archived test-related lines: 8
 
 - - SSH 可用性测试：209（`192.168.1.209`，Windows 10 19044.3693）用用户给的用户名/密码
   - evidence: log-only (no durable raw path recorded)
@@ -545,3 +545,6 @@
 - - 更正文档：审计 §2/M2/§7 删除「daemon 仍单任务 / FR-24 公网 BLOCKED」旧说法；
 - - 唯一新样本抓包（`stock-upload-frames-20261124085257.log`）：stock 用
 - - 同一样本、同一下载端两轮 A/B（paced 200 kB/s / unpaced）均 PASS：
+- - 证据 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`
+  - evidence:
+    - `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json` — 2967 B, sha256 `7f67f3baf20cd0d3d2147c13c9de6de354c7d91c6b799a19358a6bb4bacf95ca`, local/gitignored

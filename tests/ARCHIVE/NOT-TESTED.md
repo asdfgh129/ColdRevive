@@ -19,7 +19,7 @@
 | FR-25 第二个 aMule 上传端反向 A/B | **已执行并归档**：0x46 版 97.6% 停滞；同构 `OP_COMPRESSEDPART(0x40)` 后两轮 A/B 我们 daemon 与 stock 上传端都落地同一 md5（LAN PASS） | 见 `TEST-RUNS-2026-11-24.md` 与审计 §17.2；公网未测 |
 | FR-10 守护进程多样种 + cap 逐出 e2e | **已于 2026-11-24 重跑并归档**：P0 77/77，wake1 `evictions=0` → wake2 `evictions=1`，`seed_active<=cap=1` | 见 `TEST-RUNS-2026-11-24.md` 与 `evidence/p0-health-after-wake*-20261124.json` |
 | 公平性阈值 / 拥塞语义 | 只有量具原始计数，无阈值判定 | 多组公网丢包/时延梯度样本 + 阈值讨论 |
-| Mainline DHT 公共引导邻居发现 | 自有节点闭环；公共节点无可用 token | 找到确实签发 token 的邻居 |
+| Mainline DHT 公共引导邻居发现 | **已闭环（2026-11-24）**：从 `dht.transmissionbt.com` 发现 `37.48.95.218:3691`（`token_len=4`），222 受控 announce + 221 独立 get_peers 回查到 `112.5.32.34:17200` | 见 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`；daemon 自动 DHT 仍未接线 |
 | TCP 打洞接 BT 数据面 | 原语通过，公网双侧 BLOCKED | 先解决公网双侧；symmetric 不可直连是正确结论 |
 | G2 / S6 自动通过 | 机器常量固定 `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` | 只能由项目所有者书面判定 |
 

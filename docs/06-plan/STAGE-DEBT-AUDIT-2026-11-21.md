@@ -30,7 +30,7 @@ updated: 2026-11-22
 | P1 | 6 行全部部分/未实现：QoS 未接数据面、daemon 不自动映射、DHT 未启用、`rpc-secret` 缺失、Web UI/WebSocket 未实现 |
 | P2 | 3 行：CLI/REST 子集可用但无 OpenAPI；跨协议补源、信誉行仍骨架 |
 | M1 | G1 已过（T0 21/21 + T1 11/11），但 W2 索引侧无 watcher/SQLite 迁移；FR-11/14 默认关闭、仅回环证据；S3/S5/S6 的人工判定未回填机器常量 |
-| M2 | G2 **未达标**，是全部阶段的唯一出口欠账：公平性只有量具、Mainline 未加入、TCP 打洞未接 BT 数据面、守护进程仍单任务、可靠层无拥塞语义、FR-24 公网 KAD 与 FR-25 跨分片仍 BLOCKED（FR-25 daemon 接线已于 2026-11-22 补上，见 §8） |
+| M2 | G2 **未达标**，是全部阶段的唯一出口欠账：公平性只有量具、Mainline 未加入、TCP 打洞未接 BT 数据面、可靠层无拥塞语义；FR-10 多样种、FR-24 公网 KAD、FR-25 上传/下载跨分片已在 LAN 或真公网目标上闭环（§9/§17.2/§18.3），但不构成 G2/S6 证据，门禁常量不变 |
 
 ## 2. P0 欠账明细（按优先级）
 
@@ -48,7 +48,7 @@ updated: 2026-11-22
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
 | FR-15 资源阈值 | **五条阈值全部接线** | `max_hot_seeds` / `max_peers` / `max_upload_bytes_per_sec` / `max_rss_mb` / `max_seeding_cpu_millipct` 共用一套准入：超限**拒绝新唤醒**（`REJECT_RESOURCE_LIMIT` + `limit_name/limit/current/limit_unit`），UDP 唤醒与裸 BT 握手同一判据；`engine.max_active_seeds` 仍是「逐出后续服务」，语义分开。带宽与 CPU 是滞后指标；RSS/CPU 读不到的平台显式 `unavailable` 而非按 0 处理（§10/§11）。这里只说**接线齐**，不承诺公网性能或自动通过 | 否（代码） |
 | FR-24 公共 KAD 检索 | **技术闭环已复现（2026-11-24 v2.4.111，见 §18.3）** | LAN 真 aMuleD 检索 12/12；真 eMule 上 `0x4B` ACK + `0x3B` 命中；222→公网 `112.5.60.4:41296` 同样 ACK + 命中并有 0/0 无 HELLO 对照；早期公网 5 节点 0 命中由当时的 firewalled/空索引目标解释 | 行政阻塞已解除；**不构成 G2/S6 证据**，门禁常量不变 |
-| FR-25 标准 eD2k 传输 | 部分 | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已于 2026-11-22 补上（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` **下载方向已闭环（10/10）**，上传方向仍未闭环（19.2%–85.3% 后静置） | 部分：公网 eD2k 传输可补证据，但上传跨分片闭环是代码债 |
+| FR-25 标准 eD2k 传输 | 部分（跨分片双向 LAN 已闭环） | 生产栈对 aMule 2.3.3 双向 LAN 22/22；daemon 接线已补（§8），无 server 登录/source exchange/credit/AICH；`>PARTSIZE` 下载 10/10，上传用同构 `OP_COMPRESSEDPART(0x40)` 后与第二台 stock amuled 双向落地同一 md5（§17.2） | 部分：公网 server/peer 仍未测，不能外推 |
 
 治理债：SRS 已于 2026-11-22 评审至 v2.1（口径确认）；原重复 FR-24 的信誉行已改为 FR-26，实现仍为骨架。
 
@@ -58,7 +58,7 @@ updated: 2026-11-22
 | :--- | :--- | :--- |
 | P1 | FR-16 QoS | `cr-qos` 令牌桶未接 BT 做种；S5=fallback 否证 LEDBAT，不得写“自动退让” |
 | P1 | FR-17 NAT 打洞/回退 | 原语在 Windows+Linux 回环可用，daemon 不自动建映射；S6 机器常量仍 `not_run` |
-| P1 | FR-18 Mainline DHT | daemon 关闭 DHT；自有公网节点 announce 闭环，但 transmissionbt `token_len=0`、两个 router 超时（`tests/e2e/dht-announce/`） |
+| P1 | FR-18 Mainline DHT | 2026-11-24 已从 `dht.transmissionbt.com` 发现真实 token 节点 `37.48.95.218:3691`：222 受控 announce + 221 独立 get_peers 回查到 `112.5.32.34:17200`（`tests/e2e/dht-announce/`）；daemon 侧 DHT 仍默认关闭 |
 | P1 | FR-19 / FR-21 | Web UI、WebSocket 未实现（`src/crates/cr-api/src/lib.rs` 注释明确 G2 前不做） |
 | P1 | FR-20 | `/jsonrpc` 子集 + CORS 有；**无 `rpc-secret`** |
 | P2 | FR-22 / FR-23 / FR-26（原重复 FR-24） | 无 OpenAPI；插件仅测试资产；跨协议补源与信誉/激励均骨架 |
@@ -77,11 +77,11 @@ updated: 2026-11-22
 | 欠账 | 现状 | 下一步依赖 |
 | :--- | :--- | :--- |
 | 公平性 | v0/v1 量具只出原始计数（TCP 19.8–32.4%、UDP 23.1–26.8%、RTO 200→3200 ms）；可靠层无拥塞语义 | 跨公网丢包/时延梯度多组样本 + 阈值讨论；**在此之前不宣称公平性达标** |
-| Mainline DHT | 自有节点闭环；公共引导节点无可用 token | 找到确实签发 token 的邻居，独立节点 get_peers 回查；否则维持 BLOCKED |
+| Mainline DHT | 已从 Transmission 引导节点发现 token 邻居并完成 222 写入 / 221 独立回查（2026-11-24）；daemon 仍默认关闭 | 证据级闭环，不作为 G2/S6 证据；如需产品内自动 DHT，仍要做 daemon 接线与资源治理 |
 | TCP 打洞 | 原语通过，BT 数据面未接线，公网双侧 BLOCKED | 先解决公网双侧，再谈接线；symmetric 不可直连保留为正确结论 |
 | 守护进程多样种 | **已由 P0 e2e 覆盖**：两个 infohash 在 daemon 内分别登记任务，cap=1 下真实 BT 握手唤醒第二个任务触发 `evictions>=1`、`scheduled<=1`、`seed_active<=cap` | 无需另建 daemon 多任务 e2e；`tests/e2e/p0/run_p0.py` phase A 即判据来源 |
 | FR-24 公网 | **技术闭环已复现**（§18.3） | 不是 G2 证据；不因闭环改 `g2_claim` / `s6_status` |
-| FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 下载方向 10/10 闭环，上传方向推进到 19.2%–85.3% 后静置 | 定位 aMule 上传侧停止追加请求的判据 → 双轨发布 → 公网证据 |
+| FR-25 跨分片/公网 | daemon 已接 `serve`/`download`；`>PARTSIZE` 下载 10/10、上传与第二台 stock amuled 双向落地同一 md5（§17.2，LAN） | 公网 server/peer 传输仍未测；不外推 LAN 结果为 G2 证据 |
 | 外推边界 | W61 的 `rst-path-verified` 只指 `119.29.150.254` 这一条路径 | 不得写成“所有 RST 部署已验证” |
 | 性能 | 跨公网只有单次 1 MiB 样本；4 MiB 公网 143–235 s 成因未定位 | 多组样本，按 ADR-012 不折算速率 |
 
@@ -135,7 +135,7 @@ DHT 自有节点仍 `ping=OK / token_len=8 / peers=1`。这说明该对称 NAT /
 
 ## 7. 建议顺序（不因新增环境而重排）
 
-1. **先补代码债的头部**：FR-25 的 >`PARTSIZE` 上传方向跨分片闭环（daemon 接线与下载方向已完成）；FR-11/14 的默认策略与 µTP 覆盖。FR-10 守护进程多样种 + cap 逐出已由 P0 e2e 覆盖，不再列为头部欠账。
+1. **先补代码债的头部**：FR-25 公网 server/peer 传输证据（LAN 跨分片双向已闭环）；FR-11/14 的默认策略与 µTP 覆盖；可靠层拥塞语义。FR-10 守护进程多样种 + cap 逐出已由 P0 e2e 覆盖，不再列为头部欠账。
 2. **授权/治理（已完成 2026-11-22）**：G0 `protocol_scope` 已书面解除；SRS v2.1 评审与编号去重已完成。R-02/R-11 仍按 M4 前复核。
 3. **最后用家宽样本补环境面**：把新 NAT 分类、DHT/KAD 只读结果作为描述性证据归档；即使结果理想也不改 `g2_claim`、`s6_status`。
 4. 公平性阈值、Mainline 邻居发现、TCP 打洞接数据面继续按 DOC-27 的下一步执行，不因为 kit 有输出就提前宣称达标。

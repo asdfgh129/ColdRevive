@@ -35,7 +35,7 @@
 原始产物 `verify.json`：`peers=1`、`peer_list="112.5.32.34:17200"`。
 这是两个不同来源的观测：写入端拿 token，回查端不是写入进程。
 
-## 仍 BLOCKED：真实 Mainline 引导节点
+## 2026-11-20 历史基线：引导节点本身仍不签发 token
 
 | 引导节点 | get_peers 结果 |
 | :--- | :--- |
@@ -44,9 +44,21 @@
 | `router.utorrent.com:6881` | `DHT 查询超时 3000 ms` |
 | `82.157.68.159:6881`（自有） | `token_len=8`，announce 成功 |
 
-因此**只**能说「自有公网 DHT 节点上的 announce/回查闭环」，
-**不能**说「已加入真实 Mainline 网络」或「公网 DHT 拓扑可用」。
-`g2_claim=false`、`s6_status=not_run` 不变。
+## 2026-11-24 更新：真实 Mainline 节点 announce + 异机回查已闭环
+
+从 `dht.transmissionbt.com:6881` 做只读 `find_node`，222 发现邻居
+`37.48.95.218:3691`；先 `get_peers` 得到真实 `token_len=4`，确认
+`112.5.32.34:17200` TCP 可连接后，按 2026-11-20 的所有者授权执行受控
+`announce_peer(17200)`。随后由**另一台主机 221**对同一节点/infohash 独立
+`get_peers`，返回 `peers=1`、`peer_list=112.5.32.34:17200`。
+
+证据：`reports/mainline-announce-verify-20261124.json` 与
+`tests/ARCHIVE/evidence/mainline-{discovery-a,discovery-222,token-222-before,announce-222,verify-221}-20261124.jsonl`。
+
+边界：这只闭合 FR-18 的「真实 Mainline 节点可加入并回查」证据；不是
+G2 通过，不证明 DHT 拓扑整体可用，也不改 `g2_claim=false` /
+`s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false`。
+引导节点 `dht.transmissionbt.com` 自身仍 `token_len=0`，这一历史事实不变。
 
 ## 复现
 

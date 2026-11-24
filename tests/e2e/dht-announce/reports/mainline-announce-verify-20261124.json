@@ -1,0 +1,84 @@
+{
+  "schema": "coldrevive.mainline-dht-announce/v1",
+  "recorded_at": "2026-11-24T10:45:00+08:00",
+  "verdict": "MAINLINE_ANNOUNCE_VERIFIED_WITH_INDEPENDENT_LOOKUP",
+  "evidence_scope": "public-mainline-readwrite-authorized",
+  "authorization": "tests/e2e/dht-announce/README.md: 2026-11-20 owner authorized controlled announce_peer for this infohash and 112.5.32.34:17200",
+  "info_hash": "6d20782655acfb074d7e518c50fc99a8a7482e37",
+  "bootstrap": "dht.transmissionbt.com:6881",
+  "token_issuing_node": "37.48.95.218:3691",
+  "announced_endpoint": "112.5.32.34:17200",
+  "announce_host": "192.168.1.222",
+  "independent_lookup_host": "192.168.1.221",
+  "prereq_tcp_connect_announced_endpoint": true,
+  "steps": {
+    "discovery_from_222": [
+      {
+        "ok": true,
+        "mode": "find-node",
+        "target": "dht.transmissionbt.com:6881",
+        "resolved": "212.129.33.59:6881",
+        "nodes": 8,
+        "node_list": "67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071,67.21.76.62:7071"
+      }
+    ],
+    "discovery_from_A": [
+      {
+        "ok": true,
+        "mode": "find-node",
+        "target": "dht.transmissionbt.com:6881",
+        "resolved": "87.98.162.88:6881",
+        "nodes": 8,
+        "node_list": "5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517,5.164.11.91:11517"
+      }
+    ],
+    "token_before_announce_222": [
+      {
+        "ok": true,
+        "mode": "get-peers",
+        "target": "37.48.95.218:3691",
+        "info_hash": "6d20782655acfb074d7e518c50fc99a8a7482e37",
+        "token_len": 4,
+        "nodes": 8,
+        "peers": 0,
+        "peer_list": ""
+      }
+    ],
+    "announce_222": [
+      {
+        "ok": true,
+        "mode": "get-peers",
+        "target": "37.48.95.218:3691",
+        "info_hash": "6d20782655acfb074d7e518c50fc99a8a7482e37",
+        "token_len": 4,
+        "nodes": 8,
+        "peers": 0,
+        "peer_list": ""
+      },
+      {
+        "ok": true,
+        "mode": "announce",
+        "port": 17200
+      }
+    ],
+    "verify_221": [
+      {
+        "ok": true,
+        "mode": "get-peers",
+        "target": "37.48.95.218:3691",
+        "info_hash": "6d20782655acfb074d7e518c50fc99a8a7482e37",
+        "token_len": 4,
+        "nodes": 8,
+        "peers": 1,
+        "peer_list": "112.5.32.34:17200"
+      }
+    ]
+  },
+  "peer_verified_by_independent_host": true,
+  "observed_peer_list": "112.5.32.34:17200",
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false,
+  "note": "Token node was discovered from the public Transmission bootstrap via find_node. No raw announce packet was fabricated; announce succeeded only after a real 4-byte token from get_peers. This closes FR-18 mainline join evidence, not G2/S6."
+}

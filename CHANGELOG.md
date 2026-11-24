@@ -1,3 +1,18 @@
+## [2.4.115] - 2026-11-24 — FR-18 真实 Mainline DHT announce + 异机回查闭环
+
+> 无源码改动；门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+
+- 从 `dht.transmissionbt.com:6881` 只读 `find_node` 发现公网邻居
+  `37.48.95.218:3691`；该节点对真实 infohash 签发 `token_len=4`。
+- 先确认所宣告端点 `112.5.32.34:17200` TCP 真可连接，再按 2026-11-20 的
+  所有者授权从 222 执行受控 `announce_peer(17200)`；从**另一台主机 221**
+  对同一节点独立 `get_peers` 回查到 `peers=1`、`peer_list=112.5.32.34:17200`。
+- 证据 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`
+  与 `tests/ARCHIVE/evidence/mainline-*-20261124.jsonl`；测试已登记
+  `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。这只闭合 FR-18 证据项，
+  **不宣称 G2 达标，也不表示 daemon 已自动加入 DHT**。
+
 ## [2.4.114] - 2026-11-24 — FR-25 上传方向 LAN 闭环：同构 OP_COMPRESSEDPART
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
