@@ -1,0 +1,21 @@
+{
+  "schema": "coldrevive.fr24.kad-target/v1",
+  "date": "2026-11-24",
+  "host": "192.168.1.209",
+  "os": "Windows 10 (19044.3693)",
+  "client": "eMule (emule.exe, PID 12124 at observation time)",
+  "config_dir": "C:\\Program Files (x86)\\eMule\\config",
+  "kad": {
+    "tcp_port": 31969,
+    "udp_port": 41296,
+    "kad_udp_key": 1906084797,
+    "kad_id": "dddb80f83a3baf426ec305266b4760b3",
+    "kad_version_reported_by_hello_res": 10,
+    "public_egress_ip": "112.5.60.4",
+    "local_index_file": "key_index.dat",
+    "local_index_bytes": 204629,
+    "firewall_state": "non-firewalled (per user; corroborated by successful PUBLISH_RES and SEARCH_RES)"
+  },
+  "in_zone_probe_key": "dddb80f83a3baf426ec305266b4760b4",
+  "note": "Credentials were supplied by the user for SSH access only and are deliberately not recorded here."
+}

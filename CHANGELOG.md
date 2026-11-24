@@ -1,3 +1,23 @@
+## [2.4.111] - 2026-11-24 — FR-24 在非 firewalled 的 209 eMule 上完成真实 publish→search 闭环
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动。
+
+- 用户提供 209（`192.168.1.209`）上非 firewalled 的 eMule：KAD UDP 41296、
+  `KadUDPKey=1906084797`、KadID `dddb80f8…4760b3`（HELLO_RES 报版本 10），
+  `key_index.dat` 204,629 B 非空，公网出口同 `112.5.60.4`。
+- 221→209 局域网 try-2 HELLO 验证成功（`receiver_key_verified=true`），贴键
+  `top_chunk=0`；随后 `--publish-file` 得到真实 `0x4B` ACK（`ack_count=1`），
+  同一 `0x33` 取回 **1 条 `0x3B` SEARCH_RES**：file_id/md5、文件名、
+  1024 B 大小与 ed2k link 全部匹配（`public-209-lan-loop-20261124.json`）。
+- 222→`112.5.60.4:41296` 真公网路径：HELLO 因 222 对称 NAT 的可见端口不确定而超时，
+  但 **publish ACK 仍为真、SEARCH_RES 仍为 1 条且 tag 可解析**
+  （`public-209-public-loop-verified-20261124.json`）→ 再次证明索引操作没有
+  「已验证接触」门槛；无 HELLO 的对照则 0 ACK/0 命中
+  （`public-209-public-nohello-20261124.json`），差异来自信封/握手而非目标状态。
+- 证据另含 `public-209-target-profile-20261124.json`（不含凭据）。FR-24 的技术闭环
+  已在真 eMule 上复现；`evidence_valid_for_pass` 仍恒 false，不外推为门禁通过。
+
 ## [2.4.110] - 2026-11-23 — FR-24 防火墙状态恢复尝试：重启无效，入口路径正常
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、

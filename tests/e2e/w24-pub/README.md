@@ -160,3 +160,11 @@ S2 `PLAN.md` §6/§20 已给出机制：aMule `Process2*IndexRequest` 用
 95 个正常 KAD UDP 包 → 入站路径与 KAD 收发正常，firewalled 来自 aMule 自身测试。
 因此**重启不是恢复手段**；需要让该测试拿到成功回包，或改用非 firewalled 且
 本地索引含目标关键词的节点。中继主机只开放 UDP 7100，不能作为无 NAT 探针主机。
+
+2026-11-24 已用 209 上非 firewalled 的真 eMule 复现闭环：KAD UDP 41296、
+`KadUDPKey=1906084797`、KadID `dddb80f8…4760b3`，索引 204,629 B。
+221→209 LAN 的 try-2 HELLO 验证成功，publish 得真实 `0x4B` ACK，同一 key 的
+`0x33` 取回 1 条 `0x3B` SEARCH_RES（file_id、文件名、大小、ed2k link 匹配）；
+222→`112.5.60.4:41296` 真公网路径同样 ACK + 1 命中（尽管 NAT 导致 HELLO 超时，
+说明索引操作无已验证接触门槛），无 HELLO 对照为 0/0。
+证据：`reports/public-209-*-20261124.json`。`evidence_valid_for_pass` 仍恒 false。

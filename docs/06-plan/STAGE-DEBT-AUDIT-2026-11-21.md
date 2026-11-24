@@ -568,3 +568,24 @@ FR-24 公网检索继续 BLOCKED。`evidence_valid_for_pass` 恒 false。
 FR-24 口径不变：历史 w51g 报告已证明真实公网闭环可达；要今日复现，需要一个
 **非 firewalled 且本地索引含目标关键词**的节点，或让 221 的防火墙测试拿到一次成功回包
 （外部端口发现/CGNAT 映射需另行排查）。不要再换信封、加发包或改责任区。
+
+### §18.3 非 firewalled 目标上的闭环复现（2026-11-24，v2.4.111）
+
+用户提供了 209（`192.168.1.209`）上的真 eMule（非 firewalled）：KAD UDP 41296、
+`KadUDPKey=1906084797`、KadID `dddb80f83a3baf426ec305266b4760b3`（HELLO_RES 报版本 10），
+`key_index.dat` 204,629 B 非空，公网出口同为 `112.5.60.4`。用该 KadID 生成在区贴键
+`dddb80f83a3baf426ec305266b4760b4`（`top_chunk=0`）：
+
+1. **221→209 LAN**：try-2 HELLO `receiver_key_verified=true`；`--publish-file` 得
+   真实 `0x4B` ACK（`ack_count=1`）；同一 `0x33` 得 **1 条 `0x3B` SEARCH_RES**，
+   file_id `5ae257c47e9be1243ee32aabe408fb6b`、文件名、1024 B 与 ed2k link 全部匹配。
+   证据 `reports/public-209-lan-loop-20261124.json`。
+2. **222→112.5.60.4:41296 真公网路径**：HELLO 因 222 对称 NAT 可见端口不确定而超时，
+   但 publish ACK 仍为真、SEARCH_RES 仍为 1 条且 tag 可解析
+   （`reports/public-209-public-loop-verified-20261124.json`）。无 HELLO 的对照为
+   0 ACK / 0 命中（`reports/public-209-public-nohello-20261124.json`）。
+
+结论：**FR-24 的 publish→search 技术闭环在真 eMule 上已复现**；此前 221 的静默确由
+目标临时 firewalled + 空索引解释。门禁常量与 `evidence_valid_for_pass=false` 不变，
+不把诊断探针外推为 G2 通过。目标配置见 `reports/public-209-target-profile-20261124.json`
+（不含凭据）。
