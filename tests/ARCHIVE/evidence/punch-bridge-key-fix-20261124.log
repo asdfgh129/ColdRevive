@@ -1,0 +1,18 @@
+test relay_sub::tests::udp_subscription_survives_idle_reaping_and_still_delivers ... ok
+test nat_auto::tests::explicit_unavailable_location_reports_real_failure ... ok
+test relay_sub::tests::all_relays_down_reports_every_endpoint ... ok
+
+test result: ok. 79 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.16s
+
+test registered_socket_carries_real_librqbit_piece ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.31s
+
+     Running tests\route_negotiated_e2e.rs (target\debug\deps\route_negotiated_e2e-56be11b36828d666.exe)
+
+running 2 tests
+test relay_route_refuses_to_register_half_verified_socket ... ok
+test direct_route_carries_real_piece_through_registered_socket ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.27s
+

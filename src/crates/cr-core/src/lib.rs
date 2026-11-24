@@ -231,14 +231,25 @@ impl<'a> Parser<'a> {
                     }
                 }
                 c if c < 0x20 => return Err(format!("字符串含控制字符 @{}", self.i)),
+                0x20..=0x7f => out.push(c as char),
                 _ => {
-                    // 非 ASCII 字节按 UTF-8 逐字符回退重扫
+                    // 非 ASCII 起始字节：按 lead byte 判定本字符的 UTF-8 长度（2..4），
+                    // 只验证这一个字符的字节。绝不能 `from_utf8(&self.b[self.i..])`
+                    // 验证整段剩余缓冲——那会让每个字符重扫余下全文，解析退化为 O(n²)
+                    // （10k 条目 FR-04 快照 open 实测曾达 110 秒）。
                     self.i -= 1;
-                    let rest = std::str::from_utf8(&self.b[self.i..])
-                        .map_err(|_| "非法 UTF-8".to_string())?;
-                    let ch = rest.chars().next().ok_or("字符串提前结束")?;
+                    let len = match c {
+                        0xc2..=0xdf => 2,
+                        0xe0..=0xef => 3,
+                        0xf0..=0xf4 => 4,
+                        _ => return Err(format!("非法 UTF-8 起始字节 0x{c:02x} @{}", self.i)),
+                    };
+                    if self.i + len > self.b.len() { return Err("UTF-8 字符被截断".into()); }
+                    let ch = std::str::from_utf8(&self.b[self.i..self.i + len])
+                        .map_err(|_| "非法 UTF-8".to_string())?
+                        .chars().next().ok_or("UTF-8 字符为空")?;
                     out.push(ch);
-                    self.i += ch.len_utf8();
+                    self.i += len;
                 }
             }
         }
@@ -832,6 +843,17 @@ mod tests {
         assert_eq!(j, back);
         assert_eq!(back.get("caps").unwrap().get("ed2k").unwrap().as_bool(), Some(false));
         assert_eq!(back.get("keys").unwrap().as_arr().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn json_string_parses_multibyte_utf8_without_rescanning_tail() {
+        // 覆盖 2/3/4 字节 UTF-8 lead byte 分支；修复前非 ASCII 走"验证剩余全文"，
+        // 语义虽对但 O(n²)，这里断言语义不回退，规模收益由 cr-store 的 10k 用例量化。
+        let s = "中文😀é — caf\u{e9}";
+        let j = Json::obj(vec![("u", Json::s(s))]);
+        let back = Json::parse(&j.dump()).unwrap();
+        assert_eq!(back.get("u").unwrap().as_str(), Some(s));
+        assert_eq!(Json::parse(&Json::s("😀").dump()).unwrap(), Json::s("😀"));
     }
 
     #[test]

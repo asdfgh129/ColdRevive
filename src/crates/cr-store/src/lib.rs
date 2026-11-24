@@ -528,4 +528,49 @@ mod tests {
         assert!(e.kad_due(1, 3_600), "缺省值必须让条目立刻可（重）发");
         let _ = fs::remove_dir_all(&dir);
     }
+
+    /// FR-04 规模上限（审计 §12 列为未验证）：JSON 原子快照在 10k 条目下的真实
+    /// save+open 往返。这里只断言「数据完整 + 实测耗时/文件字节写进日志」，
+    /// 不编造 SLA、不据此宣称 SQLite 不需要——规模预算由所有者按该数字裁定。
+    #[test]
+    fn json_snapshot_roundtrips_ten_thousand_entries_with_measured_cost() {
+        use std::time::Instant;
+        const N: usize = 10_000;
+        let dir = temp_dir("scale-10k");
+        let p = dir.join("state.json");
+        let mut idx = ShadowIndex::open(&p);
+        for i in 0..N {
+            let hash = format!("{:040x}", i);
+            let mut e = FileEntry::new(&hash, Path::new(&format!("/share/f{i}.bin")),
+                                       &format!("f{i}.bin"), i);
+            e.infohash = format!("{:040x}", i + N);
+            e.published_keys = vec![format!("k{i}")];
+            e.kad_published = i % 2 == 0;
+            idx.insert(e);
+        }
+        let t0 = Instant::now();
+        idx.save().unwrap();
+        let save_ms = t0.elapsed().as_millis();
+        let bytes = fs::metadata(&p).unwrap().len();
+
+        let t1 = Instant::now();
+        let back = ShadowIndex::open(&p);
+        let open_ms = t1.elapsed().as_millis();
+        assert_eq!(back.status, OpenStatus::LoadedV2);
+        assert_eq!(back.len(), N, "重启后条目数必须原样回来，不允许无声丢失");
+        for i in (0..N).step_by(N / 10) {
+            let hash = format!("{:040x}", i);
+            let e = back.get(&hash).expect("抽样条目必须存在");
+            assert_eq!(e.infohash, format!("{:040x}", i + N));
+            assert_eq!(e.path, Path::new(&format!("/share/f{i}.bin")));
+        }
+        println!(
+            "FR04_SCALE entries={N} snapshot_bytes={bytes} save_ms={save_ms} open_ms={open_ms}"
+        );
+        // 修复 cr-core JSON 解析 O(n²) 前的基线是 open_ms≈110701；修复后≈137。
+        // 这里用 5s 作回归护栏（比基线快 20× 以上），不是对外 SLA 承诺。
+        assert!(save_ms < 5_000 && open_ms < 5_000,
+                "10k 快照往返退化：save={save_ms}ms open={open_ms}ms（O(n²) 回归？）");
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

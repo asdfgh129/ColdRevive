@@ -1,3 +1,24 @@
+## [2.4.123] - 2026-11-24 — JSON 解析 O(n²) 修复、FR-04 规模闭环、punch 桥键纠错
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮无公网新证据，不外推 G2/S6。
+
+- **`cr-core` JSON 解析 O(n²) 修复**（FR-04 规模根因）：`Parser::string()` 原实现对每个
+  非 ASCII/普通字节都 `from_utf8(&b[i..])` 验证整段剩余缓冲，解析复杂度 O(n²)。改为
+  ASCII 直推 + 按 UTF-8 lead byte 只切片单字符（≤4 B）验证；新增 2/3/4 字节
+  UTF-8 往返单测。实测 10k 条目快照 open **110701 ms → 137 ms**（约 800×）。
+- **FR-04 规模上限闭环**：新增 `cr-store` `json_snapshot_roundtrips_ten_thousand_entries...`，
+  10k 条目 3.87 MB 快照 save≈213 ms / open≈137 ms，重启后条目/字段抽样一致，
+  5s 回归护栏（非 SLA）。审计 §12 FR-04 行同步；**不引入 SQLite/新依赖**——
+  SRS FR-04 只要求重启恢复，不指定存储引擎，JSON 原子快照已满足且规模可控。
+- **`nat punch-route` 桥键纠错**（v2.4.122 引入的真 bug）：发现端口用作 SYN 目的地址，
+  但打洞 socket 曾按发现端口登记进 SOCKS5 桥；引擎实际拨静态 `bt_external`，
+  桥键不匹配会 miss 并回落直连，打洞白做。新增 `PunchTargets` 显式分离
+  `syn`（发现端口）与 `bridge`（静态通告地址），单测断言二者不同时桥键仍为静态地址。
+- **eD2k 未实现特性的决策固化**：核查 Kulbak/Bickson §6.2 与 aMule Wiki，登录帧格式
+  公开但自述 "WILL have errors" 且 tag 布局互相冲突；AICH/credit 已被 ADR-004/011
+  明确排除。PROTO §2.2.2 记录"为什么不猜"，三个 `UnsupportedFeature` 维持原状。
+
 ## [2.4.122] - 2026-11-24 — 字节口径标注、发现端口接线、公平性失败轮根因
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

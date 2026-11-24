@@ -915,11 +915,8 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 },
                 None => return Json::obj(vec![("error", Json::s("对端无公网 BT 映射，先 nat peer"))]),
             };
-            let target: SocketAddr = match discovered_port {
-                Some(port) => SocketAddr::new(base_target.ip(), port),
-                None => base_target,
-            };
-            let punched = cr_nat::tcp_punch::punch_tcp(local, &[target], timeout);
+            let targets = PunchTargets::new(base_target, discovered_port);
+            let punched = cr_nat::tcp_punch::punch_tcp(local, &[targets.syn], timeout);
             let Some(mut stream) = punched.established.map(|p| p.stream) else {
                 state.lock().unwrap().punch_route.record(None);
                 return Json::obj(vec![
@@ -980,7 +977,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             let dp = state.lock().unwrap().data_plane.clone();
             let punched_registered = if route == cr_nat::Route::Direct {
                 match dp {
-                    Some(dp) => match dp.attach_punched_socket(target, stream) {
+                    Some(dp) => match dp.attach_punched_socket(targets.bridge, stream) {
                         Ok(()) => true,
                         Err(e) => {
                             state.lock().unwrap().punch_route.record(None);
@@ -1096,6 +1093,29 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             ])
         }
         other => Json::obj(vec![("error", Json::s(format!("未知 nat 子命令 {}", other)))]),
+    }
+}
+
+/// punch-route 里有两个**不能混淆**的对端地址（w54 真引擎 e2e 的桥键口径）：
+/// - `syn`：实际发 SYN 的目的地址。DOC-30 发现端口只改这里的端口（IP 不变）。
+/// - `bridge`：socket 登记进 SOCKS5 桥的键，**必须等于引擎拨号的地址**。
+///   引擎的 initial_peers 来自 `nat peer` 拿到的静态 `bt_external`（main.rs），
+///   它不知道、也不会拨发现端口。若用 `syn` 当桥键，engine 拨静态地址时
+///   `bridge.take()` miss → 回落真实直连 → 打洞等于白做。故两者必须分离。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PunchTargets {
+    syn: SocketAddr,
+    bridge: SocketAddr,
+}
+
+impl PunchTargets {
+    fn new(advertised: SocketAddr, discovered_port: Option<u16>) -> Self {
+        let syn = match discovered_port {
+            Some(port) => SocketAddr::new(advertised.ip(), port),
+            None => advertised,
+        };
+        // 桥键恒为静态通告地址：发 SYN 用发现端口，接引擎仍按静态地址查表。
+        Self { syn, bridge: advertised }
     }
 }
 
@@ -1252,5 +1272,21 @@ mod tests {
         let overridden = std::net::SocketAddr::new(base.ip(), 21249);
         assert_eq!(overridden.ip(), base.ip());
         assert_eq!(overridden.port(), 21249);
+    }
+
+    #[test]
+    fn punch_targets_separate_syn_port_from_engine_bridge_key() {
+        // 无发现端口：与旧行为逐字节一致，syn == bridge。
+        let advertised: SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let plain = PunchTargets::new(advertised, None);
+        assert_eq!(plain.syn, advertised);
+        assert_eq!(plain.bridge, advertised);
+
+        // 有发现端口：SYN 打到发现端口，但桥键必须仍是静态通告地址。
+        // 否则引擎按静态 bt_external 拨号时 bridge.take() miss，回落直连。
+        let with_disc = PunchTargets::new(advertised, Some(20811));
+        assert_eq!(with_disc.syn, "112.5.60.4:20811".parse().unwrap());
+        assert_eq!(with_disc.bridge, advertised);
+        assert_ne!(with_disc.syn, with_disc.bridge);
     }
 }

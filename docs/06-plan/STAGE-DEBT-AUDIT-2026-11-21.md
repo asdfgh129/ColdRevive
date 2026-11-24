@@ -38,7 +38,7 @@ updated: 2026-11-24
 | :--- | :--- | :--- | :--- |
 | FR-01 目录监控 | **已接线（有边界）** | `watch.rs` + `cr_indexer::PollWatcher` 运行期增量（新增/修改/删除入库出库），`indexer.watch_secs` opt-in；后端是**轮询快照**，Windows `ReadDirectoryChangesW` 未接入（§9） | 否（代码） |
 | FR-02 指纹多哈希联动 | **已接线** | 一次读盘产出 SHA-256 / SHA-1 / eD2k fileID，三者落索引（v2）；fileID 由独立纯 Python MD4 复算一致（§9） | 否（代码） |
-| FR-04 持久化 | **已接线（JSON，非 SQLite）** | 原子落盘（tmp→fsync→`.bak`→rename）、`OpenStatus` 五态、v1→v2 迁移；重启 e2e 断言 `loaded_v2`（§9）。仍用 JSON 而非 SQLite，规模上限未验证 | 否（代码） |
+| FR-04 持久化 | **已接线（JSON，非 SQLite）** | 原子落盘（tmp→fsync→`.bak`→rename）、`OpenStatus` 五态、v1→v2 迁移；重启 e2e 断言 `loaded_v2`（§9）。仍用 JSON 而非 SQLite。**规模上限已于 v2.4.123 实测闭环**：10k 条目快照 3.87 MB，save≈213 ms、open≈137 ms（`cr-store` `json_snapshot_roundtrips_ten_thousand_entries...`）。此前 open≈110701 ms 是 `cr-core` 字符串解析把每个 UTF-8 字符都 `from_utf8(剩余全文)` 的 O(n²) bug，已修；不引入 SQLite/新依赖 | 否（代码）；更大数量级仍无 SLA 承诺 |
 | FR-05/06/07 KAD 发布/查询 | **部分（本地侧齐活，含同义词）** | 周期重发布改为**到期才发**（`kad.ttl_secs`，刷新窗口 `ttl/3`；成功前推截止、失败不前推），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；文件名分词 + **确定性同义词扩展**（手写封闭表、按每词 Unicode 脚本选表）+ `detect_language` 展示标签 + `/cli kad-health` 去重健康度已接入；新增 `/cli publish` 把已入库 key 真发出去（§10/§11）。**TTL 是本机记账，不是协议 TTL**；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
 | FR-09 限流 | **已接线** | `ratelimit.rs` 令牌桶（按来源 IP，表上限 4096），超限 429 + `reason=rate_limited` + `retry_after_ms`；`/health`、`/nat/*` 不参与限流（§9） | 否（代码） |
 | FR-10 LRU 逐出 | **已闭环（多种子任务）** | 多样本 + `engine.max_active_seeds=1`，真实 BT 握手唤醒两个 infohash → `evictions=1`、`scheduled<=1`、`seed_active<=cap`（§9） | 否（代码） |

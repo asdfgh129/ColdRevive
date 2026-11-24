@@ -171,6 +171,17 @@ SEARCH_RES         (0x3B) = <senderID 16><target 16><count u16>[<answer 16><tagc
 > 源交换、AICH 与 >4 GiB 的 I64 分片（`0xA2` / `0xA3`）。最小上传队列属传输栈、必须实现；
 > 完整 eMule 信用体系仍属 [PRD 非目标](../01-product/PRD.md)，M1 实测排队代价后再定（ADR-011）。
 
+> **2026-11-24 对外线格式的核查结论（仍不实现，只固化"为什么不猜"）**：公开权威资料确实存在——
+> Kulbak/Bickson《The eMule Protocol Specification》§6.2 与 aMule Wiki `Ed2k_protocol` 都给出
+> `OP_LOGINREQUEST (0x01)` 的字段序列（`<0xE3><size u32 LE><0x01><userhash16><clientID u32>
+> <tcpport u16><tagcount u32><tags>`，随后服务端回 `OP_IDCHANGE (0x40)`）。但据此**仍不接线**，
+> 原因有三，逐条可复核：① aMule Wiki 自述 "created by a newbie and WILL have errors"，
+> 非本仓库验证过的抓包；② 各来源的 tag 细节互相冲突（port tag `0x0F` vs 压缩 tag `0x20`、
+> `0xFB` 标为 "???"），无唯一权威布局；③ ADR-004 明确排除 AICH、ADR-011 明确 credit 为非目标，
+> 登录/积分/AICH 均超出已接受的 v1 范围。`cr-ed2k::codecs` 的三个 `UnsupportedFeature`
+> 常量维持原状；若将来要补，必须先以真实 aMule/eMule 抓包逐字节定版线格式、更新本文件与 ADR，
+> 再实现——猜包会产生静默丢弃的诱饵帧，违背"只认真实证据"的门禁。
+
 > **2026-11-20 与真实 aMule 2.3.3 互通的实测补充**（不改协议，只记行为）：
 > ① `OP_REQUESTPARTS` **会重复** —— aMule 对已收区间会再发一次同样的 3 组 start/end，
 > 所以上传侧 `bytes_sent` **可以大于文件大小**（262144 B 的样本实测 `bytes_sent=339968`）。
