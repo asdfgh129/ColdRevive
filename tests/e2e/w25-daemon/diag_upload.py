@@ -259,11 +259,22 @@ def main() -> int:
     RUN.mkdir(parents=True, exist_ok=True)
     REPORTS.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d%H%M%S")
-    name = "w25-diag-%s.bin" % stamp
-    sample = RUN / name
-    seed = int(stamp) % 251
-    with open(sample, "wb") as f:
-        f.write(bytes(((i * 91 + seed + 7) % 256) for i in range(SAMPLE_BYTES)))
+    external = os.environ.get("FR25_SAMPLE_PATH", "")
+    if external:
+        # Reverse A/B needs the exact same sample bytes on both uploaders.
+        sample = Path(external).resolve()
+        name = os.environ.get("FR25_SAMPLE_NAME", sample.name)
+        if not sample.is_file():
+            raise SystemExit(f"FR25_SAMPLE_PATH does not exist: {sample}")
+        sample_bytes = sample.read_bytes()
+        if len(sample_bytes) != SAMPLE_BYTES:
+            raise SystemExit(f"external sample is {len(sample_bytes)} B, expected {SAMPLE_BYTES}")
+    else:
+        name = "w25-diag-%s.bin" % stamp
+        sample = RUN / name
+        seed = int(stamp) % 251
+        with open(sample, "wb") as f:
+            f.write(bytes(((i * 91 + seed + 7) % 256) for i in range(SAMPLE_BYTES)))
 
     trace_path = RUN / ("diag-upload-frames-%s.log" % stamp)
     trace = trace_path.open("w", encoding="utf-8")
@@ -278,7 +289,9 @@ def main() -> int:
         "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
         "pace_bps": PACE_BPS,
         "sample": {"name": name, "bytes": SAMPLE_BYTES,
-                   "md5": hashlib.md5(sample.read_bytes()).hexdigest()},
+                   "md5": hashlib.md5(sample.read_bytes()).hexdigest(),
+                   "source": "external" if external else "generated",
+                   "path": str(sample) if external else ""},
         "amule_logging": {
             "note": "aMule release builds compile AddDebugLogLineN() out; "
                     "VerboseDebug=1 cannot produce frame-level diagnostics",

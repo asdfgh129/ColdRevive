@@ -603,9 +603,11 @@ pub fn serve_with_config(
     let peer_id = queue.lock().map(|mut q| q.new_peer()).unwrap_or(0);
     let mut held_slot = false;
     let mut current_file: Option<SharedFile> = None;
-    // aMule 自己上传时按 10240 字节一帧发（W25-daemon 抓包 950 帧收完
-    // 9,736,192 字节）；照它的粒度回帧才和真实客户端同构。整块 184320 一帧
-    // 在 LAN 上会让它收几十块后停住（实测 36%–85% 间随机停）。
+    // 注意（2026-11-24 反向 A/B 更正）：真 aMule 上传端发的是
+    // OP_COMPRESSEDPART(0x40)/protocol 0xC5，约 1,070 B 的 zlib 帧对应
+    // 184,320 B 块；不是 10,240 B 的 OP_SENDINGPART(0x46)。当前实现仍用
+    // 0x46/10,240 B，aMule 下载端会在接近完成时停止请求（97.6% 停住）。
+    // 旧注释「aMule 按 10240 字节一帧」是误判，保留此更正以防再次走偏。
     // 记账按「请求区间」而不是帧：同一区间重复请求多是流水线，但若连续多轮
     // 仍在 pending 里，就按重传再发一次（eD2k 无块级 ACK，只能这样自愈）。
     let mut sent_ranges: HashMap<(u32, u32), SentRange> = HashMap::new();

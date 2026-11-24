@@ -1,0 +1,1206 @@
+{
+  "schema": "coldrevive.fr25.upload-diag/v2",
+  "generated_at_unix": 1795481299,
+  "scope": "RFC1918 LAN, real aMule 2.3.3 release build, transparent TCP proxy",
+  "pace_bps": 200000,
+  "sample": {
+    "name": "w25-reverse-20261124084814.bin",
+    "bytes": 9736192,
+    "md5": "1af6e88f787d0a18e609ed6d67a8e5c1",
+    "source": "external",
+    "path": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-reverse-20261124084814.bin"
+  },
+  "amule_logging": {
+    "note": "aMule release builds compile AddDebugLogLineN() out; VerboseDebug=1 cannot produce frame-level diagnostics",
+    "verified": "strings /usr/bin/amuled | grep -c 'exceeds requested' == 0"
+  },
+  "timeline": [
+    {
+      "t": 0.4,
+      "amule_percent": 0.0,
+      "amule_state": "Waiting",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 0,
+      "request_pairs": 0,
+      "sends": 0,
+      "bytes_sent": 0,
+      "completed": 0,
+      "pending": 0,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 3.8,
+      "amule_percent": 5.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 4,
+      "request_pairs": 12,
+      "sends": 50,
+      "bytes_sent": 509952,
+      "completed": 3,
+      "pending": 4,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 7.1,
+      "amule_percent": 11.9,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 8,
+      "request_pairs": 24,
+      "sends": 114,
+      "bytes_sent": 1165312,
+      "completed": 7,
+      "pending": 4,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 10.5,
+      "amule_percent": 18.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 11,
+      "request_pairs": 33,
+      "sends": 179,
+      "bytes_sent": 1830912,
+      "completed": 10,
+      "pending": 5,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 13.9,
+      "amule_percent": 25.4,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 15,
+      "request_pairs": 45,
+      "sends": 243,
+      "bytes_sent": 2486272,
+      "completed": 14,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 17.2,
+      "amule_percent": 32.2,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 18,
+      "request_pairs": 54,
+      "sends": 307,
+      "bytes_sent": 3141632,
+      "completed": 18,
+      "pending": 6,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 20.6,
+      "amule_percent": 38.9,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 22,
+      "request_pairs": 66,
+      "sends": 372,
+      "bytes_sent": 3807232,
+      "completed": 21,
+      "pending": 8,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 23.9,
+      "amule_percent": 45.7,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 26,
+      "request_pairs": 78,
+      "sends": 436,
+      "bytes_sent": 4462592,
+      "completed": 25,
+      "pending": 9,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 27.3,
+      "amule_percent": 52.5,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 29,
+      "request_pairs": 87,
+      "sends": 500,
+      "bytes_sent": 5117952,
+      "completed": 28,
+      "pending": 9,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 30.6,
+      "amule_percent": 59.2,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 33,
+      "request_pairs": 99,
+      "sends": 565,
+      "bytes_sent": 5783552,
+      "completed": 32,
+      "pending": 11,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 34.0,
+      "amule_percent": 66.0,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 35,
+      "request_pairs": 105,
+      "sends": 629,
+      "bytes_sent": 6438912,
+      "completed": 35,
+      "pending": 10,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 37.4,
+      "amule_percent": 72.8,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 39,
+      "request_pairs": 117,
+      "sends": 694,
+      "bytes_sent": 7104512,
+      "completed": 39,
+      "pending": 11,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 40.7,
+      "amule_percent": 79.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 43,
+      "request_pairs": 129,
+      "sends": 758,
+      "bytes_sent": 7759872,
+      "completed": 43,
+      "pending": 12,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 44.1,
+      "amule_percent": 86.3,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 47,
+      "request_pairs": 141,
+      "sends": 823,
+      "bytes_sent": 8425472,
+      "completed": 46,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 47.4,
+      "amule_percent": 93.2,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 51,
+      "request_pairs": 153,
+      "sends": 887,
+      "bytes_sent": 9080832,
+      "completed": 50,
+      "pending": 15,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 50.8,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 54.9,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 58.3,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 61.6,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 65.1,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "running",
+      "serve_bytes_sent": null,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 68.4,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "error",
+      "serve_bytes_sent": 9910272,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 71.8,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "error",
+      "serve_bytes_sent": 9910272,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 75.2,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "error",
+      "serve_bytes_sent": 9910272,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    },
+    {
+      "t": 78.6,
+      "amule_percent": 97.6,
+      "amule_state": "Downloading",
+      "task_status": "error",
+      "serve_bytes_sent": 9910272,
+      "requests": 53,
+      "request_pairs": 158,
+      "sends": 949,
+      "bytes_sent": 9715712,
+      "completed": 53,
+      "pending": 14,
+      "dropped_exceeds": 0,
+      "dropped_unknown": 0
+    }
+  ],
+  "link": {
+    "schema": "coldrevive.fr25.link/v1",
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-reverse-20261124084814.bin",
+    "name": "w25-reverse-20261124084814.bin",
+    "size": 9736192,
+    "file_id": "9d8803c15d9e534c965328757020b04f",
+    "ed2k_link": "ed2k://|file|w25-reverse-20261124084814.bin|9736192|9d8803c15d9e534c965328757020b04f|/",
+    "hashset_required": true
+  },
+  "serve_id": "ed2k-1795481299-serve-0000",
+  "amule_cancelled_before": [
+    {
+      "hash": "080E7E1F444FA39F90223A49D0B7C0B4",
+      "name": "w25-diag-20261123100746.bin",
+      "rc": 0,
+      "out": "md 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\nProcessing by hash: 080E7E1F444FA39F90223A49D0B7C0B4\n > Operation was successful.\n"
+    }
+  ],
+  "amule_add": {
+    "rc": 0,
+    "stdout": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > Operation was successful.\n"
+  },
+  "stalled": true,
+  "amule_percent_at_stop": 97.6,
+  "accounting": {
+    "requests": 53,
+    "request_pairs": 158,
+    "sends": 949,
+    "bytes_sent": 9715712,
+    "blocks_completed": 53,
+    "blocks_pending_at_stop": 14,
+    "dropped_exceeds_boundaries": 0,
+    "dropped_no_pending_block": 0,
+    "pending_list": [
+      {
+        "start": 184320,
+        "end_incl": 368639,
+        "bytes": 0
+      },
+      {
+        "start": 1290240,
+        "end_incl": 1474559,
+        "bytes": 0
+      },
+      {
+        "start": 2211840,
+        "end_incl": 2396159,
+        "bytes": 0
+      },
+      {
+        "start": 2949120,
+        "end_incl": 3133439,
+        "bytes": 0
+      },
+      {
+        "start": 3502080,
+        "end_incl": 3686399,
+        "bytes": 0
+      },
+      {
+        "start": 4239360,
+        "end_incl": 4423679,
+        "bytes": 0
+      },
+      {
+        "start": 5160960,
+        "end_incl": 5345279,
+        "bytes": 0
+      },
+      {
+        "start": 5529600,
+        "end_incl": 5713919,
+        "bytes": 0
+      },
+      {
+        "start": 6266880,
+        "end_incl": 6451199,
+        "bytes": 0
+      },
+      {
+        "start": 7004160,
+        "end_incl": 7188479,
+        "bytes": 0
+      },
+      {
+        "start": 7741440,
+        "end_incl": 7925759,
+        "bytes": 0
+      },
+      {
+        "start": 8478720,
+        "end_incl": 8663039,
+        "bytes": 0
+      },
+      {
+        "start": 9216000,
+        "end_incl": 9400319,
+        "bytes": 0
+      },
+      {
+        "start": 9584640,
+        "end_incl": 9727999,
+        "bytes": 122880
+      }
+    ]
+  },
+  "events_tail": [
+    {
+      "kind": "block_complete",
+      "block": [
+        5713920,
+        5898239
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 5898240,
+      "end": 6082560,
+      "block": [
+        5898240,
+        6082559
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6082560,
+      "end": 6266880,
+      "block": [
+        6082560,
+        6266879
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6266880,
+      "end": 6451200,
+      "block": [
+        6266880,
+        6451199
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        5898240,
+        6082559
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6082560,
+      "end": 6266880,
+      "block": [
+        6082560,
+        6266879
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6266880,
+      "end": 6451200,
+      "block": [
+        6266880,
+        6451199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6451200,
+      "end": 6635520,
+      "block": [
+        6451200,
+        6635519
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        6082560,
+        6266879
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        6266880,
+        6451199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6266880,
+      "end": 6451200,
+      "block": [
+        6266880,
+        6451199
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6451200,
+      "end": 6635520,
+      "block": [
+        6451200,
+        6635519
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6635520,
+      "end": 6819840,
+      "block": [
+        6635520,
+        6819839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6451200,
+      "end": 6635520,
+      "block": [
+        6451200,
+        6635519
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6635520,
+      "end": 6819840,
+      "block": [
+        6635520,
+        6819839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6819840,
+      "end": 7004160,
+      "block": [
+        6819840,
+        7004159
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        6451200,
+        6635519
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6635520,
+      "end": 6819840,
+      "block": [
+        6635520,
+        6819839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6819840,
+      "end": 7004160,
+      "block": [
+        6819840,
+        7004159
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7004160,
+      "end": 7188480,
+      "block": [
+        7004160,
+        7188479
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        6635520,
+        6819839
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 6819840,
+      "end": 7004160,
+      "block": [
+        6819840,
+        7004159
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7004160,
+      "end": 7188480,
+      "block": [
+        7004160,
+        7188479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7188480,
+      "end": 7372800,
+      "block": [
+        7188480,
+        7372799
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        6819840,
+        7004159
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7004160,
+        7188479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7004160,
+      "end": 7188480,
+      "block": [
+        7004160,
+        7188479
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7188480,
+      "end": 7372800,
+      "block": [
+        7188480,
+        7372799
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7372800,
+      "end": 7557120,
+      "block": [
+        7372800,
+        7557119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7188480,
+      "end": 7372800,
+      "block": [
+        7188480,
+        7372799
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7372800,
+      "end": 7557120,
+      "block": [
+        7372800,
+        7557119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7557120,
+      "end": 7741440,
+      "block": [
+        7557120,
+        7741439
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7188480,
+        7372799
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7372800,
+      "end": 7557120,
+      "block": [
+        7372800,
+        7557119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7557120,
+      "end": 7741440,
+      "block": [
+        7557120,
+        7741439
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7741440,
+      "end": 7925760,
+      "block": [
+        7741440,
+        7925759
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7372800,
+        7557119
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7557120,
+      "end": 7741440,
+      "block": [
+        7557120,
+        7741439
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7741440,
+      "end": 7925760,
+      "block": [
+        7741440,
+        7925759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7925760,
+      "end": 8110080,
+      "block": [
+        7925760,
+        8110079
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7557120,
+        7741439
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7741440,
+        7925759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7741440,
+      "end": 7925760,
+      "block": [
+        7741440,
+        7925759
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7925760,
+      "end": 8110080,
+      "block": [
+        7925760,
+        8110079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8110080,
+      "end": 8294400,
+      "block": [
+        8110080,
+        8294399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 7925760,
+      "end": 8110080,
+      "block": [
+        7925760,
+        8110079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8110080,
+      "end": 8294400,
+      "block": [
+        8110080,
+        8294399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8294400,
+      "end": 8478720,
+      "block": [
+        8294400,
+        8478719
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        7925760,
+        8110079
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8110080,
+      "end": 8294400,
+      "block": [
+        8110080,
+        8294399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8294400,
+      "end": 8478720,
+      "block": [
+        8294400,
+        8478719
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8478720,
+      "end": 8663040,
+      "block": [
+        8478720,
+        8663039
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        8110080,
+        8294399
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8294400,
+      "end": 8478720,
+      "block": [
+        8294400,
+        8478719
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8478720,
+      "end": 8663040,
+      "block": [
+        8478720,
+        8663039
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8663040,
+      "end": 8847360,
+      "block": [
+        8663040,
+        8847359
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        8294400,
+        8478719
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        8478720,
+        8663039
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8478720,
+      "end": 8663040,
+      "block": [
+        8478720,
+        8663039
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8663040,
+      "end": 8847360,
+      "block": [
+        8663040,
+        8847359
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8847360,
+      "end": 9031680,
+      "block": [
+        8847360,
+        9031679
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8663040,
+      "end": 8847360,
+      "block": [
+        8663040,
+        8847359
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8847360,
+      "end": 9031680,
+      "block": [
+        8847360,
+        9031679
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9031680,
+      "end": 9216000,
+      "block": [
+        9031680,
+        9215999
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        8663040,
+        8847359
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 8847360,
+      "end": 9031680,
+      "block": [
+        8847360,
+        9031679
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9031680,
+      "end": 9216000,
+      "block": [
+        9031680,
+        9215999
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9216000,
+      "end": 9400320,
+      "block": [
+        9216000,
+        9400319
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        8847360,
+        9031679
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9031680,
+      "end": 9216000,
+      "block": [
+        9031680,
+        9215999
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9216000,
+      "end": 9400320,
+      "block": [
+        9216000,
+        9400319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9400320,
+      "end": 9584640,
+      "block": [
+        9400320,
+        9584639
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        9031680,
+        9215999
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        9216000,
+        9400319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9216000,
+      "end": 9400320,
+      "block": [
+        9216000,
+        9400319
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9400320,
+      "end": 9584640,
+      "block": [
+        9400320,
+        9584639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9584640,
+      "end": 9728000,
+      "block": [
+        9584640,
+        9727999
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9400320,
+      "end": 9584640,
+      "block": [
+        9400320,
+        9584639
+      ]
+    },
+    {
+      "kind": "request",
+      "start": 9584640,
+      "end": 9728000,
+      "block": [
+        9584640,
+        9727999
+      ]
+    },
+    {
+      "kind": "block_complete",
+      "block": [
+        9400320,
+        9584639
+      ]
+    }
+  ],
+  "recv_q_at_stop": "ESTAB 133342 0               192.168.1.221:55406          192.168.1.210:4663",
+  "amule_show_dl": "This is amulecmd 2.3.3\n\nCreating client...\nSucceeded! Connection established to aMule 2.3.3\n > 9D8803C15D9E534C965328757020B04F w25-reverse-20261124084814.bin\n > \t [97.6%]    1/   1     (01) - Downloading - 001.part.met - Auto [Hi] - 186.50 kB/s\n",
+  "serve_final": {
+    "schema": "coldrevive.fr25.daemon-task/v1",
+    "id": "ed2k-1795481299-serve-0000",
+    "kind": "serve",
+    "status": "error",
+    "created_unix": 1795481299,
+    "file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w25-daemon\\run\\w25-reverse-20261124084814.bin",
+    "host": "0.0.0.0",
+    "port": 4763,
+    "result": {
+      "peer": "127.0.0.1:59905",
+      "connections": 1,
+      "peer_hello": true,
+      "queue_granted": true,
+      "blocks_sent": 968,
+      "bytes_sent": 9910272,
+      "idle_resends": 0,
+      "deferred_bytes": 0,
+      "max_in_flight_peak": 376832,
+      "request_gated_pacing": false,
+      "ed2k_link": "ed2k://|file|w25-reverse-20261124084814.bin|9736192|9d8803c15d9e534c965328757020b04f|/",
+      "log_tail": [
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }",
+        "LogEntry { at_ms: 0, direction: \"send\", protocol: 227, opcode: 70, opcode_name: \"OP_SENDINGPART\", payload_len: 10264 }"
+      ]
+    },
+    "error": "write eD2k frame (peer stopped reading?): write eD2k frame: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)"
+  },
+  "verdict": "STALLED_WITH_PENDING_BLOCKS"
+}

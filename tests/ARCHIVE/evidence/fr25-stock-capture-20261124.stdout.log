@@ -1,0 +1,3 @@
+report: C:\Users\bemin\WorkBuddy\ColdRevive\tests\e2e\w25-daemon\reports\stock-upload-capture-20261124085257.json
+md5_matches=True accounting={'requests': 54, 'request_pairs': 159, 'sends': 0, 'bytes_sent': 0, 'completed': 0, 'pending': 54, 'dropped_exceeds': 0, 'dropped_unknown': 0}
+opcodes={'HELLO(0x1': 1}

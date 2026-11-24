@@ -1,3 +1,19 @@
+## [2.4.113] - 2026-11-24 — FR-25 第二上传端反向 A/B：定位到帧形态差异
+
+> 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。**FR-25 上传方向仍 BLOCKED**。
+
+- 按用户明确确认执行「第二 stock aMule 上传端反向 A/B」：221 上临时启动第二台
+  amuled（TCP 4664 / EC 4713，KAD/server 关闭），同一 >PARTSIZE 样本、同一下载端。
+  A（我们 daemon，paced 200 kB/s）停在 97.6%、`STALLED_WITH_PENDING_BLOCKS`；
+  B（第二 stock amuled）37.5 s 落地 md5 完全一致。
+- 唯一新样本的帧级抓包显示：stock 上传端用 `OP_COMPRESSEDPART(0x40)` /
+  protocol `0xC5`（约 1,070 B zlib 帧对应 184,320 B 块），下载端持续 3 块滑动窗口请求；
+  我们发 `OP_SENDINGPART(0x46)` / `0xE3`、10,240 B 未压缩帧。
+  这推翻早期「blocker 纯在对端消费、不是帧格式」的过宽推断。
+- 更正 `cr-ed2k::stack` 旧注释；审计新增 §17.1；所有 A/B 与抓包测试已按
+  `tests/ARCHIVE/` 规范归档。下一步：实现同构 `OP_COMPRESSEDPART` 编码并重跑 A/B。
+
 ## [2.4.112] - 2026-11-24 — 建立测试归档账本；更正 FR-10 / FR-24 陈旧口径
 
 > 门禁常量不变：`g2_claim=false`、`s6_status=not_run`、

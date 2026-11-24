@@ -484,6 +484,31 @@ FR-25 上传侧获得有界在途与真实编解码，但真 aMule 闭环仍未�
 - 判据保持：只有对端落地 md5 一致才算 FR-25 上传闭环；两轮都没有。
   生产 `ServeConfig` 的有界在途/限速是 opt-in 诊断，不宣称公网性能。
 
+### 17.1 第二上传端反向 A/B（2026-11-24，用户明确确认后执行）
+
+**结论：上行停滞不是 aMule 下载端「普遍不消费」，而是我们的上传帧形态与真 aMule
+不一致。** 同一样本、同一下载端（221 `amulecmd:4712`）下，第二台 stock amuled
+（221:4664，KAD/server 关闭）37.5 s 落地 md5 一致；我们的守护进程仍停在 97.6%。
+
+- A：我们的 daemon → 透明代理 → aMule，paced 200 kB/s，`upload-diag-20261124084819.json`：
+  `verdict=STALLED_WITH_PENDING_BLOCKS`，97.6%，`bytes_sent=9,910,272`
+  （文件 9,736,192 B），968 blocks，`idle_resends=0`、`deferred_bytes=0`，
+  代理侧 14 个 pending 块不再收到新的 `REQUESTPARTS`，最终 `write ... 10060`。
+- B：同一 ed2k link + `sources,192.168.1.221:4664` → 同一 aMule 下载端，
+  `reverse-ab-20261124084814.json`：37.5 s，`landed_md5` 与样本一致，
+  第二 amuled 的 TCP 4664 有真实 ESTAB。
+- 帧级对照（唯一新样本，避免 aMule 复用已完成文件）：
+  `stock-upload-capture-20261124085257.json` +
+  `run/stock-upload-frames-20261124085257.log`。Stock 上传端发
+  **`OP_COMPRESSEDPART(0x40)` / protocol `0xC5`**，每帧约 1,070 B zlib 数据对应
+  184,320 B 块；下载端持续以 3 块滑动窗口发 `REQUESTPARTS` 直到完成。
+  我们的栈发 `OP_SENDINGPART(0x46)` / protocol `0xE3`、10,240 B 未压缩帧。
+- 因此 §17 早期「blocker 在对端消费逻辑、不是帧格式」的推断**过宽**：
+  对端能消费 stock 帧；差异落在我们的帧 opcode/压缩格式/粒度。
+  **FR-25 上传方向仍 BLOCKED**；下一步是让 serve 端产出与 aMule 同构的
+  `OP_COMPRESSEDPART` 帧（zlib 流可用 stored DEFLATE 块，仍 std-only），再重跑同一 A/B。
+  门禁常量与 `evidence_valid_for_pass=false` 不变。
+
 ## 18. FR-24 跨公网 try-2 HELLO 验证与索引静默再定位（2026-11-23，v2.4.108）
 
 **结论**：把两个真实工程缺陷修掉之后，try-2 混淆 HELLO 首次在**两个不同公网出口

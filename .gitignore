@@ -82,6 +82,7 @@ tests/e2e/w25-daemon/run/*
 # 2026-11-24 测试归档审计：以下轻量报告/帧日志纳入版本控制；大体积 .bin 仍留本机
 !tests/e2e/w25-daemon/reports/*.json
 !tests/e2e/w25-daemon/run/diag-upload-frames-*.log
+!tests/e2e/w25-daemon/run/stock-upload-frames-*.log
 !tests/e2e/w25-daemon/run/trace_frames.log
 !tests/e2e/w25-daemon/run/trace_download_frames.log
 

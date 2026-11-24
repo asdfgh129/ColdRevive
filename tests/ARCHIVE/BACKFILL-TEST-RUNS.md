@@ -531,8 +531,8 @@
 
 ## 2026-11-24
 
-- source: `.workbuddy/memory/2026-11-24.md` (sha256 `0917fb02a91fe96e06e46d99fab8c5a1a1fc25e7900581a39ef8b0570bd19afa`)
-- archived test-related lines: 5
+- source: `.workbuddy/memory/2026-11-24.md` (sha256 `3b7e5bf73b3b3e5bdbafca6f0fc932fb44dd2947fdca98d7a65f0d1e74207fab`)
+- archived test-related lines: 6
 
 - - SSH 可用性测试：209（`192.168.1.209`，Windows 10 19044.3693）用用户给的用户名/密码
   - evidence: log-only (no durable raw path recorded)
@@ -543,3 +543,4 @@
 - - 审计中「daemon 仍单任务」是旧口径：`tests/e2e/p0/run_p0.py` phase A 已用
   - evidence: log-only (no durable raw path recorded)
 - - 更正文档：审计 §2/M2/§7 删除「daemon 仍单任务 / FR-24 公网 BLOCKED」旧说法；
+- - 唯一新样本抓包（`stock-upload-frames-20261124085257.log`）：stock 用
