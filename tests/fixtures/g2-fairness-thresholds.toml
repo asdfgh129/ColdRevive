@@ -1,0 +1,51 @@
+# G2 公平性量具预注册判据（在采集任何样本之前写入）
+recorded_at = "2026-11-24T14:55:21+08:00"
+version = "g2-fairness-thresholds-v1"
+scope = "221 单机双 netns + 真内核 veth/HTB/netem；两条 UdpRelayStream 竞争流；不是公网 G2 证据"
+
+[criteria]
+flows = 2
+warmup_s = 3
+sample_s = 10
+rounds_per_arm = 10
+jain_min = 0.95
+share_min = 0.45
+share_max = 0.55
+# 每一轮都必须同时满足 J >= jain_min 且两条流的份额都在 [share_min, share_max]。
+# 中位/平均达标不算；任一轮失败即该 arm FAIL。
+aggregation = "all_rounds_must_pass"
+goodput_window = "sender/receiver 时间轴 [warmup_s, warmup_s + sample_s] 内实际收到的应用字节"
+
+[arms]
+# cc_off 是机制关闭对照；cc_on 打开 AIMD+RTT RTO；cc_paced 再打开 pacing。
+# per_session_cap 在中继侧单独开，用来隔离「令牌桶限流」与「端侧拥塞控制」两种解释。
+required = ["cc_off", "cc_on", "cc_paced", "cc_on_per_session_cap"]
+
+[link_shapes]
+required = [
+  { name = "L1", rate_mbit = 16, delay_ms = 20, jitter_ms = 2 },
+  { name = "L2", rate_mbit = 8, delay_ms = 50, jitter_ms = 5 },
+]
+
+[evidence]
+required_fields = [
+  "git_commit", "kernel_release", "tc_qdisc_and_class", "tc_s_counters",
+  "per_flow_timestamped_received_bytes", "per_flow_share", "jain_index",
+  "relay_delta_counters", "per_flow_cc_snapshot", "raw_probe_stdout",
+  "g2_gate_snapshot",
+]
+
+[forbidden_claims]
+entries = [
+  "不得写 G2 解禁或 g2_claim=true",
+  "不得写跨公网公平性达标",
+  "不得把中继令牌桶限流冒充协议退让",
+  "不得把单机 netns 结果外推为跨物理主机结论",
+  "不得在本判据文件写入后再修改阈值来解释数据",
+]
+
+[gate_snapshot]
+g2_claim = false
+s6_status = "not_run"
+evidence_valid_for_pass = false
+auto_pass = false
