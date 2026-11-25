@@ -1,0 +1,24 @@
+{
+  "tool": "bt-over-punch-public-recheck",
+  "timestamp": "2026-11-25",
+  "host_221": {
+    "source_tree_has_tcp_discovery": false,
+    "binary_mtime": "2026-11-24T08:12",
+    "punch_listeners": []
+  },
+  "host_222": {
+    "binary_mtime": "2026-11-18T09:51",
+    "punch_listeners": []
+  },
+  "cp_dnat": {
+    "112.5.60.4:19910": "timeout",
+    "112.5.32.34:19920": "connection_refused"
+  },
+  "verdict": "BLOCKED — CPE mappings withdrawn; owner must restore DNAT and deploy current builds",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}

@@ -1,3 +1,25 @@
+## [2.4.124] - 2026-11-25 — G2 欠账复评：DHT/逐出证据补齐、公平性归因、BT-over-punch 组件闭环
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮**不宣称 G2 解禁**，
+> 最终判断权在所有者。简报：`docs/06-plan/G2-REVIEW-BRIEF-2026-11-25.md`。
+
+- **真实 Mainline DHT 证据缺口闭合**：`coldrevive-dht --walk` 输出 `contacts`、
+  `--get-peers` 输出 `node_list`；新增 `tests/e2e/w62/mainline_dht_announce_verify.py`
+  证明真 token → announce ACK → ≥2 个独立公网节点用新 RPC 回查到同一 peer；
+  新增 `--announce-seed` 走守护进程 FR-18 的 `announce_active_seed`，对真节点返回
+  `announced_verified`（token_len=4、peer_verified=true）。引导节点仍 token_len=0。
+- **守护进程多样种逐出 e2e 刷新**：当前 release 构建跑 `tests/e2e/p0/run_p0.py`
+  77/77，FR-10 两个 infohash 真握手、cap=1、evictions=1、seed_active<=cap。
+- **公平性定量归因（仍整体 FAIL）**：80 轮原始证据的 L2 cc_on+cc_paced 20 轮
+  Pearson r(丢包差,份额偏移)=−0.706，两轮失败是丢包不对称最大者；决定**不改 β、
+  不重抽样**（判据先于样本，调参即篡改）。审计 §21。
+- **BT-over-punched-TCP**：公网复评 BLOCKED（CPE DNAT 已撤、两机无监听、二进制陈旧），
+  如实归档；代码级补 `bound_source_port_socket_carries_real_librqbit_piece`，
+  用 DOC-30 的 `connect_bound_blocking` 固定源端口 + 解耦登记键，真引擎下载 1 MiB
+  逐字节一致、served_registered=1。审计 §22。
+- 全量串行 **536/0/3**（v123 535 +1）；全部运行归档 `TEST-RUNS-2026-11-25.md`。
+
 ## [2.4.123] - 2026-11-24 — JSON 解析 O(n²) 修复、FR-04 规模闭环、punch 桥键纠错
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

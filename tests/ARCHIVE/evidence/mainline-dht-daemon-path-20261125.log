@@ -1,0 +1,2 @@
+# daemon announce_active_seed on real Mainline node
+{"ok":true,"mode":"announce-seed","target":"114.224.34.208:17700","info_hash":"3acb627d03142d30435ee4b6d94543323eb97693","status":"announced_verified","detail":"Announced { token_len: 4, peer_verified: true }","evidence_scope":"public-target"}

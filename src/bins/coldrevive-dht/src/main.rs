@@ -11,7 +11,7 @@
 //!   合法 KRPC 应答」，不代表公网宣告闭环，也不代表任何可达率。
 //! - 失败一律以非零退出码 + `"ok":false` + 真实错误原文结束，不编造结果。
 
-use cr_dht::{bencode, DhtClient, DhtNode, DhtServer, NodeId, ServerHandle, ID_LEN, K};
+use cr_dht::{announce_active_seed, bencode, DhtClient, DhtNode, DhtServer, NodeId, ServerHandle, ID_LEN, K};
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -31,12 +31,14 @@ fn main() {
              coldrevive-dht --serve <bind> [--node-id <hex>]\n  \
              coldrevive-dht --ping <host:port>\n  \
              coldrevive-dht --get-peers <host:port> <infohash-hex> [--announce <port>]\n  \
+             coldrevive-dht --announce-seed <host:port> <infohash-hex> --listen-port <port>\n  \
              coldrevive-dht --walk <seed[,seed...]> [--rounds 3] [--max-queries 32]\n\
              \n\
              说明: 目标可以是域名（如 dht.transmissionbt.com:6881），会解析到 IPv4。\n\
              --self-test 只在 127.0.0.1 上验证编解码与收发（evidence_scope=loopback），\n\
              不是 S3/S6 证据。--ping/--get-peers 的真实性取决于给定地址。\n\
-             --walk 只读（不发 announce_peer），有查询数上限。"
+             --walk 只读（不发 announce_peer），有查询数上限；输出 contacts 供复现。\n\
+             --announce-seed 走 daemon FR-18 同一条 announce_active_seed 路径。"
         );
         std::process::exit(if args.is_empty() { 2 } else { 0 });
     }
@@ -98,6 +100,43 @@ fn main() {
         return;
     }
 
+    // 守护进程 FR-18 用的就是 cr_dht::announce_active_seed；此处把它暴露成 CLI，
+    // 便于对真实 Mainline 节点验证「daemon 同一条代码路径」的 token/announce/回查。
+    if let Some(addr_text) = opt("--announce-seed") {
+        let ih_hex = args
+            .iter()
+            .position(|a| a == "--announce-seed")
+            .and_then(|i| args.get(i + 2))
+            .cloned()
+            .unwrap_or_default();
+        let ih = match parse_infohash(&ih_hex) {
+            Ok(v) => v,
+            Err(e) => fail(&format!("info_hash 非法: {e}")),
+        };
+        let port = opt("--listen-port")
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or_else(|| fail("--listen-port 必须是 1..65535"));
+        let addr = match parse_target(&addr_text) {
+            Ok(a) => a,
+            Err(e) => fail(&format!("{e}")),
+        };
+        let client = match DhtClient::bind("0.0.0.0:0", NodeId::random()) {
+            Ok(c) => c,
+            Err(e) => fail(&format!("客户端绑定失败: {e}")),
+        };
+        let outcome = announce_active_seed(&client, addr, ih, port, Duration::from_millis(3000));
+        println!("{}", json(&[
+            ("ok", if matches!(outcome, cr_dht::AnnounceOutcome::Announced { .. }) { "true".into() } else { "false".into() }),
+            ("mode", q("announce-seed")),
+            ("target", q(&addr.to_string())),
+            ("info_hash", q(&hex(&ih))),
+            ("status", q(outcome.status_label())),
+            ("detail", q(&format!("{outcome:?}"))),
+            ("evidence_scope", q("public-target")),
+        ]));
+        return;
+    }
+
     if let Some(addr_text) = opt("--get-peers") {
         let ih_hex = args
             .iter()
@@ -131,6 +170,7 @@ fn main() {
                 ("info_hash", q(&hex(&ih))),
                 ("token_len", token.as_ref().map(|t| t.len()).unwrap_or(0).to_string()),
                 ("nodes", nodes.len().to_string()),
+                ("node_list", q(&nodes.iter().map(|c| c.addr.to_string()).collect::<Vec<_>>().join(","))),
                 ("peers", values.len().to_string()),
                 ("peer_list", q(&values.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(","))),
             ])
@@ -269,6 +309,12 @@ fn walk(seeds_text: &str, rounds: &Option<String>, max_queries: &Option<String>)
         }
     }
 
+    // 只读遍历学到的真实路由表节点地址：供后续 token/announce 探测复现。
+    // 字段以逗号分隔字符串输出，避免改变既有 JSON 结构；--walk 仍不发任何 announce。
+    let mut learned_addrs: Vec<String> = learned.values().map(|a| a.to_string()).collect();
+    learned_addrs.sort();
+    let contacts = learned_addrs.join(",");
+
     let ok = answered > 0;
     let detail = json(&[
         ("ok", if ok { "true".into() } else { "false".into() }),
@@ -283,6 +329,7 @@ fn walk(seeds_text: &str, rounds: &Option<String>, max_queries: &Option<String>)
         ("unique_contacts", learned.len().to_string()),
         ("frontier_left", queue.len().to_string()),
         ("round_ms", q(&elapsed_rounds.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","))),
+        ("contacts", q(&contacts)),
         ("evidence_scope", q("public-readonly")),
         ("announced", q("none")),
     ]);

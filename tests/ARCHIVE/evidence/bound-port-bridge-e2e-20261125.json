@@ -1,0 +1,13 @@
+{
+  "schema": "coldrevive.bound-port-bridge-e2e/v1",
+  "scope": "127.0.0.1 loopback; real librqbit; bound source port; no NAT evidence",
+  "bound_source_port": 52873,
+  "registered_target": "203.0.113.11:52872",
+  "downloaded_bytes": 1048576,
+  "finished": true,
+  "byte_equal": true,
+  "served_registered": 1,
+  "is_s6_evidence": false,
+  "g2_claim": false,
+  "s6_status": "not_run"
+}

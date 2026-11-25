@@ -802,3 +802,79 @@ v2.4.120 时全量 `cargo test --workspace --offline -- --test-threads=1` 为
 已如实归档。v2.4.121 又补 5 条定点单测（累计 9 条）和 6 项 CLI 回环冒烟；
 定点结果见 [DOC-30 §6](../07-operations/TCP-DISCOVERY-RUNBOOK.md)。所有成功、
 失败、BLOCKED 与日志更正均写入 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。
+
+## 21. 公平性两轮失败的定量归因与不调参决定（2026-11-25，v2.4.124）
+
+**门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+`auto_pass=false`。判据文件 `tests/fixtures/g2-fairness-thresholds.toml` 的 sha256 仍为
+`0671a173bd4cb013eebba02ed44b8d53ead006844bef5a47b37c4ebe7109e594`，未改、未重录。
+本节只归因，不改判据、不重抽样、不宣称公平性达标。
+
+对 §20.4 的同一份 80 轮原始报告
+（`tests/e2e/w61/reports/g2-fairness-20261124T085447Z/`，本地副本
+`tests/ARCHIVE/evidence/g2-fairness-summary-20261124-v121.json`）做全量定量分析：
+
+| L2 arm | 轮 | 丢包差(flow1−flow2) | 份额偏移(flow1−0.5) | 结果 |
+|---|---|---|---|---|
+| cc_on | 7 | **+2** | **−0.070** | FAIL |
+| cc_paced | 8 | **+3** | **−0.067** | FAIL |
+
+20 轮（L2 cc_on + cc_paced）的 Pearson 相关系数
+**r(丢包差, 份额偏移) = −0.706**：谁多丢一次包，谁的份额就系统性下降。
+两轮失败恰好是全部 20 轮中丢包不对称最大的两轮，而非中继整形
+（`bandwidth_limited` / `per_session_dropped` / `per_session_shaped` 全 0）、
+非丢包总量失衡（r7 是 7/5、r8 是 3/0，绝对量都很小）。
+
+机制：β=0.5 的乘性减小一次把 cwnd 砍半，在 50 ms RTT 下按 AI `1/cwnd`
+恢复到原值需约 `cwnd/2 ≈ 8–16` 个 RTT ≈ 0.4–0.8 s；10 s 稳态窗口里
+多丢 2–3 次就足以造成约 7% 的份额偏移，正好跨过 `[0.45,0.55]` 边界。
+这是 AIMD「丢包即公平信号」的固有随机性，不是量具错误、不是实现缺陷：
+同批 `cc_off` 控制臂在 L1/L2 共 20 轮份额全部落在 0.499–0.502，
+证明量具本身没有方向性偏置。
+
+**决定：不通过改 β（0.5→0.7）或延长采样窗口来「修复」这两轮。**
+探针 `src/bins/coldrevive-fairness-probe/src/main.rs:189` 把 β 硬编码为 0.5，
+改它需要同时改测量工具；在预注册判据之后调整算法参数再重跑，等于按结果调参，
+与 §20.1「判据先于样本」的约定冲突。所有 80 轮保持原样归档，不做二次抽样。
+
+若所有者希望把「有界整形的 `cc_on_per_session_cap` 臂 10/10 全达标」解释为
+生产默认配置下的公平性成立，需由所有者书面判定；本文件不代为改判据，
+不把纯 AIMD 臂的方差读成通过。下一次复评的合法触发条件是：新算法先以新的
+预注册判据（新时间戳 + 新 sha）登记，再采集样本。
+
+## 22. 公网 BT-over-punched-TCP 复评与代码级闭环（2026-11-25，v2.4.124）
+
+**门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
+`auto_pass=false`。
+
+### 22.1 公网真机路径：BLOCKED（外部条件已撤销，不是代码缺陷）
+
+复评 221 / 222 两台真机：
+
+| 条件 | 2026-11-24 有 | 2026-11-25 实测 |
+|---|---|---|
+| CPE TCP DNAT `112.5.60.4:19910→221:19910` | 在 | 本机连 **超时**（映射已撤） |
+| CPE TCP DNAT `112.5.32.34:19920→222:19920` | 在 | 本机连 **ConnectionRefused** |
+| 221/222 上 19910/19920 监听 | 有 punch 实验监听 | `ss -ltn` 均无监听 |
+| 221 部署源码含 `tcp_discovery` | 有 | `/opt/cr-current` 源码 `grep judge_observations = 0`，仍是旧树 |
+| 221 二进制时间 | — | `Nov 24 08:12`（早于 v2.4.122 桥键修复） |
+| 222 二进制时间 | — | `Nov 18 09:51`（更早） |
+
+结论：公网双侧 TCP 映射已被上游撤销，两台机器上都没有当前代码、没有监听中的
+punch 端点。要跑真机 BT-over-punched-TCP 必须由所有者**先重建 CPE DNAT + 部署
+当前构建**，再按 DOC-30 用两个独立观测点即时发现端口。本轮不伪造任何公网字节证据。
+
+### 22.2 代码级缺口已补：绑定源端口 punch → 桥 → 真引擎取片
+
+此前的 w54 只证明 `punch_tcp`（临时源端口）登记后能取片，没有覆盖 DOC-30
+实际使用的 `connect_bound_blocking`（固定源端口）。新增
+`src/crates/cr-engine/tests/bridge_librqbit_e2e.rs::bound_source_port_socket_carries_real_librqbit_piece`：
+
+- 从确定源端口 52873 发起真 TCP 连接；
+- socket 登记进 SOCKS5 桥的键用不可直连的 `203.0.113.11:52872`（与 SYN 目的解耦，
+  即 v2.4.123 `PunchTargets` 的不变量）；
+- 真 librqbit 下载方只经代理、按登记的假地址取片：`downloaded=1,048,576` B、
+  `finished=true`、`byte_equal=true`、`served_registered=1`。
+
+证据 `tests/ARCHIVE/evidence/bound-port-bridge-e2e-20261125.json`。
+这是**回环上的组件级组合证明**，不是 NAT 可达性证据，不外推公网。

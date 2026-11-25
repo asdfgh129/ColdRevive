@@ -1,0 +1,195 @@
+{
+  "tool": "g2-fairness-attribution",
+  "source": "tests/ARCHIVE/evidence/g2-fairness-summary-20261124-v121.json",
+  "threshold_sha256": "0671a173bd4cb013eebba02ed44b8d53ead006844bef5a47b37c4ebe7109e594",
+  "pearson_loss_diff_vs_share_deviation": -0.7063,
+  "rounds": [
+    {
+      "arm": "cc_on",
+      "round": 1,
+      "loss_diff": 0,
+      "cwnd_diff": 9.96,
+      "share1": 0.5016800206771775,
+      "share2": 0.49831997932282246,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 2,
+      "loss_diff": -1,
+      "cwnd_diff": 15.76,
+      "share1": 0.5227206097918499,
+      "share2": 0.4772793902081501,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 3,
+      "loss_diff": -1,
+      "cwnd_diff": 2.29,
+      "share1": 0.5066352108522559,
+      "share2": 0.493364789147744,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 4,
+      "loss_diff": 0,
+      "cwnd_diff": 7.06,
+      "share1": 0.4892459186317699,
+      "share2": 0.5107540813682301,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 5,
+      "loss_diff": 2,
+      "cwnd_diff": -12.93,
+      "share1": 0.5205692108667529,
+      "share2": 0.4794307891332471,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 6,
+      "loss_diff": 0,
+      "cwnd_diff": 2.84,
+      "share1": 0.5377739331026529,
+      "share2": 0.4622260668973472,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 7,
+      "loss_diff": 2,
+      "cwnd_diff": -2.82,
+      "share1": 0.430431009545849,
+      "share2": 0.569568990454151,
+      "pass": false
+    },
+    {
+      "arm": "cc_on",
+      "round": 8,
+      "loss_diff": 1,
+      "cwnd_diff": 8.31,
+      "share1": 0.45138339920948617,
+      "share2": 0.5486166007905139,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 9,
+      "loss_diff": -3,
+      "cwnd_diff": 4.61,
+      "share1": 0.5404390525707683,
+      "share2": 0.45956094742923165,
+      "pass": true
+    },
+    {
+      "arm": "cc_on",
+      "round": 10,
+      "loss_diff": -3,
+      "cwnd_diff": 4.58,
+      "share1": 0.521286660359508,
+      "share2": 0.47871333964049195,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 1,
+      "loss_diff": 2,
+      "cwnd_diff": -14.36,
+      "share1": 0.47813495511149723,
+      "share2": 0.5218650448885027,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 2,
+      "loss_diff": 1,
+      "cwnd_diff": -0.93,
+      "share1": 0.4786123273829572,
+      "share2": 0.5213876726170428,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 3,
+      "loss_diff": 1,
+      "cwnd_diff": -8.93,
+      "share1": 0.4525619834710744,
+      "share2": 0.5474380165289257,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 4,
+      "loss_diff": -2,
+      "cwnd_diff": 0.0,
+      "share1": 0.5357142857142857,
+      "share2": 0.4642857142857143,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 5,
+      "loss_diff": 0,
+      "cwnd_diff": -7.91,
+      "share1": 0.5255636710066688,
+      "share2": 0.4744363289933312,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 6,
+      "loss_diff": 0,
+      "cwnd_diff": -15.21,
+      "share1": 0.528,
+      "share2": 0.472,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 7,
+      "loss_diff": 0,
+      "cwnd_diff": 0.0,
+      "share1": 0.5290882778581766,
+      "share2": 0.4709117221418234,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 8,
+      "loss_diff": 3,
+      "cwnd_diff": -4.76,
+      "share1": 0.4332706766917293,
+      "share2": 0.5667293233082706,
+      "pass": false
+    },
+    {
+      "arm": "cc_paced",
+      "round": 9,
+      "loss_diff": -1,
+      "cwnd_diff": 8.8,
+      "share1": 0.5053539559785841,
+      "share2": 0.4946460440214158,
+      "pass": true
+    },
+    {
+      "arm": "cc_paced",
+      "round": 10,
+      "loss_diff": 0,
+      "cwnd_diff": -6.11,
+      "share1": 0.49926578560939794,
+      "share2": 0.5007342143906021,
+      "pass": true
+    }
+  ],
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "decision": "do not retune beta or resample; owner decision required"
+}
