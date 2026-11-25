@@ -216,11 +216,13 @@ impl RqbitEngine {
         // 事后去 /proc 里按 tid 找线程再改，会在「线程已开始做种、我们还没找到它」
         // 的窗口里漏掉降级，而且依赖线程名这种非契约信息。
         let mut rtb = tokio::runtime::Builder::new_multi_thread();
-        rtb.worker_threads(2).enable_all();
+        // 线程名由本 crate 指定（不走 tokio 默认名）：探针与运维按它认引擎线程。
+        rtb.worker_threads(2).enable_all().thread_name(prio::ENGINE_THREAD_NAME);
         if opts.idle_threads {
             rtb.on_thread_start(|| match prio::set_current_thread_idle() {
                 Ok(o) if o.is_idle() => {
-                    println!("[engine] 工作线程已降至 Idle 优先级（{}）", o.as_str());
+                    println!("[engine] 工作线程已降至 Idle 优先级（{}，线程名 {}）",
+                             o.as_str(), prio::ENGINE_THREAD_NAME);
                 }
                 Ok(o) => {
                     // Unsupported：不假装降了，也不当作失败（平台没有这条路）。

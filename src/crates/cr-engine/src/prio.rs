@@ -46,6 +46,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// 降到最低的静态优先级（Linux `nice` 上限）。
 pub const IDLE_NICE: i32 = 19;
 
+/// 引擎线程名。**必须由我们指定**，不能用 tokio 的默认名（`tokio-rt-worker`）：
+/// 探针与运维要按这个名字在 `/proc/<pid>/task/*/comm` 里认人，而默认名是 tokio
+/// 的实现细节、随版本可变。名字写在这里，等于把「哪些线程属于引擎」变成自己的契约。
+pub const ENGINE_THREAD_NAME: &str = "cr-engine-worker";
+
 /// 降级结果。**这是读回校验后的状态**，不是「调用有没有返回 0」。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IdleOutcome {
@@ -335,6 +340,7 @@ mod tests {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
+            .thread_name(ENGINE_THREAD_NAME)
             .on_thread_start(|| {
                 let _ = set_current_thread_idle();
             })
@@ -348,6 +354,9 @@ mod tests {
 
         assert!(after.applied > before.applied,
                 "钩子没有降级任何线程（applied {} -> {}）", before.applied, after.applied);
+        // 线程名必须是**我们指定的那个**：探针按它在 /proc 里认引擎线程。
+        assert_eq!(name.as_deref(), Some(ENGINE_THREAD_NAME),
+                   "引擎线程名不是约定的 {}（实际 {:?}）", ENGINE_THREAD_NAME, name);
         match prio_read {
             None => {
                 // 平台拿不到读数：只能依据计数器，且必须如实标注未验证。
