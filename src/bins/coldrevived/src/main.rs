@@ -31,7 +31,7 @@ mod sysres;
 mod watch;
 
 use cr_core::{Config, Json};
-use cr_engine::{Engine, EngineOptions, RqbitEngine, TorrentSpec};
+use cr_engine::{Engine, EngineOptions, EngineState, RqbitEngine, TorrentSpec};
 use cr_indexer::inspect as inspect_file;
 use cr_kad::{find_result, publish_keys};
 use cr_sched::LruScheduler;
@@ -424,6 +424,45 @@ fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
     Ok(())
 }
 
+/// FR-11：握手代理的对外绑定地址。
+///
+/// 抽成纯函数是为了能钉住一个**只在现场出现**的缺陷：显式 `engine.listen=127.0.0.1:<bt_port>`
+/// 的部署里，代理若沿用 `listen` 就只绑回环，DNAT 过来的握手永远进不了代理，
+/// 而本机回环自测仍然全绿。声明了外部映射时，对外入口必须是 `0.0.0.0:bt_port`。
+fn guard_bind_addr(
+    bt_port: u16,
+    listen: SocketAddr,
+    has_external: bool,
+) -> Result<SocketAddr, String> {
+    if has_external {
+        return format!("0.0.0.0:{bt_port}").parse()
+            .map_err(|e| format!("guard 对外监听地址非法: {e}"));
+    }
+    Ok(listen)
+}
+
+#[cfg(test)]
+mod guard_bind_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_engine_listen_does_not_drag_the_proxy_onto_loopback() {
+        // 现场部署形态：引擎显式绑回环、对外靠 DNAT。代理必须绑所有接口，
+        // 否则公网握手到不了「读握手 → 唤醒」那段代码（本机回环自测看不出来）。
+        let listen: SocketAddr = "127.0.0.1:19920".parse().unwrap();
+        let got = guard_bind_addr(19920, listen, true).unwrap();
+        assert_eq!(got.to_string(), "0.0.0.0:19920");
+    }
+
+    #[test]
+    fn without_external_mapping_the_proxy_binds_exactly_where_the_engine_would() {
+        let listen: SocketAddr = "127.0.0.1:17802".parse().unwrap();
+        assert_eq!(guard_bind_addr(17802, listen, false).unwrap(), listen);
+        let listen: SocketAddr = "0.0.0.0:17802".parse().unwrap();
+        assert_eq!(guard_bind_addr(17802, listen, true).unwrap(), listen);
+    }
+}
+
 /// W5.2：用 BT 引擎做种（ADR-015 之后，生产只有这一条做种路径）。
 ///
 /// 三条约束，都是门禁直接看到的：
@@ -456,6 +495,16 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         None => format!("{}:{}", cfg.bind, bt_port).parse()
             .map_err(|e| format!("bt 监听地址非法: {e}"))?,
     };
+
+    // FR-11/FR-14：guard 的**对外**绑定地址。
+    //
+    // 不能沿用 `engine.listen`：部署里常把它写成 `127.0.0.1:<bt_port>`，把 LAN 上的
+    // bt_port 让给打洞 socket。若 guard 跟着绑回环，路由器 DNAT 过来的握手根本到不了
+    // 「读 68 字节 → 按 infohash 唤醒」这段代码：本机回环自测全绿，现场恒 FIN。
+    // 只要声明了任意外部映射，对外入口就必须落在所有接口的 bt_port 上。
+    let guard_bind: SocketAddr = guard_bind_addr(bt_port, listen,
+                                                 cfg.nat_bt_external.is_some()
+                                                     || cfg.nat_http_external.is_some())?;
 
     // FR-11（opt-in）：引擎退到回环内部口，对外 bt_port 交给 cr-guard 代理。
     // 代理在 main 里拿到 Arc<NodeState> 后启动（这里还是 &mut，尚无共享句柄）。
@@ -547,10 +596,10 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
             "guard 模式要求引擎有回环内部监听地址，但 listen_addr() 为 None"
         )?;
         st.guard_internal = Some(actual);
-        st.guard_external = Some(listen);
+        st.guard_external = Some(guard_bind);
         println!(
-            "[{}] FR-11 握手拦截已配置: 外部 {} → 引擎内部 {}（代理在共享状态就绪后启动）",
-            cfg.node_id, listen, actual
+            "[{}] FR-11 握手唤醒已配置: 对外 {} → 引擎内部 {}（代理在共享状态就绪后启动）",
+            cfg.node_id, guard_bind, actual
         );
     }
     st.engine = Arc::new(Mutex::new(Some(engine)));
@@ -745,6 +794,7 @@ fn handle_guard_connection(
         // 非标准 BT 握手：不唤醒，直接关。这是零信任，不猜 infohash。
         return;
     };
+    let mut woken: Option<(cr_engine::TaskId, SharedEngine)> = None;
     let hit = {
         let mut st = state.lock().unwrap();
         st.guard_stats.lock().unwrap().0 += 1;
@@ -795,6 +845,7 @@ fn handle_guard_connection(
                 }
                 st.bt_seeding = true;
                 let _ = st.index.save();
+                woken = Some((task, engine_slot.clone()));
             }
             serving
         } else {
@@ -804,6 +855,32 @@ fn handle_guard_connection(
         }
     };
     let _ = hit; // 命中与否都继续 splice：让标准 BT 流程走完（未知 infohash 由引擎自己拒）。
+
+    // 等引擎真的报 HOT 再补握手。`activate` 返回 Ok 只代表 librqbit 接受了指令，
+    // 不代表它已经能处理这个 infohash 的入站握手；立刻 splice 会把 68 字节喂给一个
+    // 仍在暂停的任务，引擎回 FIN —— 现场看起来和「没唤醒」一模一样。
+    // 有界等待：超时也照样 splice，由引擎按真实状态回答，而不是我们提前关连接。
+    if let Some((task, slot)) = woken {
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        loop {
+            let hot = {
+                let mut eg = slot.lock().unwrap();
+                match eg.as_mut() {
+                    Some(eng) => Engine::state(eng, task) == EngineState::Hot,
+                    None => false,
+                }
+            };
+            if hot { break; }
+            if Instant::now() >= deadline {
+                eprintln!(
+                    "[{}] FR-11 握手唤醒后 3s 内引擎未报 HOT（任务 #{}），按真实状态 splice",
+                    cfg.node_id, task
+                );
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
 
     // 补回已读的 68 字节再双向搬运。丢前缀是 ADR-021 记过的典型坑：
     // 唤醒看起来成功，但引擎收到截断握手 → 0 字节数据面。

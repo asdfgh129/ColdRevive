@@ -1,3 +1,30 @@
+## [2.4.131] - 2026-11-25 — 握手命中即唤醒（FR-14 语义由所有者定为「入向握手唤醒冷种子」）
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。以下是组件级证据，不是 G2/S6 判定。
+
+- 所有者决定：冷种子遇到入向 BT 握手时**唤醒**，而不是「被通告为 peer 期间不暂停」。
+  实现复用 FR-11 的 `cr-guard`（librqbit 无握手回调，ADR-002），新增配置别名
+  `engine.wake_on_handshake`（与 `engine.guard_handshake` 同义，任一布尔 true 即开；
+  字符串不生效，`cr-core` 单测钉住）。
+- 修 `start_engine_seeder()` 的对外绑定：guard 原先沿用 `listen`，而部署里
+  `engine.listen=127.0.0.1:<bt_port>` 是为把 LAN 端口让给打洞 socket，导致 guard 只绑回环，
+  DNAT 来的握手永远进不了唤醒逻辑。现声明了 `nat.bt_external`/`nat.http_external` 时
+  一律绑 `0.0.0.0:bt_port`（`guard_bind_addr()`，含两条单测），引擎仍在回环内部口。
+- 修唤醒后的时序：`activate` 返回 Ok ≠ 引擎已可处理握手。立刻 splice 会让仍在暂停的
+  torrent 回 FIN，与「没唤醒」无法区分。现在有界等待引擎自报 `HOT`（≤3 s），
+  超时也照常 splice，由引擎按真实状态回答。
+- 现场实测（`bt-wake-on-handshake-lan-20261125.json`，LAN 直拨 A→B:19920）：
+  B 种子拨号前 `cold`、`seed_active=0`；握手到达后 `/health.guard`
+  `handshakes=1, woken=1`、种子 `hot`（全程未调用 `nat wake`）；A 侧
+  `status=complete`、`completedLength=1048576`，落地 md5
+  `6209e962f3b26a13c9ec1ae70fd78e10` 与 B 种子文件一致。
+  B 的监听是 guard `0.0.0.0:19920` + 引擎 `127.0.0.1:43693`，证明绑定修复生效。
+- **公网 DNAT 变体本轮未复测**：测试时两个独立公网观测机对 `112.5.32.34:19920`、
+  `112.5.60.4:19910/17800` 均收到 RST，B 侧零 SYN——CPE 映射已失效，属环境变化。
+  证据中以 `public_path_probe` 记录；公网直拨需映射恢复后重跑，不得用 LAN 结果冒充。
+- 已知取舍：guard 长期占住 `bt_port`，与同端口打洞 socket 互斥（逐节点选择，默认关闭）。
+
 ## [2.4.130] - 2026-11-25 — tracker 跨网段下发公网 BT 映射（下载端已能拨出；供片仍卡冷种子）
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

@@ -114,7 +114,7 @@ cors_allowlist = []
 | engine | `listen` | 空 | `ip:port`。留空且声明了任一 `*_external` 时，做种监听落 `0.0.0.0:bt_port`；否则绑 `bind` |
 | engine | `max_active_seeds` | 空（= `cr-sched::MAX_ACTIVE_SEEDS`，当前 8） | 做种活跃池上限（[ADR-017](../02-architecture/adr/ADR-017-active-seed-pool.md)）。超过上限时逐出**最久未用**的任务并暂停它；容量 0 在配置层直接报错，不静默夹到 1。`/health` 的 `seeding_active` / `seeding_cap` / `seeding_evictions` 是这三个事实的观测口径 |
 | engine | `idle_sleep_secs` | 空（= 关闭） | **FR-14 空闲自动休眠**：HOT 做种任务在「最后一次真实唤醒」之后空闲满这么多秒，就由唯一入口 `idle::sleep_hot_seeds` 暂停并切回 `COLD`（与 `sched::wake_seed` 对称，不再有第二个休眠入口）。`0` 或留空 = 关闭（默认）。也可写在 `engine.idle_sleep_minutes` 或顶层 `scheduler.idle_sleep_minutes`（按分钟，内部折算成秒），**秒项与小项同时出现时秒优先**（秒项为 `0` 也按秒项走 = 关闭）。**非法值不是静默关闭而是启动报错**（`engine.idle_sleep_secs 非法（需要非负整数秒）`）——避免「以为会休眠其实一直在供片」。休眠**不清索引**：影子索引与 `published_keys` 保留，所以 KAD 仍查得到 ——「查得到」不等于「还在做种」，要看 `/health.idle` 的 `sleeps` 与 `seeding_active` |
-| engine | `guard_handshake` | `false` | **FR-11 握手拦截**（opt-in）。开启后引擎退到回环内部口、`cr-guard` 占对外 `bt_port`，裸 BT 握手按 infohash 走 `sched::wake_seed` 唤醒；`/health.guard` 暴露 `handshakes/woken/missed`。仅 TCP，µTP 从内部口直通、不经 guard |
+| engine | `guard_handshake` / `wake_on_handshake` | `false` | **FR-11 握手唤醒**（opt-in，两个键同义，任一为布尔 `true` 即启用；写字符串不生效）。开启后引擎退到回环内部口、`cr-guard` 占对外 `bt_port`，裸 BT 握手按 infohash 走 `sched::wake_seed` 唤醒，等引擎报 `HOT` 后再把已读的 68 字节补回并 splice；`/health.guard` 暴露 `handshakes/woken/missed`。**对外绑定**：只要配了 `nat.bt_external` 或 `nat.http_external`，代理一律绑 `0.0.0.0:bt_port`，不跟随 `engine.listen` 的 `127.0.0.1`（否则 DNAT 入向到不了代理）。**与打洞互斥**：代理长期占住 `bt_port`，同端口打洞 socket 无法再绑，需要打洞的节点别开。仅 TCP，µTP 不经 guard |
 
 `/health.idle` 是 FR-14 的观测口径：`enabled` / `threshold_secs` / `idle_secs` / `sleeps` /
 `last_slept`。**`enabled=false` 时其余字段不承诺含义**（阈值未启用，`idle_secs` 仍随心跳增长）。

@@ -42,7 +42,7 @@ updated: 2026-11-24
 | FR-05/06/07 KAD 发布/查询 | **部分（本地侧齐活，含同义词）** | 周期重发布改为**到期才发**（`kad.ttl_secs`，刷新窗口 `ttl/3`；成功前推截止、失败不前推），`sent=true` 要求真实 `KAD_PUBLISH_ACK`；文件名分词 + **确定性同义词扩展**（手写封闭表、按每词 Unicode 脚本选表）+ `detect_language` 展示标签 + `/cli kad-health` 去重健康度已接入；新增 `/cli publish` 把已入库 key 真发出去（§10/§11）。**TTL 是本机记账，不是协议 TTL**；公网检索仍 BLOCKED | 部分：公网出口样本可辅助归因，**不能解除 G0 scope** |
 | FR-09 限流 | **已接线** | `ratelimit.rs` 令牌桶（按来源 IP，表上限 4096），超限 429 + `reason=rate_limited` + `retry_after_ms`；`/health`、`/nat/*` 不参与限流（§9） | 否（代码） |
 | FR-10 LRU 逐出 | **已闭环（多种子任务）** | 多样本 + `engine.max_active_seeds=1`，真实 BT 握手唤醒两个 infohash → `evictions=1`、`scheduled<=1`、`seed_active<=cap`（§9） | 否（代码） |
-| FR-11 握手拦截 | 已实现但有边界 | opt-in 默认 false，仅回环 TCP；µTP 不外透；W62 报告是 **11/11**（`tests/e2e/w62/reports/report.json`），不是 12/12 | 否（代码/默认策略） |
+| FR-11 握手拦截 | 已实现，**已实测「命中即唤醒」** | opt-in（`guard_handshake` / 别名 `wake_on_handshake`），仅 TCP，µTP 不外透；v2.4.131 修「对外口误绑回环」与「唤醒后不等 HOT 就 splice」，LAN 直拨冷种子被握手唤醒并落地 1 MiB md5 一致（§22.8）；公网 DNAT 变体因 CPE 映射失效待重跑。W62 报告是 **11/11**（`tests/e2e/w62/reports/report.json`），不是 12/12 | 否（代码/默认策略） |
 | FR-12 链接生成 | **已闭环（本地）** | `/cli ed2k` 优先用索引里的 fileID（`link_source=index`、`backfilled_from_disk=0`），v1 条目读盘后回填；链接形状与文件名/大小/哈希逐段校验（§9） | 否（代码） |
 | FR-13 引擎完成回流 | **已接线** | 下载完成的产物写回影子索引（含 SHA-1/eD2k/infohash），无需人工 `index` | 否（代码） |
 | FR-14 空闲休眠 | 已实现但有边界 | opt-in、`/health.idle` 可观测；只有空闲计时，无 CPU/内存/带宽触发；休眠后 `seed_active=0` 但 KAD key 保留（W14 12/12） | 否（代码/默认策略） |
@@ -996,6 +996,50 @@ B 临时 `role=holder` 且引擎监听 `0.0.0.0:19920`）：
 判定 **PARTIAL**：控制面（通告地址 → 拨出 → 真握手）已通，数据面仍被 §22.6 的
 冷种子行为阻断；剩下只有 (a) 一条，动的是 FR-14 休眠语义，需所有者先定语义。
 门禁常量不变。
+
+### 22.8 (a) 已落地并实测：握手命中即唤醒（v2.4.131，所有者 2026-11-25 决定）
+
+所有者选择 **(a)「入向握手命中冷种子即唤醒」**，不选「被通告为 peer 期间不得暂停」。
+实现没有新造一套协议：librqbit 没有握手回调（ADR-002），要观测入向握手只能在外围
+读 68 字节，那正是 FR-11 的 `cr-guard`。本轮把它变成可部署的唤醒路径，并修掉两处
+**只会在现场出现**的缺陷：
+
+1. **guard 对外绑定用错地址**：`start_engine_seeder()` 原先拿 `listen` 当对外口，
+   而部署里为把 LAN 的 `bt_port` 让给打洞 socket，会显式写 `engine.listen=127.0.0.1:<bt_port>`。
+   结果 guard 只绑回环，DNAT 过来的握手永远进不了「读握手 → 唤醒」这段代码；
+   本机回环自测全绿，现场恒 FIN。现改为：声明任意外部映射时对外一律绑 `0.0.0.0:bt_port`
+   （`guard_bind_addr()`），引擎仍在回环内部口。
+2. **唤醒后不等引擎就绪就 splice**：`Engine::activate` 返回 Ok 只代表指令被接受。
+   立刻把 68 字节喂给仍在暂停的 torrent，引擎照样 FIN，现象与「没唤醒」无法区分。
+   现在有界等待引擎自报 `HOT`（≤3 s），超时也照常 splice，由引擎按真实状态回答。
+
+配置面：`engine.wake_on_handshake` 是 `engine.guard_handshake` 的**产品语义别名**，
+两位任一为布尔 `true` 即启用；写字符串不生效（`cr-core` 单测钉住）。默认仍关闭，
+因为 guard 会占住 `bt_port`，与「同端口打洞 socket」互斥——这是逐节点的取舍，
+不能由程序替运维选。
+
+现场实测（`bt-wake-on-handshake-lan-20261125.json`，LAN 直拨 A`192.168.1.221` →
+B`192.168.1.222:19920`，B `engine.listen=127.0.0.1:19920` + `wake_on_handshake=true`）：
+
+| 检查 | 结果 |
+|---|---|
+| guard 实际绑定 | `0.0.0.0:19920`；引擎在 `127.0.0.1:43693`（证明绑定修复生效） |
+| 拨号前 B 种子 | `state=cold`、`seed_active=0` |
+| B 抓包 | `192.168.1.221.39942 > 192.168.1.222.19920` SYN，随后 `length 68` 入、`length 177` 出 |
+| `/health.guard` | `handshakes=1, woken=1, missed=0` |
+| 拨号后 B 种子 | `state=hot`、`seed_active>=1`（**由握手触发，全程未调用 `nat wake`**） |
+| A 侧下载 | `status=complete`、`completedLength=1048576`、约 4 s |
+| 落地 md5 | `6209e962f3b26a13c9ec1ae70fd78e10` = B 种子文件，**字节级一致** |
+
+**公网变体本轮无法复测**：测试时 CPE 的公网映射已失效——两个独立公网观测机
+（`82.157.68.159`、`119.29.150.254`）对 `112.5.32.34:19920`、`112.5.60.4:19910`、
+`112.5.60.4:17800` 均收到 RST，B 侧 `tcpdump` 零 SYN。这是环境变化（不是代码回归，
+也不是「可达率」结论）；证据文件里以 `public_path_probe` 如实记录。因此上表结论
+只覆盖 **LAN 直拨 + 握手唤醒 + 数据面**；「公网 DNAT 直拨」仍需在映射恢复后重跑，
+不得用本轮结果冒充。
+
+门禁常量仍然全部不变：`g2_claim=false`、`s6_status=not_run`、
+`evidence_valid_for_pass=false`、`auto_pass=false`。
 
 ## 23. S6 语义复核材料（2026-11-25）
 

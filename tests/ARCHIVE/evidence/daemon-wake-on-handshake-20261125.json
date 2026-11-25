@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-11-25T03:27:17Z",
+  "scope": "deploy wake-on-inbound-handshake (FR-11 guard) + guard external bind fix; not a gate result",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "files": {
+    "src/bins/coldrevived/src/main.rs": {
+      "local_md5": "0bad66c9bb75603ace7b8c718e31f6de",
+      "remote_md5": "0bad66c9bb75603ace7b8c718e31f6de",
+      "match": true
+    },
+    "src/crates/cr-core/src/lib.rs": {
+      "local_md5": "07fb1516844270c397563dc521d0c109",
+      "remote_md5": "07fb1516844270c397563dc521d0c109",
+      "match": true
+    }
+  },
+  "steps": {
+    "build": {
+      "tail": "|\nhelp: consider removing the field `workspace.package.repository`\nwarning: workspace (manifest) generated 2 warnings\n   Compiling cr-core v0.1.0 (/opt/cr-current/src/crates/cr-core)\n   Compiling cr-kad v0.1.0 (/opt/cr-current/src/crates/cr-kad)\n   Compiling cr-store v0.1.0 (/opt/cr-current/src/crates/cr-store)\n   Compiling cr-nat v0.1.0 (/opt/cr-current/src/crates/cr-nat)\n   Compiling cr-wake v0.1.0 (/opt/cr-current/src/crates/cr-wake)\n   Compiling cr-api v0.1.0 (/opt/cr-current/src/crates/cr-api)\n   Compiling coldrevived v0.1.0 (/opt/cr-current/src/bins/coldrevived)\nwarning: unused doc comment\n  --> src/bins/coldrevived/src/sysres.rs:69:1\n   |\n69 | / /// 进程累计 CPU 时间（毫秒）。拿不到返回 `None`，**绝不返回 0 冒充**。\n70 | | ///\n71 | | /// Linux 的 `utime+stime` 单位是 clock tick，必须用 `sysconf(_SC_CLK_TCK)`\n72 | | /// 换算；写死 100 会在非标准 tick 的机器上把一个阈值变成另一个阈值。\n73 | | /// Windows 的 `FILETIME` 单位是 100 ns。macOS 没有 std-only 的读法，如实返回 None。\n   | |____________________________________________________________________________________^\n74 |   #[cfg(target_os = \"linux\")]\n75 | / extern \"C\" {\n76 | |     fn sysconf(name: i32) -> i64;\n77 | | }\n   | |_- rustdoc does not generate documentation for extern blocks\n   |\n   = help: use `//` for a plain comment\n   = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coldrevived` (bin \"coldrevived\") generated 1 warning\n    Finished `release` profile [optimized] target(s) in 25.49s",
+      "binary_md5": "c47267a7a319fcbbc4b32587dc956b6a"
+    }
+  },
+  "hosts": {
+    "A": {
+      "unit": "coldrevived-a",
+      "enabled": "enabled",
+      "active": "active",
+      "binary_md5": "c47267a7a319fcbbc4b32587dc956b6a",
+      "health_ok": true,
+      "seed_tasks": 1,
+      "guard": {
+        "enabled": false,
+        "handshakes": 0,
+        "woken": 0,
+        "missed": 0
+      },
+      "listeners": "LISTEN 0      128          0.0.0.0:17800      0.0.0.0:*    users:((\"coldrevived\",pid=664407,fd=17))               \nLISTEN 0      1024       127.0.0.1:19910      0.0.0.0:*    users:((\"coldrevived\",pid=664407,fd=12))               \nLISTEN 0      128        127.0.0.1:43555      0.0.0.0:*    users:((\"coldrevived\",pid=664407,fd=7))"
+    },
+    "B": {
+      "unit": "coldrevived-b",
+      "enabled": "enabled",
+      "active": "active",
+      "binary_md5": "c47267a7a319fcbbc4b32587dc956b6a",
+      "health_ok": true,
+      "seed_tasks": 0,
+      "guard": {
+        "enabled": false,
+        "handshakes": 0,
+        "woken": 0,
+        "missed": 0
+      },
+      "listeners": "LISTEN 0      128        127.0.0.1:38321      0.0.0.0:*    users:((\"coldrevived\",pid=1205666,fd=7))                 \nLISTEN 0      128          0.0.0.0:17900      0.0.0.0:*    users:((\"coldrevived\",pid=1205666,fd=8))"
+    }
+  },
+  "verdict": "PASS",
+  "reason": "both units healthy on the same freshly built binary"
+}

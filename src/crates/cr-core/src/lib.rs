@@ -392,6 +392,11 @@ pub struct Config {
     pub engine_listen: Option<SocketAddr>,
     /// FR-11：BT 握手拦截代理是否启用（`engine.guard_handshake`，默认 `false`）。
     ///
+    /// `engine.wake_on_handshake` 是同一机制的**产品语义别名**（2026-11-25 所有者决定：
+    /// 「入向握手命中冷种子即唤醒」）。两个键任一为布尔 true 即启用；写字符串不生效。
+    /// 之所以必须二选一而不是新写一套：librqbit 没有握手回调（ADR-002），
+    /// 「命中即唤醒」只能由外围绕一个读 68 B 握手的代理实现。
+    ///
     /// 开启后由 cr-guard 占用对外 `bt_port`，读 68 B 标准握手 → 按 infohash 本地唤醒
     /// → 补回已读字节并 splice 给引擎的回环内部口。这样旧客户端**直接连入**
     /// 也能触发被动唤醒（SRS FR-11），不必先收到私有 UDP 唤醒。
@@ -681,12 +686,16 @@ impl Config {
             }
             (None, None) => None,
         };
-        // FR-11 握手拦截：opt-in。engine_get 只取字符串，布尔键单独读——
-        // 写成 `"false"` 字符串不生效（不是合法布尔），保持「非法即默认关」。
-        let bt_guard_handshake = j.get("engine")
-            .and_then(|e| e.get("guard_handshake"))
+        // FR-11 握手唤醒：opt-in。`guard_handshake` 与 `wake_on_handshake` 是同一机制的
+        // 两种叫法——librqbit 没有握手回调（ADR-002），要「命中即唤醒」就只能在外围
+        // 读 68 字节握手，那正是 cr-guard 做的事。engine 只取布尔，写成 "false"/"true"
+        // 字符串不生效（不是合法布尔），保持「非法即默认关」。
+        let engine_flag = |key: &str| j.get("engine")
+            .and_then(|e| e.get(key))
             .and_then(Json::as_bool)
             .unwrap_or(false);
+        let bt_guard_handshake =
+            engine_flag("guard_handshake") || engine_flag("wake_on_handshake");
         let role = match j.get("role").and_then(Json::as_str) {
             None => None,
             Some(s) => {
@@ -1129,6 +1138,10 @@ mod tests {
         assert!(!mk(r#"{"guard_handshake": false}"#));
         assert!(mk(r#"{"guard_handshake": true}"#));
         assert!(!mk(r#"{"guard_handshake": "true"}"#), "字符串不得被当成布尔 true");
+        // 产品语义别名：同一机制，不许写成「开了却没生效」
+        assert!(mk(r#"{"wake_on_handshake": true}"#));
+        assert!(!mk(r#"{"wake_on_handshake": "true"}"#));
+        assert!(!mk(r#"{"wake_on_handshake": false, "guard_handshake": false}"#));
     }
 
     /// FR-14：空闲休眠默认关闭；秒与分钟都按整数解析，0 是显式关闭。
