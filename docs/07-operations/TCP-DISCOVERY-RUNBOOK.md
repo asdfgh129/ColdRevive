@@ -153,17 +153,35 @@ A 覆盖 `judge_observations` 的全部四态、`parse_port` 拒绝 0/垃圾值�
 可选参数作为**发现端口覆盖**：
 
 ```bash
-# 先用第 5 节拿到 discovered_port（例如 21249），确认 eim=true，立即调用：
-curl -X POST http://127.0.0.1:17800/cli -d '{"method":"nat punch-route","params":["B","192.168.1.221:19910","21249"]}'
+# 先用第 5 节拿到 discovered_port（例如 21249），确认 eim=true，立即调用。
+# 注意 /cli 的真实形状是 {"command":...,"args":[...]}，不是 method/params：
+curl -X POST http://127.0.0.1:17800/cli \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"nat","args":["punch-route","B","192.168.1.221:19910","21249"]}'
 ```
 
-安全约束（已由 `parse_discovered_port` 单测覆盖）：
+双端真实同时打开还要传**同一个共享 nonce**（第四参数，32 位十六进制）。
+两端各调一次 `nat punch-route`，nonce 不同则裁决不匹配、按 fail-closed 回落中继：
+`["punch-route","B","192.168.1.221:19910","<B_MAPPED_PORT>","<NONCE_HEX>"]`
+与 `["punch-route","A","192.168.34.222:19920","<A_MAPPED_PORT>","<NONCE_HEX>"]`。
+新中继连接必须先 `register` 再交换裁决，否则帧会被服务端丢弃；这两项修复
+已有定点单测并在 221 原生构建后部署。
+
+安全约束（已由 `parse_discovered_port` / `parse_shared_nonce` 单测覆盖）：
 
 - 只替换**端口**，IP 仍取已登记的对端 `bt_external`，不接 `ip:port` 字符串，
   防止把任意地址塞进打洞目标。
 - 端口必须是 1..65535；0、越界、非数字一律报错，不静默回退。
 - 不给第三个参数时行为与旧版逐字节相同。
+- 第四参数 nonce 必须是恰好 32 位十六进制；缺参数保持旧随机 nonce，非法值直接报错。
 - 成功结果带 `discovered_port_used`，便于审计本次是否用了发现端口。
+
+**daemon 端口布局**：若引擎继续绑 `0.0.0.0:19910`，守护进程自己的
+`punch_tcp` 会因 `EADDRINUSE` 拿不到同一个 LAN 源端口。部署时用
+`engine.listen = "127.0.0.1:<bt_port>"` 把本地引擎退到回环：holder 的
+`relay-sub` 拨号目标仍由 `bt_port` 得出、保持正确，而 LAN 上的
+`19910/19920` 留给真打洞 socket。`bt_external` / 通告端口保持不变。
+这是部署布局，不改 NAT 判据，也不代表公网入向 DNAT 仍直接可达引擎。
 
 边界不变：这仍是控制面接线，返回 `s6_status=not_run` / `g2_claim=false`；
 必须有真实 EIM 观测、发现端口即时使用，且不外推到对称 NAT 的对端。
@@ -171,8 +189,14 @@ curl -X POST http://127.0.0.1:17800/cli -d '{"method":"nat punch-route","params"
 ## 7. 实测边界与回退
 
 - v2.4.120 首次发现端口 `112.5.60.4:21211` 作信令，222 回连该端口而非固定 `19910`，两侧 `ok=true` + `bytes_roundtrip=true`，连续 3 轮带 tcpdump 全 PASS；证据 `tests/ARCHIVE/evidence/tcp-punch-discovered-3rounds-verify-20261124.json`。
-- 221 的 EIM 不外推到 222：222 仍是对称出口，必须保持主动连接方。
+- 221 的 EIM 不外推到 222。2026-11-25 双侧实测：221 从 `19910` 连 82/119
+  均映射为 `112.5.60.4:34656`（EIM）；222 从 `19920` 连 82/119 分别映射为
+  `112.5.32.34:2050` / `:2055`（不一致，非 EIM）。按上表规则，B 侧不得给出
+  `discovered_port`，本次 daemon 双侧打洞如实判 BLOCKED，没有拿单观测凑 PASS。
 - 发现端口有生命周期，必须即时使用；跨会话重连要重新发现，不缓存旧端口。
+- 该场景下真实 BT 文件已改走**中继兜底**并落地 md5 一致
+  （`tests/ARCHIVE/evidence/bt-over-public-relay-20261125.json`）；这是 relay
+  组件证据，不写成 punched-direct 通过。
 - 任一失败分支都回退中继，并把 `eim` / `reason` / `error` 原文归档；不得把 BLOCKED 改写成 PASS，不得通过重复抽样「碰运气」。
 
 ## 8. 相关文档

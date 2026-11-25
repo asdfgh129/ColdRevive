@@ -1,0 +1,31 @@
+{
+  "recorded_at": "2026-11-25T09:53:47+0800",
+  "scope": "current source daemon with engine.listen=loopback so LAN 19910/19920 stay free for bound punch",
+  "local_binary_md5": "65518fc05ecabbfb35be84563614c470",
+  "hosts": {
+    "A": {
+      "host": "192.168.1.221",
+      "unit": "crpunch221",
+      "binary": "/opt/cr-punch-pub/221/coldrevived",
+      "binary_md5": "65518fc05ecabbfb35be84563614c470  /opt/cr-punch-pub/221/coldrevived",
+      "engine_listen": "127.0.0.1:19910",
+      "start_stdout": "",
+      "start_stderr": "Running as unit: crpunch221.service",
+      "health_ok": false,
+      "health": "",
+      "listeners": ""
+    },
+    "B": {
+      "host": "192.168.1.222",
+      "unit": "crpunch222",
+      "binary": "/tmp/coldrevived-loopback",
+      "binary_md5": "65518fc05ecabbfb35be84563614c470  /tmp/coldrevived-loopback",
+      "engine_listen": "127.0.0.1:19920",
+      "start_stdout": "",
+      "start_stderr": "Running as unit: crpunch222.service",
+      "health_ok": false,
+      "health": "",
+      "listeners": ""
+    }
+  }
+}

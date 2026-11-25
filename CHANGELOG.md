@@ -1,3 +1,24 @@
+## [2.4.127] - 2026-11-25 — 当前 daemon 已部署；真 BT 走公网中继 PASS；打洞直连因 B 非 EIM 如实 BLOCKED
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。以下均为组件级证据，不宣称 G2/S6 通过。
+
+- **代码修复并部署**：`punch-route` / `punch-route-answer` 的新中继连接先 `register`
+  再交换裁决；`nat punch-route` 接受第四参数共享 nonce（32 位十六进制），
+  支持两端真同时打开同一会话。定点单测通过；当前源码在 221 原生构建
+  （md5 `1ba84f286fdab265e936fa65dfbc69e1`）并部署到 221/222，两端健康 OK。
+- **端口布局**：本地引擎改为 `engine.listen=127.0.0.1:<bt_port>`，释放 LAN 的
+  `19910/19920` 给绑定源端口 punch socket；`bt_external` 与通告口径不变。
+- **中继闭环 PASS**：真 BT `.torrent` 在 B 侧 aria2 `status=complete`、
+  `completedLength=1048576`，落地 md5 `6209e962f3b26a13c9ec1ae70fd78e10` 与 A 一致；
+  B `bytes_relayed=1051320`、`tunnels_alive=1`，A `holder_data.bytes_from_engine=1049585`。
+- **打洞直连 BLOCKED**：同会话双观测点实测 A 为 EIM（`34656`/`34656`），
+  B 映射随目的变化（`2050` vs `2055`）。按 DOC-30 约定，B 不给 discovered_port、
+  立即回退中继；没有拿单观测凑 PASS。
+- 全量串行回归 **537 passed / 0 failed / 3 ignored**；本轮 PASS/BLOCKED/部署/回归
+  全部归档 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
+- DOC-31 升 v2.2，审计新增 §22.3–22.5，DOC-30 runbook 修正 `/cli` 形状并补共享 nonce 与端口布局。
+
 ## [2.4.126] - 2026-11-25 — 公平性偏差所有者决定：记录在案、本版暂缓，下一版重调测试
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

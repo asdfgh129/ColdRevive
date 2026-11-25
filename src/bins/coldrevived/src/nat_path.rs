@@ -842,6 +842,8 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             // 这样健康检查能直接比对两端结论是否一致（不一致就是双向黑洞）。
             let result = cr_nat::relay::RelayClient::new(relay_addr).connect(timeout)
                 .and_then(|mut conn| {
+                    // 新连接必须 register；未注册节点的中继帧会被服务端丢弃。
+                    conn.register(&self_id)?;
                     cr_nat::punch_wire::answer_verdicts(&mut conn, &self_id, local_ok, timeout)
                 })
                 .and_then(|rounds| {
@@ -889,7 +891,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             };
             if peer_label.is_empty() {
                 return Json::obj(vec![("error", Json::s(
-                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port] [发现端口]"))]);
+                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port] [发现端口] [共享nonce-hex]"))]);
             }
             let relay_addr = cfg.nat_relays.first().cloned()
                 .or_else(|| cfg.nat_relay.clone());
@@ -898,7 +900,13 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             };
             let self_id = node_id_16(&cfg.node_id);
             let peer_id = node_id_16(&peer_label);
-            let nonce = punch_route::session_nonce();
+            // 可选第四参数：双端真实同时打开必须由同一会话 nonce 收敛。
+            // 不给时保持旧行为（本进程随机 nonce），单端 punch-route + answer 仍可用。
+            let nonce = match parse_shared_nonce(p.get(3)) {
+                Ok(Some(n)) => n,
+                Ok(None) => punch_route::session_nonce(),
+                Err(e) => return Json::obj(vec![("error", Json::s(e))]),
+            };
             let timeout = Duration::from_millis(1200);
 
             // 1) 真实 TCP 打洞：没有外部 socket 就没有可判据的对象。
@@ -947,7 +955,12 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             };
             // 3) 经中继交换两轮裁决：双方都不接受就回落。
             let relay = cr_nat::relay::RelayClient::new(relay_addr.clone())
-                .connect(timeout);
+                .connect(timeout)
+                .and_then(|mut conn| {
+                    // 新连接必须 register；未注册节点的中继帧会被服务端丢弃。
+                    conn.register(&self_id)?;
+                    Ok(conn)
+                });
             let route = match relay.and_then(|mut conn| {
                 punch_route::exchange_verdicts(
                     &mut conn, &self_id, &peer, true, &nonce, timeout)
@@ -1131,6 +1144,25 @@ fn parse_discovered_port(raw: Option<&String>) -> Result<Option<u16>, String> {
     }
 }
 
+/// 双端真实同时打开时的共享会话 nonce（32 位十六进制 = 16 字节）。
+/// 未给参数时保持旧的随机 nonce 行为；给了就必须严格解析，不猜、不补零。
+fn parse_shared_nonce(raw: Option<&String>) -> Result<Option<[u8; 16]>, String> {
+    let Some(s) = raw else { return Ok(None) };
+    if s.len() != 32 {
+        return Err("第四个参数必须是 32 位十六进制 nonce".into());
+    }
+    let bytes = s.as_bytes();
+    let mut out = [0u8; 16];
+    for i in 0..16 {
+        let hi = (bytes[i * 2] as char).to_digit(16)
+            .ok_or_else(|| "第四个参数含非十六进制字符".to_string())?;
+        let lo = (bytes[i * 2 + 1] as char).to_digit(16)
+            .ok_or_else(|| "第四个参数含非十六进制字符".to_string())?;
+        out[i] = ((hi << 4) | lo) as u8;
+    }
+    Ok(Some(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1272,6 +1304,22 @@ mod tests {
         let overridden = std::net::SocketAddr::new(base.ip(), 21249);
         assert_eq!(overridden.ip(), base.ip());
         assert_eq!(overridden.port(), 21249);
+    }
+
+    #[test]
+    fn shared_nonce_accepts_exactly_16_bytes_and_rejects_garbage() {
+        assert_eq!(parse_shared_nonce(None), Ok(None));
+        let n = |s: &str| Some(s.to_string());
+        assert_eq!(
+            parse_shared_nonce(n("00112233445566778899aabbccddeeff").as_ref()),
+            Ok(Some([
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
+            ]))
+        );
+        assert!(parse_shared_nonce(n("0011").as_ref()).is_err());
+        assert!(parse_shared_nonce(n("00112233445566778899aabbccddeefg").as_ref()).is_err());
+        assert!(parse_shared_nonce(n("00112233445566778899aabbccddeeff00").as_ref()).is_err());
     }
 
     #[test]

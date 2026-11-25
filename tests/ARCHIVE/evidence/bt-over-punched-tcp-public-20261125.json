@@ -1,0 +1,103 @@
+{
+  "recorded_at": "2026-11-25T09:48:15+08:00",
+  "scope": "public daemon punch-route + real BT piece transfer; component-level, not G2/S6",
+  "file_hash": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "advertise": {
+    "A": "{\"node_id\":\"A\",\"private_ip\":\"192.168.1.221\",\"wake_port\":17801,\"bt_port\":19910,\"endpoints\":[{\"kind\":\"private-lan\",\"ip\":\"192.168.1.221\",\"port\":17801,\"internal_port\":17801,\"evidence\":\"configured-private-host\"}],\"bt_external\":{\"kind\":\"configured-mapping\",\"ip\":\"112.5.60.4\",\"port\":19910,\"internal_port\":19910,\"evidence\":\"operator-configured-bt-mapping\"},\"relay\":\"82.157.68.159:7100\",\"nat_type\":\"unknown\",\"public_udp_egress_ok\":false,\"probed_at\":1795571297,\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}",
+    "B": "{\"node_id\":\"B\",\"private_ip\":\"192.168.34.222\",\"wake_port\":17901,\"bt_port\":19920,\"endpoints\":[{\"kind\":\"private-lan\",\"ip\":\"192.168.34.222\",\"port\":17901,\"internal_port\":17901,\"evidence\":\"configured-private-host\"}],\"bt_external\":{\"kind\":\"configured-mapping\",\"ip\":\"112.5.32.34\",\"port\":19920,\"internal_port\":19920,\"evidence\":\"operator-configured-bt-mapping\"},\"relay\":\"82.157.68.159:7100\",\"nat_type\":\"unknown\",\"public_udp_egress_ok\":false,\"probed_at\":1795571297,\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}"
+  },
+  "peer_A": {
+    "ok": true,
+    "node_id": "B",
+    "endpoints": 1,
+    "bt_external": true
+  },
+  "peer_B": {
+    "ok": true,
+    "node_id": "A",
+    "endpoints": 1,
+    "bt_external": true
+  },
+  "plan_A": {
+    "strategy": "none",
+    "needs_relay": false,
+    "candidates": [
+      {
+        "kind": "private-lan",
+        "ip": "192.168.34.222",
+        "port": 17901,
+        "internal_port": 17901,
+        "evidence": "configured-private-host"
+      },
+      {
+        "kind": "relay",
+        "ip": "82.157.68.159",
+        "port": 7100,
+        "internal_port": 17901,
+        "evidence": "configured-relay"
+      }
+    ],
+    "tracker_public": {
+      "kind": "configured-mapping",
+      "ip": "112.5.32.34",
+      "port": 19920,
+      "internal_port": 19920,
+      "evidence": "operator-configured-bt-mapping"
+    },
+    "notes": [
+      "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明"
+    ],
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false
+  },
+  "plan_B": {
+    "strategy": "none",
+    "needs_relay": false,
+    "candidates": [
+      {
+        "kind": "private-lan",
+        "ip": "192.168.1.221",
+        "port": 17801,
+        "internal_port": 17801,
+        "evidence": "configured-private-host"
+      },
+      {
+        "kind": "relay",
+        "ip": "82.157.68.159",
+        "port": 7100,
+        "internal_port": 17801,
+        "evidence": "configured-relay"
+      }
+    ],
+    "tracker_public": {
+      "kind": "configured-mapping",
+      "ip": "112.5.60.4",
+      "port": 19910,
+      "internal_port": 19910,
+      "evidence": "operator-configured-bt-mapping"
+    },
+    "notes": [
+      "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明"
+    ],
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false
+  },
+  "discovery_client": "FAIL 82.157.68.159:22 OSError: [Errno 98] Address already in use\nFAIL 119.29.150.254:22 OSError: [Errno 98] Address already in use",
+  "discovery": {
+    "ports": {},
+    "tcpdump": {
+      "82": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n",
+      "119": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n"
+    }
+  },
+  "verdict": "BLOCKED",
+  "reason": "two-observer EIM port not available"
+}

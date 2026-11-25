@@ -1,0 +1,145 @@
+{
+  "recorded_at": "2026-11-25T09:58:29+08:00",
+  "scope": "component-level real BT transfer over public relay fallback; explicitly NOT punched direct",
+  "file_hash": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "peer_A": {
+    "ok": true,
+    "node_id": "B",
+    "endpoints": 1,
+    "bt_external": true
+  },
+  "peer_B": {
+    "ok": true,
+    "node_id": "A",
+    "endpoints": 1,
+    "bt_external": true
+  },
+  "wake": {
+    "ok": true,
+    "path": "private-lan",
+    "strategy": "none",
+    "rtt_ms": 1,
+    "attempts": [
+      {
+        "kind": "private-lan",
+        "addr": "192.168.1.221:17801",
+        "ok": true,
+        "detail": "punch_sent=1 punch_acked=true peer_punched=false",
+        "rtt_ms": 1
+      }
+    ],
+    "notes": [
+      "对端无外部映射证据：仅私网直连候选，跨 NAT 可达性未证明",
+      "可达性查询：82.157.68.159:7100 报告 peer=unknown（声明时刻 1795571766559），直连候选照常尝试",
+      "中继数据面已确认（TCP，OPEN/OPENED 双向握手完成）: channel=1090535936 peer=112.5.60.4:19910"
+    ],
+    "reach_lookup": {
+      "relay": "82.157.68.159:7100",
+      "declared": true,
+      "class": "unknown",
+      "declared_at_ms": 1795571766559,
+      "ttl_ms": 3600000,
+      "skip_direct": false,
+      "error": null,
+      "rtt_ms": 162
+    },
+    "ack_status": "OK",
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "error": null
+  },
+  "torrent_url": "http://192.168.1.221:17800/torrent/8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gid": "1a2106d0e880000",
+  "download": {
+    "final": {
+      "gid": "1a2106d0e880000",
+      "status": "complete",
+      "totalLength": "1048576",
+      "completedLength": "1048576",
+      "uploadLength": "0",
+      "downloadSpeed": "256000",
+      "uploadSpeed": "0",
+      "connections": "0",
+      "files": [
+        {
+          "index": "1",
+          "path": "/tmp/cr-punch-pub/222/downloads/ed2k-sample.bin",
+          "length": "1048576",
+          "completedLength": "1048576",
+          "selected": true,
+          "uris": [
+            {
+              "uri": "http://192.168.1.221:17800/torrent/8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+              "status": "used"
+            }
+          ]
+        }
+      ],
+      "coldrevive.torrentParsed": true,
+      "coldrevive.pieceCount": "4",
+      "coldrevive.engineAttached": true,
+      "coldrevive.engineTask": "1",
+      "coldrevive.note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads",
+      "bittorrent": {
+        "infoHash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1"
+      }
+    },
+    "progress_tail": [
+      {
+        "at": "09:58:31",
+        "status": "active",
+        "completed": "0",
+        "download_speed": "0",
+        "connections": "0",
+        "note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads"
+      },
+      {
+        "at": "09:58:32",
+        "status": "active",
+        "completed": "262144",
+        "download_speed": "255003",
+        "connections": "1",
+        "note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads"
+      },
+      {
+        "at": "09:58:33",
+        "status": "active",
+        "completed": "524288",
+        "download_speed": "254508",
+        "connections": "1",
+        "note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads"
+      },
+      {
+        "at": "09:58:34",
+        "status": "active",
+        "completed": "786432",
+        "download_speed": "255003",
+        "connections": "1",
+        "note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads"
+      },
+      {
+        "at": "09:58:35",
+        "status": "complete",
+        "completed": "1048576",
+        "download_speed": "256000",
+        "connections": "0",
+        "note": "已接入 BT 引擎（librqbit），下载目录 /tmp/cr-punch-pub/222/downloads"
+      }
+    ]
+  },
+  "health_A": "{\"status\":\"ok\",\"node\":\"A\",\"host\":\"192.168.1.221\",\"machine_id\":\"unknown\",\"pid\":659386,\"seed_tasks\":1,\"seed_active\":1,\"served_bytes\":1048576,\"seeding\":{\"cap\":8,\"scheduled\":1,\"evictions\":0},\"limits\":{\"max_hot_seeds\":null,\"hot\":1,\"max_peers\":{\"enabled\":false,\"limit\":null,\"current\":0,\"unit\":\"peers\"},\"max_upload_bytes_per_sec\":{\"enabled\":false,\"limit\":null,\"current\":0,\"unit\":\"B/s\"},\"max_rss_mb\":{\"enabled\":false,\"limit\":null,\"current\":null,\"unit\":\"MiB\"},\"max_seeding_cpu_millipct\":{\"enabled\":false,\"limit\":null,\"current\":null,\"unit\":\"milli-percent\",\"current_percent\":null},\"sample_at_secs\":0},\"punch_route\":{\"enabled\":true,\"attempts\":0,\"direct\":0,\"relay\":0,\"failed\":0,\"relay_data_plane\":\"tcp-carrier-implemented\",\"relay_data_plane_udp\":\"udp-carrier-implemented-rst-path-verified\",\"is_s6_evidence\":false,\"g2_claim\":false,\"s6_status\":\"not_run\"},\"data_plane\":{\"enabled\":true,\"proxy\":\"socks5://127.0.0.1:38241\",\"socks5_registered\":0,\"served_registered\":0,\"bytes_relayed\":0,\"tunnels\":0,\"tunnels_alive\":0,\"carrier\":\"relay-tcp\",\"udp_tunnels\":0,\"udp_tunnels_alive\":0,\"punched_registered\":0,\"punched_alive\":0,\"udp_cc_enabled\":false,\"udp_cc_cwnd_x100\":0,\"udp_cc_srtt_ms\":0,\"udp_cc_loss_events\":0,\"udp_cc_rtt_samples\":0,\"udp_cc_paced_new\":0,\"udp_cc_backpressure\":0},\"holder_data\":{\"enabled\":true,\"carrier\":\"relay-sub-tcp\",\"opens\":1,\"accepted\":1,\"rejected\":0,\"duplicate_open\":0,\"peer_mismatch\":0,\"unknown_channel\":0,\"data_frames\":2,\"bytes_to_engine\":1264,\"bytes_from_engine\":1049585,\"splices_done\":1},\"guard\":{\"enabled\":false,\"handshakes\":0,\"woken\":0,\"missed\":0},\"idle\":{\"enabled\":false,\"threshold_secs\":0,\"idle_secs\":4,\"sleeps\":0,\"last_slept\":[]},\"api\":{\"rpc_secret\":{\"enabled\":false,\"note\":\"token 值不会出现在 /health 或任何响应中\"},\"web_ui\":{\"enabled\":false},\"websocket\":{\"enabled\":false}},\"nat\":{\"enabled\":false,\"status\":\"disabled\",\"attempts\":[],\"note\":\"映射仅来自路由器真实应答；不改变 s6_status\"},\"qos\":{\"enabled\":true,\"background_upload_ratio\":0.02,\"reference_link_bps\":12500000,\"cap_bps\":250000,\"observed_bytes\":999424,\"allowed_bytes\":0,\"denied_bytes\":999424,\"note\":\"字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run\"},\"dht\":{\"enabled\":false,\"status\":\"disabled\",\"last_cycle_status\":\"\",\"local_addr\":null,\"bootstrap\":[],\"seeds\":0,\"attempts\":0,\"verified\":0,\"no_token\":0,\"failed\":0,\"cycles\":0,\"requests\":0,\"discovered\":0,\"resource_skipped\":0,\"last_cycle_at_ms\":0,\"last_error\":\"\",\"note\":\"本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据\"},\"cross_protocol\":{\"enabled\":false,\"status\":\"not_implemented\",\"bt_to_ed2k\":\"invalid_input\",\"ed2k_to_bt\":\"invalid_input\",\"note\":\"跨协议补源未实现；不生成来源、不伪造成功\"},\"reputation\":{\"enabled\":false,\"status\":\"not_implemented\",\"score\":null,\"note\":\"只记账不评分；信誉/激励尚未实现\"},\"kad_publish\":{\"cycles\":0,\"last\":null,\"note\":\"尚未到第一个周期\"}}",
+  "health_B": "{\"status\":\"ok\",\"node\":\"B\",\"host\":\"192.168.34.222\",\"machine_id\":\"unknown\",\"pid\":1202286,\"seed_tasks\":0,\"seed_active\":0,\"served_bytes\":0,\"seeding\":{\"cap\":8,\"scheduled\":0,\"evictions\":0},\"limits\":{\"max_hot_seeds\":null,\"hot\":0,\"max_peers\":{\"enabled\":false,\"limit\":null,\"current\":0,\"unit\":\"peers\"},\"max_upload_bytes_per_sec\":{\"enabled\":false,\"limit\":null,\"current\":0,\"unit\":\"B/s\"},\"max_rss_mb\":{\"enabled\":false,\"limit\":null,\"current\":null,\"unit\":\"MiB\"},\"max_seeding_cpu_millipct\":{\"enabled\":false,\"limit\":null,\"current\":null,\"unit\":\"milli-percent\",\"current_percent\":null},\"sample_at_secs\":0},\"punch_route\":{\"enabled\":true,\"attempts\":0,\"direct\":0,\"relay\":0,\"failed\":0,\"relay_data_plane\":\"tcp-carrier-implemented\",\"relay_data_plane_udp\":\"udp-carrier-implemented-rst-path-verified\",\"is_s6_evidence\":false,\"g2_claim\":false,\"s6_status\":\"not_run\"},\"data_plane\":{\"enabled\":true,\"proxy\":\"socks5://127.0.0.1:45013\",\"socks5_registered\":0,\"served_registered\":1,\"bytes_relayed\":1051320,\"tunnels\":1,\"tunnels_alive\":1,\"carrier\":\"relay-tcp\",\"udp_tunnels\":0,\"udp_tunnels_alive\":0,\"punched_registered\":0,\"punched_alive\":0,\"udp_cc_enabled\":false,\"udp_cc_cwnd_x100\":0,\"udp_cc_srtt_ms\":0,\"udp_cc_loss_events\":0,\"udp_cc_rtt_samples\":0,\"udp_cc_paced_new\":0,\"udp_cc_backpressure\":0},\"holder_data\":{\"enabled\":false,\"carrier\":\"none\",\"opens\":0,\"accepted\":0,\"rejected\":0,\"duplicate_open\":0,\"peer_mismatch\":0,\"unknown_channel\":0,\"data_frames\":0,\"bytes_to_engine\":0,\"bytes_from_engine\":0,\"splices_done\":0},\"guard\":{\"enabled\":false,\"handshakes\":0,\"woken\":0,\"missed\":0},\"idle\":{\"enabled\":false,\"threshold_secs\":0,\"idle_secs\":146,\"sleeps\":0,\"last_slept\":[]},\"api\":{\"rpc_secret\":{\"enabled\":false,\"note\":\"token 值不会出现在 /health 或任何响应中\"},\"web_ui\":{\"enabled\":false},\"websocket\":{\"enabled\":false}},\"nat\":{\"enabled\":false,\"status\":\"disabled\",\"attempts\":[],\"note\":\"映射仅来自路由器真实应答；不改变 s6_status\"},\"qos\":{\"enabled\":true,\"background_upload_ratio\":0.02,\"reference_link_bps\":12500000,\"cap_bps\":250000,\"observed_bytes\":0,\"allowed_bytes\":0,\"denied_bytes\":0,\"note\":\"字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run\"},\"dht\":{\"enabled\":false,\"status\":\"disabled\",\"last_cycle_status\":\"\",\"local_addr\":null,\"bootstrap\":[],\"seeds\":0,\"attempts\":0,\"verified\":0,\"no_token\":0,\"failed\":0,\"cycles\":0,\"requests\":0,\"discovered\":0,\"resource_skipped\":0,\"last_cycle_at_ms\":0,\"last_error\":\"\",\"note\":\"本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据\"},\"cross_protocol\":{\"enabled\":false,\"status\":\"not_implemented\",\"bt_to_ed2k\":\"invalid_input\",\"ed2k_to_bt\":\"invalid_input\",\"note\":\"跨协议补源未实现；不生成来源、不伪造成功\"},\"reputation\":{\"enabled\":false,\"status\":\"not_implemented\",\"score\":null,\"note\":\"只记账不评分；信誉/激励尚未实现\"},\"kad_publish\":{\"cycles\":0,\"last\":null,\"note\":\"尚未到第一个周期\"}}",
+  "landed_candidates": "/tmp/cr-punch-pub/222/downloads/ed2k-sample.bin\n/root/cr-w61/sample.bin",
+  "landed_path": "/tmp/cr-punch-pub/222/downloads/ed2k-sample.bin",
+  "landed_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "verdict": "PASS",
+  "reason": "real BT file landed byte-identical on B over public relay fallback"
+}

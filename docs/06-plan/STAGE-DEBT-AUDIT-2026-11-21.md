@@ -897,14 +897,42 @@ v2.4.120 时全量 `cargo test --workspace --offline -- --test-threads=1` 为
 证据 `tests/ARCHIVE/evidence/bound-port-bridge-e2e-20261125.json`。
 这是**回环上的组件级组合证明**，不是 NAT 可达性证据，不外推公网。
 
-### 22.3 仍然缺的不是 DNAT，而是「daemon 当前构建 + 公网 BT 字节」
+### 22.3 当前 daemon 已部署（v2.4.127 更新）
 
-§22.1 已经把公网 TCP DNAT 与发现端口打洞两项组件级路径重新验证为可用。
-要闭合「BT-over-punched-TCP 公网」这一条，还差：
+§22.1 的组件级结论不变：两条 DNAT 与 221 的发现端口打洞探针仍可用。
+2026-11-25 已把当前源码在 221 上原生构建（md5 `1ba84f286fdab265e936fa65dfbc69e1`）
+并部署到 221/222，两端 `/health` 均 OK、`nat.punch_route.enabled=true`。
+这次同时修了两个真实控制面缺陷：新中继连接先 `register` 再交换裁决；
+`nat punch-route` 接受第四参数共享 nonce，使两端能真同时打开同一会话。
+定点单测通过，全量串行回归 **537 passed / 0 failed / 3 ignored**。
+部署时把引擎监听退到 `engine.listen=127.0.0.1:<bt_port>`，从而释放 LAN 上的
+`19910/19920` 给绑定源端口的 punch socket；`bt_external` 与通告口径不变。
+证据 `tests/ARCHIVE/evidence/daemon-loopback-linux-deploy-20261125.json`、
+`regression-full-20261125.log`。
 
-1. 把当前 release daemon（含 v2.4.123 `PunchTargets` 桥键修复）部署到 221/222；
-2. 在真 daemon 上用真 BT 握手与真实文件片走这条 punched TCP 路径，并读对端落地 md5；
-3. 归档原始证据，仍不自动改 `g2_claim` / `s6_status`。
+### 22.4 双侧 daemon 打洞仍 BLOCKED：B 不是 EIM，禁止外推
 
-在此之前，正确说法是：**公网 DNAT 在、TCP 打洞探针 PASS、daemon 与 BT 数据面公网闭环未完成**，
-而不是「两条 NAT 都没了，需要重建」。
+两侧 daemon 同时跑 EIM 发现（同一会话、两个独立公网观测机 82/119）：
+
+| 节点 | 82 观测 | 119 观测 | DOC-30 判定 |
+|---|---|---|---|
+| A / 221，源 `192.168.1.221:19910` | `112.5.60.4:34656` | `112.5.60.4:34656` | EIM 成立，可作信令 |
+| B / 222，源 `192.168.34.222:19920` | `112.5.32.34:2050` | `112.5.32.34:2055` | 不一致，非 EIM，不给端口 |
+
+按用户约定的应对方法，B 侧两个观测不一致时必须立即回退中继；本次没有把
+`2050` 或 `2055` 当 discovered_port 使用，也没有用单观测凑 PASS。
+证据 `tests/ARCHIVE/evidence/bt-over-punched-tcp-public-20261125-v2.json`。
+因此「当前 daemon + 真 BT 字节走公网 punched-direct」仍未闭合，
+且**不是 DNAT 或部署问题**，而是 B 的对称映射使双端 TCP 同时打开的 4 元组无法收敛。
+
+### 22.5 中继兜底已承载真实 BT 文件（组件级 PASS）
+
+在相同 daemon 与相同公网主机上，不调用 punched route，直接走 daemon 的中继兜底：
+B 通过 SOCKS5 桥下载 `infohash=8b02…df1`，aria2 `status=complete`、
+`completedLength=1048576`，落地文件 md5 `6209e962f3b26a13c9ec1ae70fd78e10`
+与 A 侧样本一致。健康计数同时显示 B 侧 `bytes_relayed=1051320`、
+`tunnels_alive=1`、`carrier=relay-tcp`，A 侧 `holder_data.bytes_from_engine=1049585`、
+`splices_done=1`。证据 `tests/ARCHIVE/evidence/bt-over-public-relay-20261125.json`。
+
+这是**真实公网中继数据面**的组件级 PASS，不是 punched-direct PASS，
+不折算 S6/G2；机器常量仍全部为 `false` / `not_run`。

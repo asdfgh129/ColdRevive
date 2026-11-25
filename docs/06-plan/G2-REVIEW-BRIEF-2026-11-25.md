@@ -2,15 +2,15 @@
 doc_id: DOC-31
 title: G2 解禁复评简报（2026-11-25，通俗版 v2.0）
 category: 计划
-version: 2.1
-status: 第1项已由所有者决定暂缓 · 其余待判定
+version: 2.2
+status: 第1项暂缓 · 第4项已部署/中继PASS/打洞BLOCKED · G2仍待所有者判定
 owner: 项目所有者（判定） / 架构组（记录）
 updated: 2026-11-25
 ---
 
-# G2 解禁复评简报（2026-11-25，v2.4.125）
+# G2 解禁复评简报（2026-11-25，v2.4.127）
 
-> 编号 DOC-31 · 版本 2.1 · 状态 **第1项已决定暂缓，其余待判定** · 更新 2026-11-25
+> 编号 DOC-31 · 版本 2.2 · 状态 **第1项暂缓；第4项已部署，中继 PASS、打洞 BLOCKED；G2 仍待判定** · 更新 2026-11-25
 >
 > **门禁机器常量不变**：`g2_claim=false`、`s6_status=not_run`、
 > `evidence_valid_for_pass=false`、`auto_pass=false`。
@@ -24,9 +24,10 @@ updated: 2026-11-25
 | 1 | 公平性到底测什么？为什么全是数字？ | 让两条数据流抢同一条较慢的网络，看是不是各拿约一半；**慢链路 + 开拥塞控制时 20 轮里 18 轮达标，2 轮差一点** | 按原预注册判据整体 **FAIL**；**所有者已决定：偏差在可接受范围，记录在案、暂缓处理** | 下一版重新调整测试（先登记新判据，再采新样本）；本版不动 β、不改阈值 |
 | 2 | DHT 到底过没过？ | 把做种信息 announced 到公网 DHT，两个独立公网节点都能查到我们；**这个小测试过了** | 组件级 **PASS**；守护进程长期自动运行的 DHT 可达率没测 | 长期自动 DHT 资源/可达率数据 |
 | 3 | 多样种逐出是什么问题？ | 「只允许同时做种 1 个文件，来第 2 个怎么办」；结果是第 2 个能启动，旧的被踢掉，始终只跑 1 个，**没发现问题** | P0 e2e **77/77 PASS** | 仅限本机回环；不代表公网 NAT |
-| 4 | 两条 CPE DNAT 真的没了吗？ | **你是对的，映射还在。** 我上一版判断错了。今天重新验证：两条映射能承载真实双向 TCP，发现端口打洞也 PASS | DNAT 与 punch 探针 **PASS**（组件级） | 221/222 上 daemon 仍是旧构建；真 BT 文件片跨公网走打洞路径还没做 |
+| 4 | 两条 CPE DNAT 真的没了吗？ | **你是对的，映射还在。** 当前 daemon 已部署；真 BT 文件已跨公网经**中继**落地且 md5 一致。但真打洞这条没过：A 是 EIM，B 的映射随目的变化，按约定必须回退 | DNAT/探针 PASS；当前 daemon 部署 PASS；中继 BT **PASS**；punched-direct **BLOCKED** | 若要打洞直连，需要 B 侧具备可判定的 EIM 或运营侧给出稳定映射；否则维持中继 |
 
-**一句话**：四项里第 2、3 项的小测试过了，第 4 项的环境问题已更正；
+**一句话**：第 2、3 项的小测试过了；第 4 项环境更正后，当前 daemon 已部署，
+真实 BT 文件经公网中继落地一致，但**打洞直连因 B 非 EIM 而 BLOCKED**；
 第 1 项按原判据仍没过，但所有者已决定偏差可接受、暂缓到下一版重调测试。
 G2 本身仍未被解禁。
 
@@ -161,42 +162,67 @@ AIMD 的 β（丢包后窗口减半系数）写死在探针 `main.rs:189`，当�
 - 慢速失败对照：`tcp-eim-and-punch-recheck-20261125.json`、
   `tcp-punch-discovered-recheck-20261125.json`
 
-### 4.3 主机部署实况（分清「映射」和「代码」）
+### 4.3 当前 daemon 已部署（不再是旧构建）
 
-- 221/222 上的 `/tmp/coldrevive-nat` 都是 2026-11-24 11:49，
-  `--help` 含 `--serve-observer` 与 `--discover-tcp-port`，足够跑 DOC-30 探针；
-- **陈旧的是 daemon**：221 release daemon 为 11-20，222 `/root/bin/coldrevived` 为 11-18；
-  221 仓库源码树也是 11-20。
-- 因此现在缺的是「**部署当前 daemon + 真 BT 数据跨公网走打洞路径**」，
-  不是「重建 DNAT」。
+- 在 221 上用当前源码原生构建，md5 `1ba84f286fdab265e936fa65dfbc69e1`，
+  部署到 221/222，两端 `/health` OK、`nat.punch_route.enabled=true`；
+- 这次还带上两个真实修复：新中继连接先 `register`；`nat punch-route`
+  支持第四参数共享 nonce，使两端能真同时打开同一会话；
+- 为避免 daemon 自己占住 `19910/19920`，本地引擎改为
+  `engine.listen=127.0.0.1:<bt_port>`，`bt_external` 与通告口径不变。
+  这样 LAN 上的 `19910/19920` 留给绑定源端口的 punch socket；
+- 全量串行回归 **537 passed / 0 failed / 3 ignored**。
+- 证据：`tests/ARCHIVE/evidence/daemon-loopback-linux-deploy-20261125.json`、
+  `regression-full-20261125.log`。
 
-回环组件级已补 `bound_source_port_socket_carries_real_librqbit_piece`：
-真 librqbit 下载 1,048,576 B，`finished=true`、逐字节一致、`served_registered=1`。
-但它不是公网证据，不能与 §4.2 的公网 TCP 探针互换。
+### 4.4 真 BT 字节：中继过了，打洞没过
+
+**中继兜底 PASS**：B 通过 daemon 的 SOCKS5 桥下载真 `.torrent`，
+aria2 `status=complete`、`completedLength=1048576`，落地 md5
+`6209e962f3b26a13c9ec1ae70fd78e10`，与 A 侧样本一致。计数也吻合：
+B `bytes_relayed=1051320`、`tunnels_alive=1`；A `holder_data.bytes_from_engine=1049585`、
+`splices_done=1`。证据 `bt-over-public-relay-20261125.json`。
+这是**真实公网中继数据面**，不是打洞直连，也不等于 G2/S6。
+
+**打洞直连 BLOCKED**：两端同时做双观测点 EIM 探测，结果是：
+
+| 节点 | 观测点 82 | 观测点 119 | 判定 |
+|---|---|---|---|
+| A / 221（源 `19910`） | `112.5.60.4:34656` | `112.5.60.4:34656` | EIM 一致 |
+| B / 222（源 `19920`） | `112.5.32.34:2050` | `112.5.32.34:2055` | 不一致，非 EIM |
+
+按事先约定的方法，B 侧映射随目的变化就**不得给出 discovered_port**，
+必须立即回退中继；本次如实判 BLOCKED，没有拿 `2050`/`2055` 凑 PASS。
+证据 `bt-over-punched-tcp-public-20261125-v2.json`。
+
+结论：现在缺的不是 DNAT，也不是部署，而是 **B 侧可判定的 EIM/稳定映射**。
+在运营侧未给出该条件前，punched-direct 不能写成通过。
 
 ---
 
 ## 5. 回归与归档
 
 - 全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`：
-  **536 passed / 0 failed / 3 ignored**（v2.4.124，0 panic）；本轮为证据与文档更正，无代码行为变更。
+  **537 passed / 0 failed / 3 ignored**（含本轮 `nat_path.rs` 修复后的最终回归）。
 - 所有本轮运行（含 BLOCKED 与失败对照）已归档 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
-- 审计更正见 `STAGE-DEBT-AUDIT-2026-11-21.md` §22.1–22.3。
+- 审计更正见 `STAGE-DEBT-AUDIT-2026-11-21.md` §22.1–22.5。
 
 ## 6. 需要所有者决定/提供的四件事
 
 1. **公平性（已决定，暂缓）**：所有者判定偏差可接受，记录在案、本版跳过；
    本版不调 β、不改阈值、不改判据。下一版再重新调整测试：先登记新判据
    （新时间戳 + 新 sha），再采集新样本。
-2. **BT 公网闭环**：把当前 release daemon 部署到 221/222，
-   再用真 BT 文件片走公网打洞路径并读对端落地 md5。**DNAT 不需要重建**。
+2. **BT 公网闭环**：当前 daemon 已部署；真 BT 文件已走**公网中继**并落地 md5 一致。
+   **打洞直连仍 BLOCKED**：B 的两个公网观测端口不一致（`2050` vs `2055`），
+   按约定不得外推。若仍要求 punched-direct，需要所有者/运营侧提供 B 的可判定 EIM
+   或稳定公网映射；DNAT 不需要重建。
 3. **S6 语义**：G0-REVIEW 记载 S6 已于 2026-11-17 判 `pass(closed_with_exceptions)`；
    机器字段按设计仍 `not_run`。是否折算进 G2 需书面决定。
 4. **G2 出口**：即便证据齐备，`g2_claim` 也只能由所有者改；工具与文档一律不自置 pass。
 
 ## 7. 一句话结论
 
-第 2、3 项组件测试过了；第 4 项「NAT 被撤」已更正为 DNAT 与打洞探针 PASS，
-但仍缺当前 daemon 部署与真 BT 公网字节；第 1 项按原判据仍整体 FAIL，
-但所有者已决定偏差可接受、本版暂缓，下一版再登记新判据重测。
-G2 解禁的最终判断权在所有者。
+第 2、3 项组件测试过了；第 4 项「NAT 被撤」已更正，当前 daemon 已部署，
+真 BT 文件经公网中继落地一致，但打洞直连因 B 非 EIM 而 BLOCKED；
+第 1 项按原判据仍整体 FAIL，但所有者已决定偏差可接受、本版暂缓，
+下一版再登记新判据重测。G2 解禁的最终判断权在所有者。
