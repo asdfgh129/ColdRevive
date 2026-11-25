@@ -49,7 +49,17 @@ pub const IDLE_NICE: i32 = 19;
 /// 引擎线程名。**必须由我们指定**，不能用 tokio 的默认名（`tokio-rt-worker`）：
 /// 探针与运维要按这个名字在 `/proc/<pid>/task/*/comm` 里认人，而默认名是 tokio
 /// 的实现细节、随版本可变。名字写在这里，等于把「哪些线程属于引擎」变成自己的契约。
-pub const ENGINE_THREAD_NAME: &str = "cr-engine-worker";
+///
+/// **长度必须 ≤ 15 个字符**：Linux 的 `TASK_COMM_LEN` 是 16（含结尾 NUL），`comm`
+/// 会被**静默截断**。曾经用 `"cr-engine-worker"`（16 字符）→ `/proc` 里只剩
+/// `cr-engine-worke`，按全名精确比对的探针随即报「0 个引擎线程」，
+/// 看着像「一个都没降」，其实是名字对不上。`engine_thread_name_fits_task_comm`
+/// 这条测试钉住这个上限。
+pub const ENGINE_THREAD_NAME: &str = "cr-engine-wrk";
+
+/// Linux `comm` 的可见长度上限（`TASK_COMM_LEN - 1`）。
+pub const TASK_COMM_MAX: usize = 15;
+
 
 /// 降级结果。**这是读回校验后的状态**，不是「调用有没有返回 0」。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -379,6 +389,17 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn engine_thread_name_fits_task_comm() {
+        // 超长会被内核静默截断，而按名认人的探针同时静默失效——这类「两边都不报错」
+        // 的错最难查，所以用一条测试把它挡在编译期之后、上线之前。
+        assert!(ENGINE_THREAD_NAME.len() <= TASK_COMM_MAX,
+                "线程名 {} 有 {} 字符，超过 Linux comm 上限 {}，会被静默截断",
+                ENGINE_THREAD_NAME, ENGINE_THREAD_NAME.len(), TASK_COMM_MAX);
+        assert!(!ENGINE_THREAD_NAME.contains(char::is_whitespace),
+                "comm 里不能有空格（/proc 的 stat 解析会错位）");
     }
 
     #[test]
