@@ -1,0 +1,74 @@
+{
+  "recorded_at": "2026-11-25T10:15:16+08:00",
+  "scope": "bounded daemon automatic Mainline DHT run; component-level reach/resource sample, not G2/S6",
+  "duration_sec": 600,
+  "interval_sec": 30,
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "samples": [],
+  "dht_cli_build": {
+    "stdout_tail": "",
+    "stderr_tail": "warning: unused field `license` in `workspace.package`\n --> Cargo.toml:8:1\n  |\n8 | license = \"MIT\"\n  | ^^^^^^^\n  |\n  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default\nhelp: consider removing the field `workspace.package.license`\nwarning: unused field `repository` in `workspace.package`\n --> Cargo.toml:9:1\n  |\n9 | repository = \"https://github.com/asdfgh129/ColdRevive\"\n  | ^^^^^^^^^^\n  |\nhelp: consider removing the field `workspace.package.repository`\nwarning: workspace (manifest) generated 2 warnings\n    Finished `release` profile [optimized] target(s) in 0.22s"
+  },
+  "dht_config": {
+    "enabled": true,
+    "bootstrap": [
+      "185.86.100.99:6881",
+      "218.72.97.180:6881"
+    ],
+    "timeout_ms": 2000,
+    "refresh_secs": 120,
+    "min_interval_ms": 5000,
+    "max_bootstraps": 4,
+    "max_seeds": 4,
+    "max_keys": 2,
+    "max_announces_per_cycle": 1,
+    "rss_soft_skip_mb": 0
+  },
+  "enabled_health_at_start": {
+    "enabled": true,
+    "status": "no_bootstrap",
+    "last_cycle_status": "",
+    "local_addr": "0.0.0.0:43919",
+    "bootstrap": [
+      "185.86.100.99:6881",
+      "218.72.97.180:6881"
+    ],
+    "seeds": 1,
+    "attempts": 0,
+    "verified": 0,
+    "no_token": 0,
+    "failed": 0,
+    "cycles": 0,
+    "requests": 0,
+    "discovered": 0,
+    "resource_skipped": 0,
+    "last_cycle_at_ms": 0,
+    "last_error": "",
+    "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+  },
+  "restored": {
+    "enabled": false,
+    "status": "disabled",
+    "last_cycle_status": "",
+    "local_addr": null,
+    "bootstrap": [],
+    "seeds": 0,
+    "attempts": 0,
+    "verified": 0,
+    "no_token": 0,
+    "failed": 0,
+    "cycles": 0,
+    "requests": 0,
+    "discovered": 0,
+    "resource_skipped": 0,
+    "last_cycle_at_ms": 0,
+    "last_error": "",
+    "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+  }
+}

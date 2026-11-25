@@ -1,0 +1,1159 @@
+{
+  "recorded_at": "2026-11-25T10:03:45+08:00",
+  "scope": "bounded daemon automatic Mainline DHT run; component-level reach/resource sample, not G2/S6",
+  "duration_sec": 600,
+  "interval_sec": 30,
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "samples": [
+    {
+      "elapsed_sec": 0,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 30,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 60,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 90,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 121,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 151,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 181,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 211,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 241,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 272,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 302,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 332,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 362,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 392,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 422,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 453,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 483,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 513,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 543,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    },
+    {
+      "elapsed_sec": 573,
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "process_rss_kb": "17204"
+    }
+  ],
+  "dht_cli_build": {
+    "stdout_tail": "",
+    "stderr_tail": "warning: unused field `license` in `workspace.package`\n --> Cargo.toml:8:1\n  |\n8 | license = \"MIT\"\n  | ^^^^^^^\n  |\n  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default\nhelp: consider removing the field `workspace.package.license`\nwarning: unused field `repository` in `workspace.package`\n --> Cargo.toml:9:1\n  |\n9 | repository = \"https://github.com/asdfgh129/ColdRevive\"\n  | ^^^^^^^^^^\n  |\nhelp: consider removing the field `workspace.package.repository`\nwarning: workspace (manifest) generated 2 warnings\n   Compiling coldrevive-dht v0.1.0 (/opt/cr-current/src/bins/coldrevive-dht)\n    Finished `release` profile [optimized] target(s) in 2.11s"
+  },
+  "dht_config": {
+    "enabled": true,
+    "bootstrap": [
+      "dht.transmissionbt.com:6881",
+      "router.bittorrent.com:6881"
+    ],
+    "timeout_ms": 2000,
+    "refresh_secs": 120,
+    "min_interval_ms": 5000,
+    "max_bootstraps": 4,
+    "max_seeds": 4,
+    "max_keys": 2,
+    "max_announces_per_cycle": 1,
+    "rss_soft_skip_mb": 0
+  },
+  "external_rechecks": {
+    "0": {
+      "185.86.100.99:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"185.86.100.99:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      },
+      "218.72.97.180:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"218.72.97.180:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      }
+    },
+    "211": {
+      "185.86.100.99:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"185.86.100.99:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      },
+      "218.72.97.180:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"218.72.97.180:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      }
+    },
+    "422": {
+      "185.86.100.99:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"185.86.100.99:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      },
+      "218.72.97.180:6881": {
+        "stdout": "{\"ok\":true,\"mode\":\"get-peers\",\"target\":\"218.72.97.180:6881\",\"info_hash\":\"8b02ea8fdc9fd44275a829668aace7290b8b8df1\",\"token_len\":4,\"nodes\":8,\"peers\":0,\"peer_list\":\"\"}",
+        "stderr": ""
+      }
+    }
+  },
+  "summary": {
+    "attempts": 0,
+    "verified": 0,
+    "cycles": 0,
+    "no_token": 0,
+    "failed": 0,
+    "requests": 0,
+    "discovered": 0,
+    "resource_skipped": 0,
+    "external_recheck_hits": 6,
+    "reach_ratio_claim": null
+  },
+  "verdict": "BLOCKED",
+  "reason": "daemon automatic DHT did not produce verified announces",
+  "restored": {
+    "enabled": false,
+    "status": "disabled",
+    "last_cycle_status": "",
+    "local_addr": null,
+    "bootstrap": [],
+    "seeds": 0,
+    "attempts": 0,
+    "verified": 0,
+    "no_token": 0,
+    "failed": 0,
+    "cycles": 0,
+    "requests": 0,
+    "discovered": 0,
+    "resource_skipped": 0,
+    "last_cycle_at_ms": 0,
+    "last_error": "",
+    "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+  }
+}

@@ -1,3 +1,21 @@
+## [2.4.128] - 2026-11-25 — 守护进程自动 DHT 10 分钟有界长跑 PASS；S6 语义复核材料补齐
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。以下仍是组件级证据。
+
+- 221 上以 `dht.enabled=true` + 两个 IPv4 bootstrap 运行 10 分钟，
+  20 次 `/health.dht` 采样得 5 cycles / 1 attempt / 1 verified，
+  0 no_token / 0 failed / 0 resource_skipped；RSS 20 次均 17,376 KB。
+- 两个独立公网节点只读 `get_peers`：其中 `185.86.100.99:6881` 在 211 s 与 422 s
+  回查到 `112.5.60.4:19910`；另一节点两次均 `peers=0`，如实保留。
+  生成摘要中的子串计数已用 `summary_corrected` 更正为 2 次真实命中。
+- 两次准备失败（配置未落盘、过早把 `no_bootstrap` 状态当失败）分别归档为 BLOCKED；
+  成功运行也单独归档 `TEST-RUNS-2026-11-25.md`。
+- S6 语义复核材料补入 DOC-31 / 审计 §23：`pass(closed_with_exceptions)`、
+  机器字段 `not_run`、`s6.semantics` 触发条件未满足（仅 2 个真实出口）、
+  原始报告不可由 checkout 复现，且禁止写成 NAT 矩阵/G2 通过或可达率。
+- DOC-31 升 v2.3，审计新增 §24，docs 重建并入索引。
+
 ## [2.4.127] - 2026-11-25 — 当前 daemon 已部署；真 BT 走公网中继 PASS；打洞直连因 B 非 EIM 如实 BLOCKED
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
@@ -17,7 +35,9 @@
   立即回退中继；没有拿单观测凑 PASS。
 - 全量串行回归 **537 passed / 0 failed / 3 ignored**；本轮 PASS/BLOCKED/部署/回归
   全部归档 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
-- DOC-31 升 v2.2，审计新增 §22.3–22.5，DOC-30 runbook 修正 `/cli` 形状并补共享 nonce 与端口布局。
+- DOC-31 升 v2.2，审计新增 §22.3–22.5 与 §23，DOC-30 runbook 修正 `/cli` 形状并补共享 nonce 与端口布局。
+- S6 语义复核材料补入既有简报/审计：已判 `pass(closed_with_exceptions)`、机器字段仍 `not_run`；
+  `s6.semantics` 触发条件是 M4 或 ≥4 个真实出口，当前仅 2 个，未触发；原始 S6 报告仍不可由 checkout 复现。
 
 ## [2.4.126] - 2026-11-25 — 公平性偏差所有者决定：记录在案、本版暂缓，下一版重调测试
 

@@ -646,7 +646,7 @@ FR-24 口径不变：历史 w51g 报告已证明真实公网闭环可达；要�
 | 欠账 | 本轮结果 | 仍缺什么 |
 |---|---|---|
 | 可靠层拥塞语义 / 公平性 | `StreamCore` 实现 AIMD、RTT 派生 RTO 与 opt-in pacing；中继增加每会话字节桶；4+2 条确定性单测通过并归档 | **共享真实瓶颈 + 竞争流 + 预注册 Jain/份额阈值 + 多轮原始样本**；当前只有机制与虚拟时钟/回环量具，不能写「公平性达标」 |
-| DHT 产品化治理 | daemon 可 stop；有界 `find_node` 越过不发 token 的引导节点；每轮预算/间隔/key 上限/RSS 软跳过；`/health.dht` 非黏性；I/O 移出状态锁 | 自动 DHT 公网可达率、NAT 矩阵、资源长期运行数据；FR-18 证据仍不构成 S3/S6/G2 |
+| DHT 产品化治理 | daemon 可 stop；有界 `find_node` 越过不发 token 的引导节点；每轮预算/间隔/key 上限/RSS 软跳过；`/health.dht` 非黏性；I/O 移出状态锁；10 分钟自动运行已采 20 次健康样本（§24） | 更长周期/多出口可达率、CPU 时间序列、NAT 矩阵；FR-18 证据仍不构成 S3/S6/G2 |
 | TCP 打洞接 BT 数据面 | 验完的 punched socket 已登记进 SOCKS5 桥，真 hello/world 往返；`/health.data_plane.punched_registered/punched_alive` 分开计数 | 公网双侧仍 BLOCKED：221/222 各 34 次 SYN 静默丢弃，19910/19920 无真实 TCP DNAT，222 对称 NAT。需要所有者提供 CPE TCP DNAT 后重测，不能改判据 |
 | FR-25 公网传输 | 222→221 公网下载 262,144 B 落地一致；221→222 跨分片 9,736,192 B（>PARTSIZE）落地一致。补上下载端 `0x40` zlib inflate（`cr-ed2k::inflate`）后才闭合 | 生产 daemon 路径的公网 A/B（本轮是 CLI 组件级）、非 `sources` 的自动发现仍 `not_implemented`；不作 G2 证据 |
 
@@ -936,3 +936,38 @@ B 通过 SOCKS5 桥下载 `infohash=8b02…df1`，aria2 `status=complete`、
 
 这是**真实公网中继数据面**的组件级 PASS，不是 punched-direct PASS，
 不折算 S6/G2；机器常量仍全部为 `false` / `not_run`。
+
+## 23. S6 语义复核材料（2026-11-25）
+
+- 2026-11-17 G0 已判 S6 `pass`，但 `tests/fixtures/g2-spike-verdicts.toml` 明确
+  `verdict_kind=closed_with_exceptions`；机器字段 `s6_status=not_run` 是有意分层。
+- 复核触发条件 `s6.semantics` 为「M4 或 ≥4 个不同真实出口」。当前只实测到
+  `112.5.60.4` 与 `112.5.32.34` 两个出口，**条件未满足**。
+- S6 判定引用的部分报告在 gitignored 的 `tests/spikes/s6/reports/`，
+  单凭 checkout 不能复现；证据可移植性是独立欠账，不以本轮补材料冒充已解决。
+- 复核措辞边界：只能说「按 eMule 语义结案、带已知限制」；禁止表述为
+  「NAT 矩阵通过」「G2 达标」或任何可达率百分比。
+- 是否把该判定折算进 G2 属所有者书面决定；工具与文档均不代为改 `g2_claim`。
+
+## 24. 守护进程自动 DHT 有界长跑（2026-11-25）
+
+221 上以 `dht.enabled=true` + 两个 IPv4 公网 bootstrap 运行 10 分钟，
+每 30 秒采一次 `/health.dht`，并在 0/211/422 s 用 `coldrevive-dht --get-peers`
+对两个独立公网节点做只读回查。结果：
+
+| 项 | 结果 |
+|---|---|
+| DHT cycle / attempt / verified | 5 / 1 / 1 |
+| no_token / failed / resource_skipped | 0 / 0 / 0 |
+| 独立回查 | `185.86.100.99:6881` 在 211 s、422 s 各回 `112.5.60.4:19910`，`peers=1`；`218.72.97.180:6881` 两次均 `peers=0` |
+| 进程 RSS | 20 次采样均 17,376 KB |
+| CPU | 未采样；`/health.limits` 的 RSS/CPU current 为 `null`（未配置），不写成 0 |
+
+原始报告 `tests/ARCHIVE/evidence/mainline-dht-daemon-longrun-20261125.json`。
+生成脚本的 `summary.external_recheck_hits=6` 是把含 `"peer"` 字样的行都计入，
+包括 `peers=0` 的响应；报告内已加 `summary_corrected`，真实 peer-list 命中为 2 次。
+两次准备失败（配置未落盘、过早把 `no_bootstrap` 当失败）也如实归档，未删。
+
+边界：这是**有界 10 分钟窗口**的组件级证据，不是长期可达率；单次 attempt/verified
+不能外推为比例。更长时间、多出口、CPU 时序与 NAT 矩阵仍未采集；不改变
+`g2_claim` / `s6_status` / `evidence_valid_for_pass` / `auto_pass`。

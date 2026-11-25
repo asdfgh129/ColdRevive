@@ -2,15 +2,15 @@
 doc_id: DOC-31
 title: G2 解禁复评简报（2026-11-25，通俗版 v2.0）
 category: 计划
-version: 2.2
-status: 第1项暂缓 · 第4项已部署/中继PASS/打洞BLOCKED · G2仍待所有者判定
+version: 2.3
+status: 第1项暂缓 · 第2项10分钟daemon PASS · 第4项已部署/中继PASS/打洞BLOCKED · G2仍待所有者判定
 owner: 项目所有者（判定） / 架构组（记录）
 updated: 2026-11-25
 ---
 
-# G2 解禁复评简报（2026-11-25，v2.4.127）
+# G2 解禁复评简报（2026-11-25，v2.4.128）
 
-> 编号 DOC-31 · 版本 2.2 · 状态 **第1项暂缓；第4项已部署，中继 PASS、打洞 BLOCKED；G2 仍待判定** · 更新 2026-11-25
+> 编号 DOC-31 · 版本 2.3 · 状态 **第1项暂缓；第2项10分钟 daemon PASS；第4项已部署，中继 PASS、打洞 BLOCKED；G2 仍待判定** · 更新 2026-11-25
 >
 > **门禁机器常量不变**：`g2_claim=false`、`s6_status=not_run`、
 > `evidence_valid_for_pass=false`、`auto_pass=false`。
@@ -22,11 +22,12 @@ updated: 2026-11-25
 | # | 你问的问题 | 通俗答案 | 严格结论 | 还差什么 |
 |---|---|---|---|---|
 | 1 | 公平性到底测什么？为什么全是数字？ | 让两条数据流抢同一条较慢的网络，看是不是各拿约一半；**慢链路 + 开拥塞控制时 20 轮里 18 轮达标，2 轮差一点** | 按原预注册判据整体 **FAIL**；**所有者已决定：偏差在可接受范围，记录在案、暂缓处理** | 下一版重新调整测试（先登记新判据，再采新样本）；本版不动 β、不改阈值 |
-| 2 | DHT 到底过没过？ | 把做种信息 announced 到公网 DHT，两个独立公网节点都能查到我们；**这个小测试过了** | 组件级 **PASS**；守护进程长期自动运行的 DHT 可达率没测 | 长期自动 DHT 资源/可达率数据 |
+| 2 | DHT 到底过没过？ | 单次真节点 announce 已由 ≥2 独立节点回查到；守护进程自动跑 10 分钟后也拿到 1 次 verified announce，两个独立节点中 1 个回查到我们 | 单次 CLI 与 10 分钟 daemon 自动运行均组件级 **PASS** | 更长时间 / 更多出口的数据仍未采集；不等于 G2/S3/S6 |
 | 3 | 多样种逐出是什么问题？ | 「只允许同时做种 1 个文件，来第 2 个怎么办」；结果是第 2 个能启动，旧的被踢掉，始终只跑 1 个，**没发现问题** | P0 e2e **77/77 PASS** | 仅限本机回环；不代表公网 NAT |
 | 4 | 两条 CPE DNAT 真的没了吗？ | **你是对的，映射还在。** 当前 daemon 已部署；真 BT 文件已跨公网经**中继**落地且 md5 一致。但真打洞这条没过：A 是 EIM，B 的映射随目的变化，按约定必须回退 | DNAT/探针 PASS；当前 daemon 部署 PASS；中继 BT **PASS**；punched-direct **BLOCKED** | 若要打洞直连，需要 B 侧具备可判定的 EIM 或运营侧给出稳定映射；否则维持中继 |
 
-**一句话**：第 2、3 项的小测试过了；第 4 项环境更正后，当前 daemon 已部署，
+**一句话**：第 2 项单次 CLI 与 10 分钟 daemon 自动运行均过了组件级测试；
+第 3 项规则测试过了、S6 语义复核条件仍未触发；第 4 项环境更正后当前 daemon 已部署，
 真实 BT 文件经公网中继落地一致，但**打洞直连因 B 非 EIM 而 BLOCKED**；
 第 1 项按原判据仍没过，但所有者已决定偏差可接受、暂缓到下一版重调测试。
 G2 本身仍未被解禁。
@@ -107,8 +108,17 @@ AIMD 的 β（丢包后窗口减半系数）写死在探针 `main.rs:189`，当�
 判据 `walk_answered` / `token_issued` / `announce_accepted` /
 `fresh_rpc_recheck` / `multi_node_placement` 全部 met。
 
-**边界**：这是单次、组件级真实网络证据。守护进程自动长期运行时 DHT 的可达率、
-资源占用数据仍未采集，所以不能写 S3/S6/G2 通过。
+**补充：守护进程自动运行（2026-11-25）**：在 221 上以 `dht.enabled=true`、
+IPv4 公网节点作 bootstrap 跑 10 分钟，20 次 `/health.dht` 采样显示
+5 个 cycle、1 次 attempt、1 次 verified、0 no_token / 0 failed / 0 resource_skipped；
+两个独立公网节点的 `get_peers` 在 211 s 与 422 s 两次回查到 `112.5.60.4:19910`
+（另一节点两次仍为 0 peer，如实保留）。进程 RSS 20 次采样均为 17,376 KB；
+CPU 未采样，`/health.limits` 的 RSS/CPU current 为 null（未配置），不写成 0。
+原始 `summary.external_recheck_hits=6` 是子串计数，已用 `summary_corrected` 更正为
+2 次真实 peer-list 命中。
+
+**边界**：这是单次 CLI + 10 分钟有界 daemon 窗口的组件级真实网络证据。
+更长时间、多出口、CPU 时间序列仍未采集，不能写 S3/S6/G2 通过。
 
 ---
 
@@ -130,6 +140,16 @@ AIMD 的 β（丢包后窗口减半系数）写死在探针 `main.rs:189`，当�
 
 **边界**：这是本机回环双进程测试，不是公网 NAT 证据。它证明的是「逐出规则正确」，
 不是「公网可达」。
+
+**S6 语义复核材料（本次补入）**：S6 在 2026-11-17 已由 G0 判 `pass`，
+但 `verdict_kind=closed_with_exceptions`，不是无例外通过。机器字段
+`s6_status=not_run` 是**有意分层**，不是漏改。复核触发条件是「M4 或 ≥4 个不同真实出口」，
+当前只实测到 `112.5.60.4` 与 `112.5.32.34` 两个出口，**触发条件未满足**。
+且 S6 判定引用的部分原始报告位于 gitignored 的 `tests/spikes/s6/reports/`，
+单独 checkout 不能复现，属于独立的可移植性欠账。
+复核时只允许表述为「按 eMule 语义结案、带已知限制」；
+不得写成「NAT 矩阵通过」「G2 达标」或任何可达率百分比。
+是否把这份已结案判定折算进 G2，仍需所有者书面决定；本简报不代为改判。
 
 ---
 
@@ -205,7 +225,8 @@ B `bytes_relayed=1051320`、`tunnels_alive=1`；A `holder_data.bytes_from_engine
 - 全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`：
   **537 passed / 0 failed / 3 ignored**（含本轮 `nat_path.rs` 修复后的最终回归）。
 - 所有本轮运行（含 BLOCKED 与失败对照）已归档 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
-- 审计更正见 `STAGE-DEBT-AUDIT-2026-11-21.md` §22.1–22.5。
+  DHT 自动运行的一次配置写入失败、一次过早中止、一次成功均按原始结果分别归档。
+- 审计更正见 `STAGE-DEBT-AUDIT-2026-11-21.md` §22.1–22.5、§23–24。
 
 ## 6. 需要所有者决定/提供的四件事
 
@@ -222,7 +243,8 @@ B `bytes_relayed=1051320`、`tunnels_alive=1`；A `holder_data.bytes_from_engine
 
 ## 7. 一句话结论
 
-第 2、3 项组件测试过了；第 4 项「NAT 被撤」已更正，当前 daemon 已部署，
-真 BT 文件经公网中继落地一致，但打洞直连因 B 非 EIM 而 BLOCKED；
-第 1 项按原判据仍整体 FAIL，但所有者已决定偏差可接受、本版暂缓，
-下一版再登记新判据重测。G2 解禁的最终判断权在所有者。
+第 2 项单次与 10 分钟 daemon DHT 组件测试过了；第 3 项规则测试过了、S6 语义复核未触发；
+第 4 项「NAT 被撤」已更正，当前 daemon 已部署，真 BT 文件经公网中继落地一致，
+但打洞直连因 B 非 EIM 而 BLOCKED；第 1 项按原判据仍整体 FAIL，
+但所有者已决定偏差可接受、本版暂缓，下一版再登记新判据重测。
+G2 解禁的最终判断权在所有者。
