@@ -1,7 +1,7 @@
 # G2 出口决定单：S6 是否折算进 G2 出口（DOC-32）
 
 - 状态：**待签**
-- 版本：v1.0（2026-11-25）
+- 版本：v1.1（2026-11-25，更正 punched-direct 的表述：3/30 有真实命中，非「零」）
 - 提出：agent｜决定权：项目所有者
 - 关联：ADR-016（R1/R2）、`tests/fixtures/g2-spike-verdicts.toml`、DOC-31 `G2-REVIEW-BRIEF-2026-11-25.md`
 
@@ -44,9 +44,18 @@ L1 与 L2 可以不同答案（例如：记账上不计入，但对外可以说 
 3. 类别覆盖：3/4（`full-cone` ×1 / `port-restricted-cone` ×2 / `symmetric` ×1）。
    `restricted-cone` 已按 ADR-016 §R2 退出待测清单；`CGNAT` 仍未覆盖。
    两者都**不构成**判据失败——`class_coverage_required_for_pass` 自始为 `false`。
-4. `punch`（直连打洞）目前**没有**在真实双 NAT 上取得正面结果；BT 公网那条走的是运营侧固定 DNAT，
-   不是 punched-direct。这一条影响第 3 节的选项 B。
-5. 四个机器常量当前值：`g2_claim=false`、`s6_status=not_run`、
+4. **`punched-direct` 只有 3/30，不是零也不是稳定**。S6 highid 报告的 direct 路径 30 次里
+   有 3 次真打通（`stun-mapped 112.5.60.4:47488`、`ack_status=OK`、`punch_acked=true`），
+   端口是 NAT 为出站流量临时分配的映射口（内部监听 `17801`），所以这是打洞，不是 DNAT；
+   其余 27 次 `acked=false`，**原因未定位**。
+   另：BT 公网闭环（1 MiB 落地 md5 一致）走的是**运营侧固定 DNAT**，属 `direct-via-static-dnat`，
+   不构成打洞证据。三种形态的分界见 ADR-016「术语：三种『直连』不得互相冒充」。
+5. **一处措辞不一致，需一并处理**：同一份报告的 `limitation` 自述
+   「不构成 HighID direct 可达证据」（因为 27/30 的失败源于 symmetric 请求者的 back 映射不稳），
+   而判定文件依预注册判据 `direct succeeded > 0` 把它计为 HighID 证据。
+   判定本身没有违反预注册条文，但「HighID 可达」与「不构成 HighID 证据」两种说法同时存在，
+   签署时应在本单据里选定一种表述，避免下一个人各引一句。
+6. 四个机器常量当前值：`g2_claim=false`、`s6_status=not_run`、
    `evidence_valid_for_pass=false`、`auto_pass=false`。
 
 ---
@@ -76,7 +85,9 @@ L1 与 L2 可以不同答案（例如：记账上不计入，但对外可以说 
   1. 类别覆盖 3/4，`restricted-cone` 按 ADR-016 §R2 排除，`CGNAT` 未覆盖；
   2. HighID 侧 direct 3/30，属描述性观测，不含可达率含义；
   3. `symmetric` 一侧 direct 0/30 是 NAT 行为，不是缺陷，按设计回退中继；
-  4. **punched-direct 未取得正面结果**；BT 公网闭环依赖运营侧固定 DNAT，不构成打洞证据。
+  4. **`punched-direct` 仅 3/30**（`stun-mapped` `112.5.60.4:47488`，`ack OK`，27/30 无应答且原因未定位）；
+     BT 公网闭环属 `direct-via-static-dnat`，不构成打洞证据；报告 `limitation` 与判定措辞的
+     不一致按第 5 条选定的一种表述写。
 
 - **后果**：G2 出口的「NAT 可达性」项可关闭，但读者一定能看到上面四条。
   对外措辞上限为：「S6 按 eMule 语义结案，计入 G2 出口，带四项明写例外」。
@@ -102,6 +113,8 @@ L1 与 L2 可以不同答案（例如：记账上不计入，但对外可以说 
 
 - **L1 记账**（G2 出口清单是否由 S6 关闭）：☐ ① 直接计入　☐ ② 不计入　☐ ③ 条件计入（推荐）
 - **L2 对外表述**（是否可写「公网可达性按 eMule 语义结案」）：☐ 可以（须带例外清单）　☐ 只写 S6 结论，不提 G2
+- **HighID 措辞**（第 2 节第 5 条，二选一或并列）：
+  ☐ 写「HighID 可达，direct 3/30」　☐ 写「不构成 HighID 证据，仅记录 3/30 命中」　☐ 两者并列
 - **例外清单**（选 ③ 时生效，选 ① 时移入附录）：☐ 接受第 3 节四条　☐ 需要增删（请注明）
 - **签署人**：__________　**日期**：__________
 

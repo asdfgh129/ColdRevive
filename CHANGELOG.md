@@ -1,3 +1,27 @@
+## [2.4.138] - 2026-11-25 — 更正 punched-direct 表述：3/30 有真实命中；新增三种「直连」术语表
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动。
+
+- **先更正我自己的错误**：上一版 DOC-32 写「punched-direct 未取得正面结果」是**错的**。
+  S6 highid 报告 direct 路径 30 次里有 **3 次真打通**（`stun-mapped 112.5.60.4:47488`、
+  `ack_status=OK`、`punch_acked=true`），且 `47488` 是 NAT 为出站流量临时分配的映射端口
+  （内部监听 `17801`，`holder_mapping_differs_from_internal=true`），**属打洞，不是 DNAT**。
+  其余 27/30 `acked=false`，原因仍未定位。正确表述是「仅 3/30，不是零，也不是稳定」。
+- **实测确认家宽直连**：221 → `112.5.32.34:54022` `OPEN`（跨 CPE、不同公网 IP，不经 hairpin）；
+  广州观测点 `119.29.150.254` 同时打两个家宽的 `54022` 均 `OPEN`。所以「221 与 222 各经自己
+  的公网 IP 互连」是成立的——但形态是 `direct-via-static-dnat`。
+- **新增术语表**（ADR-016「术语：三种『直连』不得互相冒充」）：`punched-direct` /
+  `direct-via-static-dnat` / `relay` 三者的成立条件、现有证据、能否计入打洞，外加三条判定规则：
+  ①打洞端口必须 ≠ 人工 DNAT 的固定端口（`47488` vs `54022`/`17800-17802`）；
+  ②单侧公网不能当双侧能力；③静态映射不改变该出口对出站临时映射的分配行为
+  （`symmetric` 仍是 `symmetric`，开映射救不回来）。
+- **一处措辞不一致登记待定**：highid 报告的 `limitation` 自述「不构成 HighID direct 可达证据」
+  （27/30 失败源于 symmetric 请求者 back 映射不稳），而判定文件按预注册 `succeeded > 0`
+  计为 HighID。判定未违反预注册条文，但两种说法并存会让下一个人各引一句；
+  DOC-32 已加「HighID 措辞」勾选项交所有者选定。
+- 证据 `tests/ARCHIVE/evidence/home-direct-via-dnat-20261125.json`；DOC-32 升 v1.1。
+
 ## [2.4.137] - 2026-11-25 — 新增待签决定单 DOC-32：S6 是否折算进 G2 出口
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

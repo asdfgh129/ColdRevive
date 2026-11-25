@@ -1,0 +1,58 @@
+{
+  "schema": "coldrevive.s6.direct-path-check/v1",
+  "recorded_at": "2026-11-25T16:57:00+08:00",
+  "question": "221 与 222 能否各自经自己的公网 IP 互相连接？这条路是什么形态？",
+  "verdict": "能连通；形态是 direct-via-static-dnat（固定端口映射），不是 punched-direct",
+  "measurements": [
+    {
+      "from": "221 (192.168.1.221, 出口 112.5.60.4)",
+      "to": "112.5.32.34:54022",
+      "method": "TCP connect (/dev/tcp, timeout 5)",
+      "result": "OPEN",
+      "note": "跨 CPE 的公网直连：源 112.5.60.4 → 目 112.5.32.34，两侧不同公网 IP，不经 hairpin"
+    },
+    {
+      "from": "221",
+      "to": "112.5.32.34:19920",
+      "result": "closed",
+      "note": "该端口当前无监听/无 DNAT 生效（BT 守护进程已停），不表示先前不通"
+    },
+    {
+      "from": "119.29.150.254 (广州，外部观测点)",
+      "to": "112.5.60.4:54022",
+      "result": "OPEN"
+    },
+    {
+      "from": "119.29.150.254",
+      "to": "112.5.32.34:54022",
+      "result": "OPEN"
+    },
+    {
+      "from": "119.29.150.254",
+      "to": "112.5.32.34:19920 / 112.5.60.4:19920",
+      "result": "closed（两者均无监听）"
+    }
+  ],
+  "why_not_punched": {
+    "rule": "ADR-016「术语：三种『直连』不得互相冒充」第 1 条：打洞端口必须是 NAT 为本侧出站临时分配的映射端口，不能是人工 DNAT 的固定端口。",
+    "port_evidence": "54022 / 17800-17802 为所有者手工放通的固定映射；S6 highid 打洞用的是 47488，而持有者内部监听 17801（holder_mapping_differs_from_internal=true），故 47488 为临时映射端口。",
+    "consequence": "打到 54022 通，只证明 DNAT 生效；不证明『无需配置也能通』。"
+  },
+  "punched_direct_actual_status": {
+    "report": "tests/ARCHIVE/evidence/s6-verdict-20261117/s6-matrix-class-port-restricted-cone-real.json",
+    "direct": "3/30 成功（stun-mapped 112.5.60.4:47488，ack_status=OK，punch_acked=true）",
+    "failures": "27/30 acked=false，原因未定位",
+    "tension": "该报告 limitation 自述『不构成 HighID direct 可达证据』，与判定文件按预注册 succeeded>0 计为 HighID 的措辞不一致；已在 DOC-32 第 2 节第 5 条列为待选表述。"
+  },
+  "what_this_does_not_prove": [
+    "不构成 punched-direct 证据",
+    "不改变 222 的 NAT 类别（symmetric / APDM 是对出站临时映射的分配行为，开固定映射不改变它）",
+    "不支持『家庭 NAT 后无需任何配置也能直连』这一产品承诺"
+  ],
+  "gate_constants_unchanged": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}
