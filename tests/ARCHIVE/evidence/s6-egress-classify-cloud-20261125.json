@@ -92,5 +92,23 @@
     "s6_status": "not_run",
     "evidence_valid_for_pass": false,
     "auto_pass": false
+  },
+  "superseded_by_partial": {
+    "file": "tests/ARCHIVE/evidence/s6-cloud-119-fullcone-20261125.json",
+    "when": "2026-11-25 15:38",
+    "what_changed": "所有者给 119.29.150.254（广州）的轻量防火墙加了入向 UDP 允许规则后，该出口的过滤轴从 port-filtered 变为 unfiltered，类别变为 full-cone；82.157.68.159（北京）未改，仍为 port-restricted-cone。",
+    "why_the_original_record_stands": "本文件记录的是『安全组未放通时』的真实观测，结论在当时成立；它同时是本次变化的对照基线，故不删除、不做覆盖。",
+    "class_coverage_now": {
+      "count": 3,
+      "classes": [
+        "full-cone",
+        "port-restricted-cone",
+        "symmetric"
+      ],
+      "missing": [
+        "restricted-cone",
+        "cgnat"
+      ]
+    }
   }
 }

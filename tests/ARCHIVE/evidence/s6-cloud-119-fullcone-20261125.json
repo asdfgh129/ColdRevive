@@ -1,0 +1,187 @@
+{
+  "recorded_at": "2026-11-25T15:40:40+08:00",
+  "question": "广州那台（119.29.150.254）放通入向 UDP 后，NAT 类别变成什么？类别覆盖是否从 2/4 变 3/4？",
+  "short_answer": "广州那台从 port-restricted-cone 变为 full-cone（EIM + EIF 实测）；北京那台未改，仍是 port-restricted-cone，作为同探针对照。类别覆盖 3/4（缺 restricted-cone、CGNAT）。",
+  "scope": "描述性类别覆盖；s6_status 仍 not_run；不折算可达率，不构成 G2 结论。full-cone 是「云侧 1:1 静态 NAT + 安全组放通」组合出来的真实行为，不是天然 full-cone 主机。",
+  "change_made_by_owner": {
+    "host": "119.29.150.254 (VM-0-2-ubuntu, ap-guangzhou-4)",
+    "what": "轻量应用服务器防火墙新增入向 UDP 允许规则",
+    "beijing_host": "82.157.68.159 无法在控制台找到（疑似已回收，但 SSH 仍可用），故只改了一台"
+  },
+  "tool_output": {
+    "classify_119_from_82_vantage": {
+      "mapping_pairs": [
+        {
+          "server": "119.29.150.254:3478",
+          "mapped": "82.157.68.159:35054"
+        },
+        {
+          "server": "119.29.150.254:3479",
+          "mapped": "82.157.68.159:35054"
+        }
+      ],
+      "note": "这一条分类的是 82 自己的出口（工具的分类对象是运行脚本那台的主机），所以它是 82 = port-restricted-cone，不是 119",
+      "nat_type": "port-restricted-cone"
+    },
+    "classify_82_from_119_vantage": {
+      "mapping_pairs": [
+        {
+          "server": "82.157.68.159:3478",
+          "mapped": "119.29.150.254:37443"
+        },
+        {
+          "server": "82.157.68.159:3479",
+          "mapped": "119.29.150.254:37443"
+        }
+      ],
+      "mapping_axis": "endpoint-independent",
+      "filter_axis": "port-not-filtered",
+      "filter_probe": {
+        "control_primary": true,
+        "control_alt": true,
+        "change_port_answered": true,
+        "change_port_source": "82.157.68.159:3479",
+        "source_matches_alt": true,
+        "change_ip_error": 420
+      },
+      "filtering_behavior": "port-open-address-untested",
+      "nat_type": "cone-undetermined",
+      "reason": "映射与目的无关 + 入向不禁异端口；地址轴缺第二个公网 IP，未测",
+      "note": "cone-undetermined 是工具自身的能力限制（CHANGE-IP 需要 STUN 服务器有第二个公网 IP，单 IP 回 420），不是 NAT 测不出来"
+    }
+  },
+  "address_axis_measured_independently": {
+    "why_not_change_ip": "两台云主机各自只有一个公网 EIP，STUN 服务端无法提供 CHANGE-IP 的第二地址（error 420）",
+    "method": "广州那台绑定固定本地端口 40100/40101，向 82 发 STUN 建映射；再由一个它从未接触过的公网 IP（221 的出口 112.5.60.4）向映射端口发未请求的 UDP 数据报",
+    "mapping": [
+      {
+        "local_port": 40100,
+        "vantage_port": 3478,
+        "mapped": "119.29.150.254:40100"
+      },
+      {
+        "local_port": 40100,
+        "vantage_port": 3479,
+        "mapped": "119.29.150.254:40100"
+      },
+      {
+        "local_port": 40101,
+        "vantage_port": 3478,
+        "mapped": "119.29.150.254:40101"
+      },
+      {
+        "local_port": 40101,
+        "vantage_port": 3479,
+        "mapped": "119.29.150.254:40101"
+      }
+    ],
+    "inbound": [
+      {
+        "local_port": 40100,
+        "src": "82.157.68.159:5591",
+        "delivered": true,
+        "answered": true,
+        "reply": "POUT-40100"
+      },
+      {
+        "local_port": 40101,
+        "src": "82.157.68.159:5592",
+        "delivered": true,
+        "answered": true,
+        "reply": "POUT-40101"
+      },
+      {
+        "local_port": 40100,
+        "src": "112.5.60.4:15456",
+        "delivered": true,
+        "answered": true,
+        "reply": "POUT-40100"
+      }
+    ],
+    "tcpdump": [
+      "15:38:14.180605 eth0  In  IP 112.5.60.4.15456 > 10.1.0.2.40100: UDP, length 3",
+      "15:38:14.180717 eth0  Out IP 10.1.0.2.40100 > 112.5.60.4.15456: UDP, length 10"
+    ],
+    "reading": [
+      "包到达并被投递给绑定 40100 的 socket ⇒ 该 pub 端口对不同目的地址同样有效 ⇒ 映射与目的地址无关（EIM）；若映射按目的分配，来自 112.5.60.4 的包不会被送到这个 socket",
+      "该 socket 从未向 112.5.60.4 发过任何包，却被放行 ⇒ 过滤与源地址/源端口无关（EIF）",
+      "EIM + EIF ⇒ RFC 4787 full-cone"
+    ]
+  },
+  "allowlist_range_measured": {
+    "method": "在 119 上逐端口绑定并建映射，由 221 从未接触过的源端口打入",
+    "ports_answered": [
+      5000,
+      10000,
+      19920,
+      20000,
+      30000,
+      40000,
+      50000,
+      60000,
+      65000
+    ],
+    "ports_denied": [],
+    "conclusion": "放通范围至少覆盖 5000–65000，含 19920（BT/punch 端口）；未测更低端口，不下结论",
+    "note": "云端映射端口 == 本地端口（端口保持），故节点监听某端口即拥有该端口的 full-cone 入向能力"
+  },
+  "control_beijing_unchanged": {
+    "target": "82.157.68.159（防火墙未改）",
+    "method": "同一探针：固定本地端口 5000/19920/40000 → 向 119 建映射 → 221 未请求打入",
+    "mapping": [
+      "82.157.68.159:5000",
+      "82.157.68.159:19920",
+      "82.157.68.159:40000"
+    ],
+    "result": {
+      "5000": "NO-REPLY",
+      "19920": "NO-REPLY",
+      "40000": "NO-REPLY",
+      "inbound": "三个端口的入向列表全为空"
+    },
+    "conclusion": "探针无误报：同一脚本、同一个源，未放通的端口零入向包。北京保持 port-restricted-cone"
+  },
+  "class_coverage": {
+    "before": {
+      "classes": [
+        "port-restricted-cone",
+        "symmetric"
+      ],
+      "count": 2
+    },
+    "after": {
+      "classes": {
+        "full-cone": [
+          "119.29.150.254"
+        ],
+        "port-restricted-cone": [
+          "112.5.60.4",
+          "82.157.68.159"
+        ],
+        "symmetric": [
+          "112.5.32.34"
+        ]
+      },
+      "count": 3,
+      "missing": [
+        "restricted-cone",
+        "cgnat"
+      ]
+    },
+    "distinct_real_egresses": 4,
+    "honesty_note": "full-cone 是通过放通安全组得到的，必须在报告里写成『云侧 1:1 静态 NAT + 安全组放通』的组合行为；不能写成『找到了一台天然 full-cone 主机』"
+  },
+  "limitations": [
+    "只测 UDP；TCP 的过滤行为未测。",
+    "地址轴只有 112.5.60.4 一个『从未接触过』的公网 IP（本机与 221 共用该出口，不构成第二个独立源）。",
+    "放通范围只探到 5000–65000，更低端口（如 1024 以下）未测。",
+    "北京那台在控制台不可见（疑似回收），其类别只代表『未放通』状态，不代表该主机后续不可改。",
+    "类别的取得依赖运维侧配置，故本次覆盖不可由代码单独复现；复现需要同名规则。"
+  ],
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}
