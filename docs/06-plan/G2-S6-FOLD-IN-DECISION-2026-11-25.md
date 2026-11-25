@@ -15,8 +15,10 @@
 **不是**：
 
 - 不是 S6 的判定。S6 已于 2026-11-17 判 `pass(closed_with_exceptions)`，本文件不重判、不推翻。
-- 不是 G2 达标声明。签完这个决定，`g2_claim` **仍然是 `false`**。G2 达标是另一个独立动作，
+- 不是 G2 达标声明。签完这个决定，`g2_claim` 当时**仍然是 `false`**。G2 达标是另一个独立动作，
   且必须在你明确说「G2 达标」之后才动。
+  > **2026-11-25T17:20 该独立动作已发生**：所有者声明 G2 达标，`g2_claim` 改为 `true`，
+  > 依据与例外见 [DOC-34](G2-EXIT-RECORD-2026-11-25.md)。上面这段保留为签署时点的描述。
 - 不是判据变更。`class_coverage_required_for_pass=false` 等一律不动。
 
 ---
@@ -55,8 +57,8 @@ L1 与 L2 可以不同答案（例如：记账上不计入，但对外可以说 
    而判定文件依预注册判据 `direct succeeded > 0` 把它计为 HighID 证据。
    判定本身没有违反预注册条文，但「HighID 可达」与「不构成 HighID 证据」两种说法同时存在，
    签署时应在本单据里选定一种表述，避免下一个人各引一句。
-6. 四个机器常量当前值：`g2_claim=false`、`s6_status=not_run`、
-   `evidence_valid_for_pass=false`、`auto_pass=false`。
+6. 四个机器常量在**本单据签署时点**的值：`g2_claim=false`、`s6_status=not_run`、
+   `evidence_valid_for_pass=false`、`auto_pass=false`（`g2_claim` 已于 17:20 另行改为 `true`，见 DOC-34）。
 
 ---
 

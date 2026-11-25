@@ -1,3 +1,30 @@
+## [2.4.141] - 2026-11-25 — 所有者声明 G2 达标：`g2_claim` 改 `true`，新增 DOC-34 出口记录
+
+> **唯一变动的机器字段是 `g2_claim`（`false` → `true`，人为判定字段）。**
+> `s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` 保持不变——
+> 这三个是**工具**字段，含义是「工具不替人下结论」，不是「G2 没达标」。无源码改动。
+
+- **新增 DOC-34** `docs/06-plan/G2-EXIT-RECORD-2026-11-25.md`：M2 出口记录。声明口径唯一：
+  「**G2 达标（所有者判定，2026-11-25T17:20），带两项书面例外与三项欠账**」。
+- **逐项账写明「撑不撑得住」**（这是本记录的重点，不是四舍五入）：
+  NFR-01 内存 ✅（1 万 ≈7.79 MiB）；**NFR-02 CPU ❌ 无独立采点**（daemon 长跑
+  `cpu_percent_sampled=false`）→ 缺口 **G-1**；NFR-03 带宽 ✅ 但**凭令牌桶不凭 LEDBAT**
+  （ratio=0.02 前台劣化 4.03% / 真 rqbit uTP 2.70%，该 crate 无 LEDBAT）；
+  S6 ✅ 带四条例外（类别 3/4 等）；**公平性 ❌ 按原判据 FAIL 78/80** → 例外 **EX-1**。
+- **三项开放缺口**（不因达标消失）：G-1 NFR-02 无采点；G-2 S4/S5 的 `reports/` 与 S6 一样被
+  `.gitignore` 排除、S6 已归档而 S4/S5 未归档；G-3 中继运维面（限流/观测/告警）未单列验收。
+- **同步落点**：夹具 `g2_claim=true` + `g2_claim_decided_at/by/ref` + `g2_claim_wording` +
+  `g2_claim_carries_exceptions` + `g2_claim_open_gaps` + `g2_claim_does_not_mean`；
+  DOC-31 顶部横幅/§0/§6/§7 改为「已声明达标」并指向 DOC-34；DOC-32 §0 与 §2-6、
+  DOC-33 §0 与 §4 各加时间点附录（保留签署时点的原文）；
+  `TEST.md` 顶部加状态横幅、§2.11 证据注、§6 门禁表；`TECH-STACK.md` 现状段更新。
+- **顺带修正一处真实冲突**：`TEST.md` §6 门禁表的 G2 行原写「NAT 矩阵通过率达标」，
+  与 `ROADMAP` §3 / ADR-016（类别覆盖非 pass 前提）冲突。已对齐为 ROADMAP 措辞并标注修正日期。
+- **历史不回写**：ADR-012/014/015/016(R1–R3)/019–024、`G0-REVIEW.md`、CHANGELOG 历史条目、
+  各归档证据 JSON 里的 `g2_claim=false` 均为成文时点记录，一律不改。
+- **`g2-fairness-thresholds.toml` 未动**：其 `[gate_snapshot] g2_claim=false` 是**预注册时点的快照**，
+  且该文件 sha256 被 EX-1 钉住（`0671a173…`），改它等于事后改判据。
+
 ## [2.4.140] - 2026-11-25 — 公平性 FAIL 写成书面例外 EX-1（含六条后果）；HighID 措辞定为「HighID 可达，direct 3/30」
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

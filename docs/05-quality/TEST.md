@@ -10,6 +10,12 @@ updated: 2026-11-24
 
 # 测试计划（TEST）
 
+> **2026-11-25T17:20 状态更新**：所有者已声明 **G2 达标**，`g2_claim` 由 `false` 改为 `true`
+> （依据、例外与缺口见 [DOC-34](../06-plan/G2-EXIT-RECORD-2026-11-25.md)）。
+> **本文所有 `g2_claim=false` 字样均为成文时点的记录**（v3.0 / v3.1 时期），不代表现状；
+> `s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` 仍是现值——
+> 那三个 `false` 的含义是「工具不替人下结论」，不是「G2 没达标」。
+
 > 编号 DOC-12 · 版本 3.1 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-24
 > **v3.1**：§11 补 [DOC-30](../07-operations/TCP-DISCOVERY-RUNBOOK.md) 引用、9 条
 > `tcp_discovery` 定点单测与 6 项 CLI 回环冒烟；全量串行只作最终回归，不再是唯一判据。
@@ -34,7 +40,7 @@ updated: 2026-11-24
 > `s6_status=not_run`、`g2_claim=false`，**不构成 S6 / G2 证据**。
 > **S3 / S5 / S6 状态：2026-11-17 已由所有者依证据判定**（S3 `pass` / S5 `fallback` /
 > S6 `pass`（`closed_with_exceptions`），见 §2.11 与[判定记录](../06-plan/G2-SPIKE-VERDICT-2026-11-17.md)）；
-> **G2 仍未达标、未宣称**（`g2_claim=false`）；`cargo test --workspace --offline` **260/260**（2026-11-18，v2.4.86；
+> **G2 在 2026-11-18 时点仍未达标、未宣称**（`g2_claim=false`；2026-11-25T17:20 已声明达标，见 [DOC-34](../06-plan/G2-EXIT-RECORD-2026-11-25.md)）；`cargo test --workspace --offline` **260/260**（2026-11-18，v2.4.86；
 > Windows 全仓 260/260。跨主机验收 `tests/e2e/w53/udp_relay_wake.py` **23/23**，走的是真实公网中继
 > `119.29.150.254:7101` 与两台真实主机（`192.168.1.221` / `112.5.60.4` 出口），不是回环 mock）。
 > 本轮新增 `cr-nat::relay_udp` 的 9 条单测（MAC 篡改不回声、重放丢包、未注册带原因拒绝、目标缺席回 `target_absent`、
@@ -524,8 +530,9 @@ ssh 退出会带走它，首轮 0 行；③ `-c 80` 被 aMule 自身的 KAD 流�
 证据文件：`tests/spikes/s3/mainline_probe/reports/`、`tests/spikes/s5/utp_netem/reports/`、
 `tests/spikes/s6/reports/highid-run-30/` 与 `tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json`
 （均按各自 `.gitignore` 留作本地证据，不入库）。判定**不改写**报告里的
-`evidence_valid_for_pass=false` / `auto_pass=false`；`g2_claim` 仍为 `false`——
-三项 Spike 只回答技术路线，G2 仍欠 M2 实现项（`cr-dht`、LRU 调度接引擎、中继生产化、BT/TCP 打洞）。
+`evidence_valid_for_pass=false` / `auto_pass=false`；`g2_claim` 当时为 `false`——
+三项 Spike 只回答技术路线。（**2026-11-25T17:20 已声明 G2 达标**，见 [DOC-34](../06-plan/G2-EXIT-RECORD-2026-11-25.md)；
+`cr-dht`、LRU 已落地，中继与打洞的现状见夹具 `g2_note_20261125`。）
 
 ### 2.12 W62 FR-11 握手拦截（2026-11-20 新增，PASS，opt-in）
 
@@ -796,7 +803,7 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
 | :--- | :--- | :--- |
 | **G0** | M0 结束 | S1–S8 全部有结论，关键技术路线冻结（[TECH-STACK](../02-architecture/TECH-STACK.md)） |
 | **G1** | M1 结束 | T0/T1 全链路闭环成功，受控环境复活成功率 100% |
-| **G2** | M2 结束 | NFR-01/02/03 达标，NAT 矩阵通过率达标 |
+| **G2** | M2 结束 | NFR-01/02/03 达标；S6 按 eMule 式可达语义结案（[ADR-016](../02-architecture/adr/ADR-016-s6-emule-like-reach.md)：真实设备 + 两台物理主机 + 每路径 30 次真实 `WAKEUP_ACK` + HighID/LowID 两半各有证据）。**NAT 类别覆盖是描述性清单，不是 pass 前提**；声明须带已知限制，不得写「矩阵通过」（与 [ROADMAP](../06-plan/ROADMAP.md) §3 对齐；本条 2026-11-25 修正，原文「NAT 矩阵通过率达标」与 ADR-016 冲突） |
 | **G3** | M3 结束 | 兼容性矩阵全绿，NFR-04 达标 |
 | **G4** | M4 结束 | 安全测试全通过，公测 KPI 达标，法务评审通过 |
 

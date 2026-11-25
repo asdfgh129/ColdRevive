@@ -2,10 +2,10 @@
 doc_id: DOC-00
 title: 文档体系说明与导航
 category: 文档治理
-version: 3.1
+version: 3.2
 status: 有效
 owner: 架构组
-updated: 2026-11-24
+updated: 2026-11-25
 ---
 
 # 文档体系说明与导航
@@ -69,6 +69,10 @@ updated: 2026-11-24
 | DOC-28 | 阶段状态盘点：P/M 完成与待办（2026-11-20） | [06-plan/STATUS-INVENTORY-2026-11-20.md](06-plan/STATUS-INVENTORY-2026-11-20.md) | 有效 |
 | DOC-29 | P0/P1/P2 与 M1/M2 欠账复核（2026-11-21） | [06-plan/STAGE-DEBT-AUDIT-2026-11-21.md](06-plan/STAGE-DEBT-AUDIT-2026-11-21.md) | 有效 |
 | DOC-30 | TCP 映射端口发现与 EIM 判定 Runbook | [07-operations/TCP-DISCOVERY-RUNBOOK.md](07-operations/TCP-DISCOVERY-RUNBOOK.md) | 持续维护 |
+| DOC-31 | G2 解禁复评简报（2026-11-25） | [06-plan/G2-REVIEW-BRIEF-2026-11-25.md](06-plan/G2-REVIEW-BRIEF-2026-11-25.md) | 有效 |
+| DOC-32 | S6 是否折算进 G2 出口（决定单） | [06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md](06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md) | 已签 |
+| DOC-33 | G2 公平性书面例外 EX-1 | [06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md](06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md) | 已签 |
+| DOC-34 | G2 出口记录（M2 出口，2026-11-25 达标） | [06-plan/G2-EXIT-RECORD-2026-11-25.md](06-plan/G2-EXIT-RECORD-2026-11-25.md) | 已签 |
 
 ## 4. Front Matter 规范
 
@@ -134,6 +138,7 @@ updated: YYYY-MM-DD
 
 - 文档体系版本记录在 `CHANGELOG.md`；单文档版本记录在各自 front matter。
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
+- **v2.4.141 补记（2026-11-25 / DOC-34 · G2 达标声明）**：所有者声明 **G2 达标**，`g2_claim` 由 `false` 改为 `true`（人为判定字段；`s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false` 三个工具字段不动）。新增 [DOC-34 G2 出口记录](06-plan/G2-EXIT-RECORD-2026-11-25.md)，逐项写明「哪条撑得住、哪条撑不住」：NFR-01 ✅、NFR-03 ✅（凭令牌桶、无 LEDBAT）、S6 ✅（带四条例外）、**NFR-02 无独立采点 → 缺口 G-1**、**公平性按原判据仍 FAIL 78/80 → 例外 EX-1**；另记 G-2（S4/S5 证据未归档）、G-3（中继运维面）。同时登记 [DOC-31](06-plan/G2-REVIEW-BRIEF-2026-11-25.md)（复评简报）、[DOC-32](06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md)（S6 折算）、[DOC-33](06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md)（公平性例外）。
 - **v2.4.121 补记（2026-11-24 / DOC-30）**：新增 [TCP 映射端口发现与 EIM 判定 Runbook](07-operations/TCP-DISCOVERY-RUNBOOK.md)，固化 EIM 四态判定、`--serve-observer` / `--discover-tcp-port` 参数、常规方法失效时的适用性判断与回退边界。`cr_nat::tcp_discovery::judge_observations` 抽出纯判定函数：≥2 observer 回写不一致时 `discovered_port=null`（不再给出不可外推端口）。新增 5 条定点单测（共 9 条）与 `tests/e2e/w56/tcp_discovery_selftest.py`（6/6 PASS）；全量串行回归 530 passed / 0 failed / 3 ignored。门禁常量不变。
 - **v2.4.97 补记（2026-11-20 / FR-14 与 FR-24/25 真实对端）**：三项 P0 从「组件级」推到真实客户端。DOC-11（CONFIG）→ **2.3**：补 `engine.idle_sleep_secs` / `scheduler.idle_sleep_minutes`（**opt-in、0=关闭、秒优先**）与 `engine.guard_handshake`，并把 `idle_sleep_minutes` 默认值由 `10` 改为 `0`——休眠是 opt-in，默认行为不变；新增 `/health.idle` 观测口径。DOC-12（TEST）→ **3.0**：新增 §2.12–§2.15（W62 / W14 / W24+W24-pub / W25+W25-live）。DOC-14（ROADMAP）→ **2.17**。DOC-09（PROTO）→ **2.6**：只在 §2.2.2 末追加实测行为备注（`OP_REQUESTPARTS` 会被重复请求、搜索前必须先 bootstrap、`OP_HASHSETREQUEST` 仅 ≥ `PARTSIZE` 触发），**协议帧与字段一字未改**，`PROTOCOL_VERSION = 1` 与 T0 golden 不变。DOC-27（阶段小结）→ 1.1。**门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、默认承载 `tcp`；`cargo test --workspace --offline` **384 passed / 0 failed / 3 ignored**。
 - **v2.4.78 补记（2026-11-17 / 判定）**：**S3 = `pass`、S5 = `fallback`、S6 = `pass`（`closed_with_exceptions`）**
