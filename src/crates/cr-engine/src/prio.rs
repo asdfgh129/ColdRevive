@@ -131,12 +131,20 @@ mod imp {
         fn sched_setscheduler(pid: i32, policy: i32, param: *const SchedParam) -> i32;
     }
 
-    /// 读 `/proc/self/stat` 的 nice 与 policy。
+    /// 读 `/proc/thread-self/stat` 的 nice 与 policy。
+    ///
+    /// **必须用 `thread-self`，不能用 `self`**（这是踩过的坑）：`/proc/self` 指向
+    /// 线程组组长，在子线程里读它拿到的是**主线程**的 nice/policy。结果是
+    /// 「降级其实成功了，读回却看到 nice=0 policy=0」，然后被误判成失败——
+    /// 一个只看代码看不出来的假阴性。`thread-self` 是 Linux 3.17+ 的「调用线程」，
+    /// 老内核回落到 `self`（此时子线程里的读数就不可信了，只能如实接受这个限制）。
     ///
     /// comm 字段可能含空格与括号，必须以**最后一个** `)` 为界；`)` 之后第一个
     /// token 是 state（第 3 字段），故字段 n 的下标是 n-3。
     pub(super) fn read_back() -> Option<ThreadPriority> {
-        let text = std::fs::read_to_string("/proc/self/stat").ok()?;
+        let text = std::fs::read_to_string("/proc/thread-self/stat")
+            .or_else(|_| std::fs::read_to_string("/proc/self/stat"))
+            .ok()?;
         let rest = &text[text.rfind(')')? + 1..];
         let f: Vec<&str> = rest.split_whitespace().collect();
         Some(ThreadPriority {
