@@ -116,6 +116,26 @@ claims_forbidden = [
 ]
 
 # ---------------------------------------------------------------------------
+# 折算进 G2 出口（DOC-32，2026-11-25 所有者签署）
+# ---------------------------------------------------------------------------
+# 只影响 G2 出口清单的记账方式与对外措辞，不改本块的 status / verdict_kind /
+# claim_wording，也不改任何机器常量（s6_status / g2_claim / evidence_valid_for_pass / auto_pass）。
+# 决定单：docs/06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md
+g2_exit_fold_in = "conditional"
+g2_exit_fold_in_meaning = "选项③ 条件计入：NAT 可达性一项由 S6 关闭，但关闭时必须连同下面四条例外一起写入 G2 出口记录"
+g2_exit_fold_in_signed_at = "2026-11-25"
+g2_exit_fold_in_decided_by = "project-owner"
+g2_exit_fold_in_decision_ref = "docs/06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md"
+g2_exit_fold_in_l2_wording = "可对外写「公网可达性按 eMule 语义结案」，但必须同时给出 fold_in_exceptions 四条"
+g2_exit_fold_in_highid_wording = "both"  # 并列：既写「HighID direct 3/30」，也写报告 limitation 的自述
+fold_in_exceptions = [
+  "类别覆盖 3/4：restricted-cone 按 ADR-016 §R2 排除，cgnat 未覆盖；这是范围排除，不是已覆盖",
+  "HighID 侧 direct 3/30，属描述性观测，不含可达率含义",
+  "symmetric 一侧 direct 0/30 是 NAT 行为，不是缺陷，按设计回退中继",
+  "punched-direct 仅 3/30（stun-mapped 112.5.60.4:47488、ack OK、27/30 无应答且原因未定位）；BT 公网闭环属 direct-via-static-dnat，不构成打洞证据",
+]
+
+# ---------------------------------------------------------------------------
 # 复审
 # ---------------------------------------------------------------------------
 [[review_trigger]]

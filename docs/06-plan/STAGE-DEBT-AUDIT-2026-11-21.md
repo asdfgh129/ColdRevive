@@ -1131,12 +1131,19 @@ B`192.168.1.222:19920`，B `engine.listen=127.0.0.1:19920` + `wake_on_handshake=
     `s6_status` 仍 `not_run`。`python tests/spikes/s6/nat_matrix.py --self-test`
     → **24/24 PASS**（含 `s6_stance_is_emule_like_reach`、
     `class_coverage_not_a_pass_condition`）。
-  - **仍未决**：S6 判定是否**折算进 G2 出口**，这件和「触发条件」是两件事，本次未决。
-- S6 判定引用的部分报告在 gitignored 的 `tests/spikes/s6/reports/`，
-  单凭 checkout 不能复现；证据可移植性是独立欠账，不以本轮补材料冒充已解决。
+  - **已决（2026-11-25）**：S6 判定是否**折算进 G2 出口**，这件和「触发条件」是两件事，
+    已单独签在 `docs/06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md`（DOC-32）：
+    所有者取**选项 ③ 条件计入**——G2 出口的「NAT 可达性」项由 S6 关闭，但必须带四条结构化例外；
+    落点见 `ADR-016 §R3` 与夹具 `g2_exit_fold_in` / `fold_in_exceptions`。
+    该决定**不**改变 `g2_claim`（仍 `false`），也不改变 S6 的 `status` / `verdict_kind` / `claim_wording`。
+- S6 判定引用的三份报告原件在 gitignored 的 `tests/spikes/s6/reports/`；
+  2026-11-25 已逐字节归档到 `tests/ARCHIVE/evidence/s6-verdict-20261117/`（含 sha256 清单、
+  `.gitattributes` 锁字节），**clone 后可复核**。原件目录仍不入库，新增采集须把
+  `git_commit` / `kernel_release` / `tc_qdisc_and_class` 一并写入。
 - 复核措辞边界：只能说「按 eMule 语义结案、带已知限制」；禁止表述为
   「NAT 矩阵通过」「G2 达标」或任何可达率百分比。
-- 是否把该判定折算进 G2 属所有者书面决定；工具与文档均不代为改 `g2_claim`。
+- 折算已于 2026-11-25 由所有者书面决定（DOC-32，条件计入）；工具与文档均**不代为改** `g2_claim`，
+  它仍是 `false`——折算生效 ≠ G2 达标。
 
 ## 24. 守护进程自动 DHT 有界长跑（2026-11-25）
 

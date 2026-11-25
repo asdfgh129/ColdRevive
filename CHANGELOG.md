@@ -1,3 +1,25 @@
+## [2.4.139] - 2026-11-25 — DOC-32 签署并同步：S6 按「条件计入」关闭 G2 出口的 NAT 可达性项
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动。
+
+- **所有者签署 DOC-32（2026-11-25）**，三项勾选：L1 = ③ **条件计入**、L2 = **可对外说
+  「公网可达性按 eMule 语义结案」，但须同时给出四条例外**、HighID 措辞 = **两者并列**。
+  L1/L2/例外清单都是本单据标注的推荐项；HighID 一项单据里未标推荐，所有者回复「三个都勾了」
+  未指定单选值，执行方取「两者并列」——它是三选中唯一不丢信息的一项（既保留预注册判据下的
+  「HighID direct 3/30」，也保留报告 `limitation` 的自述），且改回单选只需动一个字段。
+  口径说明已写进 DOC-32 第 5 节，供复核。
+- **落点同步（逐条见 DOC-32 第 5 节末表）**：
+  ① `tests/fixtures/g2-spike-verdicts.toml` → `[[spike]] S6` 增 `g2_exit_fold_in="conditional"`、
+  `fold_in_exceptions`（四条）、`g2_exit_fold_in_highid_wording="both"`、签署时间/决定人/决定单引用；
+  **`status` / `verdict_kind` / `claim_wording` 未动**，`known_limitations` 未动。
+  ② `ADR-016` 新增 `### R3（2026-11-25）— 折算决定`，只引 DOC-32 编号与结论，不重述理由。
+  ③ DOC-31 第 3 节「是否折算仍需书面决定」与第 6 节第 3 项「仍未决」改为已决并指向 DOC-32，
+  第 7 节与第 0 节「一句话」同步；顺带更正第 3 节里「报告不可复现」的过期说法（已归档可复核）。
+- **这个决定不是 G2 达标**：它只决定「NAT 可达性这一项由 S6 关闭、关闭记录带四条例外」。
+  G2 总判仍压在公平性一项上（按预注册判据整体 FAIL，所有者记例外，例外≠PASS）。
+  禁止措辞照旧：`G2 达标`、`NAT 矩阵通过`、任意可达率/成功率、`因此 S6 折算所以 G2 完成`。
+
 ## [2.4.138] - 2026-11-25 — 更正 punched-direct 表述：3/30 有真实命中；新增三种「直连」术语表
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

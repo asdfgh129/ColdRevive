@@ -206,6 +206,37 @@ S6 结案与 G2 出口都用到「直连」，但它有三种成因完全不同�
 执行细则（把「等真实环境」改成「明确排除」）。R1 的双条件触发不变；若将来真的出现
 ADF 出口，属于「类别集合发生变化」，按 R1 触发复审，本决定随即可被推翻。
 
+### R3（2026-11-25）— S6 折算进 G2 出口：条件计入（所有者签署）
+
+**性质**：这是**记账与措辞决定**，既不是 S6 重判，也不是 G2 达标声明。
+S6 早于 2026-11-17 已判 `pass(closed_with_exceptions)`，本决定不改其 `status` / `verdict_kind` / `claim_wording`。
+
+**决定（所有者，2026-11-25）**：决定单
+[`docs/06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md`](../../06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md)（DOC-32）取
+**选项 ③ 条件计入**：
+
+- **L1 记账**：G2 出口清单的「NAT 可达性」一项**由 S6 关闭**，但关闭时必须连同**四条结构化例外**写入出口记录
+  （类别 3/4；HighID direct 3/30 属描述性；symmetric 0/30 是 NAT 行为；`punched-direct` 仅 3/30 且 BT 公网闭环
+  属 `direct-via-static-dnat`）；任一条不得省略、不得改写为「已覆盖」。
+- **L2 表述**：可对外写「公网可达性按 eMule 语义结案」，**前提是同时给出上述四条例外**。
+- **HighID 措辞**：报告 `limitation`（自述不构成 HighID direct 可达证据）与预注册判据（`direct succeeded > 0`）
+  的措辞冲突，按**两者并列**处理——两句话都保留，不得只引其一。
+- **理由与选项对比**见 DOC-32 第 3 节，本条不重述（避免两处措辞漂移）。
+
+**本决定不放松任何东西**：
+
+- `class_coverage_required_for_pass` 仍 `false`、`matrix_complete_is_pass_condition` 仍 `false`；
+- 未新增任何类别覆盖；`restricted-cone` 仍是「按 R2 排除」，`CGNAT` 仍未覆盖；
+- `s6_status=not_run` / `g2_claim=false` / `evidence_valid_for_pass=false` / `auto_pass=false` 四个机器常量不动，
+  且**永不**由人工判定回写；
+- 禁止措辞：`G2 达标`、`NAT 矩阵通过`、任意可达率/成功率、`因此 S6 可折算所以 G2 完成`。
+
+**与 R1/R2 的关系**：R1 定语义（维持 eMule 式、双条件触发），R2 定范围（`restricted-cone` 退出），
+R3 定记账（这个结论怎么进 G2 出口）。三者互相不替代：R3 生效不改变 R1 的触发条件，也不改变 R2 的覆盖上限。
+
+**机器可读落点**：`tests/fixtures/g2-spike-verdicts.toml` → `[[spike]] S6` 的
+`g2_exit_fold_in` / `fold_in_exceptions` / `g2_exit_fold_in_highid_wording`。
+
 ## 相关文档
 
 - [ADR-012 R-04 改为尽力](ADR-012-r04-best-effort.md) · [ADR-013 eMule LowID 自我声明](ADR-013-emule-lowid-declaration.md)
