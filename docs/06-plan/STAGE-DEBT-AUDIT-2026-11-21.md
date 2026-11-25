@@ -842,6 +842,11 @@ v2.4.120 时全量 `cargo test --workspace --offline -- --test-threads=1` 为
 不把纯 AIMD 臂的方差读成通过。下一次复评的合法触发条件是：新算法先以新的
 预注册判据（新时间戳 + 新 sha）登记，再采集样本。
 
+**所有者决定（2026-11-25 09:28）**：两轮偏差在可接受范围内，先记录在案，
+本版跳过；本版不调 β、不改阈值、不改判据，80 轮原始证据保持原样。
+下一版再重新调整测试，且必须先登记新判据（新时间戳 + 新 sha）再采样。
+此项决定不改变 `g2_claim` / `s6_status` / `evidence_valid_for_pass` / `auto_pass`。
+
 ## 22. 公网 BT-over-punched-TCP 复评与代码级闭环（2026-11-25，v2.4.124）
 
 **门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
