@@ -1,0 +1,132 @@
+{
+  "schema": "coldrevive.nfr02.macos-idle-priority/v1",
+  "recorded_at": "2026-11-25T21:48:00+08:00",
+  "clause": "SRS NFR-02 第二分句：造种任务仅以 Idle 优先级运行（macOS 平台分支）",
+  "closes_gap": "G-5（仅「macOS 未实现」这一代码缺口）",
+  "verdict": "not_run",
+  "runtime_verified": false,
+  "counts_toward_nfr02": false,
+  "one_line": "macOS 分支已实现（PRIO_DARWIN_BG）、判定逻辑有单测、分支经 feature 门控的类型检查并带负向对照；但没有任何一台 mac 执行过这段代码，因此本文件不构成 macOS 实测，也不改变 NFR-02「Linux/Windows 两分句已实测」的口径。",
+  "why_not_pass": [
+    "本仓库没有 mac 硬件，darwin 的系统调用路径一次都没有被真正执行——类型检查只证明「能编译」。",
+    "读回谓词 getpriority(PRIO_DARWIN_THREAD)==PRIO_DARWIN_BG 本身未经真机验证；若真机上返回值形态与此不同，正确表现是 applied=0/failed>0（不假 pass），但那也只能在真机上才看得见。",
+    "没有负向对照（真机上关掉开关应回到 policy=0），就不能排除「读回谓词永远为真」。这条在 Linux/Windows 上有，macOS 上还没有。",
+    "不把 Linux/Windows 的实测结果外推成 macOS 结论：平台不同、机制不同（nice/SCHED_IDLE vs 背景 QoS 类）。"
+  ],
+  "implementation": {
+    "file": "src/crates/cr-engine/src/prio.rs",
+    "sha256": "f187c979887b2a64cce4dd14b6d2ed0469f6ccd1f90df82bfe66faae410ed0ef",
+    "crate_manifest": "src/crates/cr-engine/Cargo.toml",
+    "crate_manifest_sha256": "5a45ca99123b18ad93021ccb264b3ab4a5ed2eeefab11494691b7d5afc19d0e6",
+    "syscall": "setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x10000)",
+    "readback": "getpriority(PRIO_DARWIN_THREAD, 0) == 0x10000 才算生效；其它值一律判失败",
+    "errno_handling": "darwin 的 errno 由 __error() 返回指针（不是全局变量），调用前清零；getpriority 返回 -1 折成 None（读不出），既不折算成 0 也不折算成成功",
+    "outcome_variant": { "name": "DarwinBackground", "as_str": "darwin_bg", "is_idle": true },
+    "thread_priority_mapping": "darwin 无 nice 语义：ThreadPriority.nice 恒 0（无意义），真实读数放 policy（0=前台类 / 0x10000=背景类）",
+    "granularity": "与 Linux/Windows 一致：只降引擎 worker 线程（cr-engine-wrk），唤醒路径线程不动",
+    "feature_gate": {
+      "name": "darwin-check",
+      "default": false,
+      "purpose": "在无 mac 的机器上让 darwin 分支参与类型检查；不链接、不执行，生产构建行为不变",
+      "command": "cargo check -p cr-engine --features darwin-check"
+    }
+  },
+  "checks": {
+    "host_default_check": {
+      "command": "cargo check -p cr-engine",
+      "host": "win11 (x86_64-pc-windows-msvc)",
+      "result": "ok",
+      "stdout_tail": "Checking cr-engine v0.1.0 (...); Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.66s"
+    },
+    "host_darwin_feature_check": {
+      "command": "cargo check -p cr-engine --features darwin-check",
+      "host": "win11 (x86_64-pc-windows-msvc)",
+      "result": "ok",
+      "stdout_tail": "Checking cr-engine v0.1.0 (...); Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.65s"
+    },
+    "negative_control_on_the_feature": {
+      "why": "光看两次 check 都「成功」无法排除「feature 根本没让 darwin 模块参与编译」——那正是「探针只会印 pass」的翻版",
+      "how": "在 darwin imp 模块内临时注入 const _NEGATIVE_CONTROL: u8 = \"...\" ，然后分别检查两种构建",
+      "observed": {
+        "default_check": "通过（模块未参与编译）",
+        "darwin_feature_check": "失败：error[E0308]: mismatched types, expected `u8`, found `&str`"
+      },
+      "conclusion": "feature 确实把 darwin 模块拉进了编译；注入行已撤回，撤回后 prio.rs sha256 与本文件 implementation.sha256 一致"
+    },
+    "cross_target_check_failed": {
+      "command": "cargo check --target aarch64-apple-darwin -p cr-engine",
+      "result": "failed",
+      "first_step": "rustup target add aarch64-apple-darwin -> ok（只装了 rust-std）",
+      "failing_crate": "aws-lc-sys v0.47.0",
+      "error": "error: failed to run custom build command for `aws-lc-sys v0.47.0` ... error occurred in cc-rs: failed to find tool \"cc\": program not found",
+      "why": "aws-lc-sys 的构建脚本要用 cc 为目标平台编译 C 代码；Windows 上没有 darwin 交叉 C 工具链。它是 librqbit -> rustls 的传递依赖，绕不开",
+      "consequence": "改用 darwin-check feature 做等价的类型检查；不要把它写成「交叉编译成功」"
+    },
+    "linux_peer_check": {
+      "host": "221 (Ubuntu 24.04, 6.2.0-39-generic)",
+      "command": "cargo check -p cr-engine --offline",
+      "result": "ok",
+      "stdout_tail": "Checking cr-engine v0.1.0 (/root/cr-mac-check/src/crates/cr-engine); Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 55s",
+      "why": "cfg 门控改动的副作用只会出现在「分支选择」上，必须在非 Windows 上确认 Linux 分支仍能编译（Linux 是部署平台）",
+      "cleanup": "检查完已删除 /root/cr-mac-check 与上传的 tarball"
+    },
+    "unit_tests": {
+      "command": "cargo test -p cr-engine --lib -- --test-threads=1",
+      "passed": 13,
+      "failed": 0,
+      "prior_passed": 11,
+      "new_cases": [
+        "prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code",
+        "prio::tests::darwin_echo_of_minus_one_is_never_a_priority"
+      ],
+      "what_the_new_cases_pin": [
+        "(0,0,Some(0x10000)) -> DarwinBackground（唯一算成功的组合）",
+        "(0,0,Some(0)) -> 失败（只看 setpriority 返回码会在这里误报达标）",
+        "(0,0,None) -> 失败且文案写明「无法判定」",
+        "(-1,1,Some(0)) -> 失败并带出 errno，便于真机定位权限/沙箱问题",
+        "-1 不是合法状态，不会被当成优先级"
+      ],
+      "note": "这两条与平台无关（合成值），所以在没有 mac 的机器上也能真跑——这正是把判定逻辑从 FFI 里拆出来的原因"
+    },
+    "workspace_regression": {
+      "command": "CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1",
+      "passed": 549,
+      "failed": 0,
+      "ignored": 3,
+      "suites_ok": 50,
+      "prior_passed": 547,
+      "log": "tests/ARCHIVE/evidence/regression-full-20261125e.log",
+      "log_sha256": "69214b6c8e1b4822f2f2089c219108b7050ee47e8336b3f9da64285aa1348e22",
+      "known_flake": {
+        "test": "cr-ed2k tests/loopback_transfer.rs::server_satisfies_amule_style_sliding_window",
+        "first_full_run": "FAILED — serve 报错 os error 10060（连接超时）",
+        "isolated_rerun": "4/4 pass",
+        "second_full_run": "549/0 pass",
+        "classification": "计时型 flaky（首轮全量出现一次，单跑与全量重跑均通过）；如实记录，未改代码、未标记为已修复"
+      }
+    }
+  },
+  "toolchain": {
+    "rustc": "1.99.1 (58cf8f9c3 2026-10-13)",
+    "host_target": "x86_64-pc-windows-msvc",
+    "extra_target_installed": "aarch64-apple-darwin（仅 rust-std，用于尝试交叉检查；该路径因 aws-lc-sys 失败，未使用）"
+  },
+  "what_this_does_not_prove": [
+    "不证明 macOS 上造种线程真的进了背景类（没有真机读数）",
+    "不证明读回谓词在 darwin 上的返回值形态就是 0x10000（真机若不同，代码会判失败而不是假 pass）",
+    "不证明 NFR-02 三平台达标；口径仍是 Linux/Windows 两分句已实测",
+    "不改变 g2_claim / s6_status / evidence_valid_for_pass / auto_pass 四个字段中的任何一个"
+  ],
+  "real_mac_checklist": [
+    "cargo test -p cr-engine --lib：idle_applies_to_the_calling_thread_only 的 macOS 分支断言（policy == PRIO_DARWIN_BG）应通过",
+    "起 daemon 后 /health.idle_priority 应为 requested=true, applied>=1, failed=0, unsupported=0",
+    "负向对照：engine.idle_priority=false 重启后 applied=0 且读回 policy=0",
+    "确认唤醒路径线程（guard/data-plane）未被降级；若 mac 上无法逐线程读，如实写「无法区分」，不要用进程级读数顶替"
+  ],
+  "git_commit": "f3b33db8e67c49cb2a5a9dfaaf64c7724e75eba1",
+  "refs": [
+    "docs/06-plan/G2-EXIT-RECORD-2026-11-25.md §10（macOS 取证与真机收尾清单）",
+    "docs/04-protocol/CONFIG.md engine.idle_priority 行",
+    "tests/fixtures/g2-spike-verdicts.toml [nfr02_idle_priority].macos / g2_wording_constraints"
+  ]
+}
