@@ -1076,6 +1076,14 @@ B`192.168.1.222:19920`，B `engine.listen=127.0.0.1:19920` + `wake_on_handshake=
   `verdict_kind=closed_with_exceptions`；机器字段 `s6_status=not_run` 是有意分层。
 - 复核触发条件 `s6.semantics` 为「M4 或 ≥4 个不同真实出口」。当前只实测到
   `112.5.60.4` 与 `112.5.32.34` 两个出口，**条件未满足**。
+  - **2026-11-25 更新**：两台云观测机的公网也是真实出口（`82.157.68.159`、
+    `119.29.150.254`，eth0 均为 10.x 私网、公网由云侧映射）。两轴实测**同为
+    `port-restricted-cone`**（映射与目的端口无关 + 入向只放行已建立映射），
+    与 `112.5.60.4` 同类；证据
+    `tests/ARCHIVE/evidence/s6-egress-classify-cloud-20261125.json`。
+    故**出口数已到 4，触发条件在数量上成立**，但类别仍只有 2 类
+    （port-restricted-cone ×3、symmetric ×1），full-cone / restricted-cone /
+    CGNAT 仍缺，完整矩阵依旧凑不齐。复审结论待所有者书面判定。
 - S6 判定引用的部分报告在 gitignored 的 `tests/spikes/s6/reports/`，
   单凭 checkout 不能复现；证据可移植性是独立欠账，不以本轮补材料冒充已解决。
 - 复核措辞边界：只能说「按 eMule 语义结案、带已知限制」；禁止表述为

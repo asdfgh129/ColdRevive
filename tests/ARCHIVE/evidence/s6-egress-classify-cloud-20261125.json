@@ -1,0 +1,96 @@
+{
+  "recorded_at": "2026-11-25T15:00:29+08:00",
+  "tool": "/tmp/coldrevive-nat (md5 082e1b377c8129c7ebbcb5c30954d206, built on 221)",
+  "mode": "两轴定性（映射轴 + 过滤轴），alt port 3479，观测点互为对方 STUN 对",
+  "why": "回答「云主机能否算第 3/4 个真实出口，以及是否新增 NAT 类别」",
+  "scope": "描述性分类，不改变 s6_status，不折算矩阵覆盖率或可达率",
+  "observations": [
+    {
+      "egress": "82.157.68.159",
+      "host": "VM-0-16-ubuntu (eth0 10.2.0.16/22, 云侧 1:1 EIP)",
+      "vantage": "119.29.150.254:3478",
+      "mapping_pairs": [
+        {
+          "server": "119.29.150.254:3478",
+          "mapped": "82.157.68.159:53267"
+        },
+        {
+          "server": "119.29.150.254:3479",
+          "mapped": "82.157.68.159:53267"
+        }
+      ],
+      "mapping_axis": "endpoint-independent",
+      "filter_axis": "port-filtered",
+      "filter_probe": {
+        "control_primary": true,
+        "control_alt": true,
+        "change_port_answered": false,
+        "change_port_source": null,
+        "source_matches_alt": false,
+        "change_ip_error": 420
+      },
+      "nat_type": "port-restricted-cone",
+      "note": "change_ip_error=420 是单公网 IP 的能力缺失，不是 NAT 拦截"
+    },
+    {
+      "egress": "119.29.150.254",
+      "host": "VM-0-2-ubuntu (eth0 10.1.0.2/22, 云侧 1:1 EIP)",
+      "vantage": "82.157.68.159:3478",
+      "mapping_pairs": [
+        {
+          "server": "82.157.68.159:3478",
+          "mapped": "119.29.150.254:54635"
+        },
+        {
+          "server": "82.157.68.159:3479",
+          "mapped": "119.29.150.254:54635"
+        }
+      ],
+      "mapping_axis": "endpoint-independent",
+      "filter_axis": "port-filtered",
+      "filter_probe": {
+        "control_primary": true,
+        "control_alt": true,
+        "change_port_answered": false,
+        "change_port_source": null,
+        "source_matches_alt": false,
+        "change_ip_error": 420
+      },
+      "nat_type": "port-restricted-cone",
+      "note": "与 82 同类别；两台 eth0 均为 10.x 私网地址，公网 IP 由云侧映射，映射与目的端口无关（EIM），本轮未测源端口是否保持"
+    }
+  ],
+  "conclusion": {
+    "distinct_real_egress_count": 4,
+    "egresses": [
+      "112.5.60.4",
+      "112.5.32.34",
+      "82.157.68.159",
+      "119.29.150.254"
+    ],
+    "distinct_nat_classes": 2,
+    "classes": {
+      "port-restricted-cone": [
+        "112.5.60.4",
+        "82.157.68.159",
+        "119.29.150.254"
+      ],
+      "symmetric": [
+        "112.5.32.34"
+      ]
+    },
+    "missing_classes": [
+      "full-cone",
+      "restricted-cone",
+      "cgnat"
+    ],
+    "trigger_reading": "ADR-016 的『≥4 个不同真实出口』在数量上已满足；但类别仍只有 2 类，完整矩阵无法恢复",
+    "action_required": "ADR-016 要求复核触发时追加复审记录，不得默示延期"
+  },
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}
