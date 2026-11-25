@@ -314,18 +314,61 @@ pub fn build_plan(
     }
 }
 
+/// 两个 IPv4 是否落在同一 /24。
+///
+/// 只用于「局域网直连在这个请求方身上是否**可能**」这一处保守判断，
+/// **不是**可达性证据：真实可达性仍由引擎的实际连接结果决定。
+fn same_lan_slash24(a: &str, b: &str) -> bool {
+    let parse = |s: &str| -> Option<[u8; 4]> {
+        let mut out = [0u8; 4];
+        let mut it = s.split('.');
+        for slot in out.iter_mut() {
+            *slot = it.next()?.parse::<u8>().ok()?;
+        }
+        if it.next().is_some() { return None; }
+        Some(out)
+    };
+    match (parse(a), parse(b)) {
+        (Some(x), Some(y)) => x[0] == y[0] && x[1] == y[1] && x[2] == y[2],
+        _ => false,
+    }
+}
+
 /// tracker 应答地址决策（供 `/announce` 使用）。
 ///
-/// - `requester_ip` 为私网/回环 → 返回私网 peer（M1/T0/T1 口径不变）；
 /// - `requester_ip` 为公网 → 只返回显式公网端口映射；没有则返回 `None`
 ///   （调用方应答空 peer 列表，绝不把 RFC1918 地址发给公网对端）。
+/// - `requester_ip` 为私网/回环且与对端私网地址同 /24 → 返回私网 peer
+///   （M1/T0/T1 口径不变，局域网直连更快）。
+/// - `requester_ip` 为私网但**跨网段**（如 A 在 `192.168.1.0/24`、对端在
+///   `192.168.34.0/24`）→ 私网地址对请求方不可路由，此时若有真实公网映射，
+///   v2.4.130 起改为下发**该公网映射**；没有真实映射才退回私网地址（维持旧口径，
+///   不伪造可达性）。
 pub fn tracker_endpoint_for(
     advertisement: &PeerAdvertisement,
     requester_ip: &str,
     plan: Option<&EndpointPlan>,
 ) -> Option<(String, u16)> {
+    // 真实公网映射：只认「公网 IPv4 + internal_port == bt_port」的显式映射。
+    // Relay 会合地址不参与这里——它的语义是「拨本机桥」，与「真实端口映射」不同。
+    let public_mapping = advertisement.bt_external.clone()
+        .filter(|e| e.kind != EndpointKind::Relay)
+        .filter(|e| is_public_ipv4(&e.ip) && e.internal_port == advertisement.bt_port)
+        .or_else(|| plan.and_then(|p| p.tracker_public.clone()))
+        .or_else(|| advertisement.endpoints.iter()
+            .find(|e| e.kind.is_explicit_port_mapping()
+                && e.internal_port == advertisement.bt_port
+                && is_public_ipv4(&e.ip))
+            .cloned());
+
     let requester_public = is_public_ipv4(requester_ip);
     if !requester_public {
+        if same_lan_slash24(&advertisement.private_ip, requester_ip) {
+            return Some((advertisement.private_ip.clone(), advertisement.bt_port));
+        }
+        if let Some(e) = public_mapping {
+            return Some((e.ip, e.port));
+        }
         return Some((advertisement.private_ip.clone(), advertisement.bt_port));
     }
     // v2.4.92：中继会合端点单独放行。
@@ -339,15 +382,7 @@ pub fn tracker_endpoint_for(
             return Some((e.ip.clone(), e.port));
         }
     }
-    let public = advertisement.bt_external.clone()
-        .filter(|e| is_public_ipv4(&e.ip) && e.internal_port == advertisement.bt_port)
-        .or_else(|| plan.and_then(|p| p.tracker_public.clone()))
-        .or_else(|| advertisement.endpoints.iter()
-            .find(|e| e.kind.is_explicit_port_mapping()
-                && e.internal_port == advertisement.bt_port
-                && is_public_ipv4(&e.ip))
-            .cloned());
-    public.map(|e| (e.ip, e.port))
+    public_mapping.map(|e| (e.ip, e.port))
 }
 
 /// 把节点标签（"A"/"B"）映射为 16 字节中继 node id（确定性、无随机性）。
@@ -537,6 +572,57 @@ mod tests {
                    Some(("8.8.4.4".into(), 44002)));
         assert_eq!(tracker_endpoint_for(&a, "192.168.1.209", Some(&plan)),
                    Some(("192.168.1.210".into(), 17802)));
+    }
+
+    /// v2.4.130：私网但**跨网段**的请求方，必须拿到真实公网映射。
+    ///
+    /// 现场：A 在 `192.168.1.0/24`，B 通告的私网地址是 `192.168.34.222`。旧逻辑对任何
+    /// 私网请求方都返回私网地址，A 的引擎于是去拨一个本网段不存在的地址，永远
+    /// `connections=0`。这不是 NAT 问题，是 tracker 应答地址选错。
+    #[test]
+    fn cross_subnet_private_requester_gets_public_mapping() {
+        let r = report(NatType::Unknown, Strategy::None, None);
+        let mut b = local_advertisement("B", "192.168.34.222", 17901, 19920, &r, None, 0);
+        b.bt_external = Some(Endpoint {
+            kind: EndpointKind::ConfiguredMapping,
+            ip: "112.5.32.34".into(),
+            port: 19920,
+            internal_port: 19920,
+            evidence: "operator-configured-bt-mapping".into(),
+        });
+        assert_eq!(tracker_endpoint_for(&b, "192.168.1.221", None),
+                   Some(("112.5.32.34".into(), 19920)),
+                   "跨网段私网请求方拿到不可路由私网地址 = 永远连不上");
+        // 同网段仍走局域网，不绕公网。
+        assert_eq!(tracker_endpoint_for(&b, "192.168.34.9", None),
+                   Some(("192.168.34.222".into(), 19920)));
+        // 公网请求方口径不变。
+        assert_eq!(tracker_endpoint_for(&b, "8.8.8.8", None),
+                   Some(("112.5.32.34".into(), 19920)));
+    }
+
+    /// 没有真实公网映射时不伪造可达性：跨网段私网请求方仍拿到私网地址（旧口径），
+    /// 不编一个公网 IP 出来。
+    #[test]
+    fn cross_subnet_private_requester_without_mapping_stays_private() {
+        let r = report(NatType::Unknown, Strategy::None, None);
+        let b = local_advertisement("B", "192.168.34.222", 17901, 19920, &r, None, 0);
+        assert_eq!(tracker_endpoint_for(&b, "192.168.1.221", None),
+                   Some(("192.168.34.222".into(), 19920)));
+        // 未知来源（空 IP）不得被当成同网段。
+        assert_eq!(tracker_endpoint_for(&b, "", None),
+                   Some(("192.168.34.222".into(), 19920)));
+        // 映射端口与 bt_port 不一致 → 不能给 BT 用，仍是私网地址。
+        let mut wrong_port = b.clone();
+        wrong_port.bt_external = Some(Endpoint {
+            kind: EndpointKind::ConfiguredMapping,
+            ip: "112.5.32.34".into(),
+            port: 19920,
+            internal_port: 17901,
+            evidence: "operator-configured-bt-mapping".into(),
+        });
+        assert_eq!(tracker_endpoint_for(&wrong_port, "192.168.1.221", None),
+                   Some(("192.168.34.222".into(), 19920)));
     }
 
     #[test]

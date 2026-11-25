@@ -1,0 +1,39 @@
+{
+  "generated_at": "2026-11-25T02:56:58Z",
+  "local_src": "src/crates/cr-nat/src/endpoint.rs",
+  "local_src_md5": "ef0345672cd75b135f60cdbf7eb68c73",
+  "steps": {
+    "sync": {
+      "remote_md5": "ef0345672cd75b135f60cdbf7eb68c73",
+      "match": true
+    },
+    "build": {
+      "tail": "warning: unused field `license` in `workspace.package`\n --> Cargo.toml:8:1\n  |\n8 | license = \"MIT\"\n  | ^^^^^^^\n  |\n  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default\nhelp: consider removing the field `workspace.package.license`\nwarning: unused field `repository` in `workspace.package`\n --> Cargo.toml:9:1\n  |\n9 | repository = \"https://github.com/asdfgh129/ColdRevive\"\n  | ^^^^^^^^^^\n  |\nhelp: consider removing the field `workspace.package.repository`\nwarning: workspace (manifest) generated 2 warnings\n   Compiling cr-nat v0.1.0 (/opt/cr-current/src/crates/cr-nat)\n   Compiling coldrevived v0.1.0 (/opt/cr-current/src/bins/coldrevived)\nwarning: unused doc comment\n  --> src/bins/coldrevived/src/sysres.rs:69:1\n   |\n69 | / /// 进程累计 CPU 时间（毫秒）。拿不到返回 `None`，**绝不返回 0 冒充**。\n70 | | ///\n71 | | /// Linux 的 `utime+stime` 单位是 clock tick，必须用 `sysconf(_SC_CLK_TCK)`\n72 | | /// 换算；写死 100 会在非标准 tick 的机器上把一个阈值变成另一个阈值。\n73 | | /// Windows 的 `FILETIME` 单位是 100 ns。macOS 没有 std-only 的读法，如实返回 None。\n   | |____________________________________________________________________________________^\n74 |   #[cfg(target_os = \"linux\")]\n75 | / extern \"C\" {\n76 | |     fn sysconf(name: i32) -> i64;\n77 | | }\n   | |_- rustdoc does not generate documentation for extern blocks\n   |\n   = help: use `//` for a plain comment\n   = note: `#[warn(unused_doc_comments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `coldrevived` (bin \"coldrevived\") generated 1 warning\n    Finished `release` profile [optimized] target(s) in 23.32s",
+      "binary_md5": "168cfd78136ddf2b7d1184b5c84a7597"
+    }
+  },
+  "hosts": {
+    "A": {
+      "unit": "coldrevived-a",
+      "enabled": "enabled",
+      "active": "active",
+      "binary_md5": "168cfd78136ddf2b7d1184b5c84a7597",
+      "health_status": "ok",
+      "health_ok": true,
+      "advertise": "{\"node_id\":\"A\",\"private_ip\":\"192.168.1.221\",\"wake_port\":17801,\"bt_port\":19910,\"endpoints\":[{\"kind\":\"private-lan\",\"ip\":\"192.168.1.221\",\"port\":17801,\"internal_port\":17801,\"evidence\":\"configured-private-host\"}],\"bt_external\":{\"kind\":\"configured-mapping\",\"ip\":\"112.5.60.4\",\"port\":19910,\"internal_port\":19910,\"evidence\":\"operator-configured-bt-mapping\"},\"relay\":\"82.157.68.159:7100\",\"nat_type\":\"unknown\",\"public_udp_egress_ok\":false,\"probed_at\":1795575448,\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}",
+      "listeners": "LISTEN 0      128          0.0.0.0:17800      0.0.0.0:*    users:((\"coldrevived\",pid=662460,fd=16))               \nLISTEN 0      1024       127.0.0.1:19910      0.0.0.0:*    users:((\"coldrevived\",pid=662460,fd=12))               \nLISTEN 0      128        127.0.0.1:45571      0.0.0.0:*    users:((\"coldrevived\",pid=662460,fd=7))"
+    },
+    "B": {
+      "unit": "coldrevived-b",
+      "enabled": "enabled",
+      "active": "active",
+      "binary_md5": "168cfd78136ddf2b7d1184b5c84a7597",
+      "health_status": "ok",
+      "health_ok": true,
+      "advertise": "{\"node_id\":\"B\",\"private_ip\":\"192.168.34.222\",\"wake_port\":17901,\"bt_port\":19920,\"endpoints\":[{\"kind\":\"private-lan\",\"ip\":\"192.168.34.222\",\"port\":17901,\"internal_port\":17901,\"evidence\":\"configured-private-host\"}],\"bt_external\":{\"kind\":\"configured-mapping\",\"ip\":\"112.5.32.34\",\"port\":19920,\"internal_port\":19920,\"evidence\":\"operator-configured-bt-mapping\"},\"relay\":\"82.157.68.159:7100\",\"nat_type\":\"unknown\",\"public_udp_egress_ok\":false,\"probed_at\":1795575449,\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}",
+      "listeners": "LISTEN 0      128        127.0.0.1:42879      0.0.0.0:*    users:((\"coldrevived\",pid=1204382,fd=7))                 \nLISTEN 0      128          0.0.0.0:17900      0.0.0.0:*    users:((\"coldrevived\",pid=1204382,fd=8))"
+    }
+  },
+  "verdict": "PASS",
+  "reason": "both units healthy on the same freshly built binary"
+}

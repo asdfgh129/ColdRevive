@@ -1,3 +1,26 @@
+## [2.4.130] - 2026-11-25 — tracker 跨网段下发公网 BT 映射（下载端已能拨出；供片仍卡冷种子）
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。以下仍是组件级证据。
+
+- 修 `cr_nat::endpoint::tracker_endpoint_for()`：私网请求方不再一律拿对端私网地址。
+  新增「同 /24 才走局域网」判定——A 在 `192.168.1.0/24`、B 通告的私网地址是
+  `192.168.34.222`，旧逻辑把不可路由的内网地址回给 A，A 的引擎永远 `connections=0`。
+  现在跨网段且有真实公网映射（公网 IPv4 且 `internal_port == bt_port`）时下发该公网地址；
+  同网段仍走局域网，无真实映射时仍退回私网地址（不伪造可达性）。
+- `Relay` 会合地址不参与这条复用路径（语义是「拨本机桥」，不是端口映射）；
+  对公网请求方的行为逐字节不变。
+- 单测：`cross_subnet_private_requester_gets_public_mapping`、
+  `cross_subnet_private_requester_without_mapping_stays_private`（`cargo test -p cr-nat` 18/18）。
+- 现场验证（`tracker-public-endpoint-dial-20261125.json`）：
+  A 向 B 的 `/announce` 得到 `112.5.32.34:19920`（旧值为 `192.168.34.222:19920`）；
+  A 的引擎随后**真实拨出**，B 上 `tcpdump` 抓到
+  `112.5.60.4.38695 > 192.168.34.222.19920: [S]` + `length 68` 真 BT 握手。
+  结论 **PARTIAL**：控制面已通，数据面仍被 v2.4.129 记录的冷种子行为阻断
+  （B 引擎不回首握手，`seed_active=0`）。A 落地文件 1048576 B 但 md5 为
+  `b6d81b36…`（1 MiB 全零 = 引擎预分配，零字节到达），已明确区分，不算传输成功。
+- 更正 v2.4.129 的表述：旧逻辑不是「返回空 peer 列表」，而是「返回对端私网地址」。
+
 ## [2.4.129] - 2026-11-25 — daemon 固化 systemd unit；直拨 B 公网映射：网络层 PASS、应用层 BLOCKED
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

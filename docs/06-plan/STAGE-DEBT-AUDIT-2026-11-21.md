@@ -963,14 +963,39 @@ B 的引擎先 ACK 该 68 字节，随后立即发 **FIN**（非 RST），全程
 | `nat peer` + `nat probe` + `nat wake` | `ok=true` 但 `path=relay`（B 视角「对端无外部映射证据，仅私网直连候选」），种子仍 cold |
 | 同上后重打握手 | 仍 `GOT 0`，仍被 FIN |
 
-另有独立缺陷：`tracker_endpoint_for()` 对私网请求方返回空 peer 列表（防止把 RFC1918
-地址发给公网对端），于是 A 的 aria2 兼容接口长期 `connections=0`，引擎根本没去拨
-`112.5.32.34:19920`。证据 `bt-direct-public-19920-20261125.json`。
+另有独立缺陷：`tracker_endpoint_for()` 对私网请求方一律返回**对端私网地址**
+（不是空 peer 列表，v2.4.129 的表述已更正），于是 A 的 aria2 兼容接口长期
+`connections=0`——B 通告的 `192.168.34.222:19920` 从 A 的 `192.168.1.0/24` 不可路由。
+证据 `bt-direct-public-19920-20261125.json`。
 
 结论：**「BT 跨公网直连」的剩余成本不在 CPE/NAT，而在两处应用层行为**——
 (a) 入向握手命中冷种子时应触发唤醒，或「被通告为 peer 期间不得暂停」；
 (b) 对端已有公网 `bt_external` 时 tracker 应下发该公网 endpoint。
 两者都是行为变更，须所有者确认后再改；本轮只记录，不改代码、不改门禁常量。
+
+### 22.7 (b) 已落地并实测：tracker 跨网段下发公网 endpoint（v2.4.130）
+
+所有者指定先做 (b)。改动只在 `cr_nat::endpoint::tracker_endpoint_for()`：
+先判断请求方与对端私网地址是否同 /24；同网段照旧回私网地址，跨网段且有
+真实公网映射（公网 IPv4 且 `internal_port == bt_port`）时回该公网地址；
+无真实映射仍回私网地址（不伪造可达性）。`Relay` 会合地址不参与这条复用路径，
+公网请求方行为逐字节不变。单测 18/18（新增 `cross_subnet_private_requester_gets_public_mapping`、
+`cross_subnet_private_requester_without_mapping_stays_private`）。
+
+现场实测（`tracker-public-endpoint-dial-20261125.json`，A 为 member + 空下载目录，
+B 临时 `role=holder` 且引擎监听 `0.0.0.0:19920`）：
+
+| 检查 | 结果 |
+|---|---|
+| A → B `/announce` 的 peer | `112.5.32.34:19920`（改前 `192.168.34.222:19920`） |
+| A 的引擎是否拨出 | **是**，B 侧 `tcpdump`：`112.5.60.4.38695 > 192.168.34.222.19920: [S]` |
+| 是否发真 BT 握手 | **是**，同连接随后 `length 68` |
+| 字节是否到达 | **否**，60 秒 `completed=0`、`download_speed=0`、`seed_active=0` |
+| A 落地文件 | 1048576 B 但 md5 `b6d81b36…`（1 MiB 全零＝引擎预分配），零字节传输 |
+
+判定 **PARTIAL**：控制面（通告地址 → 拨出 → 真握手）已通，数据面仍被 §22.6 的
+冷种子行为阻断；剩下只有 (a) 一条，动的是 FR-14 休眠语义，需所有者先定语义。
+门禁常量不变。
 
 ## 23. S6 语义复核材料（2026-11-25）
 

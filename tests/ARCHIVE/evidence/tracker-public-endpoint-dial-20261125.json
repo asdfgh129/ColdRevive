@@ -1,0 +1,212 @@
+{
+  "generated_at": "2026-11-25T03:07:16Z",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "note": "A must download into an EMPTY engine dir: librqbit re-verifies existing files, so a download dir that already holds the sample would report complete without moving a byte.",
+  "baseline_health_A": "ok",
+  "baseline_health_B": "ok",
+  "setup": {
+    "B": {
+      "health": "ok",
+      "seed_tasks": 1,
+      "seed_active": 0,
+      "listeners": "LISTEN 0      1024         0.0.0.0:19920      0.0.0.0:*    users:((\"coldrevived\",pid=1205182,fd=12))"
+    },
+    "A": {
+      "health": "ok",
+      "role": "member",
+      "engine_dir": "/opt/cr-punch-pub/221/dl-test",
+      "engine_dir_files": ""
+    }
+  },
+  "announce_from_A": {
+    "request": "http://192.168.1.222:17900/announce?info_hash=%8B%02%EA%8F%DC%9F%D4Bu%A8%29f%8A%AC%E7%29%0B%8B%8D%F1&compact=1",
+    "response_hex": "64383a636f6d706c65746569316531303a696e636f6d706c657465693065383a696e74657276616c693138303065353a7065657273363a700520224dd065",
+    "peers": [
+      [
+        "112.5.32.34",
+        19920
+      ]
+    ],
+    "peers_hex": "700520224dd0",
+    "got_public_endpoint": true,
+    "got_unroutable_private": false
+  },
+  "torrent_rewrite": {
+    "announce_before": "http://192.168.34.222:17900/announce",
+    "announce_after": "http://192.168.1.222:17900/announce",
+    "info_dict_preserved": true,
+    "size_before": 214,
+    "size_after": 213
+  },
+  "torrent_server": "200",
+  "addUri": {
+    "ok": true,
+    "gid": "1a210ac11c60000",
+    "raw": "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": \"1a210ac11c60000\"}"
+  },
+  "progress": [
+    {
+      "t": 5,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 10,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 15,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 20,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 25,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 30,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 35,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 40,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 45,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 50,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 55,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 60,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 65,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    },
+    {
+      "t": 70,
+      "status": "active",
+      "completed": "0",
+      "connections": "0",
+      "download_speed": "0",
+      "note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/dl-test",
+      "error": null,
+      "peers": null
+    }
+  ],
+  "B_health_after": {
+    "seed_tasks": 1,
+    "seed_active": 0,
+    "served_bytes": 0
+  },
+  "b_tcpdump_19920": "tcpdump: data link type LINUX_SLL2\ntcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes\n03:07:21.929671 ens160 In  IP 112.5.60.4.38695 > 192.168.34.222.19920: Flags [S], seq 2117620598, win 64240, options [mss 1460,sackOK,TS val 3124079983 ecr 0,nop,wscale 7], length 0\n03:07:21.929707 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.38695: Flags [S.], seq 3319919230, ack 2117620599, win 65160, options [mss 1460,sackOK,TS val 599994735 ecr 3124079983,nop,wscale 7], length 0\n03:07:21.932460 ens160 In  IP 112.5.60.4.38695 > 192.168.34.222.19920: Flags [P.], seq 1:69, ack 1, win 502, options [nop,nop,TS val 3124079986 ecr 599994735], length 68\n03:07:38.941624 ens160 In  IP 112.5.60.4.38706 > 192.168.34.222.19920: Flags [S], seq 3400924179, win 64240, options [mss 1460,sackOK,TS val 3124096995 ecr 0,nop,wscale 7], length 0\n03:07:38.941659 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.38706: Flags [S.], seq 1159370297, ack 3400924180, win 65160, options [mss 1460,sackOK,TS val 600011747 ecr 3124096995,nop,wscale 7], length 0\n03:07:38.944464 ens160 In  IP 112.5.60.4.38706 > 192.168.34.222.19920: Flags [P.], seq 1:69, ack 1, win 502, options [nop,nop,TS val 3124096998 ecr 600011747], length 68",
+  "dial_source": "112.5.60.4",
+  "dialed_public": true,
+  "handshake_sent_by_downloader": true,
+  "b_engine_replied_handshake": false,
+  "A_landed_md5": "b6d81b360a5672d80c27430f39153e2c  /opt/cr-punch-pub/221/dl-test/ed2k-sample.bin",
+  "A_landed_ok": false,
+  "A_downloaded_size": "1048576",
+  "A_landed_all_zeros": true,
+  "A_restored_health": "ok",
+  "B_restored_health": {
+    "status": "ok",
+    "seed_tasks": 0,
+    "listeners": ""
+  },
+  "verdict": "PARTIAL",
+  "reason": "tracker handed the public mapping and the downloader dialed, but the transfer did not complete"
+}
