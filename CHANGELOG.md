@@ -1,3 +1,21 @@
+## [2.4.145] - 2026-11-25 — 记录 tokio 1.54 的关键实现事实：worker 本身就是阻塞池线程
+
+> 只是注释与一条测试，二进制不变。但它决定了「钩子能不能覆盖 worker」这个判断，
+> 不写下来下次一定会有人（包括我）按公开文档想当然。
+
+- **事实**：`Builder::on_thread_start` 在 tokio 1.54.1 里只有阻塞池
+  `blocking::pool::Inner::run` 调用（`after_start`），`scheduler/multi_thread/worker.rs`
+  里没有第二处。worker 之所以也能被降级，是因为 `Launch::launch` 用
+  `runtime::spawn_blocking(move || run(worker))` 起线程——**worker 就是阻塞池线程**，
+  于是共用同一个 `thread_name` 与同一个 `after_start`。这也解释了 221 上 9 个线程里
+  只有 2 个 `tokio-rt-worker`：那就是引擎的 2 个 worker。
+- 这是**版本相关实现细节**，不是公开契约。因此代码不靠「钩子一定被调用」来声称达标，
+  靠读回；升级 tokio 后若实现变了，表现是 `applied` 变小或探针里出现 `nice=0` 的引擎线程
+  ——看得见，不会静默变成「声称降了其实没降」。
+- 新增测试 `runtime_worker_task_runs_at_idle_priority`：在**真正跑在 worker 上的 task 里**
+  读自己的优先级，Linux 断言 `nice=19 || policy=5`，Windows 断言 `-15`。
+  Windows 本地 4/4 通过。
+
 ## [2.4.144] - 2026-11-25 — 修 prio 读回路径：`/proc/self/stat` 是线程组组长，必须用 `/proc/thread-self/stat`
 
 > 221 上第一次跑 Linux 分支时，降级其实**成功**了，却被判成失败（`读回 nice=0 policy=0`）。
