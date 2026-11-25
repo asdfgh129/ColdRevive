@@ -1,0 +1,216 @@
+{
+  "spike": "S5",
+  "harness": "tests/spikes/s5/utp_netem (真实内核 tc htb+netem, 跨 netns veth)",
+  "recorded_at": "2026-11-17T13:49:51.863625+00:00",
+  "method": "每轮一条连续 iperf3 TCP(BBR) 会话(-i 1)，同一会话内比较 baseline/concurrent/recovery 区间；后台真实 librqbit-utp 0.7.0 双进程跨 netns",
+  "environment": {
+    "link_mbps": 16,
+    "netem_delay": "20ms",
+    "tcp_congestion": "bbr",
+    "baseline_seconds": 5,
+    "concurrent_seconds": 10,
+    "recovery_seconds": 5,
+    "total_seconds": 20,
+    "rounds": 3,
+    "tc_verified": true,
+    "cross_netns": true,
+    "note": "ping 跨 netns RTT 见 stdout（应 ~40ms 证明 netem 生效）"
+  },
+  "source_finding": {
+    "crate": "librqbit-utp 0.7.0",
+    "ledbat": false,
+    "controllers": [
+      "Cubic"
+    ],
+    "note": "uTP 仅切传输层无 LEDBAT 退让；≤5% 依赖 qos ratio 降级"
+  },
+  "evidence_valid": true,
+  "samples": [
+    {
+      "ratio": 0.2,
+      "round": 1,
+      "cap_mbps": 3.2,
+      "base_median": 14595270,
+      "conc_median": 14596044,
+      "rec_median": 14595095,
+      "deg_pct": -0.01,
+      "utp_written": 2367400,
+      "utp_mbps": 1.8939,
+      "actual_ratio": 0.1184,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.2,
+      "round": 2,
+      "cap_mbps": 3.2,
+      "base_median": 15638196,
+      "conc_median": 12510457,
+      "rec_median": 15638634,
+      "deg_pct": 20.0,
+      "utp_written": 2623600,
+      "utp_mbps": 2.0989,
+      "actual_ratio": 0.1312,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.2,
+      "round": 3,
+      "cap_mbps": 3.2,
+      "base_median": 15638720,
+      "conc_median": 12510732,
+      "rec_median": 15638385,
+      "deg_pct": 20.0,
+      "utp_written": 2503200,
+      "utp_mbps": 2.0026,
+      "actual_ratio": 0.1252,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.05,
+      "round": 1,
+      "cap_mbps": 0.8,
+      "base_median": 15638689,
+      "conc_median": 12512233,
+      "rec_median": 15638415,
+      "deg_pct": 19.99,
+      "utp_written": 985600,
+      "utp_mbps": 0.7885,
+      "actual_ratio": 0.0493,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.05,
+      "round": 2,
+      "cap_mbps": 0.8,
+      "base_median": 15638313,
+      "conc_median": 15637915,
+      "rec_median": 15638431,
+      "deg_pct": 0.0,
+      "utp_written": 995400,
+      "utp_mbps": 0.7963,
+      "actual_ratio": 0.0498,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.05,
+      "round": 3,
+      "cap_mbps": 0.8,
+      "base_median": 14597131,
+      "conc_median": 14595810,
+      "rec_median": 14596248,
+      "deg_pct": 0.01,
+      "utp_written": 991200,
+      "utp_mbps": 0.793,
+      "actual_ratio": 0.0496,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.02,
+      "round": 1,
+      "cap_mbps": 0.32,
+      "base_median": 14595970,
+      "conc_median": 14595927,
+      "rec_median": 14595709,
+      "deg_pct": 0.0,
+      "utp_written": 397600,
+      "utp_mbps": 0.3181,
+      "actual_ratio": 0.0199,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.02,
+      "round": 2,
+      "cap_mbps": 0.32,
+      "base_median": 15636609,
+      "conc_median": 15638008,
+      "rec_median": 15638665,
+      "deg_pct": -0.01,
+      "utp_written": 397600,
+      "utp_mbps": 0.3181,
+      "actual_ratio": 0.0199,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    },
+    {
+      "ratio": 0.02,
+      "round": 3,
+      "cap_mbps": 0.32,
+      "base_median": 15638626,
+      "conc_median": 15638321,
+      "rec_median": 15638400,
+      "deg_pct": 0.0,
+      "utp_written": 397600,
+      "utp_mbps": 0.3181,
+      "actual_ratio": 0.0199,
+      "n_base": 4,
+      "n_conc": 9,
+      "n_rec": 5,
+      "valid": true
+    }
+  ],
+  "per_ratio": [
+    {
+      "bg_ratio": 0.02,
+      "valid_rounds": 3,
+      "actual_ratio_median": 0.0199,
+      "deg_median": 0.0,
+      "deg_all": [
+        0.0,
+        -0.01,
+        0.0
+      ],
+      "meets_5pct": true
+    },
+    {
+      "bg_ratio": 0.05,
+      "valid_rounds": 3,
+      "actual_ratio_median": 0.0496,
+      "deg_median": 0.01,
+      "deg_all": [
+        19.99,
+        0.0,
+        0.01
+      ],
+      "meets_5pct": true
+    },
+    {
+      "bg_ratio": 0.2,
+      "valid_rounds": 3,
+      "actual_ratio_median": 0.1252,
+      "deg_median": 20.0,
+      "deg_all": [
+        -0.01,
+        20.0,
+        20.0
+      ],
+      "meets_5pct": false
+    }
+  ],
+  "scope": "真实内核整形链路 + 真实 uTP 栈；非用户态令牌桶",
+  "spike_status_changed": false,
+  "g2_claim": false,
+  "auto_pass": false
+}

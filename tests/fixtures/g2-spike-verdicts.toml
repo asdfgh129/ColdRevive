@@ -27,15 +27,20 @@ g2_claim = true
 g2_claim_decided_by = "项目所有者"
 g2_claim_decided_at = "2026-11-25T17:20:00+08:00"
 g2_claim_ref = "docs/06-plan/G2-EXIT-RECORD-2026-11-25.md"
-g2_claim_wording = "G2 达标（所有者判定，2026-11-25），带两项书面例外与两项欠账（G-2/G-3）；NAT 类别覆盖 3/4，公平性按原判据仍为 FAIL（78/80），NFR-02 两分句在 Linux/Windows 已实测（空闲 CPU 0.03% + 引擎线程 nice19/SCHED_IDLE）；macOS 的 PRIO_DARWIN_BG 分支已实现但无硬件实测（G-5 代码缺口已关，不构成第三平台达标）"
+g2_claim_wording = "G2 达标（所有者判定，2026-11-25），带两项书面例外与一项欠账（G-3；G-2 已于 2026-11-25T22:31:26+08:00 归档关闭）；NAT 类别覆盖 3/4，公平性按原判据仍为 FAIL（78/80），NFR-02 两分句在 Linux/Windows 已实测（空闲 CPU 0.03% + 引擎线程 nice19/SCHED_IDLE）；macOS 的 PRIO_DARWIN_BG 分支已实现但无硬件实测（G-5 代码缺口已关，不构成第三平台达标）"
 g2_claim_carries_exceptions = [
   "EX-1 公平性：判定仍 FAIL（78/80，cc_on 第 7 轮 0.430/0.570、cc_paced 第 8 轮 0.433/0.567），后果 C1-C6 见 DOC-33",
   "S6 条件计入：类别 3/4（restricted-cone 按 ADR-016 §R2 排除、cgnat 未覆盖）；HighID direct 3/30 属描述性；symmetric 0/30 是 NAT 行为；punched-direct 仅 3/30 且 BT 公网属 direct-via-static-dnat",
 ]
+# G-2（S4/S5 reports/ 证据不可移植）已于 2026-11-25T22:31:26+08:00 关闭：
+# 15 份报告逐字节复制到 tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/ + sha256 MANIFEST，
+# 见下面的 s4_s5_evidence_archive。原缺口文字保留于文档 §3 的删除线中，不改写历史。
 g2_claim_open_gaps = [
-  "G-2 S4/S5 的 reports/ 与 S6 一样被 .gitignore 排除，S6 已归档、S4/S5 未归档",
   "G-3 中继运维面（限流/观测/告警）未单列验收",
 ]
+
+# 归档只解决「clone 后证据可读」，不抬升证据等级、不改任何 Spike 判定。
+s4_s5_evidence_archive = { gap = "G-2", status = "closed", recorded_at = "2026-11-25T22:31:26+08:00", manifest = "tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/MANIFEST.json", items = 15, bytes = 68498, byte_exact = true, verdicts_changed = false, gate_constants_changed = false }
 
 # G-5（macOS 无 Idle 降级实现）的**代码缺口**已于 2026-11-25T21:5x 关闭：darwin 分支写出来了
 # （PRIO_DARWIN_BG）、判定逻辑有单测、分支经 --features darwin-check 类型检查。
@@ -133,6 +138,8 @@ g2_note_20261125 = """
 2026-11-25T17:20 所有者据 DOC-34 声明 G2 达标（`g2_claim=true`），上述欠账转为记录的开放缺口 G-1/G-2/G-3，
 不因达标而消失。
 """
+# 22:31 补记（不重写上面的历史文字）：G-1/G-4/G-5 代码缺口与 G-2 均已关闭，
+# 现在开放的欠账只剩 G-3（中继运维面）；macOS 真机实测仍为未测项而非欠账。
 
 # ---------------------------------------------------------------------------
 # G2 公平性书面例外（DOC-33 / EX-1，2026-11-25 所有者签署）
@@ -206,9 +213,13 @@ id = "S5"
 status = "fallback"
 criteria_source = "spikes.json → S5.criteria + NFR-03"
 evidence = [
-  "tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json",
+  "tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/MANIFEST.json",
+  "tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/s5/utp_netem/s5-utp-netem-20261117.json",
   "tests/spikes/s5/utp_netem/run_netem.sh",
 ]
+# 原件 tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json 按 .gitignore 不入库；
+# 上面两份 ARCHIVE 路径是逐字节副本与 sha256 清单（G-2 关闭），判定与 observed 数值未改。
+# run_netem.sh 本就已跟踪，仍指向原路径。
 observed = """
 真实内核 htb 16mbit + netem 20ms 跨 netns，后台为真实 librqbit-utp 0.7.0：
 ratio=0.02（现行默认）后台实际占比 0.0199、前台劣化 0.00%（3/3 轮）；

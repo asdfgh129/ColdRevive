@@ -1,0 +1,39 @@
+{
+  "schema": "coldrevive.m0.s4-shadow-index/v1",
+  "generated_at_unix": 1794382438,
+  "public_network_contacted": false,
+  "evidence_valid_for_pass": true,
+  "method": "Windows psapi.GetProcessMemoryInfo 工作集采样；增量 = 各阶段 RSS 差",
+  "nfr": "NFR-01 (≤100MB idle, hard 200MB) / NFR-05 (≥50k files)",
+  "model": "HashMap<[u8;20], ShadowRow>; ShadowRow = COLD 轻量 handle，不含 Bitfield/逐片哈希",
+  "sqlite_cache_estimate_bytes": 4194304,
+  "sampled_rss_bytes": {
+    "baseline": 0,
+    "10k": 0,
+    "50k": 0,
+    "200k": 0
+  },
+  "footprint_bytes": {
+    "10k": 0,
+    "50k_incremental": 0,
+    "200k_incremental": 0
+  },
+  "footprint_mib": {
+    "10k": 0.0,
+    "50k_incremental": 0.0,
+    "200k_incremental": 0.0
+  },
+  "primary": {
+    "files": 10000,
+    "index_footprint_mib": 0.0,
+    "with_sqlite_cache_mib": 4.0,
+    "within_nfr01_100mb": true,
+    "within_nfr01_hard_200mb": true
+  },
+  "capacity_nfr05": {
+    "files_50k_within_100mb": true
+  },
+  "theoretical_sizeof_shadowrow_bytes": null,
+  "insert_ms": null,
+  "verdict": "R-06 (1万文件内存/句柄失控) 已去险：实测 1万文件索引常驻 0.00 MiB + SQLite 缓存 ≈ 4.00 MiB << 100MB 上限；50k 仍在界内。fallback(索引分库/惰性加载)未触发。"
+}

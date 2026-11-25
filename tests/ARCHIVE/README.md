@@ -61,8 +61,11 @@ python3 scripts/archive_test_run.py \
   这不是篡改，是换行归一化；比对前先看该文件有没有 `-text`。
 - 需要**字节级可复现**的证据（原始探针输出、抓包派生、与门禁判断直接相关的 JSON），
   必须在 `.gitattributes` 里加 `-text`。已锁的有：`s6-verdict-20261117/*`、
+  `g2-s4-s5-reports-20261125/*`（目录内 `.gitattributes` 为 `* -text`）、
   `nfr02-idle-cpu-20261125.raw.json`、`nfr02-engine-idle-priority-20261125.{on,off}.json`、
   `regression-full-20261125e.log`、`nfr02-macos-idle-priority-20261125.json`。
+  同理，从 MANIFEST 生成 `sha256sum -c` 清单时也必须用 `sys.stdout.buffer.write` 写 LF；
+  用 `print` 会在路径尾部留下 `\r` 导致全部 FAILED，这不是文件损坏。
   对这些文件，`git show HEAD:<path> | sha256sum` 必须等于账本值；不等就是真问题。
 - 新证据入库时：先定 `-text`，再登记哈希，最后用上面那条命令自查一遍。
 

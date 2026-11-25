@@ -1,0 +1,23 @@
+{
+  "schema": "coldrevive.m0.s4-shadow-index/v1",
+  "generated_at_unix": 1794382304,
+  "public_network_contacted": false,
+  "evidence_valid_for_pass": true,
+  "nfr": "NFR-01 (≤100MB idle, hard 200MB) / NFR-05 (≥50k files)",
+  "model": "HashMap<[u8;20], ShadowRow>; ShadowRow 为 COLD 轻量 handle，不含 Bitfield/逐片哈希（留在磁盘 .torrent）",
+  "scales": [
+    { "scale": 10000, "index_live_bytes": 300000, "index_live_mib": 0.286, "with_sqlite_cache_bytes": 4494304, "with_sqlite_cache_mib": 4.286, "per_entry_bytes": 30.0, "insert_ms": 2, "within_100mb": true },
+    { "scale": 50000, "index_live_bytes": 1500000, "index_live_mib": 1.431, "with_sqlite_cache_bytes": 5694304, "with_sqlite_cache_mib": 5.431, "per_entry_bytes": 30.0, "insert_ms": 13, "within_100mb": true },
+    { "scale": 200000, "index_live_bytes": 6000000, "index_live_mib": 5.722, "with_sqlite_cache_bytes": 10194304, "with_sqlite_cache_mib": 9.722, "per_entry_bytes": 30.0, "insert_ms": 46, "within_100mb": true }
+  ],
+  "primary": {
+    "files": 10000,
+    "index_live_bytes": 300000,
+    "with_sqlite_cache_bytes": 4494304,
+    "with_sqlite_cache_mib": 4.286,
+    "within_nfr01_100mb": true,
+    "within_nfr01_hard_200mb": true
+  },
+  "capacity_nfr05": { "files_50k_within_100mb": true },
+  "verdict": "R-06 (1万文件内存/句柄失控) 已去险：实测 1万文件常驻 4.29 MB << 100MB 上限，50k 仍在界内，fallback(索引分库/惰性加载)未触发"
+}

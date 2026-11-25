@@ -182,5 +182,10 @@ ADR-012 已取消一切可达率承诺，这条数字不得进入任何对外材
 - S3：[`s3-mainline-public-20261117.json`](../../tests/spikes/s3/mainline_probe/reports/s3-mainline-public-20261117.json)、`tests/spikes/s3/reports/`
 - S5：[`s5-utp-netem-20261117.json`](../../tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json)、`tests/spikes/s5/utp_netem/run_netem.sh`
 - S6：[`s6-matrix-aggregate-20261117-highid.json`](../../tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json)、`tests/spikes/s6/reports/highid-run-30/`
+- **2026-11-25 补（G-2 关闭）**：上面 S5 的 `reports/`（以及 S4 的 `reports/`）同样被 `.gitignore`
+  排除，clone 后读不到。15 份报告已逐字节归档到
+  [`tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/MANIFEST.json`](../../tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/MANIFEST.json)，
+  其中 S5 netem 主证据在 `s5/utp_netem/`，S4 四份在 `s4/`（含一份 0 B 空产出，不用于判定）。
+  `run_netem.sh` 本就已跟踪。归档不改判定、不抬升证据等级，见 [DOC-34 §11](G2-EXIT-RECORD-2026-11-25.md)。
 - 机器可读判定：[`tests/fixtures/g2-spike-verdicts.toml`](../../tests/fixtures/g2-spike-verdicts.toml)
 - 口径来源：[ADR-016](../02-architecture/adr/ADR-016-s6-emule-like-reach.md)、[ADR-012](../02-architecture/adr/ADR-012-r04-best-effort.md)、[ADR-013](../02-architecture/adr/ADR-013-emule-lowid-declaration.md)

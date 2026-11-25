@@ -1,0 +1,61 @@
+{
+  "config": {
+    "background": "librqbit-utp UtpSocketUdp 真实 uTP 流，1400B 分片持续写入",
+    "background_cap": "ratio × link_bps 的第二层令牌桶（对应 qos.background_upload_ratio）",
+    "foreground": "TCP，无自有上限",
+    "link_mbps": 16.0,
+    "rounds": 1,
+    "seconds_per_phase": 2.0
+  },
+  "evidence_valid_for_pass": false,
+  "harness": "tests/spikes/s5/utp/ (cargo run --offline --release)",
+  "method": "真实 librqbit-utp 0.7.0 BEP 29 栈 + 真实 UDP/TCP socket + 共享真实时钟瓶颈令牌桶；前台 TCP 与后台 uTP 争用同一链路，瓶颈排队由真实 sleep 产生",
+  "per_ratio": [
+    {
+      "background_upload_ratio": 0.2,
+      "background_write_share_median": 0.1819,
+      "degradation_pct_all": [
+        12.05
+      ],
+      "degradation_pct_median": 12.05,
+      "meets_nfr03_5pct": false,
+      "rounds": 1,
+      "samples": [
+        {
+          "background_write_share": 0.1819,
+          "background_written_bytes": 798000,
+          "baseline_fg_bytes": 4079616,
+          "baseline_link": {
+            "bytes_forwarded": 4079616,
+            "calls": 249,
+            "max_queue_wait_ms": 16.76,
+            "mean_queue_wait_ms": 7.88,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 3588096,
+          "concurrent_link": {
+            "bytes_forwarded": 4221380,
+            "calls": 977,
+            "max_queue_wait_ms": 30.72,
+            "mean_queue_wait_ms": 2.13,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 12.05,
+          "round": 1
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-11-13T08:48:16Z",
+  "scope_limitation": "瓶颈为本机用户态整形，不是 tc/netem 内核队列或跨主机真实拥塞链路；按 s5/README §6 第 3 条，本证据不能单独支撑 S5.status=pass",
+  "source_finding": {
+    "congestion_controllers": [
+      "Cubic"
+    ],
+    "crate": "librqbit-utp 0.7.0",
+    "evidence": "src/lib.rs 首部注释 `// TODO: LEDBAT congestion control`；src/socket.rs CongestionControllerKind 仅有 Cubic 变体；src/congestion/ 仅含 cubic.rs",
+    "impact": "prefer_utp=true 只切换传输层到 uTP，并不提供 LEDBAT 低优先级退让；NFR-03 ≤5% 目前只能依赖令牌桶 ratio 降级，不可声称 uTP 自动退让",
+    "ledbat_implemented": false
+  },
+  "spike": "S5"
+}

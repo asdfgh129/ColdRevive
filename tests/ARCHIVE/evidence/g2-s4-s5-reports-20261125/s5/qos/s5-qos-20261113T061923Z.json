@@ -1,0 +1,168 @@
+{
+  "spike": "S5",
+  "harness": "tests/spikes/s5/qos_bench.py",
+  "recorded_at": "2026-11-13T06:19:23.198002+00:00",
+  "host": {
+    "os": "Windows",
+    "python": "3.13.14"
+  },
+  "config": {
+    "phase_seconds": 3.0,
+    "rounds": 3,
+    "link_mbps": 64.0,
+    "bg_ratio": 0.2,
+    "chunk_bytes": 16384,
+    "yield_target_ms": 8.0
+  },
+  "scope": "真实 TCP socketpair + 真实时钟令牌桶 + 应用层瓶颈整形；LEDBAT 退让为机理模型，非 librqbit uTP",
+  "evidence_valid_for_pass": false,
+  "rounds": [
+    {
+      "round": 1,
+      "baseline": {
+        "phase": "baseline",
+        "elapsed_sec": 3.002,
+        "foreground_bytes": 24166400,
+        "background_bytes": 0,
+        "foreground_mbps": 64.4,
+        "background_mbps": 0.0,
+        "background_share_of_total": 0.0,
+        "background_share_of_link": 0.0,
+        "bg_queue_delay_max_ms": 0.0,
+        "link_wait_final_ms": 1.85,
+        "yield_gain_final": null
+      },
+      "bucket_only": {
+        "phase": "bucket_only",
+        "elapsed_sec": 3.004,
+        "foreground_bytes": 19349504,
+        "background_bytes": 4833280,
+        "foreground_mbps": 51.53,
+        "background_mbps": 12.87,
+        "background_share_of_total": 0.1999,
+        "background_share_of_link": 0.2011,
+        "bg_queue_delay_max_ms": 16.12,
+        "link_wait_final_ms": 2.68,
+        "yield_gain_final": null
+      },
+      "with_yield": {
+        "phase": "with_yield",
+        "elapsed_sec": 3.007,
+        "foreground_bytes": 21413888,
+        "background_bytes": 2768896,
+        "foreground_mbps": 56.98,
+        "background_mbps": 7.37,
+        "background_share_of_total": 0.1145,
+        "background_share_of_link": 0.1151,
+        "bg_queue_delay_max_ms": 22.36,
+        "link_wait_final_ms": 2.11,
+        "yield_gain_final": 0.7714
+      },
+      "degradation_bucket_only_pct": 19.98,
+      "degradation_with_yield_pct": 11.52
+    },
+    {
+      "round": 2,
+      "baseline": {
+        "phase": "baseline",
+        "elapsed_sec": 3.002,
+        "foreground_bytes": 24166400,
+        "background_bytes": 0,
+        "foreground_mbps": 64.4,
+        "background_mbps": 0.0,
+        "background_share_of_total": 0.0,
+        "background_share_of_link": 0.0,
+        "bg_queue_delay_max_ms": 0.0,
+        "link_wait_final_ms": 1.94,
+        "yield_gain_final": null
+      },
+      "bucket_only": {
+        "phase": "bucket_only",
+        "elapsed_sec": 3.003,
+        "foreground_bytes": 19349504,
+        "background_bytes": 4833280,
+        "foreground_mbps": 51.54,
+        "background_mbps": 12.87,
+        "background_share_of_total": 0.1999,
+        "background_share_of_link": 0.2012,
+        "bg_queue_delay_max_ms": 16.17,
+        "link_wait_final_ms": 2.72,
+        "yield_gain_final": null
+      },
+      "with_yield": {
+        "phase": "with_yield",
+        "elapsed_sec": 3.003,
+        "foreground_bytes": 21446656,
+        "background_bytes": 2736128,
+        "foreground_mbps": 57.13,
+        "background_mbps": 7.29,
+        "background_share_of_total": 0.1131,
+        "background_share_of_link": 0.1139,
+        "bg_queue_delay_max_ms": 38.08,
+        "link_wait_final_ms": 2.67,
+        "yield_gain_final": 0.7
+      },
+      "degradation_bucket_only_pct": 19.97,
+      "degradation_with_yield_pct": 11.29
+    },
+    {
+      "round": 3,
+      "baseline": {
+        "phase": "baseline",
+        "elapsed_sec": 3.002,
+        "foreground_bytes": 24166400,
+        "background_bytes": 0,
+        "foreground_mbps": 64.41,
+        "background_mbps": 0.0,
+        "background_share_of_total": 0.0,
+        "background_share_of_link": 0.0,
+        "bg_queue_delay_max_ms": 0.0,
+        "link_wait_final_ms": 1.97,
+        "yield_gain_final": null
+      },
+      "bucket_only": {
+        "phase": "bucket_only",
+        "elapsed_sec": 3.004,
+        "foreground_bytes": 19398656,
+        "background_bytes": 4784128,
+        "foreground_mbps": 51.66,
+        "background_mbps": 12.74,
+        "background_share_of_total": 0.1978,
+        "background_share_of_link": 0.1991,
+        "bg_queue_delay_max_ms": 27.8,
+        "link_wait_final_ms": 3.22,
+        "yield_gain_final": null
+      },
+      "with_yield": {
+        "phase": "with_yield",
+        "elapsed_sec": 3.007,
+        "foreground_bytes": 22560768,
+        "background_bytes": 1622016,
+        "foreground_mbps": 60.01,
+        "background_mbps": 4.31,
+        "background_share_of_total": 0.0671,
+        "background_share_of_link": 0.0674,
+        "bg_queue_delay_max_ms": 40.41,
+        "link_wait_final_ms": 1.76,
+        "yield_gain_final": 1.0
+      },
+      "degradation_bucket_only_pct": 19.8,
+      "degradation_with_yield_pct": 6.83
+    }
+  ],
+  "summary": {
+    "token_bucket_hard_cap": {
+      "configured_ratio": 0.2,
+      "max_observed_background_share_of_link": 0.2012,
+      "within_20pct": true,
+      "note": "后台上行被令牌桶硬卡在配置占比内（含 2% 突发容差），与前台是否拥塞无关"
+    },
+    "foreground_degradation": {
+      "baseline_mbps_median": 64.4,
+      "bucket_only_degradation_pct_median": 19.97,
+      "with_yield_degradation_pct_median": 11.29,
+      "target_pct": 5.0,
+      "note": "with_yield 为本地瓶颈整形 + LEDBAT 式延迟退让模型的量测，不是真实 uTP 协议栈；按治理规则不作为 S5 pass 证据"
+    }
+  }
+}

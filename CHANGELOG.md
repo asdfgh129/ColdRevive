@@ -1,3 +1,20 @@
+## [2.4.150] - 2026-11-25 — G-2 关闭：S4/S5 报告逐字节归档（15 份 + sha256 清单；不改判定）
+
+> **关的是「证据在 clone 后读不到」，不是「证据等级提高」。** S4=`pass`、S5=`fallback` 原判定，
+> 各报告的 `evidence_valid_for_pass=false`（除 netem 的 `evidence_valid=true`）原值，`g2_claim=true`
+> 与三个工具字段 `not_run/false/false` 全部未动。唯一开放欠账现为 G-3（中继运维面）。
+
+- 新增 `tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/`：S4 4 份（含 1 份 0 B 空产出，标注不用于判定）、
+  S5 qos 7 份 / utp 3 份 / utp_netem 1 份，共 68,498 B。每份都是原件逐字节副本。
+- `MANIFEST.json` 记录 `source_path` / `bytes` / `sha256` / `recorded_at` / 证据等级 / 引用位置；
+  目录内 `.gitattributes` 为 `* -text`，`git show HEAD:<path> | sha256sum` 可与清单直接比对。
+- 复核命令用 `sys.stdout.buffer.write` 输出 LF；Windows 上用 `print` 会让 sha256sum 把尾随 `\r`
+  当文件名的一部分（已实测并记录在 DOC-34 §11 与 `tests/ARCHIVE/README.md §2.1`）。
+- 夹具 `g2-spike-verdicts.toml`：新增 `s4_s5_evidence_archive`（G-2 closed），S5 的 `evidence`
+  改指归档副本，`g2_claim_open_gaps` 只剩 G-3；`g2_claim_wording` 同步为「一项欠账」。
+- 文档：DOC-34 v1.4 + §11、`G2-SPIKE-VERDICT` §7 归档索引、DOC-31 补记、`docs/README.md`。
+- 归档账本：`tests/ARCHIVE/TEST-RUNS-2026-11-25.md` 追加一条；无测试失败，无门禁常量改动。
+
 ## [2.4.149] - 2026-11-25 — G-5 关闭**代码缺口**：macOS 走 `PRIO_DARWIN_BG`（实现 + 类型检查 + 判定单测；**仍无硬件实测**）
 
 > **这一条关的是「macOS 没有实现」，不是「macOS 已达标」。** 本仓库没有 mac 机器，

@@ -1,0 +1,276 @@
+{
+  "config": {
+    "background": "librqbit-utp UtpSocketUdp 真实 uTP 流，1400B 分片持续写入",
+    "background_cap": "ratio × link_bps 的第二层令牌桶（对应 qos.background_upload_ratio）",
+    "foreground": "TCP，无自有上限",
+    "link_mbps": 16.0,
+    "rounds": 3,
+    "seconds_per_phase": 3.0
+  },
+  "evidence_valid_for_pass": false,
+  "harness": "tests/spikes/s5/utp/ (cargo run --offline --release)",
+  "method": "真实 librqbit-utp 0.7.0 BEP 29 栈 + 真实 UDP/TCP socket + 共享真实时钟瓶颈令牌桶；前台 TCP 与后台 uTP 争用同一链路，瓶颈排队由真实 sleep 产生",
+  "per_ratio": [
+    {
+      "background_actual_link_share_median": 0.1463,
+      "background_upload_ratio": 0.2,
+      "degradation_pct_all": [
+        15.86,
+        12.97,
+        14.82
+      ],
+      "degradation_pct_median": 14.82,
+      "meets_nfr03_5pct": false,
+      "rounds": 3,
+      "samples": [
+        {
+          "background_actual_link_share": 0.1589,
+          "background_forwarded_bytes": 968452,
+          "background_written_bytes": 1048600,
+          "baseline_fg_bytes": 6094848,
+          "baseline_link": {
+            "bytes_forwarded": 6094848,
+            "calls": 372,
+            "max_queue_wait_ms": 22.49,
+            "mean_queue_wait_ms": 7.89,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5128192,
+          "concurrent_link": {
+            "bytes_forwarded": 6113404,
+            "calls": 1561,
+            "max_queue_wait_ms": 31.36,
+            "mean_queue_wait_ms": 2.13,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 15.86,
+          "round": 1
+        },
+        {
+          "background_actual_link_share": 0.1376,
+          "background_forwarded_bytes": 841860,
+          "background_written_bytes": 841400,
+          "baseline_fg_bytes": 6062080,
+          "baseline_link": {
+            "bytes_forwarded": 6062080,
+            "calls": 370,
+            "max_queue_wait_ms": 16.21,
+            "mean_queue_wait_ms": 7.89,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5275648,
+          "concurrent_link": {
+            "bytes_forwarded": 6131728,
+            "calls": 1400,
+            "max_queue_wait_ms": 32.23,
+            "mean_queue_wait_ms": 2.29,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 12.97,
+          "round": 2
+        },
+        {
+          "background_actual_link_share": 0.1463,
+          "background_forwarded_bytes": 887492,
+          "background_written_bytes": 978600,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 16.54,
+            "mean_queue_wait_ms": 7.85,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5177344,
+          "concurrent_link": {
+            "bytes_forwarded": 6080046,
+            "calls": 1455,
+            "max_queue_wait_ms": 31.29,
+            "mean_queue_wait_ms": 2.22,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 14.82,
+          "round": 3
+        }
+      ]
+    },
+    {
+      "background_actual_link_share_median": 0.0539,
+      "background_upload_ratio": 0.05,
+      "degradation_pct_all": [
+        4.58,
+        4.31,
+        3.78
+      ],
+      "degradation_pct_median": 4.31,
+      "meets_nfr03_5pct": true,
+      "rounds": 3,
+      "samples": [
+        {
+          "background_actual_link_share": 0.0467,
+          "background_forwarded_bytes": 283972,
+          "background_written_bytes": 404600,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 16.31,
+            "mean_queue_wait_ms": 7.86,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5799936,
+          "concurrent_link": {
+            "bytes_forwarded": 6087728,
+            "calls": 694,
+            "max_queue_wait_ms": 30.36,
+            "mean_queue_wait_ms": 4.28,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 4.58,
+          "round": 1
+        },
+        {
+          "background_actual_link_share": 0.0557,
+          "background_forwarded_bytes": 342852,
+          "background_written_bytes": 407400,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 16.63,
+            "mean_queue_wait_ms": 7.9,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5816320,
+          "concurrent_link": {
+            "bytes_forwarded": 6164152,
+            "calls": 774,
+            "max_queue_wait_ms": 23.51,
+            "mean_queue_wait_ms": 3.9,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 4.31,
+          "round": 2
+        },
+        {
+          "background_actual_link_share": 0.0539,
+          "background_forwarded_bytes": 332548,
+          "background_written_bytes": 404600,
+          "baseline_fg_bytes": 6062080,
+          "baseline_link": {
+            "bytes_forwarded": 6062080,
+            "calls": 370,
+            "max_queue_wait_ms": 16.39,
+            "mean_queue_wait_ms": 7.88,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5832704,
+          "concurrent_link": {
+            "bytes_forwarded": 6169782,
+            "calls": 752,
+            "max_queue_wait_ms": 30.8,
+            "mean_queue_wait_ms": 3.96,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 3.78,
+          "round": 3
+        }
+      ]
+    },
+    {
+      "background_actual_link_share_median": 0.0311,
+      "background_upload_ratio": 0.02,
+      "degradation_pct_all": [
+        2.96,
+        2.7,
+        2.7
+      ],
+      "degradation_pct_median": 2.7,
+      "meets_nfr03_5pct": true,
+      "rounds": 3,
+      "samples": [
+        {
+          "background_actual_link_share": 0.0312,
+          "background_forwarded_bytes": 189764,
+          "background_written_bytes": 399000,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 20.91,
+            "mean_queue_wait_ms": 7.89,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5898240,
+          "concurrent_link": {
+            "bytes_forwarded": 6090044,
+            "calls": 578,
+            "max_queue_wait_ms": 16.17,
+            "mean_queue_wait_ms": 5.11,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 2.96,
+          "round": 1
+        },
+        {
+          "background_actual_link_share": 0.0311,
+          "background_forwarded_bytes": 189764,
+          "background_written_bytes": 401800,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 16.35,
+            "mean_queue_wait_ms": 7.9,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5914624,
+          "concurrent_link": {
+            "bytes_forwarded": 6106358,
+            "calls": 577,
+            "max_queue_wait_ms": 30.45,
+            "mean_queue_wait_ms": 5.08,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 2.7,
+          "round": 2
+        },
+        {
+          "background_actual_link_share": 0.0311,
+          "background_forwarded_bytes": 189764,
+          "background_written_bytes": 396200,
+          "baseline_fg_bytes": 6078464,
+          "baseline_link": {
+            "bytes_forwarded": 6078464,
+            "calls": 371,
+            "max_queue_wait_ms": 16.27,
+            "mean_queue_wait_ms": 7.9,
+            "rate_bps": 2000000.0
+          },
+          "concurrent_fg_bytes": 5914624,
+          "concurrent_link": {
+            "bytes_forwarded": 6106398,
+            "calls": 577,
+            "max_queue_wait_ms": 30.59,
+            "mean_queue_wait_ms": 5.12,
+            "rate_bps": 2000000.0
+          },
+          "degradation_pct": 2.7,
+          "round": 3
+        }
+      ]
+    }
+  ],
+  "recorded_at": "2026-11-13T08:50:44Z",
+  "scope_limitation": "瓶颈为本机用户态整形，不是 tc/netem 内核队列或跨主机真实拥塞链路；按 s5/README §6 第 3 条，本证据不能单独支撑 S5.status=pass",
+  "source_finding": {
+    "congestion_controllers": [
+      "Cubic"
+    ],
+    "crate": "librqbit-utp 0.7.0",
+    "evidence": "src/lib.rs 首部注释 `// TODO: LEDBAT congestion control`；src/socket.rs CongestionControllerKind 仅有 Cubic 变体；src/congestion/ 仅含 cubic.rs",
+    "impact": "prefer_utp=true 只切换传输层到 uTP，并不提供 LEDBAT 低优先级退让；NFR-03 ≤5% 目前只能依赖令牌桶 ratio 降级，不可声称 uTP 自动退让",
+    "ledbat_implemented": false
+  },
+  "spike": "S5"
+}

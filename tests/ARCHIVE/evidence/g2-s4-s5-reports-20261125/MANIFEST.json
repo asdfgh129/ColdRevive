@@ -1,0 +1,266 @@
+{
+  "schema": "coldrevive.g2.s4-s5-evidence-package/v1",
+  "purpose": "让 G2 判定引用的 S4/S5 报告在 clone 后可校验；原件在 tests/spikes/s{4,5}/**/reports/，按 .gitignore 不入库。",
+  "packaged_at": "2026-11-25T22:31:26+08:00",
+  "verdict_ref": "tests/fixtures/g2-spike-verdicts.toml → S5（status=fallback）/ BACKFILL-TEST-RUNS.md §S4（status=pass）",
+  "why_gitignored": "tests/spikes/s4/.gitignore、s5/.gitignore、s5/utp/.gitignore、s5/utp_netem/.gitignore 均排除 /reports/*（仅 .gitkeep 入库）。本目录为显式归档副本，逐字节一致；sha256 可用下面的命令复核。",
+  "integrity_check": "cd tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125 && python -c \"import json,sys;[sys.stdout.buffer.write((i['sha256']+'  '+i['file']+'\\n').encode()) for i in json.load(open('MANIFEST.json'))['items']]\" | sha256sum -c -",
+  "item_count": 15,
+  "items": [
+    {
+      "file": "s4/s4-shadow-index-20261111T153115Z.json",
+      "source_path": "tests/spikes/s4/reports/s4-shadow-index-20261111T153115Z.json",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "recorded_at": null,
+      "schema": null,
+      "evidence_valid_for_pass": null,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "BACKFILL-TEST-RUNS.md 指数报告列表（空产出）"
+      ],
+      "note": "0 B 空文件：失败/空产出，不用于任何判定；为完整性保留逐字节副本"
+    },
+    {
+      "file": "s4/s4-shadow-index-20261111T153144Z.json",
+      "source_path": "tests/spikes/s4/reports/s4-shadow-index-20261111T153144Z.json",
+      "bytes": 1462,
+      "sha256": "947550db33c6c247d3ec8ea0f9d35de6edc9d430c1b9809e01ca18d01eb7145a",
+      "recorded_at": "2026-11-11T07:31:44+00:00",
+      "schema": "coldrevive.m0.s4-shadow-index/v1",
+      "evidence_valid_for_pass": true,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "BACKFILL-TEST-RUNS.md §S4",
+        ".workbuddy/memory/2026-11-11.md"
+      ]
+    },
+    {
+      "file": "s4/s4-shadow-index-1794382438.json",
+      "source_path": "tests/spikes/s4/reports/s4-shadow-index-1794382438.json",
+      "bytes": 1314,
+      "sha256": "a68e5cc1b9d9a50a3f0879ad471ea6a57098e0787b5536cb1660165fa4ebb2ef",
+      "recorded_at": "2026-11-11T07:33:58+00:00",
+      "schema": "coldrevive.m0.s4-shadow-index/v1",
+      "evidence_valid_for_pass": true,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "BACKFILL-TEST-RUNS.md §S4"
+      ]
+    },
+    {
+      "file": "s4/s4-shadow-index-1794382481.json",
+      "source_path": "tests/spikes/s4/reports/s4-shadow-index-1794382481.json",
+      "bytes": 1371,
+      "sha256": "3149b98309346f318974cc08f33c35be899e5d9265091b010d510bd90c2ebf97",
+      "recorded_at": "2026-11-11T07:34:41+00:00",
+      "schema": "coldrevive.m0.s4-shadow-index/v1",
+      "evidence_valid_for_pass": true,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "BACKFILL-TEST-RUNS.md §S4（3.79 MiB 引用值）"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-20261113T061528Z.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-20261113T061528Z.json",
+      "bytes": 5532,
+      "sha256": "1569c009eddefd84f962d81c0bd0f7b6e1ad8c170d32b7c927a1e76706502c1e",
+      "recorded_at": "2026-11-13T06:15:28.665732+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-20261113T061749Z.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-20261113T061749Z.json",
+      "bytes": 5542,
+      "sha256": "693b23bb4887ad79dc2bd01a8456d12dfdac77bc226021bc894a8defe2978392",
+      "recorded_at": "2026-11-13T06:17:49.360797+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-20261113T061923Z.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-20261113T061923Z.json",
+      "bytes": 5533,
+      "sha256": "73d40d5a0b4317da682099454055cea9f113c68667a5891cb4883b84d3b65214",
+      "recorded_at": "2026-11-13T06:19:23.198002+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-fallback-ratio005.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-fallback-ratio005.json",
+      "bytes": 4037,
+      "sha256": "914f45a4bc5cc9bc599aeee06b143281c08b780d88f6c6d7fd03ce4fad86e420",
+      "recorded_at": "2026-11-13T06:23:40.885921+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-final-ratio002.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-final-ratio002.json",
+      "bytes": 4084,
+      "sha256": "945622fe22fa2a434efed1dcaa61dcaad056e6135cd213a86b9f3af744aa9a31",
+      "recorded_at": "2026-11-13T06:50:45.055623+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告（现行默认 0.02）",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-final-ratio005.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-final-ratio005.json",
+      "bytes": 4089,
+      "sha256": "b10a85b97f037673859c5d3dbad8dd1c6f0091f5de7eabccb533b4057d4fbd41",
+      "recorded_at": "2026-11-13T06:25:31.739859+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/qos/s5-qos-final-ratio020.json",
+      "source_path": "tests/spikes/s5/reports/s5-qos-final-ratio020.json",
+      "bytes": 5529,
+      "sha256": "5b33dd6ecde569b845fff81ecd849a18d4b71f9a4c006ba4580d85cc37bb19f2",
+      "recorded_at": "2026-11-13T06:25:10.737418+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §报告",
+        "CHANGELOG 2026-11-13"
+      ]
+    },
+    {
+      "file": "s5/utp/s5-utp-smoke.json",
+      "source_path": "tests/spikes/s5/utp/reports/s5-utp-smoke.json",
+      "bytes": 2374,
+      "sha256": "491db982be432bee00d7af4addb12e7f489a58b3297225250cfe958cc9c04ce8",
+      "recorded_at": "2026-11-13T08:48:16Z",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "S5 README §utp"
+      ],
+      "note": "smoke 轮，非判定证据"
+    },
+    {
+      "file": "s5/utp/s5-utp-real-20261113.json",
+      "source_path": "tests/spikes/s5/utp/reports/s5-utp-real-20261113.json",
+      "bytes": 9054,
+      "sha256": "553bfd2306f1773abcfe774aea817919c63c3853e598708913957e6796573da5",
+      "recorded_at": "2026-11-13T08:50:44Z",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "spikes.json S5.evidence",
+        "S5 README §utp"
+      ]
+    },
+    {
+      "file": "s5/utp/s5-utp-real-20261114.json",
+      "source_path": "tests/spikes/s5/utp/reports/s5-utp-real-20261114.json",
+      "bytes": 13639,
+      "sha256": "8a42ac92089f5d74de23ec7ccde15bcbd698778ae69dda7930b29e14840bfeda",
+      "recorded_at": "2026-11-14T12:41:35Z",
+      "schema": "S5",
+      "evidence_valid_for_pass": false,
+      "evidence_valid": null,
+      "g2_claim": null,
+      "auto_pass": null,
+      "cited_by": [
+        "spikes.json S5.evidence",
+        "CHANGELOG 2026-11-14",
+        "BACKFILL-TEST-RUNS.md §S5"
+      ]
+    },
+    {
+      "file": "s5/utp_netem/s5-utp-netem-20261117.json",
+      "source_path": "tests/spikes/s5/utp_netem/reports/s5-utp-netem-20261117.json",
+      "bytes": 4938,
+      "sha256": "518e73e2e40cb86646f7c124d3d92f32d80291bdd4e8b3e12ecdacd91eecb05b",
+      "recorded_at": "2026-11-17T13:49:51.863625+00:00",
+      "schema": "S5",
+      "evidence_valid_for_pass": null,
+      "evidence_valid": true,
+      "g2_claim": false,
+      "auto_pass": false,
+      "cited_by": [
+        "tests/fixtures/g2-spike-verdicts.toml → [[spike]] id=S5",
+        "G2-SPIKE-VERDICT-2026-11-17 §7"
+      ],
+      "note": "S5 判定的主证据；harness run_netem.sh 已入库，不在本包内"
+    }
+  ],
+  "provenance_caveat": "S4 报告只有 generated_at_unix（无 recorded_at）；S5 qos/utp 报告的 evidence_valid_for_pass=false（用户态整形或旧档），utp_netem 报告 evidence_valid=true 且 g2_claim=false/auto_pass=false。所有报告均无 git_commit/kernel_release/tc_qdisc_and_class 字段（v1 schema 未要求），可证明当时观测值，不能定位到具体提交。归档只解决证据可移植性，不改判定、不抬升证据等级。",
+  "do_not_claim": [
+    "S4/S5 报告入库 ⇒ 证据等级提高（没有）",
+    "Fallback 的 0.02 档证明任意链路上前台劣化 ≤5%（只在 16 Mbit/20 ms 单机 netns 测过）",
+    "0.05 档满足 NFR-03（中位 0.01% 但有 1 轮 19.99% 未解释）",
+    "uTP 会自动退让 / LEDBAT 已生效（librqbit-utp 0.7.0 只有 Cubic）",
+    "G2 达标（这只是人工声明，见 DOC-34；归档不改变该声明的任何依据）"
+  ],
+  "gate_constants_unchanged": {
+    "g2_claim": true,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false,
+    "note": "g2_claim=true 是 2026-11-25T17:20 所有者声明；本包未改动任何字段。"
+  },
+  "integrity_check_note": "Windows 上不能用 print：它会输出 CRLF，sha256sum 会把 \\r 当文件名的一部分。必须写原始 LF 字节（见上）。"
+}
