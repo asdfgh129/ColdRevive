@@ -1,0 +1,1721 @@
+{
+  "schema": "coldrevive.s6.nat-matrix.class-real/v1",
+  "harness": "tests/spikes/s6/nat_matrix.py",
+  "recorded_at": "2026-11-15T15:04:21.946534+00:00",
+  "class": "symmetric",
+  "attestation": {
+    "class": "symmetric",
+    "evidence_scope": "real-multi-nat",
+    "nat_is_real_device": true,
+    "gateway_wan_ip": "112.5.32.34",
+    "local_ip": "192.168.34.222",
+    "peer_ip": "192.168.1.210",
+    "peer_gateway_wan_ip": "112.5.60.4",
+    "machine_ids": [
+      "holder@ubuntu23",
+      "requester@DESKTOP-DJQSC95"
+    ],
+    "real_nat_evidence": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\real-nat-evidence.json",
+    "classification_report": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\s6-nb-symmetric.json",
+    "operator": "agent-on-behalf-of-owner",
+    "recorded_at": "2026-11-15T15:03:19Z",
+    "note": "持有者在 ubuntu23 的 192.168.34.222（经真实 NAT → 112.5.32.34）；请求者在 DESKTOP-DJQSC95 的 192.168.1.210（经真实 NAT → 112.5.60.4）；中继 192.168.1.221:7100 只做信令。测试端口无静态映射，映射端口由 STUN 实测。"
+  },
+  "attestation_validated": true,
+  "paths": {
+    "direct": {
+      "trials": 30,
+      "succeeded": 0,
+      "reachability": 0.0,
+      "observations": [
+        {
+          "trial": 1,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1217
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 2,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1212
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57646",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 3,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57647",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 4,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1215
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57649",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 5,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1201
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57654",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 6,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1201
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57658",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 7,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1213
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57659",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 8,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57660",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 9,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1203
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57661",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 10,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1202
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57664",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 11,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1216
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 12,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57669",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 13,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57670",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 14,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1211
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57673",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 15,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1213
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 16,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1218
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57678",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 17,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1213
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57685",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 18,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1213
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 19,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57694",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 20,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1214
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57698",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 21,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1215
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57701",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 22,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1218
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57704",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 23,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1201
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57706",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 24,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1201
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57707",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 25,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1217
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 26,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1215
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧 STUN 未取得映射，退化为单向打洞"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 27,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1215
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57714",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 28,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1203
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57715",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 29,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1215
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57716",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        },
+        {
+          "trial": 30,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 stun-mapped",
+          "exit_code": 0,
+          "observed": {
+            "ok": false,
+            "path": null,
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "stun-mapped",
+                "addr": "112.5.32.34:2053",
+                "ok": false,
+                "detail": "唤醒无应答: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond. (os error 10060)（punch_sent=2 acked=false peer_punched=false）",
+                "rtt_ms": 1213
+              }
+            ],
+            "notes": [
+              "双向打洞：本侧映射 112.5.60.4:57719",
+              "双向打洞：已通过中继让对端回打"
+            ],
+            "ack_status": "",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": "全部 1 个候选均失败（真实超时/拒绝），不回填默认应答"
+          },
+          "success": false
+        }
+      ],
+      "synthetic_evidence": false,
+      "note": "成功仅由真实 CLI 输出的 ok=true 且 ack_status=OK 判定；超时/缺字段/非 JSON 一律失败"
+    },
+    "relay": {
+      "trials": 30,
+      "succeeded": 30,
+      "reachability": 1.0,
+      "observations": [
+        {
+          "trial": 1,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 2,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 3,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 4,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 5,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 6,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 7,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 8,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 9,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 10,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 11,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 12,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 13,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 14,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 15,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 16,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 17,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 18,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 19,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 20,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 21,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 22,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 23,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 24,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 25,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 26,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 27,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 28,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 29,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        },
+        {
+          "trial": 30,
+          "command": "set COLDREVIVE_T0_CONFIG=C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports\\real-run\\requester.json&& \"C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\release\\coldrevive-cli.exe\" --json --node B nat wake 14089dd0ab0ce9eb8ebcc71ada3fee4e624790c26a35af1986985d73361ac741 real-nat-222 relay",
+          "exit_code": 0,
+          "observed": {
+            "ok": true,
+            "path": "relay",
+            "strategy": "none",
+            "rtt_ms": 0,
+            "attempts": [
+              {
+                "kind": "relay",
+                "addr": "192.168.1.221:7100",
+                "ok": true,
+                "detail": "真实 DELIVERED 帧",
+                "rtt_ms": 0
+              }
+            ],
+            "notes": [],
+            "ack_status": "OK",
+            "s6_status": "not_run",
+            "evidence_valid_for_pass": false,
+            "error": null
+          },
+          "success": true
+        }
+      ],
+      "synthetic_evidence": false,
+      "note": "成功仅由真实 CLI 输出的 ok=true 且 ack_status=OK 判定；超时/缺字段/非 JSON 一律失败"
+    }
+  },
+  "overall_reachability": 1.0,
+  "evidence_valid": true,
+  "evidence_scope": "real-multi-nat",
+  "evidence_scope_desc": "真实 NAT 设备 + 两端在不同物理主机（S6 判据要求的唯一合法层级）",
+  "evidence_clauses": {
+    "two_distinct_machines": {
+      "satisfied": true,
+      "hosts": [
+        "DESKTOP-DJQSC95",
+        "ubuntu23"
+      ],
+      "machine_ids": [
+        "holder@ubuntu23",
+        "requester@DESKTOP-DJQSC95"
+      ],
+      "note": "判据要求每类环境在两台不同物理主机上各启动 coldrevived；判定比 machine_ids 的 host 部分，同机多 netns 不算"
+    },
+    "nat_is_real_device": {
+      "satisfied": true,
+      "declared": true,
+      "note": "真实家用/运营商 NAT 设备的可核查证据；由 iptables/netns 合成的 NAT 无论换多少台主机都不是真实设备"
+    }
+  },
+  "evidence_invalid_reasons": [],
+  "lab_mode": false,
+  "synthetic_evidence": false,
+  "evidence_valid_for_pass": false,
+  "status": "OBSERVED",
+  "spike_status_changed": false,
+  "s6_status": "not_run",
+  "g2_claim": false,
+  "note": "实测记录：唤醒计数全部来自真实 WAKEUP_ACK。证据层级 real-multi-nat（真实 NAT 设备 + 两端在不同物理主机（S6 判据要求的唯一合法层级））；满足 S6 证据条款，但仍由实验执行人手工回填结论。脚本不置 pass、不宣称 G2 达标"
+}

@@ -153,6 +153,34 @@ CPE 配置变体都不得计入独立覆盖（§18.1）。现有两个真实出�
 | `docs/05-quality/RISK.md` R-04 段的「复审时点」 | 已同步 |
 | `docs/06-plan/G0-REVIEW.md` | **不改**：那是 2026-11-17 的日期化记录，保留当时文字 |
 
+### R2（2026-11-25）— `restricted-cone` 退出待测清单（所有者决定，非判据变更）
+
+**性质**：这是**范围决定**，不是判定变更。S6 于 2026-11-17 已判 `pass(closed_with_exceptions)`，
+`class_coverage_required_for_pass=false` 从 ADR-016 生效当天起就为 `false`，
+因此**本轮决定的不是「能不能 pass」，而是「已知限制怎么写」**。
+
+**决定（所有者，2026-11-25）**：不再等待/采集 `restricted-cone` 真实样本。
+
+- 依据：现网真正的 ADF 已罕见（家用 CPE 基本是 full-cone 或 port-restricted）；
+  在云主机上唯一可造 ADF 的办法是主机 `nftables` 自建「只存远端 IP」的动态集合，
+  那是**人造类别**，与 `CLASSIFY-CONE-SUBTYPE-FABRICATED` 同类，不得登记为真实类别。
+  详见 `docs/07-operations/TCP-DISCOVERY-RUNBOOK.md` §8.5。
+- 后果（必须明写，不许含糊）：**类别覆盖的实际上限是 3/4**；`restricted-cone` 从今往后
+  只会以「按决定排除」的身份出现，不再写「待补测」「等真实环境」。
+  `CGNAT` 不随本决定退出——它仍未覆盖，仍登记为已知限制。
+
+**本决定不改变的东西**（逐条，便于审计）：
+
+- S6 的 `status` / `verdict_kind` / `claim_wording` 一个字未改；
+- `class_coverage_required_for_pass` 仍 `false`、`matrix_complete_is_pass_condition` 仍 `false`；
+- `s6_status=not_run` / `g2_claim=false` / `evidence_valid_for_pass=false` / `auto_pass=false` 四个机器常量不动；
+- 不新增任何类别覆盖，不把「不测」写成「已覆盖」，不把「不测」写成「判据达成」；
+- 禁止措辞：`restricted-cone 已覆盖`、`4/4 矩阵完成`、`NAT 矩阵通过`、`因此 S6 才 pass`。
+
+**与 R1 的关系**：R1 判定「维持 eMule 式可达语义、不恢复完整类别矩阵」，R2 是其后果的
+执行细则（把「等真实环境」改成「明确排除」）。R1 的双条件触发不变；若将来真的出现
+ADF 出口，属于「类别集合发生变化」，按 R1 触发复审，本决定随即可被推翻。
+
 ## 相关文档
 
 - [ADR-012 R-04 改为尽力](ADR-012-r04-best-effort.md) · [ADR-013 eMule LowID 自我声明](ADR-013-emule-lowid-declaration.md)

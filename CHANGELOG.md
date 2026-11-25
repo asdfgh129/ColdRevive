@@ -1,3 +1,32 @@
+## [2.4.136] - 2026-11-25 — `restricted-cone` 退出待测清单；S6 证据改为 clone 后可复核
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动。
+
+- **所有者决定（2026-11-25）**：不再采集 `restricted-cone` 真实样本。**这是范围决定，
+  不是判定变更**——S6 早在 2026-11-17 已判 `pass(closed_with_exceptions)`，
+  `class_coverage_required_for_pass` 自始为 `false`，所以本轮不涉及「能否 pass」，
+  只涉及「已知限制怎么写」。记录见 `ADR-016` 新增 `### R2`。
+- **明写后果**：类别覆盖实际上限 **3/4**；`restricted-cone` 从此只以「按决定排除」出现，
+  不再写「待补测/等真实环境」。`CGNAT` 不随本决定退出，仍未覆盖。依据：现网真 ADF 罕见；
+  云上唯一可造 ADF 的路径是主机 `nftables` 自建 IP 集合，属**人造类别**，不得登记。
+- **禁止措辞**：`restricted-cone 已覆盖` / `4/4 矩阵完成` / `NAT 矩阵通过` / `因此 S6 才 pass`。
+- **补一个审计窟窿**：`g2-spike-verdicts.toml` 里 S6 引用的三份报告位于
+  `tests/spikes/s6/reports/`，而该目录按 `.gitignore`（`/reports/*`）不入库——判定引用的
+  证据在 clone 后读不到。现归档逐字节副本到 `tests/ARCHIVE/evidence/s6-verdict-20261117/`
+  并附 `MANIFEST.json`（sha256＋字节数＋关键字段），`evidence` 路径改为副本，内容未改。
+  副本复核：`sha256sum -c`。局限写在清单里：两份 v1 报告无 `git_commit` / `kernel_release`，
+  可作类别与拓扑证据，不能定位到具体提交。
+- **顺带更正一条口径（同日实测）**：家宽出口 `112.5.60.4` **不是地址池型 CGNAT**——
+  从广州观测点主动连未请求端口 `54022` 得 `TCP_OPEN`，说明该公网 IPv4 未被多用户复用。
+  边界：不能反推「单层 NAT 已证明」（独立公网 IP 的 1:1 运营商 NAT 外部不可区分）。
+  历史「疑似双层/CGNAT」出自 macOS 那台的跳数启发式，`census.double_nat` 至今无 `true` 样本。
+  判据与探针见 `docs/07-operations/TCP-DISCOVERY-RUNBOOK.md` §8.5/§8.6、
+  `scripts/cpe_wan_probe.py`、`scripts/cpe_wan_probe2.py`（均只读），
+  证据 `tests/ARCHIVE/evidence/home-egress-cgnat-check-20261125.json`。
+- **G2 未完成**（本轮不改变）：公平性按预注册判据仍整体 FAIL（所有者已记例外、暂缓，
+  例外≠PASS）；S6 是否折算进 G2 出口仍未决；`g2_note` 的实现项需逐条重置状态后才能判。
+
 ## [2.4.135] - 2026-11-25 — ADR-016 复审 R1：维持 eMule 语义，触发条件改为「≥4 出口且 ≥3 类别」
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

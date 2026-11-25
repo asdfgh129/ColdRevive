@@ -1,0 +1,67 @@
+{
+  "schema": "coldrevive.s6.verdict-evidence-package/v1",
+  "purpose": "让 g2-spike-verdicts.toml 里 S6 引用的三份报告在仓库内可读可校验；原件位于 tests/spikes/s6/reports/（该目录按 .gitignore 不入库）。",
+  "packaged_at": "2026-11-25T16:16:00+08:00",
+  "verdict_ref": "tests/fixtures/g2-spike-verdicts.toml → [[spike]] id=S6（decided_at 2026-11-17）",
+  "why_gitignored": "tests/spikes/s6/.gitignore 排除 /reports/*（历史原因：报告含本机内网地址、主机名与出口公网 IP）。本目录为显式归档副本，内容与原件逐字节一致，可用 sha256 复核。",
+  "integrity_check": "cd tests/ARCHIVE/evidence/s6-verdict-20261117 && sha256sum -c <(python -c \"import json;[print(i['sha256']+'  '+i['file']) for i in json.load(open('MANIFEST.json'))['items']]\")",
+  "items": [
+    {
+      "file": "s6-matrix-aggregate-20261117-highid.json",
+      "source_path": "tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json",
+      "bytes": 2653,
+      "sha256": "cb093f58211a330a14e08718863e5874e9d23c0e9b106d0b5f5ca74402b0a2e5",
+      "recorded_at": "2026-11-17T14:05:31.031245+00:00",
+      "class": null,
+      "evidence_valid": true,
+      "direct": null,
+      "relay": null
+    },
+    {
+      "file": "s6-matrix-class-port-restricted-cone-real.json",
+      "source_path": "tests/spikes/s6/reports/highid-run-30/s6-matrix-class-port-restricted-cone-real.json",
+      "bytes": 34059,
+      "sha256": "1606aae08bf90f914cb311519eac37844dbc769e369b2224c0b4c69800807aa4",
+      "recorded_at": "2026-11-17T14:04:08Z",
+      "class": "port-restricted-cone",
+      "evidence_valid": true,
+      "direct": {
+        "trials": 30,
+        "succeeded": 3
+      },
+      "relay": {
+        "trials": 30,
+        "succeeded": 30
+      }
+    },
+    {
+      "file": "s6-matrix-class-symmetric-real.json",
+      "source_path": "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
+      "bytes": 78724,
+      "sha256": "11bc0d00dd40c4403cd2b4c14ef74171684fdd29265d7584f0b43f768dd3a76f",
+      "recorded_at": "2026-11-15T15:04:21.946534+00:00",
+      "class": "symmetric",
+      "evidence_valid": true,
+      "direct": {
+        "trials": 30,
+        "succeeded": 0
+      },
+      "relay": {
+        "trials": 30,
+        "succeeded": 30
+      }
+    }
+  ],
+  "provenance_caveat": "这两份 v1 报告没有 git_commit / kernel_release 字段（schema coldrevive.s6.nat-matrix.class-real/v1 未要求）。attestation 字段齐全（class / gateway_wan_ip / local_ip / peer_ip / machine_ids / real_nat_evidence / operator / recorded_at），可作为类别与拓扑的证据，但不能据此定位到具体提交。后补采集须一并写入这三个字段。",
+  "do_not_claim": [
+    "NAT 矩阵通过",
+    "G2 达标",
+    "任意可达率百分比"
+  ],
+  "gate_constants_unchanged": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}

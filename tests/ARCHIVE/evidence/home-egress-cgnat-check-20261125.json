@@ -1,0 +1,75 @@
+{
+  "schema": "coldrevive.s6.home-egress-cgnat-check/v1",
+  "recorded_at": "2026-11-25T15:56:00+08:00",
+  "operator": "agent",
+  "scope": "描述性：判定家宽出口是否为「地址池复用的运营商级 NAT」。不构成 NAT 类别覆盖，不涉及 G2。",
+  "target": {
+    "egress_ip": "112.5.60.4",
+    "lan": "192.168.1.0/24",
+    "host": "192.168.1.210",
+    "cpe": "192.168.1.254",
+    "prior_classification": "port-restricted-cone (EIM, filtering=port-restricted, CHANGELOG 2.4.82)"
+  },
+  "question": "此前「家宽疑似 CGNAT」是否有证据支撑？家宽出口是否处在地址池复用的运营商 NAT 之后？",
+  "attempts_that_could_not_answer": [
+    {
+      "method": "UPnP IGD GetExternalIPAddress（读 CPE 自报 WAN）",
+      "result": "UPNP_IGD_NOT_FOUND",
+      "detail": "SSDP M-SEARCH 对 IGD / WANIPConnection / WANPPPConnection 三个 ST 均无应答；tcp/1900 不通",
+      "script": "scripts/cpe_wan_probe.py"
+    },
+    {
+      "method": "NAT-PMP / PCP 到网关 5351",
+      "result": "timeout（两种协议均无应答）",
+      "script": "scripts/cpe_wan_probe2.py"
+    },
+    {
+      "method": "CPE 管理页读取 WAN 状态",
+      "result": "HTTP 200 但正文为空（JS 渲染 + 需登录），未取得 WAN 地址",
+      "detail": "GET http://192.168.1.254/ 返回 200 / text/html / 空 body；不做任何登录或配置动作",
+      "script": "scripts/cpe_wan_probe2.py"
+    },
+    {
+      "method": "traceroute 第 2 跳为私网（既有的 macOS 回传启发式）",
+      "result": "启发式，非证据；不用于定性",
+      "detail": "第 2 跳私网在单层 PPPoE + 上游 BRAS 私网互联时同样出现，无法区分"
+    }
+  ],
+  "decisive_test": {
+    "method": "从独立公网主机发起「未请求的入向 TCP」到该出口的 DNAT 端口",
+    "vantage_host": "119.29.150.254 (eth0 10.1.0.2, 广州)",
+    "vantage_network_relation": "与被测家宽无任何既有连接（未请求入向）",
+    "commands": [
+      "ssh root@119.29.150.254",
+      "for p in 54022 17800 19920; do timeout 5 bash -c \"exec 3<>/dev/tcp/112.5.60.4/$p\"; done"
+    ],
+    "observed": {
+      "112.5.60.4:54022": "TCP_OPEN",
+      "112.5.60.4:17800": "no-connect",
+      "112.5.60.4:19920": "no-connect (该端口当前为 UDP、且未做 TCP DNAT；不参与本判定)"
+    },
+    "inference": "公网任意源可以主动连入该出口的 DNAT 端口并抵达 CPE 后的主机 ⇒ 该公网 IPv4 未被运营商在多个用户间复用（不是地址池型 CGNAT）",
+    "limits": [
+      "不能排除运营商做「独立公网 IP 的 1:1 静态 NAT」再加一层：该形态下外部行为与单层 NAT 不可区分，对可达性判定等价，因此不作为 CGNAT 类别样本",
+      "未读 CPE 自报 WAN，故「CPE 的 WAN 是否为私网」仍未直接观测"
+    ]
+  },
+  "conclusion": {
+    "is_shared_address_cgnat": false,
+    "confidence": "高（入向穿透为直接观测；可复现）",
+    "class_coverage_effect": "none",
+    "wording_allowed": "家宽出口不是地址池复用的 CGNAT；其类别仍为 port-restricted-cone",
+    "wording_forbidden": [
+      "家宽是 CGNAT（无任何证据，历史笔记中的「疑似」不得升级为结论）",
+      "家宽是单层 NAT 且已证明（1:1 运营商 NAT 层不可从外部排除）",
+      "该结论构成 CGNAT 类别覆盖"
+    ],
+    "to_close_fully": "登录 192.168.1.254 读 WAN 状态：若为 100.64/10 或 RFC1918 则确证存在第二层"
+  },
+  "gate_constants_unchanged": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "coldrevive.s6.nat-matrix.aggregate/v2",
+  "harness": "tests/spikes/s6/nat_matrix.py",
+  "recorded_at": "2026-11-17T14:05:31.031245+00:00",
+  "mode": "aggregate",
+  "source_dir": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\spikes\\s6\\reports",
+  "s6_reach_stance": "emule-like-reach",
+  "class_coverage_required_for_pass": false,
+  "matrix_complete_is_pass_condition": false,
+  "reach_evidence": {
+    "criterion": "emule-like-reach (ADR-016)",
+    "usable_reports": [
+      {
+        "file": "s6-matrix-class-port-restricted-cone-real.json",
+        "class": "port-restricted-cone",
+        "direct_succeeded": 3,
+        "relay_succeeded": 30
+      },
+      {
+        "file": "s6-matrix-class-symmetric-real.json",
+        "class": "symmetric",
+        "direct_succeeded": 0,
+        "relay_succeeded": 30
+      }
+    ],
+    "rejected_reports": [],
+    "highid_reports": [
+      "s6-matrix-class-port-restricted-cone-real.json"
+    ],
+    "lowid_reports": [
+      "s6-matrix-class-symmetric-real.json"
+    ],
+    "both_paths_failed": [],
+    "known_limitations": [],
+    "complete": true,
+    "declaration_consistency_source": "ADR-013 / W5.2 21/21×3 真实证据；补跑时须同时记录声明查询结果"
+  },
+  "rows": {
+    "full-cone": null,
+    "restricted-cone": null,
+    "port-restricted-cone": "s6-matrix-class-port-restricted-cone-real.json",
+    "symmetric": "s6-matrix-class-symmetric-real.json"
+  },
+  "missing_classes": [
+    "full-cone",
+    "restricted-cone"
+  ],
+  "missing_classes_note": "描述性清单，不构成门禁失败（ADR-016）",
+  "cgnat_evidence": false,
+  "matrix_coverage": "2 / 4 类真实 NAT（含 CGNAT 环境 0/1） —— 描述性，非 pass 前提",
+  "matrix_complete": false,
+  "aggregate_reachability": null,
+  "r04_stance": "best-effort",
+  "r04_numeric_commitment": null,
+  "reachability_note": "aggregate_reachability 是**描述性统计**（须与样本量、观测环境一并读），不是达标线。产品承诺的是「每个节点都有一条可用的路 + 失败可解释」，不是百分比（ADR-012 / ADR-016）。",
+  "status": "OBSERVED",
+  "evidence_valid": true,
+  "evidence_valid_for_pass": false,
+  "s6_status": "not_run",
+  "g2_claim": false,
+  "spike_status_changed": false,
+  "no_auto_pass": true,
+  "s6_claim_wording": "按 eMule 语义结案，带已知限制；不得写成「NAT 矩阵通过」或「G2 达标」",
+  "decision": "结论由实验执行人依 evidence_required 手工回填 spikes.json；满足本判据后 G2 只能写「按 eMule 语义结案，带已知限制」"
+}

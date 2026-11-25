@@ -84,10 +84,14 @@ verdict_kind = "closed_with_exceptions"
 claim_wording = "按 eMule 语义结案，带已知限制"
 criteria_source = "spikes.json → S6.criteria（ADR-016）"
 evidence = [
-  "tests/spikes/s6/reports/s6-matrix-aggregate-20261117-highid.json",
-  "tests/spikes/s6/reports/highid-run-30/s6-matrix-class-port-restricted-cone-real.json",
-  "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
+  "tests/ARCHIVE/evidence/s6-verdict-20261117/MANIFEST.json",
+  "tests/ARCHIVE/evidence/s6-verdict-20261117/s6-matrix-aggregate-20261117-highid.json",
+  "tests/ARCHIVE/evidence/s6-verdict-20261117/s6-matrix-class-port-restricted-cone-real.json",
+  "tests/ARCHIVE/evidence/s6-verdict-20261117/s6-matrix-class-symmetric-real.json",
 ]
+# 2026-11-25：原件在 tests/spikes/s6/reports/，而该目录按 .gitignore 排除（/reports/*），
+# 于是判定引用的证据在 clone 后读不到。归档目录是逐字节副本 + sha256 清单，内容未改。
+# 复核：cd tests/ARCHIVE/evidence/s6-verdict-20261117 && sha256sum -c（清单见 MANIFEST.json）
 observed = """
 HighID 语义：A(112.5.60.4, port-restricted-cone) 持有 / 222 请求，direct 3/30（命中 112.5.60.4:47488，ack OK）+ relay 30/30；
 LowID 语义：symmetric(112.5.32.34) direct 0/30 + relay 30/30；
@@ -99,7 +103,9 @@ machine_fields_unchanged = [
   "report evidence_valid_for_pass = false",
 ]
 known_limitations = [
-  "full-cone / restricted-cone / cgnat 三类未测",
+  "restricted-cone 不再测：2026-11-25 所有者决定退出待测清单（ADR-016 §R2），类别覆盖上限因此为 3/4；这是范围排除，不是已覆盖，也不是判据达成",
+  "cgnat 仍未覆盖，继续登记为已知限制（不随 R2 退出）",
+  "full-cone 只在出口类别清单层面取得（119.29.150.254，云侧 1:1 NAT + 安全组放通的组合行为），无 30 次唤醒报告，不构成 S6 报告覆盖",
   "symmetric 请求者打不通 direct 是 NAT 行为，不是缺陷",
   "direct 3/30 只是描述性观测，不含可达率含义",
 ]

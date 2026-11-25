@@ -1,0 +1,1173 @@
+{
+  "schema": "coldrevive.s6.nat-matrix.class-real/v1",
+  "harness": "tests/spikes/s6/nat_lab/run_real_nat_highid.py",
+  "spike": "S6",
+  "class": "port-restricted-cone",
+  "recorded_at": "2026-11-17T14:04:08Z",
+  "attestation": {
+    "class": "port-restricted-cone",
+    "gateway_wan_ip": "112.5.60.4",
+    "local_ip": "192.168.1.210",
+    "peer_ip": "192.168.34.222",
+    "machine_ids": {
+      "holder": "DESKTOP-DJQSC95",
+      "requester": "ubuntu23"
+    },
+    "real_nat_evidence": {
+      "holder_stun_mapped": "112.5.60.4:47488",
+      "holder_internal_wake_port": 17801,
+      "holder_mapping_differs_from_internal": true,
+      "holder_nat_type": "port-restricted-cone",
+      "holder_advertised_endpoints": [
+        "192.168.1.210",
+        "112.5.60.4"
+      ],
+      "requester_egress_ip": "112.5.32.34",
+      "requester_classification": "symmetric / APDM（W3.7 手工报文：同 socket 三目的端口各不同）"
+    },
+    "operator": "experiment-operator",
+    "recorded_at": "2026-11-17T14:04:08Z"
+  },
+  "attestation_validated": true,
+  "topology": {
+    "holder": "A DESKTOP-DJQSC95 @ 192.168.1.210 -> 112.5.60.4",
+    "requester": "B ubuntu23 @ 192.168.34.222 -> 112.5.32.34",
+    "relay": "192.168.1.221:7100"
+  },
+  "paths": {
+    "direct": {
+      "trials": 30,
+      "succeeded": 3,
+      "reachability": 0.1,
+      "detail": [
+        {
+          "seq": 1,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 2,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 3,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 4,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 5,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 6,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 7,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 8,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 9,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 10,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 11,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 12,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 13,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 14,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 15,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 16,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 17,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 18,
+          "ok": true,
+          "path": "stun-mapped",
+          "ack_status": "OK",
+          "rtt_ms": 10,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": true,
+              "detail": "punch_sent=1 punch_acked=true peer_punched=false",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 19,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 20,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 21,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 22,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 23,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 24,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 25,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 26,
+          "ok": true,
+          "path": "stun-mapped",
+          "ack_status": "OK",
+          "rtt_ms": 7,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": true,
+              "detail": "punch_sent=1 punch_acked=true peer_punched=false",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 27,
+          "ok": true,
+          "path": "stun-mapped",
+          "ack_status": "OK",
+          "rtt_ms": 6,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": true,
+              "detail": "punch_sent=1 punch_acked=true peer_punched=false",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 28,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 29,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 30,
+          "ok": false,
+          "path": null,
+          "ack_status": "",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "stun-mapped",
+              "addr": "112.5.60.4:47488",
+              "ok": false,
+              "detail": "唤醒无应答: Resource temporarily unavailable (os error 11)（punch_sent=2 acked=false peer_punched=false）",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        }
+      ]
+    },
+    "relay": {
+      "trials": 30,
+      "succeeded": 30,
+      "reachability": 1.0,
+      "detail": [
+        {
+          "seq": 1,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 2,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 3,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 4,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 5,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 6,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 7,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 8,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 9,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 10,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 11,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 12,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 13,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 14,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 15,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 16,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 17,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 18,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 19,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 20,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 21,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 22,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 23,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 24,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 25,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 26,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 27,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 28,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 29,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        },
+        {
+          "seq": 30,
+          "ok": true,
+          "path": "relay",
+          "ack_status": "OK",
+          "rtt_ms": 0,
+          "attempts": [
+            {
+              "kind": "relay",
+              "addr": "192.168.1.221:7100",
+              "ok": true,
+              "detail": "真实 DELIVERED 帧",
+              "punch_sent": null,
+              "acked": null,
+              "peer_punched": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "evidence_scope": "real-multi-nat",
+  "is_s6_evidence": true,
+  "evidence_valid": true,
+  "synthetic_evidence": false,
+  "evidence_clauses": [
+    "两端分处两台不同物理主机",
+    "真实 NAT 设备（映射端口≠内部端口，出口为公网 IP）",
+    "每条路径 30 次真实 WAKEUP_ACK，成功判据 ok=true 且 ack_status=OK"
+  ],
+  "evidence_invalid_reasons": [],
+  "s6_status": "not_run",
+  "g2_claim": false,
+  "evidence_valid_for_pass": false,
+  "auto_pass": false,
+  "spike_status_changed": false,
+  "limitation": "本拓扑是 cone 持有 + symmetric 请求。direct 失败是 NAT 行为结论：symmetric 请求者的 STUN back 映射与发往持有者时的实际映射不同，持有者按错误 back 回打不可达；不构成 HighID direct 可达证据。",
+  "relay_stats_before": {},
+  "relay_stats_after": {},
+  "note": "实测记录，脚本不置 pass、不宣称 G2 达标；是否构成 eMule 式 HighID 证据由实验执行人判定",
+  "declaration_query": {
+    "requester_peer_ok": true,
+    "plan_candidates": [
+      {
+        "kind": "private-lan",
+        "ip": "192.168.1.210",
+        "port": 17801
+      },
+      {
+        "kind": "stun-mapped",
+        "ip": "112.5.60.4",
+        "port": 47488
+      },
+      {
+        "kind": "relay",
+        "ip": "192.168.1.221",
+        "port": 7100
+      }
+    ],
+    "note": "唤醒前经中继查询持有者声明并取得候选；按 ADR-013 只有 relay-only 可跳过直连"
+  }
+}
