@@ -12,3 +12,16 @@ bytes.workspace = true
 [dev-dependencies]
 cr-bridge = { path = "../cr-bridge" }
 cr-nat = { path = "../cr-nat" }
+
+[features]
+# 只为「没有 mac 机器也能对 darwin 分支做编译检查」而存在：
+#
+#   cargo check -p cr-engine --features darwin-check
+#
+# 打开后 `prio::imp` 走 macOS 分支（`PRIO_DARWIN_BG`，见 src/prio.rs）。在 Linux/Windows
+# 上这只是**类型检查**：FFI 符号不链接、代码路径不执行，所以它证明的是「darwin 分支能编译」，
+# 不是「darwin 上有效」。真机实测要跑 `cargo test -p cr-engine` 与 `/health.idle_priority`。
+#
+# 别拿它跑 `cargo test`：`__error`/`getpriority` 在非 darwin 上不存在，链接会失败。
+# 生产构建从不启用本 feature（默认关闭，`cargo build` 行为不变）。
+darwin-check = []

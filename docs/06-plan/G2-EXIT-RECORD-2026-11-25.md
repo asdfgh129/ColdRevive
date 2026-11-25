@@ -1,9 +1,10 @@
 # G2 出口记录（M2 出口 · 2026-11-25 声明达标）
 
 - 文档号：DOC-34
-- 状态：**已签 —— G2 达标（带两项书面例外与三项欠账：G-2 / G-3 / G-5；G-1、G-4 已实测关闭）**
-- 版本：v1.2（2026-11-25：v1.1 补采关闭 G-1；本版实现并实测关闭 G-4「造种 Idle 优先级」，
-  因 macOS 未实现新开 G-5）
+- 状态：**已签 —— G2 达标（带两项书面例外与两项欠账：G-2 / G-3；G-1、G-4、G-5 均已关闭）**
+- 版本：v1.3（2026-11-25：v1.1 补采关闭 G-1；v1.2 实现并实测关闭 G-4「造种 Idle 优先级」；
+  本版实现 macOS `PRIO_DARWIN_BG` 分支并关闭 G-5 的**代码缺口** —— mac 上仍无硬件实测，
+  故 NFR-02 口径不变，见 §10）
 - 声明人 / 决定权：项目所有者
 - 关联：`docs/06-plan/ROADMAP.md` §3 门禁表 G2 行、DOC-31（复评简报）、DOC-32（S6 折算）、
   DOC-33（公平性例外 EX-1）、`tests/fixtures/g2-spike-verdicts.toml`
@@ -12,8 +13,10 @@
 
 ## 0. 声明本身（唯一口径）
 
-> **G2 达标（所有者判定，2026-11-25T17:20+08:00），带两项书面例外与三项欠账（G-2 / G-3 / G-5）。**
-> G-1（NFR-02 空闲 CPU）与 G-4（造种 Idle 优先级）均已实测关闭；G-5 是当日新开的缺口（macOS）。
+> **G2 达标（所有者判定，2026-11-25T17:20+08:00），带两项书面例外与两项欠账（G-2 / G-3）。**
+> G-1（NFR-02 空闲 CPU）、G-4（造种 Idle 优先级）已实测关闭；G-5（macOS）已关闭**代码缺口**
+> ——darwin 分支已实现且经类型检查，但**本仓库没有 mac 硬件**，所以它不构成 macOS 实测证据，
+> NFR-02 的口径继续只写「Linux/Windows 两分句已实测」（见 §10）。
 
 - **判据来源**：`ROADMAP.md` §3 ——「NFR-01/02/03 达标；S6 按 eMule 式可达语义结案
   （真实设备 + 两台物理主机 + 每条路径 30 次真实 `WAKEUP_ACK` + HighID/LowID 两半各有证据）。
@@ -29,7 +32,7 @@
 | # | 项 | 判据 | 2026-11-25 现状 | 证据 / 落点 | 支撑本声明？ |
 |---|---|---|---|---|---|
 | 1 | NFR-01 内存 | 1 万文件纯空闲 ≤ 100 MB（硬上限 200 MB） | 1 万 ≈ **7.79 MiB**、5 万 ≈ 15.9 MiB、20 万 ≈ 53 MiB | `tests/spikes/s4/`（S4 = pass） | ✅ 是 |
-| 2 | NFR-02 CPU | 空闲态平均 ≤ 2%，造种仅 Idle 优先级 | **前半句**：600.63 s 空闲窗口内进程累计 CPU **0.18 s** → 均值 **0.03%**（单核；阈值 2%，余量 **66×**），`inst_p95=0.0%`、单点最大 1.33%。**后半句（2026-11-25T20:45 补实现并实测）**：引擎线程（`cr-engine-wrk`）**nice 19 + `SCHED_IDLE`**，3 次快照全部成立；唤醒关键路径（`cr-data-plane` ×2）与 std 线程全部 `nice 0`/`SCHED_OTHER` 未被降级。**负向对照**：`engine.idle_priority=false` 时同一批线程回到 `nice 0`/`SCHED_OTHER`，判定随之为 fail | `nfr02-idle-cpu-20261125.json`（+ `.raw.json`）、`nfr02-engine-idle-priority-20261125.json`（+ `.on.json`/`.off.json`） | ✅ 是（**Linux/Windows 两分句均有实测**；macOS 未实现 → G-5） |
+| 2 | NFR-02 CPU | 空闲态平均 ≤ 2%，造种仅 Idle 优先级 | **前半句**：600.63 s 空闲窗口内进程累计 CPU **0.18 s** → 均值 **0.03%**（单核；阈值 2%，余量 **66×**），`inst_p95=0.0%`、单点最大 1.33%。**后半句（2026-11-25T20:45 补实现并实测）**：引擎线程（`cr-engine-wrk`）**nice 19 + `SCHED_IDLE`**，3 次快照全部成立；唤醒关键路径（`cr-data-plane` ×2）与 std 线程全部 `nice 0`/`SCHED_OTHER` 未被降级。**负向对照**：`engine.idle_priority=false` 时同一批线程回到 `nice 0`/`SCHED_OTHER`，判定随之为 fail | `nfr02-idle-cpu-20261125.json`（+ `.raw.json`）、`nfr02-engine-idle-priority-20261125.json`（+ `.on.json`/`.off.json`）、`nfr02-macos-idle-priority-20261125.json` | ✅ 是（**Linux/Windows 两分句均有实测**；macOS 已实现但无硬件实测 → G-5 代码缺口已关，见 §10） |
 | 3 | NFR-03 带宽 | 后台上行 ≤ 阈值；前台劣化 ≤ 5% | 令牌桶默认 `ratio=0.02` → 前台劣化 **4.03%**（qos_bench）/ **2.70%**（真 rqbit uTP 栈）；**LEDBAT 不存在**（该 crate 只实现 CUBIC） | `tests/spikes/s5/`（S5 = `fallback`） | ✅ 是（**凭令牌桶，不凭 LEDBAT**） |
 | 4 | S6 NAT 可达性 | eMule 式可达语义结案 | `pass(closed_with_exceptions)`，2026-11-17 判；2026-11-25 按 DOC-32 **条件计入** | 夹具 `[[spike]] S6` + `ADR-016 §R3` | ✅ 是（**带四条例外**） |
 | 5 | 公平性（G2 第 1 项） | Jain ≥ 0.95、份额 ∈ [0.45,0.55]、每 arm 10 轮全过 | **FAIL 78/80**（`cc_on` 第 7 轮 0.430/0.570、`cc_paced` 第 8 轮 0.433/0.567） | DOC-33 / EX-1 | ❌ **否** → 作为**例外 EX-1** 计入 |
@@ -51,9 +54,10 @@
 - ❌ 「NAT 矩阵通过」/「4/4 类别覆盖」——实际 3/4，`restricted-cone` 按 R2 排除、`CGNAT` 未覆盖；
 - ❌ 任何可达率 / 成功率百分比（`direct 3/30`、`relay 30/30` 都是计数，不是比率结论）；
 - ❌ 「punched-direct 已打通」——只有 3/30，且 BT 公网那条属 `direct-via-static-dnat`；
-- ❌ 「NFR-02 在三平台全部达标」——Linux/Windows 两分句均已实测，但 **macOS 未实现 Idle 降级**
-  （`cr_engine::prio` 返回 `Unsupported`，`/health` 报 `unsupported`）→ 缺口 **G-5**；
-  可写「NFR-02 在 Linux/Windows 上两分句均有实测」；
+- ❌ 「NFR-02 在三平台全部达标」——Linux/Windows 两分句均已实测；macOS 的
+  `PRIO_DARWIN_BG` 分支虽已实现、判定逻辑有单测、分支经 `--features darwin-check` 类型检查，
+  但**没有任何一台 mac 跑过**，读回谓词本身也没在真机上验证过。所以可写
+  「NFR-02 在 Linux/Windows 上两分句均有实测」，**不可**写「三平台达标」或「macOS 已验证」；
 - ❌ 「整个进程处于 Idle」——只有引擎线程降级，唤醒路径与 std 线程保持默认（这是设计要求）；
 - ❌ 把单机 netns、单条公网路径、组件级 Spike 的结论外推成「跨公网/跨运营商普遍成立」。
 
@@ -87,6 +91,9 @@
    `nice 0`/`SCHED_OTHER`；关掉开关的负向对照让同一批线程回到 `nice 0`。同期 1 MiB 真实传输
    md5 一致（`6209e962…`）。证据 `nfr02-engine-idle-priority-20261125.json`。
    **macOS 未实现**（无机器实测，不写「支持」）→ 新缺口 **G-5**。~~
+   > 上述删除线是 v1.2 的成文记录。**2026-11-25T21:5x 补**：macOS 分支已实现
+   > （`PRIO_DARWIN_BG`，判定逻辑有单测、分支有类型检查），G-5 按「代码缺口」关闭；
+   > 但 mac 实测仍缺，**口径不变**——详见 §10。历史记录不改写，故此处保留原文。
    另：**S4/S5 的 `reports/` 与 S6 一样被 `.gitignore` 排除**（仅 `.gitkeep` 入库），
    S6 已逐字节归档、S4/S5 未归档 → 缺口 **G-2**（证据可移植性）。
 
@@ -131,11 +138,12 @@
 
 ## 7. 签署
 
-- **声明**：☑ G2 达标（带两项书面例外与三项欠账 G-2 / G-3 / G-5；G-1、G-4 已实测关闭）
+- **声明**：☑ G2 达标（带两项书面例外与两项欠账 G-2 / G-3；G-1、G-4、G-5 均已关闭）
 - **例外**：☑ EX-1（公平性，DOC-33）　☑ S6 条件计入（DOC-32 / ADR-016 §R3）
 - **欠账/缺口**：~~G-1（NFR-02 空闲 CPU）~~ **已实测关闭 0.03%**　☑ G-2（S4/S5 证据未归档）
   　☑ G-3（中继运维面）　~~G-4（造种 Idle 优先级无实现）~~ **已实现并实测关闭**
-  　☑ **G-5（macOS 未实现 Idle 优先级降级）**
+  　~~G-5（macOS 未实现 Idle 优先级降级）~~ **已实现并关闭代码缺口**（v1.3，§10；
+  mac 硬件实测仍缺，故 NFR-02 口径不变）
 - **机器改动**：☑ `g2_claim: false → true`　☑ 其余三个字段不动
 - **签署人**：项目所有者　**日期**：2026-11-25
 
@@ -182,10 +190,11 @@
 - **落到哪一层**：librqbit 只有一个线程池，做种/分片校验/上传/下载共用同一批 worker，
   因此无法再细到「只降做种、不降下载」；成员角色的下载同样以 Idle 运行。这条边界写进
   `EngineOptions::idle_threads` 文档、`docs/04-protocol/CONFIG.md` 与 `/health`，不藏。
-- **平台**：Linux `setpriority(19)` + `sched_setscheduler(SCHED_IDLE)`；Windows
-  `SetThreadPriority(THREAD_PRIORITY_IDLE = -15)`；**macOS 未实现**（返回 `Unsupported`，
-  `/health` 报 `unsupported`）→ 缺口 **G-5**。darwin 有 `PRIO_DARWIN_BG` 这条路，
-  但没有 mac 机器实测过，按规矩不写「支持」。
+- **平台**：Linux `setpriority(19)` + `sched_setscheduler(SCHED_IDLE)`；
+  Windows `SetThreadPriority(THREAD_PRIORITY_IDLE = -15)`；
+  macOS `setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG)`（读回
+  `getpriority(PRIO_DARWIN_THREAD) == PRIO_DARWIN_BG`）。**macOS 只做到「实现 + 类型检查」**，
+  本仓库无 mac 硬件，实测仍缺——这条的取证细节与不许说的话单列在 §10，别把它读成已达标的第三平台。
 - **为什么卡在出生点**：`Builder::on_thread_start` 里降级。事后按 tid 去 `/proc` 找线程，
   会漏掉「线程已开始做种、还没被找到」的窗口，且依赖线程名这类非契约信息。
   > tokio 1.54.1 的实现细节：`on_thread_start` 的回调**只由阻塞池**调用（`after_start`），
@@ -221,3 +230,52 @@
   ```
 - **不覆盖**：「造种时前台吞吐劣化 ≤5%」属 NFR-03（S5，凭令牌桶）；本项只回答
   「造种任务在哪个优先级上跑」。
+
+---
+
+## 10. 附：macOS `PRIO_DARWIN_BG` 分支（G-5 关闭依据 / **不构成 macOS 实测**）
+
+- **关的是什么**：G-5 原文是「macOS **未实现** Idle 降级（`prio` 返回 `Unsupported`）」。
+  这是**代码缺口**。本版把 darwin 分支写出来、写清读回判据、并让判定逻辑有单测，
+  代码缺口即关闭。
+- **没关的是什么**：**macOS 上仍然一次都没跑过**。本仓库没有 mac 机器；没有真机就没有
+  `getpriority(PRIO_DARWIN_THREAD)` 的实测读回值，也就没有「darwin 上确实降下来了」的证据。
+  所以：
+  - ✅ 可写：macOS 分支已实现，判定逻辑有单测（`darwin_verdict_*`），分支经类型检查；
+  - ❌ 不可写：「macOS 已验证」「三平台达标」「NFR-02 已在 macOS 实现」——
+    最后一句里的「实现」容易被读成「生效」，与事实不符，**一律不写**。
+- **实现**（`src/crates/cr-engine/src/prio.rs`）：
+  `setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x10000)`；
+  读回 `getpriority(PRIO_DARWIN_THREAD, 0)`，**等于 `PRIO_DARWIN_BG` 才算成功**。
+  `PRIO_DARWIN_BG` 是标志位不是 nice 值，所以 `ThreadPriority.nice` 在 darwin 恒 0（无意义），
+  真实读数放 `policy`（0 = 前台类 / `0x10000` = 背景类）；`IdleOutcome` 新增
+  `DarwinBackground`，`as_str()` 为 `"darwin_bg"`，`is_idle()` 为 `true`。
+- **`getpriority` 的 -1 陷阱**：darwin 上 -1 既是错误返回值、又不可能是一个合法状态，
+  所以先清 `errno`（darwin 的 `errno` 由 `__error()` 返回指针，不是全局变量），
+  读到 -1 一律折成 `None`（读不出），**既不折算成 0，也不折算成成功**。
+- **为什么把判定拆出来**：FFI 那几行在非 mac 上只能类型检查；但「什么读回算成功」是纯逻辑。
+  `darwin_verdict::from_readback(set_rc, set_errno, read_back)` 因此与平台无关，
+  四个用例在 Windows/Linux 上真跑：
+  ① `(0,0,Some(BG))` → `DarwinBackground`；② `(0,0,Some(0))` → 失败（**只看返回码会在这里误报达标**）；
+  ③ `(0,0,None)` → 失败且文案说明「无法判定」；④ `(-1,1,Some(0))` → 失败并带出 `errno 1`。
+- **分支怎么做的类型检查**：`cargo check -p cr-engine --features darwin-check`。
+  这个 feature 只把 `prio::imp` 切到 darwin 分支，不链接、不执行；生产构建默认关闭
+  （`cargo build` 行为不变，Linux/Windows 仍走各自分支）。
+- **为什么不用 `--target aarch64-apple-darwin` 直接交叉检查**（这是个真实记录，省得下一个人重试）：
+  已 `rustup target add aarch64-apple-darwin` 成功，但 `cargo check --target …` 在
+  **`aws-lc-sys v0.47.0`** 的构建脚本处失败——它要通过 `cc` 为目标平台编译 C 代码，
+  Windows 上没有 darwin 交叉 C 工具链，报 `failed to find tool "cc"`。
+  `aws-lc-sys` 是 librqbit → rustls 的传递依赖，绕不开。所以采用 feature 门控的等价检查。
+- **判定逻辑的证据（可跑、已跑）**：`cargo test -p cr-engine --lib` → 13 passed / 0 failed
+  （原 11 + `darwin_verdict_*` 2 条；`outcome_strings_are_stable` 增补 `darwin_bg` 断言）。
+  归档 `tests/ARCHIVE/evidence/nfr02-macos-idle-priority-20261125.json`（含 feature 检查输出、
+  `runtime_verified=false`、`counts_toward_nfr02=false`）。
+- **真机收尾清单**（有 mac 时照做，做完才允许改口径）：
+  1. `cargo test -p cr-engine --lib` —— 应看到 `idle_applies_to_the_calling_thread_only` 的
+     macOS 分支断言（`policy == PRIO_DARWIN_BG`）通过；
+  2. 起 daemon，`/health.idle_priority` 应 `requested=true, applied≥1, failed=0, unsupported=0`；
+  3. 负向对照：`engine.idle_priority=false` 重启后 `applied=0`，且读回 `policy=0`；
+  4. 顺手确认唤醒路径未被降级（guard/data-plane 线程仍是前台类）——若是 mac 上无法逐线程读，
+     就如实写「无法区分」，不要用进程级读数顶替。
+- **状态**：`runtime_verified = false`。这三条（实测、负向对照、唤醒路径）一条都不许从
+  Linux/Windows 的结果外推。

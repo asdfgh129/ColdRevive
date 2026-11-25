@@ -1,3 +1,49 @@
+## [2.4.149] - 2026-11-25 — G-5 关闭**代码缺口**：macOS 走 `PRIO_DARWIN_BG`（实现 + 类型检查 + 判定单测；**仍无硬件实测**）
+
+> **这一条关的是「macOS 没有实现」，不是「macOS 已达标」。** 本仓库没有 mac 机器，
+> darwin 分支一次都没执行过。NFR-02 口径不变：只能说「Linux/Windows 两分句已实测」。
+> `g2_claim` 仍 `true`，三个工具字段仍 `false`。
+
+- **判据没动**：SRS NFR-02「造种任务仅以 Idle 优先级运行」原文未改、阈值未放松。
+- **实现**（`src/crates/cr-engine/src/prio.rs`）：
+  `setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x10000)`；
+  读回 `getpriority(PRIO_DARWIN_THREAD) == PRIO_DARWIN_BG` 才算成功。`PRIO_DARWIN_BG` 是
+  **标志位不是 nice 值**，故 darwin 上 `ThreadPriority.nice` 恒 0（无意义），真实读数在
+  `policy`（0 = 前台类 / `0x10000` = 背景类）；新增 `IdleOutcome::DarwinBackground`
+  （`as_str()="darwin_bg"`，`is_idle()=true`），`/health.idle_priority` 照旧报计数。
+- **`getpriority` 的 -1 陷阱**：darwin 上 -1 既是错误返回值、又绝不是合法状态，所以先清
+  `errno`（darwin 的 errno 由 `__error()` 返回指针，不是全局变量）；读到 -1 一律折成
+  `None`（读不出），**既不折算成 0，也不折算成成功**。
+- **判定逻辑与 FFI 拆开**：`darwin_verdict::from_readback(set_rc, set_errno, read_back)` 与平台无关，
+  在 Windows/Linux 上真跑 2 条用例——`(0,0,Some(BG))`→成功；`(0,0,Some(0))`→**失败**
+  （只看返回码就会在这里误报达标）；`(0,0,None)`→无法判定；`(-1,1,Some(0))`→失败且带出 `errno`。
+  不拆的话，darwin 分支连判定规则都没被测过——那只是「能编译」。
+- **分支的类型检查**：新增 crate feature `darwin-check`，`cargo check -p cr-engine --features darwin-check`
+  在 Linux/Windows 上把 darwin 分支一起编译（**只检查，不链接不执行**；生产构建默认关闭，
+  Linux/Windows 仍走各自分支，`cargo build` 行为不变）。
+- **为什么不用交叉 `--target`**（省得下一个人重试）：`rustup target add aarch64-apple-darwin`
+  成功，但 `cargo check --target aarch64-apple-darwin -p cr-engine` 卡在 **`aws-lc-sys v0.47.0`**
+  的构建脚本——它要用 `cc` 为目标平台编译 C 代码，Windows 上没有 darwin 交叉 C 工具链，
+  报 `failed to find tool "cc"`。`aws-lc-sys` 是 librqbit → rustls 的传递依赖，绕不开。
+- **测试**：`cargo test -p cr-engine --lib` → **13 passed / 0 failed**（原 11 + 2 条 darwin 判定用例）；
+  全量 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1` →
+  **549 passed / 0 failed / 3 ignored**（原 547 + 2），日志 `tests/ARCHIVE/evidence/regression-full-20261125e.log`。
+  首轮全量在 `cr-ed2k` 的 `server_satisfies_amule_style_sliding_window` 上出现过一次
+  `os error 10060`（连接超时），单独重跑该用例 4/4 通过、重跑全量 549/0 通过——按**计时型 flaky**
+  记录，不当作已修复也不隐藏。
+- **Linux 侧未被改坏**：同一份树在 221 上 `cargo check -p cr-engine --offline` 通过
+  （cfg 门控改动只影响分支选择，Linux 仍走 `nice 19`+`SCHED_IDLE`）。
+- **221 清理**（所有者要求）：删的是本仓库自己的临时物——`/tmp/udl4-qbt-*`（151 个 e2e 测试目录）、
+  `/tmp/crfull`(781M)/`/tmp/crmini`(144M)/`/tmp/rustup-init`/`/tmp/bcstrings.txt`、
+  `/root/cr24-src-*.tgz`（6 个旧源码包）、`coldrevived.bak-nfr02`（被 `.bak-prio` 取代的旧备份）。
+  **未动** `/opt/cr-punch-pub/221` 的二进制/配置/状态、`/root/cr24` 构建树、系统包与日志留存。
+  根分区 24G：可用 **504M → 1.9G**（98% → 92%），`/tmp` 1.2G → 39M。
+- 证据：`tests/ARCHIVE/evidence/nfr02-macos-idle-priority-20261125.json`
+  （含 feature 检查、交叉检查失败原因、单测清单；`runtime_verified=false`、`counts_toward_nfr02=false`）。
+- 文档：DOC-34 v1.3 新增 **§10**（macOS 取证与真机收尾清单）、§2 禁用措辞与 §7 签署同步更新；
+  夹具 `g2_claim_open_gaps` 只余 G-2/G-3，新增 `g2_wording_constraints` 与
+  `[nfr02_idle_priority].macos`（`runtime_verified=false`）；`CONFIG.md` 的 `engine.idle_priority` 行。
+
 ## [2.4.148] - 2026-11-25 — G-4 关闭：造种引擎线程实测以 Idle 优先级运行（含负向对照）；新开 G-5（macOS 未实现）
 
 > **这一条只关闭 G-4（NFR-02 第二分句）。** 第一分句（空闲 CPU ≤2%）早在 v2.4.142 关闭。
