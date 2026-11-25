@@ -847,22 +847,35 @@ v2.4.120 时全量 `cargo test --workspace --offline -- --test-threads=1` 为
 **门禁口径不变**：`g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
 `auto_pass=false`。
 
-### 22.1 公网真机路径：BLOCKED（外部条件已撤销，不是代码缺陷）
+### 22.1 公网真机路径：DNAT 与 TCP 打洞路径仍在（2026-11-25 复测更正）
 
-复评 221 / 222 两台真机：
+**更正**：上一版把「本机连公网地址超时 / ConnectionRefused」读成「CPE 映射已撤销」，
+这是错误结论。用户在 2026-11-25 指出映射仍在，复测证实用户正确。
 
-| 条件 | 2026-11-24 有 | 2026-11-25 实测 |
+误判来源有三条，必须分清：
+
+1. `19910/19920` 的 punch 端点是**实验期间临时进程**（`coldrevive-nat --tcp-punch`），
+   实验结束后 `ss -ltn` 没有监听是正常现象，**不等于 DNAT 映射消失**。
+2. 本机与 `112.5.60.4` 同出口，连 `112.5.60.4:19910` 超时是 §20.3 已记录的
+   **hairpin 限制**，不能拿本机结果代替独立出口结果。
+3. `ConnectionRefused` 反而通常说明公网映射存在且内网主机有响应；当时 222
+   侧没有实验进程监听，返回 RST 恰好证明映射还在转发。
+
+复测（均归档 `TEST-RUNS-2026-11-25.md`）：
+
+| 检查 | 结果 | 证据 |
 |---|---|---|
-| CPE TCP DNAT `112.5.60.4:19910→221:19910` | 在 | 本机连 **超时**（映射已撤） |
-| CPE TCP DNAT `112.5.32.34:19920→222:19920` | 在 | 本机连 **ConnectionRefused** |
-| 221/222 上 19910/19920 监听 | 有 punch 实验监听 | `ss -ltn` 均无监听 |
-| 221 部署源码含 `tcp_discovery` | 有 | `/opt/cr-current` 源码 `grep judge_observations = 0`，仍是旧树 |
-| 221 二进制时间 | — | `Nov 24 08:12`（早于 v2.4.122 桥键修复） |
-| 222 二进制时间 | — | `Nov 18 09:51`（更早） |
+| 两个 DNAT 用临时监听做跨主机 PING/PONG | 222→`112.5.60.4:19910`、221→`112.5.32.34:19920` 双向 **PASS** | `tcp-dnat-recheck-20261125.json` |
+| 221 从 `192.168.1.221:19910` 连两个独立公网观测机的 22 端口 | 82/119 两台 tcpdump 都看到映射端口 `112.5.60.4:31480`，EIM 一致 | `tcp-eim-and-punch-recheck-20261125-fast.json` |
+| 立即用 `31480` 做双侧 TCP 同时打开 | 发现→打洞间隔 3480 ms；221/222 均 `ok=true`、`bytes_roundtrip=true` | `tcp-punch-discovered-recheck-20261125-fast.json` |
+| 慢一轮的失败尝试 | 发现→打洞间隔约 11 s，221 被拒、222 静默丢弃，BLOCKED；如实归档，不删 | `tcp-eim-and-punch-recheck-20261125.json`、`tcp-punch-discovered-recheck-20261125.json` |
 
-结论：公网双侧 TCP 映射已被上游撤销，两台机器上都没有当前代码、没有监听中的
-punch 端点。要跑真机 BT-over-punched-TCP 必须由所有者**先重建 CPE DNAT + 部署
-当前构建**，再按 DOC-30 用两个独立观测点即时发现端口。本轮不伪造任何公网字节证据。
+主机部署实况：`/tmp/coldrevive-nat` 在 221/222 上均为 2026-11-24 11:49，
+`--help` 含 `--serve-observer` / `--discover-tcp-port`，足够跑 DOC-30 的探针。
+**陈旧的是守护进程路径**：221 `/opt/coldrevive/repo/target/release/coldrevived` 为
+11-20 00:42，222 `/root/bin/coldrevived` 为 11-18 09:51；221 仓库源码树也是 11-20。
+因此缺的不是「重建 DNAT」，而是**部署当前 daemon 构建 + 用真 BT 数据走公网打洞路径**。
+本机回环组件级闭环见 §22.2；两者不能互换。
 
 ### 22.2 代码级缺口已补：绑定源端口 punch → 桥 → 真引擎取片
 
@@ -878,3 +891,15 @@ punch 端点。要跑真机 BT-over-punched-TCP 必须由所有者**先重建 CP
 
 证据 `tests/ARCHIVE/evidence/bound-port-bridge-e2e-20261125.json`。
 这是**回环上的组件级组合证明**，不是 NAT 可达性证据，不外推公网。
+
+### 22.3 仍然缺的不是 DNAT，而是「daemon 当前构建 + 公网 BT 字节」
+
+§22.1 已经把公网 TCP DNAT 与发现端口打洞两项组件级路径重新验证为可用。
+要闭合「BT-over-punched-TCP 公网」这一条，还差：
+
+1. 把当前 release daemon（含 v2.4.123 `PunchTargets` 桥键修复）部署到 221/222；
+2. 在真 daemon 上用真 BT 握手与真实文件片走这条 punched TCP 路径，并读对端落地 md5；
+3. 归档原始证据，仍不自动改 `g2_claim` / `s6_status`。
+
+在此之前，正确说法是：**公网 DNAT 在、TCP 打洞探针 PASS、daemon 与 BT 数据面公网闭环未完成**，
+而不是「两条 NAT 都没了，需要重建」。

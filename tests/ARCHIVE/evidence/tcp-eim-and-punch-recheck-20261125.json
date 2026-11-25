@@ -1,0 +1,38 @@
+{
+  "recorded_at": "2026-11-25T09:00:33+08:00",
+  "scope": "recheck of 221 endpoint-independent TCP mapping with two public tcpdump observers, then immediate discovered-port punch; component-level only",
+  "observers": {
+    "82": {
+      "host": "82.157.68.159",
+      "tcpdump": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n09:00:36.234218 IP 112.5.60.4.31442 > 10.2.0.16.22: Flags [S], seq 1526132220, win 64240, options [mss 1424,sackOK,TS val 4016731504 ecr 0,nop,wscale 7], length 0\n\n1 packet captured\n1 packet received by filter\n0 packets dropped by kernel"
+    },
+    "119": {
+      "host": "119.29.150.254",
+      "tcpdump": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n09:00:38.263926 IP 112.5.60.4.31442 > 10.1.0.2.22: Flags [S], seq 1849737812, win 64240, options [mss 1424,sackOK,TS val 3210977388 ecr 0,nop,wscale 7], length 0\n\n1 packet captured\n1 packet received by filter\n0 packets dropped by kernel"
+    }
+  },
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "client_stdout": "CONNECTED 82.157.68.159:22 local=192.168.1.221:19910\nCONNECTED 119.29.150.254:22 local=192.168.1.221:19910",
+  "client_stderr": "",
+  "mapping": {
+    "ports": {
+      "82": 31442,
+      "119": 31442
+    },
+    "consistent": true,
+    "discovered_port": 31442
+  },
+  "punch": {
+    "command": "C:\\Users\\bemin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python3.exe C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w56\\public_tcp_punch_discovered.py --observed-port 31442 --timeout-ms 5000 --report-out C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\ARCHIVE\\evidence\\tcp-punch-discovered-recheck-20261125.json",
+    "returncode": 0,
+    "stdout": "{\"verdict\": \"BLOCKED\", \"reason\": \"221: 向 112.5.32.34:19920 的连接被拒: Connection refused (os error 111); 222: no-error-reported(被静默丢弃)\", \"discovered_port\": 31442, \"report\": \"C:\\\\Users\\\\bemin\\\\WorkBuddy\\\\ColdRevive\\\\tests\\\\ARCHIVE\\\\evidence\\\\tcp-punch-discovered-recheck-20261125.json\"}",
+    "stderr": ""
+  },
+  "verdict": "BLOCKED",
+  "reason": "221: 向 112.5.32.34:19920 的连接被拒: Connection refused (os error 111); 222: no-error-reported(被静默丢弃)"
+}

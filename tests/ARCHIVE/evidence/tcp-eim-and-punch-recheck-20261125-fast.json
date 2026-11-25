@@ -1,0 +1,39 @@
+{
+  "recorded_at": "2026-11-25T09:01:16+08:00",
+  "scope": "recheck of 221 endpoint-independent TCP mapping with two public tcpdump observers, then immediate discovered-port punch; component-level only",
+  "observers": {
+    "82": {
+      "host": "82.157.68.159",
+      "tcpdump": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n09:01:19.263367 IP 112.5.60.4.31480 > 10.2.0.16.22: Flags [S], seq 2198584856, win 64240, options [mss 1424,sackOK,TS val 4016774541 ecr 0,nop,wscale 7], length 0"
+    },
+    "119": {
+      "host": "119.29.150.254",
+      "tcpdump": "tcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on eth0, link-type EN10MB (Ethernet), snapshot length 262144 bytes\n09:01:19.793933 IP 112.5.60.4.31480 > 10.1.0.2.22: Flags [S], seq 2498623889, win 64240, options [mss 1424,sackOK,TS val 3211018917 ecr 0,nop,wscale 7], length 0"
+    }
+  },
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "client_stdout": "CONNECTED 82.157.68.159:22 local=192.168.1.221:19910\nCONNECTED 119.29.150.254:22 local=192.168.1.221:19910",
+  "client_stderr": "",
+  "mapping": {
+    "ports": {
+      "82": 31480,
+      "119": 31480
+    },
+    "consistent": true,
+    "discovered_port": 31480,
+    "discovery_to_punch_ms": 3480
+  },
+  "punch": {
+    "command": "C:\\Users\\bemin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python3.exe C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\w56\\public_tcp_punch_discovered.py --observed-port 31480 --timeout-ms 7000 --report-out C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\ARCHIVE\\evidence\\tcp-punch-discovered-recheck-20261125-fast.json",
+    "returncode": 0,
+    "stdout": "{\"verdict\": \"PASS\", \"reason\": \"两侧用发现端口完成 TCP 同时打开并双向回环成功\", \"discovered_port\": 31480, \"report\": \"C:\\\\Users\\\\bemin\\\\WorkBuddy\\\\ColdRevive\\\\tests\\\\ARCHIVE\\\\evidence\\\\tcp-punch-discovered-recheck-20261125-fast.json\"}",
+    "stderr": ""
+  },
+  "verdict": "PASS",
+  "reason": "两侧用发现端口完成 TCP 同时打开并双向回环成功"
+}

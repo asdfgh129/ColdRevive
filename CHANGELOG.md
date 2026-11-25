@@ -1,4 +1,23 @@
+## [2.4.125] - 2026-11-25 — 报告口径更正：CPE DNAT 仍在、公网 TCP 打洞复测 PASS、简报改为通俗版
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮无代码行为变更，不宣称 G2 解禁。
+
+- **更正 v2.4.124 的错误判断**：当时据「本机连公网地址超时/被拒、两机无监听」写成
+  「两条 CPE DNAT 映射已撤销」，这是误判。punch 端点是实验期临时进程，无监听不等于
+  DNAT 消失；本机同出口超时是 hairpin 限制；`ConnectionRefused` 反而说明映射在转发。
+- **真机复测**：用临时监听验证 222→`112.5.60.4:19910` 与 221→`112.5.32.34:19920`
+  双向 PING/PONG PASS；82/119 双观测点 tcpdump 看到 221 映射端口 `112.5.60.4:31480`
+  一致；发现后 3480 ms 内双侧 `--tcp-punch` 均 `ok=true`、`bytes_roundtrip=true`。
+  一次慢 11 s 的失败尝试如实归档为 BLOCKED 对照。证据归档 `TEST-RUNS-2026-11-25.md`。
+- **部署实况澄清**：221/222 的 `/tmp/coldrevive-nat`（11-24 11:49）已含 `tcp_discovery`，
+  可供 DOC-30 探针使用；陈旧的是 daemon（221 11-20、222 11-18）与 221 源码树。
+  仍缺当前 daemon 部署 + 真 BT 字节跨公网打洞，**DNAT 不需要重建**。
+- **DOC-31 改为通俗版 v2.0**：先给四句话结论表，再逐项解释公平性在测什么、
+  DHT/逐出过没过、CPE DNAT 误判如何更正；审计 §22.1–22.3 同步更正。
+
 ## [2.4.124] - 2026-11-25 — G2 欠账复评：DHT/逐出证据补齐、公平性归因、BT-over-punch 组件闭环
+
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
 > `evidence_valid_for_pass=false`、`auto_pass=false`。本轮**不宣称 G2 解禁**，
@@ -14,8 +33,9 @@
 - **公平性定量归因（仍整体 FAIL）**：80 轮原始证据的 L2 cc_on+cc_paced 20 轮
   Pearson r(丢包差,份额偏移)=−0.706，两轮失败是丢包不对称最大者；决定**不改 β、
   不重抽样**（判据先于样本，调参即篡改）。审计 §21。
-- **BT-over-punched-TCP**：公网复评 BLOCKED（CPE DNAT 已撤、两机无监听、二进制陈旧），
-  如实归档；代码级补 `bound_source_port_socket_carries_real_librqbit_piece`，
+- **BT-over-punched-TCP**：公网复评当时记 BLOCKED（**「CPE DNAT 已撤」为误判，见 v2.4.125 更正**；
+  两机无临时监听属实验结束常态，daemon 二进制陈旧属实）；
+  代码级补 `bound_source_port_socket_carries_real_librqbit_piece`，
   用 DOC-30 的 `connect_bound_blocking` 固定源端口 + 解耦登记键，真引擎下载 1 MiB
   逐字节一致、served_registered=1。审计 §22。
 - 全量串行 **536/0/3**（v123 535 +1）；全部运行归档 `TEST-RUNS-2026-11-25.md`。

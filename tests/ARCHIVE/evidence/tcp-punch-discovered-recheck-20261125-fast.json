@@ -1,0 +1,50 @@
+{
+  "recorded_at": "2026-11-25T09:01:20+08:00",
+  "scope": "real dual-side TCP simultaneous open using dynamically discovered mapped port as signaling; no G2/S6 claim",
+  "discovery": null,
+  "signaling": {
+    "source": "provided --observed-port",
+    "observer_endpoints": "82.157.68.159:7100",
+    "discovered_port": 31480,
+    "peer_target": "112.5.60.4:31480"
+  },
+  "eim_evidence": "tests/ARCHIVE/evidence/tcp-eim-two-observers-tcpdump-20261124.json",
+  "results": {
+    "222": {
+      "node": "222",
+      "command": "/tmp/coldrevive-nat --tcp-punch 0.0.0.0:19920 112.5.60.4:31480 --echo-responder --timeout 7000 --json --tag egress=112.5.32.34 --tag peer=221 2>&1",
+      "stdout": "{\"mode\":\"tcp-punch\",\"ok\":true,\"local\":\"192.168.34.222:19920\",\"peer\":\"112.5.60.4:31480\",\"attempts\":1,\"elapsed_ms\":58,\"bytes_roundtrip\":true}\n",
+      "stderr": "",
+      "parsed": {
+        "mode": "tcp-punch",
+        "ok": true,
+        "local": "192.168.34.222:19920",
+        "peer": "112.5.60.4:31480",
+        "attempts": 1,
+        "elapsed_ms": 58,
+        "bytes_roundtrip": true
+      }
+    },
+    "221": {
+      "node": "221",
+      "command": "/tmp/coldrevive-nat --tcp-punch 0.0.0.0:19910 112.5.32.34:19920 --echo --timeout 7000 --json --tag egress=112.5.60.4 --tag peer=222 2>&1",
+      "stdout": "{\"mode\":\"tcp-punch\",\"ok\":true,\"local\":\"192.168.1.221:19910\",\"peer\":\"112.5.32.34:19920\",\"attempts\":1,\"elapsed_ms\":3,\"bytes_roundtrip\":true}\n",
+      "stderr": "",
+      "parsed": {
+        "mode": "tcp-punch",
+        "ok": true,
+        "local": "192.168.1.221:19910",
+        "peer": "112.5.32.34:19920",
+        "attempts": 1,
+        "elapsed_ms": 3,
+        "bytes_roundtrip": true
+      }
+    }
+  },
+  "g2_claim": false,
+  "s6_status": "not_run",
+  "evidence_valid_for_pass": false,
+  "auto_pass": false,
+  "verdict": "PASS",
+  "reason": "两侧用发现端口完成 TCP 同时打开并双向回环成功"
+}

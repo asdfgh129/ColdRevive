@@ -14,7 +14,17 @@
     "112.5.60.4:19910": "timeout",
     "112.5.32.34:19920": "connection_refused"
   },
-  "verdict": "BLOCKED — CPE mappings withdrawn; owner must restore DNAT and deploy current builds",
+  "verdict": "BLOCKED — no live punch listeners during the probe; 'CPE mappings withdrawn' wording was wrong and is superseded",
+  "correction": {
+    "recorded_at": "2026-11-25T09:02+08:00",
+    "finding": "CPE mappings were still present. The timeout/refusal came from checking public endpoints while no experiment process was listening on 19910/19920, plus same-egress hairpin on 19910.",
+    "superseding_evidence": [
+      "tests/ARCHIVE/evidence/tcp-dnat-recheck-20261125.json",
+      "tests/ARCHIVE/evidence/tcp-eim-and-punch-recheck-20261125-fast.json",
+      "tests/ARCHIVE/evidence/tcp-punch-discovered-recheck-20261125-fast.json"
+    ],
+    "still_true": "Daemon builds on 221/222 are stale; real BT data over a public punched socket has not been demonstrated."
+  },
   "gate_snapshot": {
     "g2_claim": false,
     "s6_status": "not_run",

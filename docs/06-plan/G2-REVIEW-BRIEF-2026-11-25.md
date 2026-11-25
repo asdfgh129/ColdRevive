@@ -1,101 +1,194 @@
 ---
 doc_id: DOC-31
-title: G2 解禁复评简报（2026-11-25）
+title: G2 解禁复评简报（2026-11-25，通俗版 v2.0）
 category: 计划
-version: 1.0
-status: 待所有者判定
+version: 2.0
+status: 待所有者判定 · 第4点已更正
 owner: 项目所有者（判定） / 架构组（记录）
 updated: 2026-11-25
 ---
 
-# G2 解禁复评简报（2026-11-25，v2.4.124）
+# G2 解禁复评简报（2026-11-25，v2.4.125）
 
-> 编号 DOC-31 · 版本 1.0 · 状态 **待所有者判定** · 更新 2026-11-25
+> 编号 DOC-31 · 版本 2.0 · 状态 **待所有者判定** · 更新 2026-11-25
 >
 > **门禁机器常量不变**：`g2_claim=false`、`s6_status=not_run`、
 > `evidence_valid_for_pass=false`、`auto_pass=false`。
-> 本简报**不是**解禁决定，也不授权任何人把机器字段改成 pass。G2 是 M2 出口，
-> 必须由项目所有者基于真实证据书面判定（G0-REVIEW / G2-SPIKE-VERDICT 的既定口径）。
+> 这份简报不是解禁决定，也不授权任何人把机器字段改成 pass。G2 是 M2 出口，
+> 必须由项目所有者基于真实证据书面判定。
 
-## 1. 本轮做了什么
+## 0. 先看这里：四句话版
 
-针对上一轮遗留的 G2 相关任务逐条推进；每条都给出「清掉了什么 / 仍缺什么 /
-证据路径」。所有测试运行按规矩归档到 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
+| # | 你问的问题 | 通俗答案 | 严格结论 | 还差什么 |
+|---|---|---|---|---|
+| 1 | 公平性到底测什么？为什么全是数字？ | 让两条数据流抢同一条较慢的网络，看是不是各拿约一半；**慢链路 + 开拥塞控制时 20 轮里 18 轮达标，2 轮差一点** | 按事先登记的判据（每一轮都要 45%–55%），整体 **FAIL**；不调参、不重抽样 | 所有者决定：维持 FAIL，或批准一套新判据后重新采样 |
+| 2 | DHT 到底过没过？ | 把做种信息 announced 到公网 DHT，两个独立公网节点都能查到我们；**这个小测试过了** | 组件级 **PASS**；守护进程长期自动运行的 DHT 可达率没测 | 长期自动 DHT 资源/可达率数据 |
+| 3 | 多样种逐出是什么问题？ | 「只允许同时做种 1 个文件，来第 2 个怎么办」；结果是第 2 个能启动，旧的被踢掉，始终只跑 1 个，**没发现问题** | P0 e2e **77/77 PASS** | 仅限本机回环；不代表公网 NAT |
+| 4 | 两条 CPE DNAT 真的没了吗？ | **你是对的，映射还在。** 我上一版判断错了。今天重新验证：两条映射能承载真实双向 TCP，发现端口打洞也 PASS | DNAT 与 punch 探针 **PASS**（组件级） | 221/222 上 daemon 仍是旧构建；真 BT 文件片跨公网走打洞路径还没做 |
 
-## 2. 逐条状态
+**一句话**：四项里第 2、3 项的小测试过了，第 4 项的环境问题是我误判、现已更正；
+第 1 项按原判据仍没过。G2 本身仍未被解禁。
 
-### 2.1 公平性：归因完成，但**未达标，也不调参**
+---
 
-- 预注册判据文件 `tests/fixtures/g2-fairness-thresholds.toml` 的 sha256 仍是
-  `0671a173bd4cb013eebba02ed44b8d53ead006844bef5a47b37c4ebe7109e594`（未改、未重录）。
-- 对 80 轮原始报告定量分析：L2 cc_on+cc_paced 共 20 轮，
-  **Pearson r(丢包差, 份额偏移) = −0.706**；两轮失败恰好是丢包不对称最大的两轮
-  （+2 → −0.070、+3 → −0.067），中继 shaping/dropped/limited 全 0，
-  `cc_off` 控制臂 20 轮全部 0.499–0.502（量具无方向偏置）。
-- **决定不把 β 从 0.5 改到 0.7、不重抽样**。探针 `main.rs:189` 硬编码 β=0.5，
-  判据先于样本登记；按结果改参数再重跑等于调参，违反约定。
-- 证据：`tests/ARCHIVE/evidence/g2-fairness-attribution-20261125.json`、
-  审计 §21。**所有 80 轮仍是整体 FAIL**，不宣称达标。
+## 1. 第 1 点：公平性在测什么，为什么 78/80 还算 FAIL？
 
-### 2.2 真实 Mainline DHT：原「token_len=0 / 引导节点超时」证据缺口**已补**
+### 1.1 实验设置（用人话讲）
 
-- 引导节点仍不给 token（`dht.transmissionbt.com` token_len=0、另两个超时），
-  但真实路由节点会签发：新增 `coldrevive-dht --walk` 输出 `contacts`、
-  `--get-peers` 输出 `node_list`（只读，不改既有结构）。
-- 新增可复现 harness `tests/e2e/w62/mainline_dht_announce_verify.py`：
-  真 token → announce ACK → 用**新的** get_peers RPC 在 ≥2 个不同公网节点回查到
-  `112.5.60.4:17800`。全部判据 met。
-- 更关键：新增 `--announce-seed` 直接调用守护进程 FR-18 用的
-  `cr_dht::announce_active_seed`，对真节点 `114.224.34.208:17700` 返回
-  `announced_verified`（token_len=4、peer_verified=true）。
-- 证据：`mainline-dht-announce-verify-20261125.json`、
-  `mainline-dht-daemon-path-20261125.log`。
-- **边界**：这是组件级/单轮真实网络证据；守护进程**自动长期运行**的 DHT 可达率
-  与资源数据仍未采集，不等于 S3/S6/G2。
+在 221 这台机器上用两个网络命名空间造出两条虚拟线路，让**两条数据流同时通过同一个中继**
+抢带宽。两种线路形状：
 
-### 2.3 守护进程多样种逐出：e2e 证据**已刷新**
+- **L1**：16 Mbit/s、20 ms 延迟、2 ms 抖动 —— 相当于比较宽的通道；
+- **L2**：8 Mbit/s、50 ms 延迟、5 ms 抖动 —— 相当于更窄、更卡、抖动更大的通道。
 
-- 当前 release 构建跑 `tests/e2e/p0/run_p0.py`：**77/77 PASS**。
-- FR-10 关键项：两个不同 infohash 的真实 BT 握手、cap=1、
-  `evictions=1`、`seed_active<=cap`、`second_infohash_wakes_its_own_task`、
-  `wake_count_never_exceeds_cap`。
-- 证据：`tests/ARCHIVE/evidence/p0-daemon-eviction-20261125.json`。
-- 边界：本机回环双进程，不是公网 NAT 证据。
+四种模式（arm）：
 
-### 2.4 公网 BT-over-punched-TCP：**BLOCKED（外部条件撤销）**，代码级组合已补
+- `cc_off`：关掉端侧拥塞控制，作为「量具是否偏袒某一条流」的对照；
+- `cc_on`：打开 AIMD + RTT 超时重传；
+- `cc_paced`：在 `cc_on` 基础上再加发送整形；
+- `cc_on_per_session_cap`：打开中继侧每会话字节桶，用来区分「中继限流」与「端侧退让」。
 
-- 真机复评：CPE TCP DNAT `112.5.60.4:19910` 本机连接超时、
-  `112.5.32.34:19920` ConnectionRefused；221/222 上 19910/19920 均无监听；
-  221 部署源码没有 `tcp_discovery`，221/222 二进制分别是 11-24 08:12 / 11-18 09:51，
-  早于桥键修复。**需要所有者先重建 DNAT 并部署当前构建**，才能按 DOC-30 做真机验证。
-- 代码级缺口已补：新增
-  `bound_source_port_socket_carries_real_librqbit_piece`（用 DOC-30 的
-  `connect_bound_blocking` 固定源端口原语）：登记键与 SYN 目的解耦
-  （v2.4.123 `PunchTargets` 不变量），真 librqbit 下载 1,048,576 B、
-  `finished=true`、逐字节一致、`served_registered=1`。
-- 证据：`bt-over-punch-public-blocked-20261125.json`、
-  `bound-port-bridge-e2e-20261125.json`、审计 §22。
-- 边界：回环组件级组合，不是 NAT 可达性证据。
+### 1.2 判据（事先写死，采样本之前已登记）
 
-## 3. 回归
+`tests/fixtures/g2-fairness-thresholds.toml`，sha256 `0671a173…` 未改：
 
-`CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`：
-**536 passed / 0 failed / 3 ignored**（v2.4.123 为 535，+1 绑定源端口 e2e），
-0 panic。证据 `tests/ARCHIVE/evidence/workspace-test-20261124-v124.log`。
+- 预热 3 秒，正式采样 10 秒；
+- 每种模式每轮各跑 10 轮；
+- 每条流实际收到的字节占比必须在 **45%–55%**；
+- Jain 公平指数 ≥ **0.95**；
+- **每一轮都要达标**，平均达标或中位数达标都不算（防止「9 轮很好、1 轮很糟」被平均掉）。
 
-## 4. 仍需所有者决定的事项
+### 1.3 结果（翻译成人话）
 
-1. **公平性整体 FAIL 如何处置**：维持原判据（不达标）；或书面批准一套**新的**
-   预注册判据（新时间戳 + 新 sha）后再采集新样本。本轮不代为选择。
-2. **恢复公网真机环境**：重建两条 CPE TCP DNAT、把当前构建部署到 221/222、
-   提供两个独立公网观测点，之后才能跑真机 BT-over-punched-TCP。
-3. **S6 语义复审**：G0-REVIEW 记载 S6 已于 2026-11-17 判 `pass(closed_with_exceptions)`；
-   机器字段按设计仍为 `not_run`。是否把人工判定折算进 G2，需所有者书面决定。
-4. **G2 出口判断**：即便上述证据齐备，`g2_claim` 也只能由所有者改；
-   工具与文档一律不自置 pass。
+| 线路 | 模式 | 结果 | 说明 |
+|---|---|---|---|
+| L1 | 四种模式 | 10/10 全过 | 宽通道下没问题 |
+| L2 | `cc_off` | 10/10 全过 | 说明量具本身没有偏袒某条流 |
+| L2 | `cc_on_per_session_cap` | 10/10 全过 | 说明中继限流不是失败原因 |
+| L2 | `cc_on` | **9/10** | 第 7 轮 0.430 / 0.570 |
+| L2 | `cc_paced` | **9/10** | 第 8 轮 0.433 / 0.567 |
 
-## 5. 一句话结论
+所以总共 80 轮里 78 轮达标，但判据是「每种模式 10 轮全达标」，
+L2 的 `cc_on` 和 `cc_paced` 各差 1 轮，**整体只能写 FAIL**。
 
-本轮把「Mainline DHT 可达性」和「守护进程多样种逐出」两项证据缺口补成真机/真引擎
-证据，给「BT-over-punched-TCP」补了绑定源端口的组件级闭环并如实登记公网 BLOCKED；
-公平性完成定量归因但按预注册判据仍整体 FAIL、不调参。G2 解禁的最终判断权在所有者。
+`r = −0.706` 不是「70% 通过率」，而是相关系数：
+「两条流丢包数差得越多，字节份额离 50% 越远」这个倾向比较强。
+两轮失败恰好是丢包不对称最大的轮次；中继 shaping/dropped/limited 全为 0，
+`cc_off` 的 20 轮都落在 0.499–0.502，说明不是量具偏心。
+
+### 1.4 为什么不改参数重跑
+
+AIMD 的 β（丢包后窗口减半系数）写死在探针 `main.rs:189`，当前是 0.5。
+把它改成 0.7 再重跑，等于**看到结果后改规则**，违反「判据先于样本」。
+所以原样保留 80 轮，既不删失败轮，也不靠多跑几次碰运气。
+
+---
+
+## 2. 第 2 点：真实 Mainline DHT 到底过没过？
+
+**答：这项组件测试过了，但不是 G2 过了。**
+
+原来的障碍是引导节点不给 token（`token_len=0`）或超时。这次换了做法：
+
+1. 用 `coldrevive-dht --walk` 从真实公网节点找到活节点；
+2. 向真实路由节点拿 **真 token**（不是伪造）；
+3. 发 announce，并确认收到 ACK；
+4. 用**新的** get_peers RPC，在 **2 个不同公网节点**上查到 `112.5.60.4:17800`；
+5. 新增 `--announce-seed` 直接调用守护进程 FR-18 用的 `announce_active_seed`，
+   对真节点返回 `announced_verified`（`token_len=4`、`peer_verified=true`）。
+
+判据 `walk_answered` / `token_issued` / `announce_accepted` /
+`fresh_rpc_recheck` / `multi_node_placement` 全部 met。
+
+**边界**：这是单次、组件级真实网络证据。守护进程自动长期运行时 DHT 的可达率、
+资源占用数据仍未采集，所以不能写 S3/S6/G2 通过。
+
+---
+
+## 3. 第 3 点：守护进程多样种逐出，是出了什么问题吗？
+
+**答：不是出了问题，是这个规则以前缺一份用当前构建跑出来的证据，现已补齐。**
+
+规则：配置 `max_active_seeds = 1` 时，索引里可以有很多个文件，但**同时处于热做种状态的只能有 1 个**。
+要验的是：
+
+- 第一个文件被唤醒时，确实开始做种（`seed_active=1`）；
+- 第二个不同 infohash 的文件被唤醒时，它会唤醒**自己的**做种任务；
+- 旧任务被逐出（`evictions=1`），但活跃数始终 ≤ 1；
+- 守护进程重启后索引与状态仍正确。
+
+当前 release 构建跑 `tests/e2e/p0/run_p0.py`：**77/77 PASS**，其中 FR-10 关键项
+两个不同 infohash 的真 BT 握手、cap=1、`evictions=1`、
+`second_infohash_wakes_its_own_task`、`wake_count_never_exceeds_cap` 全部通过。
+
+**边界**：这是本机回环双进程测试，不是公网 NAT 证据。它证明的是「逐出规则正确」，
+不是「公网可达」。
+
+---
+
+## 4. 第 4 点：CPE DNAT 与公网打洞——用户质疑正确，已更正
+
+### 4.1 我上一版错在哪里
+
+我据「本机连 `112.5.60.4:19910` 超时、`112.5.32.34:19920` refused、
+两机 `19910/19920` 无监听」写成「两条 CPE DNAT 映射都没了」。这是**误判**：
+
+- punch 端点本来就是**实验期间临时起的进程**，实验结束没有监听是正常的；
+- 本机跟 `112.5.60.4` 同出口，连公网地址超时是已记录的上游 hairpin 限制；
+- `ConnectionRefused` 通常恰恰说明映射存在、内网主机回了 RST。
+
+### 4.2 2026-11-25 复测结果
+
+| 检查 | 结果 |
+|---|---|
+| 222 → `112.5.60.4:19910`，221 侧临时监听 | `PAYLOAD PONG`，监听侧收到 `DATA PING` |
+| 221 → `112.5.32.34:19920`，222 侧临时监听 | `PAYLOAD PONG`，监听侧收到 `DATA PING` |
+| 221 从 `19910` 连两个独立公网观测点的 22 端口 | 82/119 两台 tcpdump 都看到 `112.5.60.4:31480`，EIM 一致 |
+| 立即用 `31480` 做双侧 TCP 同时打开 | 发现→打洞 3480 ms；两侧 `ok=true`、`bytes_roundtrip=true` |
+| 一次慢 11 秒的失败尝试 | BLOCKED，如实归档，不删；说明发现端口必须即时使用 |
+
+证据：
+
+- `tests/ARCHIVE/evidence/tcp-dnat-recheck-20261125.json`
+- `tests/ARCHIVE/evidence/tcp-eim-and-punch-recheck-20261125-fast.json`
+- `tests/ARCHIVE/evidence/tcp-punch-discovered-recheck-20261125-fast.json`
+- 慢速失败对照：`tcp-eim-and-punch-recheck-20261125.json`、
+  `tcp-punch-discovered-recheck-20261125.json`
+
+### 4.3 主机部署实况（分清「映射」和「代码」）
+
+- 221/222 上的 `/tmp/coldrevive-nat` 都是 2026-11-24 11:49，
+  `--help` 含 `--serve-observer` 与 `--discover-tcp-port`，足够跑 DOC-30 探针；
+- **陈旧的是 daemon**：221 release daemon 为 11-20，222 `/root/bin/coldrevived` 为 11-18；
+  221 仓库源码树也是 11-20。
+- 因此现在缺的是「**部署当前 daemon + 真 BT 数据跨公网走打洞路径**」，
+  不是「重建 DNAT」。
+
+回环组件级已补 `bound_source_port_socket_carries_real_librqbit_piece`：
+真 librqbit 下载 1,048,576 B，`finished=true`、逐字节一致、`served_registered=1`。
+但它不是公网证据，不能与 §4.2 的公网 TCP 探针互换。
+
+---
+
+## 5. 回归与归档
+
+- 全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`：
+  **536 passed / 0 failed / 3 ignored**（v2.4.124，0 panic）；本轮为证据与文档更正，无代码行为变更。
+- 所有本轮运行（含 BLOCKED 与失败对照）已归档 `tests/ARCHIVE/TEST-RUNS-2026-11-25.md`。
+- 审计更正见 `STAGE-DEBT-AUDIT-2026-11-21.md` §22.1–22.3。
+
+## 6. 需要所有者决定/提供的四件事
+
+1. **公平性**：维持原判据（整体 FAIL），或书面批准一套**新的**预注册判据
+   （新时间戳 + 新 sha）后再采集新样本。本轮不代为选择。
+2. **BT 公网闭环**：把当前 release daemon 部署到 221/222，
+   再用真 BT 文件片走公网打洞路径并读对端落地 md5。**DNAT 不需要重建**。
+3. **S6 语义**：G0-REVIEW 记载 S6 已于 2026-11-17 判 `pass(closed_with_exceptions)`；
+   机器字段按设计仍 `not_run`。是否折算进 G2 需书面决定。
+4. **G2 出口**：即便证据齐备，`g2_claim` 也只能由所有者改；工具与文档一律不自置 pass。
+
+## 7. 一句话结论
+
+第 2、3 项组件测试过了；第 4 项「NAT 被撤」是我误判、已用真机复测更正为 DNAT 与打洞探针 PASS，
+但仍缺当前 daemon 部署与真 BT 公网字节；第 1 项按预注册判据仍整体 FAIL。
+G2 解禁的最终判断权在所有者。
