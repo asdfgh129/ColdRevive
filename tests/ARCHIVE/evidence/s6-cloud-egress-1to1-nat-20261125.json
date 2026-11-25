@@ -1,0 +1,125 @@
+{
+  "recorded_at": "2026-11-25T15:08:40+08:00",
+  "question": "这两台云主机能不能设成 1:1 NAT？（S6 类别覆盖相关）",
+  "short_answer": "不需要设——云侧 EIP 已经是端口保持的 1:1 静态 NAT。决定 NAT 类别的是安全组端口白名单，不是 NAT 本身。",
+  "scope": "组件级网络定性；不改变 s6_status / 矩阵覆盖率 / 可达率，不构成 G2 结论",
+  "hosts": {
+    "82.157.68.159": {
+      "hostname": "VM-0-16-ubuntu",
+      "eth0": "10.2.0.16/22",
+      "default_gw": "10.2.0.1",
+      "kernel": "6.8.0-138-generic",
+      "os": "Ubuntu 24.04.4 LTS"
+    },
+    "119.29.150.254": {
+      "hostname": "VM-0-2-ubuntu",
+      "eth0": "10.1.0.2/22",
+      "default_gw": "10.1.0.1",
+      "kernel": "6.8.0-138-generic",
+      "os": "Ubuntu 24.04.4 LTS"
+    }
+  },
+  "finding_1_host_firewall_is_not_the_filter": {
+    "evidence": "iptables -S INPUT on both hosts is '-P INPUT ACCEPT' + '-A INPUT -j YJ-FIREWALL-INPUT'; the YJ chain only REJECTs tcp/udp dport 22 from a brute-force blocklist. nat table empty, ip_forward=0.",
+    "conclusion": "主机侧没有端口白名单；入向过滤发生在云边缘（安全组/EIP）。"
+  },
+  "finding_2_mapping_is_port_preserving_static_1to1": {
+    "method": "客户端绑定固定本地端口，向对端 STUN 发 Binding Request，读 XOR-MAPPED-ADDRESS",
+    "observations": [
+      {
+        "egress": "82.157.68.159",
+        "local_port": 40000,
+        "mapped": "82.157.68.159:40000",
+        "vantage": "119.29.150.254:3478"
+      },
+      {
+        "egress": "82.157.68.159",
+        "local_port": 40001,
+        "mapped": "82.157.68.159:40001",
+        "vantage": "119.29.150.254:3479"
+      },
+      {
+        "egress": "119.29.150.254",
+        "local_port": 40000,
+        "mapped": "119.29.150.254:40000",
+        "vantage": "82.157.68.159:3478"
+      },
+      {
+        "egress": "82.157.68.159",
+        "local_port": 40000,
+        "mapped": "82.157.68.159:40000",
+        "note": "第二个观测端口 3479 得到同一映射 → 映射轴 endpoint-independent"
+      }
+    ],
+    "conclusion": "公网端口 == 本地端口（端口保持），且与目的端口无关 → 真正的 1:1 静态 NAT（EIM）。"
+  },
+  "finding_3_class_is_a_function_of_the_security_group_allowlist": {
+    "design": "同一台主机、同一 NAT、同一时刻，A/B 两个本地端口：3479（安全组已放通）vs 40001（未放通）。从未被该主机接触过的源直接打入：119.29.150.254:5577（同对端不同源端口）、112.5.60.4:14393（完全不同公网 IP）打 3479；119.29.150.254:5579 打 40001。",
+    "a_allowed_port_3479": {
+      "mapping": [
+        "82.157.68.159:3479 (vantage port 3478)",
+        "82.157.68.159:3479 (vantage port 3479)"
+      ],
+      "inbound": [
+        {
+          "src": "119.29.150.254:5577",
+          "arrived": true,
+          "answered": true,
+          "reply": "POUT-3479"
+        },
+        {
+          "src": "112.5.60.4:14393",
+          "arrived": true,
+          "answered": true,
+          "reply": "POUT-3479"
+        }
+      ],
+      "tcpdump": [
+        "15:07:25.789695 In  IP 119.29.150.254.5577 > 10.2.0.16.3479: UDP, length 3",
+        "15:07:25.789846 Out IP 10.2.0.16.3479 > 119.29.150.254.5577: UDP, length 9",
+        "15:07:29.052683 In  IP 112.5.60.4.14393 > 10.2.0.16.3479: UDP, length 3",
+        "15:07:29.052800 Out IP 10.2.0.16.3479 > 112.5.60.4.14393: UDP, length 9"
+      ],
+      "nat_class_by_rfc4787": "full-cone（映射 EIM + 过滤 EIF）"
+    },
+    "b_blocked_port_40001": {
+      "mapping": [
+        "82.157.68.159:40001 (vantage port 3478)",
+        "82.157.68.159:40001 (vantage port 3479)"
+      ],
+      "inbound": [
+        {
+          "src": "119.29.150.254:5579",
+          "arrived": false,
+          "answered": false
+        },
+        {
+          "src": "112.5.60.4",
+          "arrived": null,
+          "note": "本轮未从 221 打 40001，未测，不得写成已拒"
+        }
+      ],
+      "tcpdump": "该窗口内 10.2.0.16.40001 只有 4 个出向包（对应两次 STUN 探测），无任何入向包；对照 3479 的同窗口既有入向也有出向",
+      "nat_class_by_rfc4787": "port-restricted（入向在边缘被丢弃，主机根本没看到）"
+    },
+    "conclusion": "同一 NAT 上，放通端口表现为 full-cone、未放通端口表现为 port-restricted。此前把云主机判为 port-restricted-cone 时给出的『入向只放行已建立映射』是错的——过滤是按目的端口白名单，无状态。"
+  },
+  "finding_4_what_actually_needs_a_human": {
+    "zero_change_needed_to_get_1to1": true,
+    "to_get_a_full_cone_classification": "安全组入向放通 UDP 端口区间（分类工具用临时端口，故需较宽区间，如 1024-65535）",
+    "to_get_a_full_cone_node_without_wide_range": "只放通一个固定端口即可：因为映射端口==本地端口，节点监听该端口就具备 full-cone 入向能力",
+    "why_not_automatable_from_inside": "安全组由云控制台/API 管理，VM 内部无凭证；本轮未尝试任何绕过"
+  },
+  "limitations": [
+    "只测 UDP；TCP 入向是否同样按端口白名单未测。",
+    "只有两个云出口各一台主机，云厂商侧的实现在其他地域/账号可能不同。",
+    "信令链路上仍使用 82/119 现有 STUN 对；测试期间 82 的 STUN 被临时停过一次，已按原参数恢复（--serve-stun 0.0.0.0:3478 --stun-alt 0.0.0.0:3479）。",
+    "A/B 中 40001 的『未到达』只说明该端口不在白名单，不代表该端口在云端被永久拒绝（改安全组可变）。"
+  ],
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  }
+}
