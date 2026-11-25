@@ -1,3 +1,28 @@
+## [2.4.135] - 2026-11-25 — ADR-016 复审 R1：维持 eMule 语义，触发条件改为「≥4 出口且 ≥3 类别」
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。本轮无源码改动，只改判据文本与记录。
+
+- **所有者决定（2026-11-25，三选一取第 ① 项）**：维持 eMule 式可达语义，
+  **不恢复完整类别矩阵**；复审触发条件由「M4 前或 ≥4 个不同真实出口可用」
+  改为「**≥4 个不同真实出口** 且 **≥3 个不同 NAT 类别** 同时成立」（先到为准）。
+- **理由**：原文字只看出口数量，「加一台同类主机」就会让它反复成立、每次复审结论都相同，
+  等于把一次判定摊成无限次；双条件让触发对应「环境可能出现新类别」这件事。
+- **判定未放松任何约束**：`class_coverage_required_for_pass=false`、
+  `matrix_complete_is_pass_condition=false`、真实设备 / 两台物理主机 / 每路径 30 次真实
+  `WAKEUP_ACK` / 不自动 pass 全部不变；`s6_status` 仍 `not_run`；
+  `restricted-cone`、`CGNAT` 继续登记为已知限制。
+- **记录与同步**：`ADR-016` 升 v1.1，新增 `## 复审记录 R1`（含触发、决定、理由、
+  未放松项、同步落点表）；同步 `tests/fixtures/g2-spike-verdicts.toml`
+  （`[[review_trigger]] s6.semantics` 的 `trigger` + 新增 `reviewed_at` /
+  `review_outcome` / `trigger_history`）、`tests/spikes/s6/nat_matrix_config.json`
+  （`s6_stance_review_trigger` + `_reviewed_at` / `_review_outcome` / `_review_record` /
+  `_trigger_history`）、`docs/02-architecture/adr/README.md` 索引行、`RISK.md` R-04 段；
+  `G0-REVIEW.md` 保持 2026-11-17 原文字（日期化记录，不改写历史）。
+- **自检**：`python tests/spikes/s6/nat_matrix.py --self-test` → **24/24 PASS**，
+  其中 `s6_stance_is_emule_like_reach`、`class_coverage_not_a_pass_condition` 保持绿。
+- **仍未决**：S6 判定是否**折算进 G2 出口**——与触发条件是两件事，本轮未动。
+
 ## [2.4.134] - 2026-11-25 — 广州云出口放通后实测 full-cone，S6 类别覆盖 2/4 → 3/4
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

@@ -115,7 +115,15 @@ claims_forbidden = [
 [[review_trigger]]
 id = "s6.semantics"
 what = "ADR-016 的 eMule 式语义是否恢复为完整类别矩阵"
-trigger = "M4 前，或 ≥4 个不同真实出口可用时（先到为准）"
+trigger = "M4 前，或 ≥4 个不同真实出口 且 ≥3 个不同 NAT 类别 同时成立时（先到为准）"
+# 2026-11-25 R1：所有者维持 eMule 语义，触发条件由「≥4 出口」改为上面的双条件。
+# 原文字只看出口数，加一台同类主机就会反复触发、结论每次相同。
+# 记录见 ADR-016 §复审记录 R1。
+reviewed_at = "2026-11-25"
+review_outcome = "维持 eMule 式可达语义；class_coverage_required_for_pass 仍 false；不恢复完整类别矩阵"
+trigger_history = [
+  "2026-11-17 ~ 2026-11-25：M4 前，或 ≥4 个不同真实出口可用时（先到为准）",
+]
 
 [[review_trigger]]
 id = "s5.fallback"

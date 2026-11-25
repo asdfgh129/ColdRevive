@@ -11,7 +11,11 @@
   "s6_stance_decided_by": "项目所有者",
   "s6_stance_decided_at": "2026-11-17",
   "s6_stance_adr": "ADR-016",
-  "s6_stance_review_trigger": "M4 前，或当 >=4 个不同真实出口可用时（先到为准），重新评审是否恢复完整类别矩阵；维持本判据须追加复审记录，不得默示延期",
+  "s6_stance_review_trigger": "M4 前，或当「>=4 个不同真实出口」且「>=3 个不同 NAT 类别」同时成立时（先到为准），重新评审是否恢复完整类别矩阵；维持本判据须追加复审记录，不得默示延期",
+  "s6_stance_reviewed_at": "2026-11-25",
+  "s6_stance_review_record": "ADR-016 §复审记录 R1",
+  "s6_stance_review_outcome": "维持 eMule 式可达语义，不恢复完整类别矩阵；class_coverage_required_for_pass 仍 false、matrix_complete_is_pass_condition 仍 false、s6_status 仍 not_run",
+  "s6_stance_review_trigger_history": ["M4 前，或当 >=4 个不同真实出口可用时（先到为准），重新评审是否恢复完整类别矩阵；维持本判据须追加复审记录，不得默示延期"],
   "s6_stance_summary": "阶段性判据：达到 eMule 式可达语义即可（HighID 直连 / LowID 只走中继 / 失败可预知）。NAT 类别覆盖降级为描述性清单，不再是 pass 前提；真实设备、两台物理主机、30 次真实 WAKEUP_ACK、不自动 pass 一条不松。",
   "class_coverage_required_for_pass": false,
   "s6_pass_criteria": [

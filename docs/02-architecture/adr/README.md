@@ -32,7 +32,7 @@ updated: 2026-11-18
 | [ADR-013](ADR-013-emule-lowid-declaration.md) | 节点如何告知自身可达性 | 借 eMule LowID：注册时自我声明 direct/relay-only/unknown + TTL | ✅ 已接受（2026-11-16） | M2 / S6 |
 | [ADR-014](ADR-014-relay-data-budget.md) | 中继数据面是否限流 | 全局字节令牌桶 + 信令（≤4 KiB）优先 | ✅ 已接受（2026-11-16） | 部署中继带宽时 |
 | [ADR-015](ADR-015-dependency-layering.md) | 是否继续全局零第三方依赖 | 取消全局零依赖：协议层保持 std-only，`cr-engine`/`coldrevived` 可用 librqbit + tokio | ✅ 已接受（2026-11-16 所有者决策） | 升级 librqbit / 补种上线前复核体积与内存 |
-| [ADR-016](ADR-016-s6-emule-like-reach.md) | S6 是否仍须穷举 4 类 NAT + CGNAT | **阶段性改为 eMule 式可达语义**：类别覆盖降为描述性清单，不再是 pass 前提；真实设备 / 两台主机 / 30 次观测 / 不自动 pass 一条不松 | ✅ 已接受（2026-11-17 所有者决策） | **M4 前**，或当 ≥4 个不同真实出口可用时（先到为准） |
+| [ADR-016](ADR-016-s6-emule-like-reach.md) | S6 是否仍须穷举 4 类 NAT + CGNAT | **阶段性改为 eMule 式可达语义**：类别覆盖降为描述性清单，不再是 pass 前提；真实设备 / 两台主机 / 30 次观测 / 不自动 pass 一条不松 | ✅ 已接受（2026-11-17 所有者决策）；2026-11-25 复审 R1 维持 | **M4 前**，或当 **≥4 个不同真实出口且 ≥3 个不同 NAT 类别** 同时成立时（先到为准）；2026-11-25 起 |
 
 | [ADR-017](ADR-017-active-seed-pool.md) | 谁能同时供片 | 由 `cr-sched` 唯一决策；`Engine::activate` 只能经 `wake_seed`，满载逐出最久未用 | ✅ 已接受（2026-11-18；v2.4.87 已接多样本，守护进程级逐出待复跑） | 多样本签名唤醒复跑时 |
 | [ADR-018](ADR-018-tcp-hole-punch.md) | TCP 打洞怎么做、算不算完成 | 最小 FFI + `poll`/`SO_ERROR` 判据；**原语完成**；handoff 回环 E2E 见 ADR-021，公网双侧仍 BLOCKED | ✅ 已接受（2026-11-18） | 有第二个 NAT 后主机时复跑公网双侧 |

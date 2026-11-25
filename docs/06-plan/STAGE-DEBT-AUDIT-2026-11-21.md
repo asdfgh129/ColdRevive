@@ -1115,6 +1115,23 @@ B`192.168.1.222:19920`，B `engine.listen=127.0.0.1:19920` + `wake_on_handshake=
     **措辞红线**：这类 full-cone 是「云侧 1:1 静态 NAT + 安全组放通」的组合行为，
     必须照此写明；不得写成「找到了一台天然 full-cone 主机」，也不得因类别变 3 类
     就说「矩阵通过」——`s6_status` 仍 `not_run`，可达率未采集。
+  - **复审已执行（2026-11-25，所有者选 ①）**：维持 eMule 式可达语义，**不恢复**
+    完整类别矩阵；复审触发条件由「≥4 个不同真实出口」改为
+    「**≥4 个不同真实出口且 ≥3 个不同 NAT 类别**同时成立」（先到为准）。
+    理由：原文字只看出口数量，加一台同类主机就会反复触发、每次结论相同，等于把一次
+    判定摊成无限次。记录在 `ADR-016 §复审记录 R1`，并已同步三处机器可读落点：
+    `tests/fixtures/g2-spike-verdicts.toml`（`[[review_trigger]] s6.semantics`，含
+    `reviewed_at` / `review_outcome` / `trigger_history`）、
+    `tests/spikes/s6/nat_matrix_config.json`（`s6_stance_review_trigger` +
+    `s6_stance_reviewed_at` / `_outcome` / `_record` / `_trigger_history`）、
+    `docs/02-architecture/adr/README.md` 索引行；`RISK.md` R-04 段同步。
+    `G0-REVIEW.md` 保持 2026-11-17 原文字（日期化记录，不改写历史）。
+    判定未放松任何约束：`class_coverage_required_for_pass=false` 不变、
+    `matrix_complete_is_pass_condition=false` 不变、真实证据要求不变、
+    `s6_status` 仍 `not_run`。`python tests/spikes/s6/nat_matrix.py --self-test`
+    → **24/24 PASS**（含 `s6_stance_is_emule_like_reach`、
+    `class_coverage_not_a_pass_condition`）。
+  - **仍未决**：S6 判定是否**折算进 G2 出口**，这件和「触发条件」是两件事，本次未决。
 - S6 判定引用的部分报告在 gitignored 的 `tests/spikes/s6/reports/`，
   单凭 checkout 不能复现；证据可移植性是独立欠账，不以本轮补材料冒充已解决。
 - 复核措辞边界：只能说「按 eMule 语义结案、带已知限制」；禁止表述为
