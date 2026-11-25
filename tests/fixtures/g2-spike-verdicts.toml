@@ -24,6 +24,62 @@ g2_note = """
 cr-dht 等骨架 crate 的引擎与资源治理、LRU 冷热调度器接引擎、中继生产化收尾、BT/TCP 打洞。
 """
 
+# 上面 g2_note 是 2026-11-17 的原始注记，按惯例不重写。以下为 2026-11-25 的状态复核：
+# 只更新「这四项现在是什么状态」，**不是达标声明**，也不替代各项自己的证据要求。
+g2_note_20261125 = """
+- cr-dht：已不是骨架（2043 行，node/table/krpc/announce 齐全），daemon 侧 `dht_daemon.rs` 接 `cr_dht::announce`；
+  10 分钟守护进程长跑取得 verified announce（DOC-31 §2）。引擎已实现；「资源治理」由 S3 双栈资源增量观测覆盖（10k/50k），
+  不是本轮新增证据。
+- LRU 冷热调度器：`sched::wake_seed(&mut LruScheduler, ...)` 已接引擎侧调度，不再是未接线的独立模块。
+- 中继生产化收尾：公网 relay `119.29.150.254:7101` 在用，BT 经中继落地 md5 一致；仍欠的是运维项（限流/观测/告警），
+  未单列验收，不写成「已完成」。
+- BT/TCP 打洞：BT 公网握手即唤醒已 PASS（v2.4.132），但走的是运营侧固定 DNAT = `direct-via-static-dnat`；
+  真·`punched-direct` 仅 3/30，已作为 S6 折算例外第 4 条明写。
+结论：四项里两项已落地（cr-dht、LRU）、一项为运维欠账（中继）、一项只有部分结果（打洞 3/30 且形态须区分）。
+本复核不为任何一项签发「已验证达标」。
+"""
+
+# ---------------------------------------------------------------------------
+# G2 公平性书面例外（DOC-33 / EX-1，2026-11-25 所有者签署）
+# ---------------------------------------------------------------------------
+# 只影响「这一项怎么记账、哪些话不许说」，不改判定：判据仍 FAIL。
+# 判据文件 tests/fixtures/g2-fairness-thresholds.toml 未改（sha256 见下）。
+# 决定单：docs/06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md
+[fairness_exception]
+id = "EX-1"
+owner = "项目所有者"
+decided_at = "2026-11-25T09:28:00+08:00"
+written_at = "2026-11-25T17:15:00+08:00"
+decision_ref = "docs/06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md"
+criterion_source = "tests/fixtures/g2-fairness-thresholds.toml"
+criterion_sha256 = "0671a173bd4cb013eebba02ed44b8d53ead006844bef5a47b37c4ebe7109e594"
+criterion_unchanged = true
+verdict = "FAIL"  # 预注册判据 aggregation=all_rounds_must_pass 的直接结果，例外不改写
+exception_kind = "accept_and_defer"  # 接受该结果 + 本版不重采 + 下一版以新判据重测
+rounds_total = 80
+rounds_passed = 78
+failing_rounds = [
+  "L2/cc_on 第 7 轮：份额 0.430 / 0.570，Jain 未达 0.95",
+  "L2/cc_paced 第 8 轮：份额 0.433 / 0.567，Jain 未达 0.95",
+]
+attribution = "r(丢包差, 份额偏移) = -0.706；失败轮丢包不对称最大；中继 shaping/dropped/limited 全 0；cc_off 落 0.499-0.502 ⇒ 不是限流、不是量具偏心"
+
+consequences = [
+  "C1 判定状态仍是 FAIL；后续引用必须带 78/80 与两轮具体数值，不得只说「有小偏差已接受」",
+  "C2 例外只覆盖「本版不修 β、不改阈值、不重采」，不覆盖「公平性 NFR 达标」或「慢链路下不出现分账偏移」",
+  "C3 失效条件：端侧机制改动（β/RTO/pacing）、链路形状或物理环境变化（换机/换 kernel/qdisc/netem/跨物理主机）、或所有者重新预注册判据——出现任一即作废并回退到未决",
+  "C4 下一版义务：先登记新判据（新时间戳+新 sha256）再采样；证据须含 git_commit/kernel_release/tc_qdisc_and_class 与逐轮原始目录；不得用「重跑同一判据这次全过」替代；不得调 β 解释旧数据",
+  "C5 措辞：可写「按预注册判据整体 FAIL（78/80），所有者书面接受」；不可写「公平性达标 / 带例外 PASS / closed_with_exceptions / 已定位并修复」",
+  "C6 残留风险登记 RISK R-16：慢链路开启端侧拥塞控制时约每 10 轮 1 轮偏到 43/57 量级，仅单机 netns 观测",
+]
+what_it_does_not_mean = [
+  "不表示公平性 NFR 达标",
+  "不表示 G2 达标或 g2_claim 可变 true",
+  "不表示「时间过去了所以算过」",
+  "不表示可以把单机 netns 结论外推到跨公网 / 跨物理主机",
+]
+g2_exit_booking = "公平性一项以 EX-1 带例外关闭；出口记录必须同时可见 78/80 与两轮数值"
+
 [[spike]]
 id = "S3"
 status = "pass"
@@ -127,7 +183,7 @@ g2_exit_fold_in_signed_at = "2026-11-25"
 g2_exit_fold_in_decided_by = "project-owner"
 g2_exit_fold_in_decision_ref = "docs/06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md"
 g2_exit_fold_in_l2_wording = "可对外写「公网可达性按 eMule 语义结案」，但必须同时给出 fold_in_exceptions 四条"
-g2_exit_fold_in_highid_wording = "both"  # 并列：既写「HighID direct 3/30」，也写报告 limitation 的自述
+g2_exit_fold_in_highid_wording = "highid_reachable"  # 2026-11-25 所有者选「HighID 可达」；分母 3/30 必须同现，报告 limitation 原文仍保留在归档报告内
 fold_in_exceptions = [
   "类别覆盖 3/4：restricted-cone 按 ADR-016 §R2 排除，cgnat 未覆盖；这是范围排除，不是已覆盖",
   "HighID 侧 direct 3/30，属描述性观测，不含可达率含义",

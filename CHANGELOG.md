@@ -1,3 +1,25 @@
+## [2.4.140] - 2026-11-25 — 公平性 FAIL 写成书面例外 EX-1（含六条后果）；HighID 措辞定为「HighID 可达，direct 3/30」
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。无源码改动。
+
+- **新增 DOC-33** `docs/06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md`：把「公平性按预注册判据
+  整体 FAIL、所有者接受、本版不重采」写成**可引用的书面例外 EX-1**，并把后果写死为 **C1–C6**：
+  C1 判定仍是 FAIL 且引用必须带 78/80 与两轮数值；C2 结论强度上限（只覆盖「本版不修 β/不改阈值/不重采」，
+  不覆盖 NFR 达标）；C3 三条失效条件（端侧机制改动 / 链路形状或物理环境变化 / 重新预注册判据）；
+  C4 下一版义务（先登记新判据再采样、补 `git_commit`/`kernel_release`/`tc_qdisc_and_class`
+  与逐轮原始目录、不得用「重跑同一判据这次全过」替代）；C5 正负措辞清单；C6 残留风险。
+- **性质写明**：例外 = 「这个 FAIL 怎么被接受、影响哪些表述」，**不是改判、不是带例外 PASS**。
+  `closed_with_exceptions` 是 S6 的词，公平性这一项不适用。
+- **判据文件未动**：`tests/fixtures/g2-fairness-thresholds.toml` sha256
+  `0671a173…`（与预注册时逐字节相同），例外落在裁定夹具 `g2-spike-verdicts.toml` → `[fairness_exception]`，
+  不写回判据文件（否则等于事后改规则）。
+- **HighID 措辞改单选**：`g2_exit_fold_in_highid_wording` 由 `both` 改为 `highid_reachable`
+  （所有者 2026-11-25 17:12 指定）。约束：**分母 `3/30` 必须同现**，不得简写为「HighID 可达」
+  或「稳定可达」，不得据此算比例；归档报告 `limitation` 原文不改，仍作审计出处。
+- **同步落点**：DOC-31 §0 摘要行、§1.4、§6-1、§7；DOC-32 §5 勾选与口径说明、落点表；
+  `RISK.md` 新增 **R-16**（判定阈值：用户可感知的长期偏斜，或跨物理主机复现）。
+
 ## [2.4.139] - 2026-11-25 — DOC-32 签署并同步：S6 按「条件计入」关闭 G2 出口的 NAT 可达性项
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、

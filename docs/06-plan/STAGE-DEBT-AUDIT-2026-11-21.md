@@ -687,6 +687,11 @@ Jain ≥ 0.95、两条流稳态份额均在 [0.45, 0.55]，且 `all_rounds_must_
 `data-rate=0` 被夹成 1 B/s、cap 高于自然速率、CRLF、分析脚本 f-string）均已归档后修正，
 阈值始终未改。机制实现仍只有 `nat.udp_cc_*` 与 per-session cap，不能写「公平性达标」。
 
+**2026-11-25 补记**：最终 80 轮（L1 四臂 10/10；L2 `cc_off` 10/10、`cc_on_per_session_cap` 10/10、
+`cc_on` 9/10、`cc_paced` 9/10）仍按同一预注册规则整体 FAIL，所有者已签**书面例外 EX-1**
+（[DOC-33](G2-FAIRNESS-EXCEPTION-2026-11-25.md)）：接受结果、本版不调 β/不改阈值/不重采，
+**例外不改判**，下一版须以新判据重测（新时间戳 + 新 sha）。本节「不能写公平性达标」这句继续有效。
+
 ### 20.2 FR-25 daemon 公网闭环
 
 `ed2k_tasks::download_cmd` 新增 opt-in `--out`：只有 `hash_matches`、`content_matches`、
