@@ -1,0 +1,273 @@
+{
+ "schema": "coldrevive.nfr02.engine-idle-priority/v1",
+ "recorded_at": "2026-11-25T20:45:00+08:00",
+ "clause": "SRS NFR-02 第二分句：造种任务仅以 Idle 优先级运行",
+ "closes_gap": "G-4",
+ "verdict": "pass",
+ "one_line": "引擎线程（cr-engine-wrk）以 nice 19 + SCHED_IDLE 运行；唤醒关键路径与 std 线程保持默认优先级；关掉开关后同一批线程回到 nice 0 / SCHED_OTHER（负向对照）。",
+ "method": {
+  "how": "读取 /proc/<pid>/task/<tid>/stat 的第 18/19/39 字段（priority/nice/policy）与 comm，逐个线程判定；3 次快照、间隔 3 s，要求**每一次**都成立。",
+  "not_used": "不拿 /health.idle_priority 的自述当结论——它只作对照（自述 vs 实况）。",
+  "probe": "scripts/nfr02_thread_prio_probe.py",
+  "role_rule": "comm == 'cr-engine-wrk' → engine；comm 前缀 'cr-data-plane' 或主线程 → wake_critical；其余 → std"
+ },
+ "runs": {
+  "default_on": {
+   "config": {
+    "engine": {
+     "listen": "127.0.0.1:19910"
+    },
+    "idle_priority": "缺省（默认 true）"
+   },
+   "pid": 675714,
+   "summary": {
+    "engine_threads": 3,
+    "engine_nice": [
+     19
+    ],
+    "engine_policy": [
+     "SCHED_IDLE"
+    ],
+    "engine_all_idle_in_every_snapshot": true,
+    "non_engine_threads": 7,
+    "non_engine_all_default_in_every_snapshot": true
+   },
+   "health_idle_priority": {
+    "requested": true,
+    "applied": 3,
+    "failed": 0,
+    "unsupported": 0
+   },
+   "threads": [
+    {
+     "tid": 675714,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "main"
+    },
+    {
+     "tid": 675715,
+     "comm": "cr-data-plane",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675716,
+     "comm": "cr-data-plane",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675717,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675718,
+     "comm": "cr-engine-wrk",
+     "nice": 19,
+     "policy": "SCHED_IDLE",
+     "role": "engine"
+    },
+    {
+     "tid": 675719,
+     "comm": "cr-engine-wrk",
+     "nice": 19,
+     "policy": "SCHED_IDLE",
+     "role": "engine"
+    },
+    {
+     "tid": 675720,
+     "comm": "cr-engine-wrk",
+     "nice": 19,
+     "policy": "SCHED_IDLE",
+     "role": "engine"
+    },
+    {
+     "tid": 675721,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675722,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675723,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    }
+   ],
+   "raw_file": "nfr02-engine-idle-priority-20261125.on.json",
+   "raw_sha256": "471064535f74b503d804dd9d87d6e8e1d8cbb3d332da16f5405d9396891f6a7d",
+   "note": "3 个引擎线程全部 idle：2 个 worker + 1 个仍在存活的阻塞池线程（真实传输后）。传输前的那次快照是 2 个（只有 worker）。"
+  },
+  "negative_control_off": {
+   "config": {
+    "engine": {
+     "listen": "127.0.0.1:19910",
+     "idle_priority": false
+    }
+   },
+   "pid": 675344,
+   "summary": {
+    "engine_threads": 2,
+    "engine_nice": [
+     0
+    ],
+    "engine_policy": [
+     "SCHED_OTHER"
+    ],
+    "engine_all_idle_in_every_snapshot": false,
+    "non_engine_threads": 7,
+    "non_engine_all_default_in_every_snapshot": true
+   },
+   "health_idle_priority": {
+    "requested": false,
+    "applied": 0,
+    "failed": 0,
+    "unsupported": 0
+   },
+   "threads": [
+    {
+     "tid": 675344,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "main"
+    },
+    {
+     "tid": 675346,
+     "comm": "cr-data-plane",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675347,
+     "comm": "cr-data-plane",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675348,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675349,
+     "comm": "cr-engine-wrk",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675351,
+     "comm": "cr-engine-wrk",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675352,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675353,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675354,
+     "comm": "coldrevived",
+     "nice": 0,
+     "policy": "SCHED_OTHER",
+     "role": "std"
+    }
+   ],
+   "raw_file": "nfr02-engine-idle-priority-20261125.off.json",
+   "raw_sha256": "677ab5c1dd348573309ba0b6a5347b5c960e61489da980c2e305d925c487ab1e",
+   "why": "证明这不是「标签」：同一批线程名仍在，优先级回到 nice 0 / SCHED_OTHER，判定随之为 fail。若探针只会打印 pass，这条会暴露它。"
+  }
+ },
+ "functional_check": {
+  "what": "1 MiB 真实传输在引擎线程 Idle 状态下仍然完成，落地 md5 一致",
+  "evidence": "tests/ARCHIVE/evidence/bt-wake-on-handshake-lan-idleprio-20261125.json",
+  "verdict": "PASS",
+  "landed_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "guard": {
+   "handshakes": 1,
+   "woken": 1,
+   "missed": 0
+  },
+  "seed_after": "hot",
+  "scope": "LAN：A(221) 做种、B(222) 拨入并唤醒；不是公网可达性结论，也不构成 G2/S6 任何新证据"
+ },
+ "provenance": {
+  "git_commit": "9ae510a84f1ca6a8f32b8f9f6a939196d2575c97",
+  "git_commit_subject": "v2.4.147: thread name must fit Linux TASK_COMM_LEN (15)",
+  "binary_sha256": "ef34652b1419e1bf44d929e0d3673bb0e8f8b53d0e05b54ccd69290f3036d82a",
+  "binary_path": "/opt/cr-punch-pub/221/coldrevived",
+  "previous_binary_sha256": "74859068c96113048c0461561d93b339470622ac41165fce72d25f213cbc480c",
+  "host": "221 (192.168.1.221)，systemd unit coldrevived-a",
+  "kernel_release": "6.2.0-39-generic",
+  "nproc": 2,
+  "tokio": "1.54.1",
+  "tc_qdisc_and_class": "ens160: root qdisc mq（class mq :1 / :2），叶子 pfifo_fast；无自建 shaping/class。本项（线程优先级）与 qdisc 无因果关系，按 DOC-34 §6「新增采集须带该字段」如实记录，不据此推论网络行为。",
+  "build": "git archive HEAD src Cargo.toml Cargo.lock → tar 同步 → CARGO_INCREMENTAL=0 cargo build --release --offline -p coldrevived（32.75 s）"
+ },
+ "platform_coverage": {
+  "linux": "实测（本文件）",
+  "windows": "单测实测：cargo test -p cr-engine --lib prio → 5/5；其中 runtime_worker_task_runs_at_idle_priority 在**真正跑在 worker 上的 task 里**读回 THREAD_PRIORITY_IDLE(-15)",
+  "macos": "**未实现**（cr_engine::prio 返回 Unsupported，/health 报 unsupported）。darwin 有 PRIO_DARWIN_BG 这条路，但本仓库无 mac 机器实测——按规矩不写「支持」。"
+ },
+ "granularity": {
+  "what_is_idle": "引擎 worker 线程 + 引擎阻塞池线程（librqbit 的做种/分片校验/上传/下载都在这两类上）",
+  "what_is_not": "cr-guard 的 68 B 握手、cr-data-plane 的 UDP 数据面、HTTP API、DHT/KAD 线程——都保持默认优先级（NFR-04 唤醒 P95 不受影响）",
+  "why_not_process": "整进程降级会把唤醒时延一起拖下去，那是拿 NFR-04 换 NFR-02",
+  "known_boundary": "librqbit 只有一个线程池，无法再细到「只降做种、不降下载」；成员角色的下载同样走这批线程，因此也会以 Idle 运行（写入 CONFIG.md 与 EngineOptions 文档）"
+ },
+ "implementation_notes": [
+  "tokio 1.54.1 的 Builder::on_thread_start 只由阻塞池调用（after_start），多线程 worker 之所以也被覆盖，是因为 Launch::launch 用 spawn_blocking 起 worker——worker 本身就是阻塞池线程。这是版本相关实现细节，故判定一律靠读回。",
+  "Linux 读回必须用 /proc/thread-self/stat：/proc/self 指向线程组组长，子线程里读到的是主线程的值（第一版就因此把「已生效」误判成「没生效」）。",
+  "线程名必须 ≤ 15 字符：Linux TASK_COMM_LEN=16（含 NUL），comm 会被静默截断。用 16 字符名时 /proc 里只剩 15 字符，按全名比对的探针报「0 个引擎线程」——看着像没降级，其实是名字对不上。",
+  "优先级在**线程出生点**设置（on_thread_start），进程内没有任何代码路径会把它改回去；因此「传输前/后两次快照都 idle」可覆盖传输全过程。"
+ ],
+ "do_not_claim": [
+  "NFR-02 整体达标（第一分句的空闲 CPU 见 nfr02-idle-cpu-20261125.json；本文件只覆盖第二分句）",
+  "整个进程处于 Idle 优先级",
+  "G2 以外的新达标（G2 已于 2026-11-25T17:20 由所有者声明，见 DOC-34）",
+  "任何可达率/成功率"
+ ],
+ "wording": {
+  "ok": [
+   "引擎线程以 Idle 优先级运行（nice 19 + SCHED_IDLE）",
+   "造种任务在 Idle 类，唤醒路径未降级"
+  ],
+  "forbidden": [
+   "NFR-02 已全部实测达标（第一分句另据）",
+   "所有线程 Idle",
+   "macOS 已支持"
+  ]
+ }
+}

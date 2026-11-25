@@ -1,1 +1,3 @@
 nfr02-idle-cpu-20261125.raw.json -text
+nfr02-engine-idle-priority-20261125.on.json -text
+nfr02-engine-idle-priority-20261125.off.json -text

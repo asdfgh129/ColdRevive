@@ -1,0 +1,864 @@
+   Compiling coldrevive-ed2k v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-ed2k)
+   Compiling cr-api v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-api)
+   Compiling cr-engine v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-engine)
+   Compiling coldrevive-relaybench v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-relaybench)
+   Compiling coldrevive-relay v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-relay)
+   Compiling coldrevive-fairness-probe v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-fairness-probe)
+   Compiling coldrevive-nat v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-nat)
+   Compiling coldrevive-cli v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevive-cli)
+   Compiling cr-nat v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-nat)
+   Compiling cr-wake v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-wake)
+   Compiling cr-kad v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-kad)
+   Compiling cr-store v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\crates\cr-store)
+   Compiling coldrevived v0.1.0 (C:\Users\bemin\WorkBuddy\ColdRevive\src\bins\coldrevived)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.54s
+     Running unittests src\main.rs (target\debug\deps\coldrevive_agent-620e85e7b2950573.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_cli-8456bc6e543b0113.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_dht-2cf58f9ce77594e3.exe)
+
+running 3 tests
+test tests::garbage_is_rejected_with_explicit_error ... ok
+test tests::hostname_is_resolved_to_ipv4 ... ok
+test tests::literal_ip_port_passes_through ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_ed2k-38337bd49a6d0bf8.exe)
+
+running 5 tests
+test tests::pacer_defaults_match_g0_rate ... ok
+test tests::parse_key_hex_accepts_exact_32_hex_and_rejects_junk ... ok
+test tests::parses_kad_search_res_with_a_real_tag_shape ... ok
+test tests::rejects_strn_tag_on_kad_path ... ok
+test tests::stun_on_kad_socket_reads_xor_mapped_address ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_fairness_probe-1d3121c0be50417c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_nat-980a01ed9602644a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_relay-7072f9b9c511b529.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevive_relaybench-dbe32d75c8368be7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\main.rs (target\debug\deps\coldrevived-d5ecf526f23e0e24.exe)
+
+running 82 tests
+test bt::tests::compact_tracker_response_is_valid_bencode_prefix ... ok
+test bt::tests::no_peer_yields_empty_bencode_peer_list ... ok
+test bt::tests::noncompact_tracker_response_contains_peer_dict ... ok
+test bt::tests::scrape_echoes_binary_info_hash ... ok
+test bt::tests::scrape_without_info_hash_is_empty_files_dict ... ok
+test byte_accounting_tests::byte_accounting_never_claims_peer_receipt ... ok
+test data_plane::tests::attach_without_peer_confirmation_fails_honestly ... ok
+test data_plane::tests::punched_socket_registration_carries_real_bytes ... ok
+test data_plane::tests::udp_attach_registers_tunnel_when_holder_confirms ... ok
+test data_plane::tests::udp_attach_without_peer_confirmation_fails_honestly ... ok
+test dht_daemon::tests::cycle_budget_caps_announce_attempts ... ok
+test dht_daemon::tests::disabled_status_is_explicit_and_silent ... ok
+test dht_daemon::tests::last_cycle_status_is_not_sticky ... ok
+test dht_daemon::tests::loopback_cycle_announces_real_active_seed ... ok
+test dht_daemon::tests::run_config_follows_p1_limits ... ok
+test dht_daemon::tests::unreachable_bootstrap_is_recorded_as_failure ... ok
+test duplicate_task_tests::finished_task_without_output_is_reported_not_fabricated ... ok
+test ed2k_tasks::tests::daemon_serve_download_roundtrip_records_real_result ... ok
+test ed2k_tasks::tests::link_uses_real_content_hash_and_reports_hashset_requirement ... ok
+test ed2k_tasks::tests::serve_accepts_parallel_connections_and_reaps_queued_peers ... ok
+test guard_bind_tests::explicit_engine_listen_does_not_drag_the_proxy_onto_loopback ... ok
+test guard_bind_tests::without_external_mapping_the_proxy_binds_exactly_where_the_engine_would ... ok
+test idle::tests::pause_failure_keeps_task_active_and_does_not_lie ... ok
+test idle::tests::seed_tasks_keyed_by_infohash_still_updates_shadow_state ... ok
+test idle::tests::sleeps_all_hot_tasks_and_keeps_shadow_entries ... ok
+test idle::tests::stale_scheduler_record_is_cleaned_without_fake_pause ... ok
+test nat_auto::tests::disabled_status_is_explicit ... ok
+test nat_auto::tests::explicit_unavailable_location_reports_real_failure ... ok
+test nat_auto::tests::status_label_reflects_real_attempt_records ... ok
+test nat_path::tests::advertisement_json_roundtrip_keeps_all_endpoints ... ok
+test nat_path::tests::discovered_port_override_accepts_only_nonzero_u16 ... ok
+test nat_path::tests::empty_report_has_no_public_egress_and_no_fake_mapping ... ok
+test nat_path::tests::only_live_relay_only_declaration_skips_direct ... ok
+test nat_path::tests::plan_json_marks_evidence_as_not_valid_for_pass ... ok
+test nat_path::tests::public_status_ties_config_to_listen_and_announce ... ok
+test nat_path::tests::punch_targets_separate_syn_port_from_engine_bridge_key ... ok
+test nat_path::tests::shared_nonce_accepts_exactly_16_bytes_and_rejects_garbage ... ok
+test nat_path::tests::stun_datagram_detector_matches_rfc5389_binding_response ... ok
+test nat_path::tests::tampered_advertisement_is_rejected ... ok
+test p1_config::tests::defaults_keep_legacy_behavior ... ok
+test p1_config::tests::dht_limits_default_and_reject_zero ... ok
+test p1_config::tests::explicit_values_are_parsed ... ok
+test p1_config::tests::health_never_carries_the_secret_value ... ok
+test p1_http_tests::rpc_secret_blocks_mutating_calls_without_leaking_it ... ok
+test p1_http_tests::web_ui_and_openapi_do_not_shadow_existing_endpoints ... ok
+test p1_http_tests::websocket_upgrade_sends_real_rfc6455_text_frame ... ok
+test punch_route::tests::nonce_is_not_all_zero ... ok
+test punch_route::tests::state_defaults_to_disabled_and_records_only_real_routes ... ok
+test qos_seed::tests::default_ratio_sets_a_real_engine_cap ... ok
+test qos_seed::tests::observes_only_real_engine_deltas ... ok
+test qos_seed::tests::ratio_zero_leaves_engine_untouched ... ok
+test ratelimit::tests::burst_is_allowed_then_rejected_with_retry_hint ... ok
+test ratelimit::tests::ip_table_is_bounded ... ok
+test ratelimit::tests::limits_are_per_ip ... ok
+test ratelimit::tests::tokens_refill_over_time ... ok
+test relay_sub::tests::all_relays_down_reports_every_endpoint ... ok
+test relay_sub::tests::concrete_bind_is_used_verbatim ... ok
+test relay_sub::tests::dial_target_only_exists_for_enabled_holder ... ok
+test relay_sub::tests::holder_carrier_label_follows_opt_in_carrier ... ok
+test relay_sub::tests::tcp_subscription_splices_open_to_local_engine ... ok
+test relay_sub::tests::udp_subscription_survives_idle_reaping_and_still_delivers ... ok
+test relay_sub::tests::wildcard_bind_uses_loopback_for_local_delivery ... ok
+test rpc_tests::ack_url_follows_requester_network ... ok
+test rpc_tests::adduri_accepts_both_param_layouts ... ok
+test rpc_tests::adduri_fetches_and_parses_real_torrent ... ok
+test rpc_tests::health_answers_promptly_even_with_data_plane_enabled ... ok
+test rpc_tests::https_is_rejected_instead_of_silently_downgraded ... ok
+test rpc_tests::non_200_is_an_error_not_an_empty_torrent ... ok
+test rpc_tests::seed_task_is_chosen_by_infohash_and_never_by_luck ... ok
+test sched::tests::activate_failure_releases_the_slot_and_restores_evicted ... ok
+test sched::tests::already_active_but_engine_cold_self_heals ... ok
+test sched::tests::first_wake_activates_once ... ok
+test sched::tests::full_pool_pauses_the_evicted_task_before_activating ... ok
+test sched::tests::pause_failure_is_reported_but_wake_still_serves ... ok
+test sched::tests::real_engine_eviction_pauses_the_previous_seed ... ok
+test sched::tests::repeat_wake_does_not_re_activate_live_task ... ok
+test sysres::tests::cpu_rate_is_cpu_delta_over_wall_delta ... ok
+test sysres::tests::cpu_unavailable_is_not_zero_and_keeps_last_known_value ... ok
+test sysres::tests::first_observe_only_sets_baseline ... ok
+test sysres::tests::missing_rss_stays_none_and_is_not_zeroed ... ok
+test sysres::tests::rate_is_delta_over_elapsed ... ok
+test sysres::tests::too_short_interval_does_not_fabricate_spike ... ok
+
+test result: ok. 82 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 32.71s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_api-ccd2e4fce4e75435.exe)
+
+running 16 tests
+test openapi::tests::document_is_valid_json_and_lists_key_endpoints ... ok
+test rpc::tests::classification_covers_mutating_and_readonly ... ok
+test rpc::tests::header_token_works_and_read_methods_are_free ... ok
+test rpc::tests::health_exposes_only_enabled_flag ... ok
+test rpc::tests::mutating_call_requires_matching_token ... ok
+test rpc::tests::no_secret_keeps_legacy_behavior ... ok
+test tests::default_exposure_is_loopback_only ... ok
+test webui::tests::asset_is_self_contained ... ok
+test webui::tests::web_ui_does_not_shadow_existing_endpoints ... ok
+test ws::tests::base64_padding ... ok
+test ws::tests::handshake_uses_101_and_never_fakes_accept ... ok
+test ws::tests::key_from_request_is_case_insensitive ... ok
+test ws::tests::masked_client_text_frame_roundtrip ... ok
+test ws::tests::rfc6455_accept_example ... ok
+test ws::tests::text_frame_layout_and_no_server_mask ... ok
+test ws::tests::unmasked_client_frame_is_rejected ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_bridge-77722a88661c24d3.exe)
+
+running 9 tests
+test cross_protocol::tests::malformed_identity_is_rejected_before_any_supplement ... ok
+test cross_protocol::tests::skeleton_never_claims_success ... ok
+test tests::non_connect_command_is_refused_with_code_7 ... ok
+test tests::registered_relay_tunnel_carries_bytes_instead_of_dialling ... ok
+test tests::registered_socket_carries_bytes_instead_of_dialling ... ok
+test tests::registering_same_peer_twice_is_refused ... ok
+test tests::splice_to_listener_delivers_both_directions ... ok
+test tests::unknown_address_type_is_refused_with_code_8 ... ok
+test tests::unregistered_target_falls_back_to_direct_dial ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_core-f5225f57aa6b83e7.exe)
+
+running 17 tests
+test tests::constants_match_t0_contract ... ok
+test tests::data_plane_carrier_is_opt_in_tcp_by_default ... ok
+test tests::guard_handshake_is_opt_in_and_never_truthy_by_accident ... ok
+test tests::identifiers_are_wide_enough ... ok
+test tests::idle_priority_defaults_on_and_only_a_real_false_turns_it_off ... ok
+test tests::idle_sleep_is_opt_in_and_units_are_explicit ... ok
+test tests::json_roundtrip ... ok
+test tests::json_string_parses_multibyte_utf8_without_rescanning_tail ... ok
+test tests::missing_relay_udp_key_means_empty ... ok
+test tests::nat_section_is_optional_and_backward_compatible ... ok
+test tests::per_node_host_defaults_to_bind_and_can_override ... ok
+test tests::punch_route_is_opt_in_and_never_truthy_by_accident ... ok
+test tests::relay_list_is_parsed_and_junk_is_dropped ... ok
+test tests::relay_rendezvous_requires_doc_range_and_punch_route ... ok
+test tests::relay_udp_endpoints_are_parsed_independently ... ok
+test tests::role_is_optional_but_never_silently_misspelled ... ok
+test tests::udp_congestion_control_is_opt_in_with_strict_params ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_dht-e576600109d77931.exe)
+
+running 42 tests
+test announce::tests::loopback_full_announce_path_is_verified ... ok
+test announce::tests::missing_token_is_reported_not_faked ... ok
+test announce::tests::unreachable_bootstrap_reports_real_failure ... ok
+test bencode::tests::depth_limit_stops_stack_blowup ... ok
+test bencode::tests::int_and_string_edges ... ok
+test bencode::tests::len_prefix_overflow_is_rejected ... ok
+test bencode::tests::rejects_non_canonical_and_malformed ... ok
+test bencode::tests::rejects_trailing_bytes ... ok
+test bencode::tests::roundtrip_nested ... ok
+test id::tests::closer_to_uses_unsigned_numeric_distance ... ok
+test id::tests::compact_nodes_roundtrip_and_filter ... ok
+test id::tests::hex_roundtrip ... ok
+test id::tests::prefix_bits_match_distance_high_bit ... ok
+test id::tests::random_ids_differ_within_process ... ok
+test id::tests::xor_distance_is_symmetric_and_zero_for_self ... ok
+test krpc::tests::error_message_roundtrip ... ok
+test krpc::tests::get_peers_and_announce_carry_20_byte_info_hash ... ok
+test krpc::tests::invalid_compact_entries_are_dropped_not_invented ... ok
+test krpc::tests::ping_roundtrip_keeps_tid_and_id ... ok
+test krpc::tests::rejects_bad_tid_and_id_lengths ... ok
+test krpc::tests::rejects_unknown_y_and_truncated_payloads ... ok
+test krpc::tests::response_carries_token_nodes_and_values ... ok
+test node::tests::announce_with_forged_token_is_rejected ... ok
+test node::tests::announce_without_token_or_port_is_rejected ... ok
+test node::tests::find_node_returns_compact_contacts ... ok
+test node::tests::get_peers_token_then_announce_then_query_returns_peer ... ok
+test node::tests::implied_port_uses_source_port ... ok
+test node::tests::oversized_and_self_id_packets_are_ignored ... ok
+test node::tests::peer_key_count_is_capped_and_evicts_oldest ... ok
+test node::tests::peers_per_key_is_capped ... ok
+test node::tests::ping_roundtrip_over_real_udp_and_learns_caller ... ok
+test node::tests::token_is_bound_to_ip_not_port ... ok
+test node::tests::unknown_method_gets_204_and_garbage_is_dropped ... ok
+test table::tests::add_dedupes_and_refreshes_address ... ok
+test table::tests::bucket_holds_at_most_k_then_drops_newcomer ... ok
+test table::tests::bucket_index_tracks_shared_prefix ... ok
+test table::tests::closest_sorts_by_xor_distance_and_truncates ... ok
+test table::tests::ignores_self_and_zero_id ... ok
+test table::tests::prefixed_helper_matches_bucket_index ... ok
+test table::tests::remove_drops_only_the_target ... ok
+test tests::dual_stack_id_widths_differ ... ok
+test tests::milestone_and_evidence_boundary_are_explicit ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_ed2k-b308a8e451f31973.exe)
+
+running 52 tests
+test codecs::tests::publish_result_roundtrip ... ok
+test codecs::tests::publish_source_rejects_missing_sourcetype_and_trailing_bytes ... ok
+test codecs::tests::publish_source_roundtrip_and_indexability ... ok
+test codecs::tests::search_result_roundtrip_and_count_cap ... ok
+test codecs::tests::search_source_applies_high_bit_mask ... ok
+test codecs::tests::unsupported_features_never_claim_success ... ok
+test inflate::tests::inflates_stored_fixed_and_dynamic_blocks ... ok
+test inflate::tests::rejects_corrupted_adler_and_oversized_output ... ok
+test kad::crypto_tests::md5_known_vectors ... ok
+test kad::crypto_tests::obfuscate_roundtrip ... ok
+test kad::crypto_tests::obfuscate_verify_roundtrip ... ok
+test kad::crypto_tests::rc4_is_reciprocal ... ok
+test kad::crypto_tests::store_crypt_value_zero_and_known ... ok
+test kad::tests::all_message_roundtrips ... ok
+test kad::tests::contact_ip_wire_order_is_reversed ... ok
+test kad::tests::contact_roundtrip_is_25_bytes ... ok
+test kad::tests::ed2k_hash_matches_amule_documented_one_part_file ... ok
+test kad::tests::ed2k_hash_single_and_multi_part ... ok
+test kad::tests::frame_roundtrip ... ok
+test kad::tests::keyword_hash_is_unnamespaced_md4 ... ok
+test kad::tests::md4_known_vectors ... ok
+test kad::tests::namespace_changes_key_id ... ok
+test kad::tests::publish_source_req_matches_amule_layout ... ok
+test kad::tests::search_source_req_layout ... ok
+test kad::tests::tag_decode_rejects_types_amule_cannot_read ... ok
+test kad::tests::tag_kad_layout_matches_amule_readtag ... ok
+test kad::tests::tag_roundtrip_all_types ... ok
+test kad::tests::tolerance_zone_and_lan_bypass ... ok
+test sha1::tests::known_answer_vectors ... ok
+test stack::tests::blocks_cover_file_exactly ... ok
+test stack::tests::exact_part_boundary_has_extra_part_hash ... ok
+test stack::tests::read_timeout_classification_covers_windows ... ok
+test stack::tests::request_rewind_is_scoped_to_one_range ... ok
+test stack::tests::serve_config_budget_defaults_and_opt_in ... ok
+test stack::tests::small_file_has_no_hashset ... ok
+test stack::tests::upload_frames_follow_real_client_chunking ... ok
+test stack::tests::upload_queue_ranks_overflow_fifo ... ok
+test stack::tests::window_plan_never_exceeds_budget_across_ranges ... ok
+test stack::tests::window_plan_respects_budget_and_preserves_partial_progress ... ok
+test tests::ed2k_hash_matches_known_answer ... ok
+test tests::promoted_stack_exposes_both_directions ... ok
+test wire::tests::compact_meta_tag_form_is_accepted ... ok
+test wire::tests::compressed_part_matches_stock_field_layout ... ok
+test wire::tests::file_name_answer_roundtrip ... ok
+test wire::tests::file_status_answer_is_hash_plus_zero_part_status ... ok
+test wire::tests::frame_roundtrip_and_length_semantics ... ok
+test wire::tests::hello_roundtrip_both_directions ... ok
+test wire::tests::request_parts_accepts_fewer_than_three_pairs ... ok
+test wire::tests::request_parts_uses_grouped_offset_layout ... ok
+test wire::tests::sending_part_and_hashset_roundtrip ... ok
+test wire::tests::zlib_compact_beats_stored_on_patterned_block ... ok
+test wire::tests::zlib_stored_uses_final_block_and_adler32 ... ok
+
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.32s
+
+     Running tests\congestion.rs (target\debug\deps\congestion-3023daedc1f4982e.exe)
+
+running 4 tests
+test compressed_parts_emit_stock_amule_frame_layout ... ok
+test opt_in_request_gated_pacing_sends_one_block_and_no_unsolicited_resend ... ok
+test repeated_request_resends_the_same_block ... ok
+test stalled_reader_bounds_outstanding_bytes_and_terminates ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.23s
+
+     Running tests\loopback_transfer.rs (target\debug\deps\loopback_transfer-6be5a710275b4446.exe)
+
+running 4 tests
+test downloader_accepts_peer_fragmented_sending_parts ... ok
+test production_ed2k_stack_loopback_single_and_multipart ... ok
+test server_satisfies_amule_block_accounting ... ok
+test server_satisfies_amule_style_sliding_window ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.95s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_engine-e503914937a9b407.exe)
+
+running 11 tests
+test prio::tests::engine_thread_name_fits_task_comm ... ok
+test prio::tests::idle_applies_to_the_calling_thread_only ... ok
+test prio::tests::outcome_strings_are_stable ... ok
+test prio::tests::runtime_worker_task_runs_at_idle_priority ... ok
+test prio::tests::stats_count_each_attempt ... ok
+test tests::engine_starts_without_listening ... ok
+test tests::garbage_torrent_is_rejected ... ok
+test tests::pause_on_unknown_task_errors ... ok
+test tests::state_names_are_stable ... ok
+test tests::utp_listens_on_udp_by_default ... ok
+test tests::utp_off_leaves_udp_port_free ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.08s
+
+     Running tests\bridge_librqbit_e2e.rs (target\debug\deps\bridge_librqbit_e2e-0ec21ed63801a4e1.exe)
+
+running 2 tests
+test bound_source_port_socket_carries_real_librqbit_piece ... ok
+test registered_socket_carries_real_librqbit_piece ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.60s
+
+     Running tests\relay_data_e2e.rs (target\debug\deps\relay_data_e2e-af490ddcdc31cc6a.exe)
+
+running 2 tests
+test relay_frames_carry_real_librqbit_piece ... ok
+test udp_relay_frames_carry_real_librqbit_piece ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.04s
+
+     Running tests\route_negotiated_e2e.rs (target\debug\deps\route_negotiated_e2e-56be11b36828d666.exe)
+
+running 2 tests
+test direct_route_carries_real_piece_through_registered_socket ... ok
+test relay_route_refuses_to_register_half_verified_socket ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.53s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_guard-c9a3264435b33b12.exe)
+
+running 4 tests
+test tests::handshake_bytes_roundtrip ... ok
+test tests::parse_handshake_reads_infohash_at_byte_28 ... ok
+test tests::parse_handshake_rejects_bad_pstr_and_short_buffer ... ok
+test tests::splice_prefaced_delivers_consumed_prefix_and_followup ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_hash-aaa9faa9cb9fb3e2.exe)
+
+running 9 tests
+test tests::ed2k_link_is_standard_and_escaped ... ok
+test tests::ed2k_red_part_rule_matches_amule ... ok
+test tests::hmac_rfc4231_case_1 ... ok
+test tests::kad_keyword_hash_is_unnamespaced_md4_known_answer ... ok
+test tests::md4_rfc1320_known_answers ... ok
+test tests::padding_boundaries ... ok
+test tests::sha1_known_vectors ... ok
+test tests::sha256_known_vectors ... ok
+test tests::unhex_roundtrips_and_rejects_garbage ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_indexer-f52c68681048a239.exe)
+
+running 4 tests
+test tests::all_three_digests_come_from_the_same_bytes ... ok
+test tests::diff_is_pure_and_symmetric ... ok
+test tests::hash_is_real_sha256 ... ok
+test tests::watcher_reports_add_modify_remove ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_kad-a6a1710d53db7f0b.exe)
+
+running 33 tests
+test kad_ed2k::tests::contact_decoding_reverses_wire_ip_order ... ok
+test kad_ed2k::tests::ed2k_keyword_key_is_unnamespaced_md4_known_answer ... ok
+test kad_ed2k::tests::find_node_req_and_zone_check_are_byte_exact ... ok
+test kad_ed2k::tests::hello_req_and_res_ack_match_amule_layout ... ok
+test kad_ed2k::tests::parse_hello_res_reads_source_port_and_misc_options ... ok
+test kad_ed2k::tests::parse_search_key_answers_reads_source_id ... ok
+test kad_ed2k::tests::publish_key_req_matches_the_amule_accepted_wire_bytes ... ok
+test kad_ed2k::tests::search_key_req_is_byte_exact ... ok
+test kad_ed2k::tests::unpack_frame_decodes_packed_kad_reply ... ok
+test kad_inflate::tests::decodes_a_real_zlib_stream_and_checks_adler ... ok
+test kad_inflate::tests::rejects_truncated_and_preset_dictionary_streams ... ok
+test kad_obfuscate::tests::decodes_real_amule_hello_res_with_raw_id_base ... ok
+test kad_obfuscate::tests::md5_matches_known_vectors ... ok
+test kad_obfuscate::tests::obfuscate_roundtrips_through_deobfuscate ... ok
+test kad_obfuscate::tests::obfuscate_verify_uses_try2_marker ... ok
+test kad_obfuscate::tests::our_node_id_is_stable_and_nonzero ... ok
+test kad_obfuscate::tests::outgoing_try0_envelope_decrypts_with_amule_receive_semantics ... ok
+test kad_obfuscate::tests::outgoing_try2_envelope_decrypts_with_amule_receive_semantics ... ok
+test kad_obfuscate::tests::try2_envelope_decodes_with_little_endian_key_base ... ok
+test kad_obfuscate::tests::udp_verify_key_matches_amule_prefs_formula ... ok
+test tests::dual_stack_ids_have_distinct_widths ... ok
+test tests::keys_match_t0_fixture_derivation ... ok
+test tests::keyword_cap_is_enforced ... ok
+test tokenizer_tests::cjk_synonyms_use_cjk_table_not_latin_table ... ok
+test tokenizer_tests::expansion_honours_limit_and_leaves_unknown_words_alone ... ok
+test tokenizer_tests::language_detection_is_explicit_about_mixed_scripts ... ok
+test tokenizer_tests::published_keys_include_expansion_but_stay_capped ... ok
+test tokenizer_tests::synonym_expansion_is_deterministic_and_keeps_originals_first ... ok
+test tokenizer_tests::tokenizer_dedupes_and_honours_limit ... ok
+test tokenizer_tests::tokenizer_drops_noise_digits_and_short_tokens ... ok
+test tokenizer_tests::tokenizer_handles_degenerate_input ... ok
+test tokenizer_tests::tokenizer_is_deterministic_and_lowercases ... ok
+test tokenizer_tests::tokenizer_keeps_cjk_runs_whole ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_nat-9c86f9ed92695f52.exe)
+
+running 214 tests
+test census::tests::corrupt_line_fails_with_line_number ... ok
+test census::tests::double_nat_detects_extra_layer ... ok
+test census::tests::duplicate_sample_id_is_not_counted_twice ... ok
+test census::tests::egress_id_rejects_control_bytes_and_empty ... ok
+test census::tests::one_egress_two_classes_is_a_conflict_not_coverage ... ok
+test census::tests::record_roundtrips_through_jsonl ... ok
+test census::tests::summary_never_claims_matrix_or_r04 ... ok
+test census::tests::summary_states_that_class_coverage_is_not_a_pass_condition ... ok
+test census::tests::unknown_field_is_rejected_not_ignored ... ok
+test census::tests::unknown_samples_are_excluded_from_inventory ... ok
+test census::tests::utc_formatter_matches_known_epochs ... ok
+test census::tests::variant_classes_never_count_as_independent_coverage ... ok
+test classify::tests::cgnat_detects_private_gateway ... ok
+test classify::tests::cgnat_detects_reserved_range ... ok
+test classify::tests::classify_different_ports_is_symmetric ... ok
+test classify::tests::classify_empty_is_unknown ... ok
+test classify::tests::endpoint_independent_plus_port_filtered_is_a_strong_conclusion ... ok
+test classify::tests::endpoint_independent_without_filter_sample_is_not_a_type ... ok
+test classify::tests::filter_behavior_maps_to_nat_type ... ok
+test classify::tests::no_cgnat_for_public ... ok
+test classify::tests::one_sample_never_yields_a_type ... ok
+test classify::tests::single_destination_sample_is_unknown_not_cone ... ok
+test classify::tests::symmetric_mapping_makes_filter_axis_inadmissible ... ok
+test classify::tests::two_destinations_same_mapping_is_cone ... ok
+test classify::tests::unreachable_stun_is_not_a_port_restricted_conclusion ... ok
+test endpoint::tests::advertisement_without_probe_has_no_fake_public_endpoint ... ok
+test endpoint::tests::configured_bt_mapping_serves_tracker_but_not_udp_wake_candidates ... ok
+test endpoint::tests::cross_subnet_private_requester_gets_public_mapping ... ok
+test endpoint::tests::cross_subnet_private_requester_without_mapping_stays_private ... ok
+test endpoint::tests::endpoint_kind_labels_roundtrip_and_node_ids_are_deterministic ... ok
+test endpoint::tests::no_relay_configured_still_fails_honestly ... ok
+test endpoint::tests::plan_order_is_private_then_mapping_then_relay ... ok
+test endpoint::tests::public_ipv4_classification ... ok
+test endpoint::tests::relay_rendezvous_is_advertised_but_cannot_masquerade_as_mapping ... ok
+test endpoint::tests::stun_mapping_is_advertised_with_its_own_port ... ok
+test endpoint::tests::symmetric_nat_goes_relay_first_and_drops_predictive_mapping ... ok
+test endpoint::tests::tracker_never_advertises_private_ip_to_public_requester ... ok
+test endpoint::tests::tracker_uses_explicit_public_mapping_only ... ok
+test holepunch::tests::back_parser_rejects_non_routable_and_malformed_entries ... ok
+test holepunch::tests::back_rate_allows_normal_traffic_but_caps_flood ... ok
+test holepunch::tests::back_rate_new_params_never_starve_steady_wakes ... ok
+test holepunch::tests::back_rate_regression_old_params_starved_steady_wakes ... ok
+test holepunch::tests::back_target_count_is_capped_and_deduplicated ... ok
+test holepunch::tests::frame_with_back_roundtrips_and_stays_parseable_as_punch ... ok
+test holepunch::tests::holder_punches_back_from_the_listening_socket ... ok
+test holepunch::tests::punch_and_wake_reuse_one_socket_and_get_real_reply ... ok
+test holepunch::tests::punch_frame_token_roundtrip_and_type_isolation ... ok
+test holepunch::tests::udp_relay_wake_reports_target_absent_without_waiting ... ok
+test holepunch::tests::udp_relay_wake_round_trips_through_real_sockets ... ok
+test holepunch::tests::unreachable_candidate_is_reported_as_failure_not_fake_success ... ok
+test holepunch::tests::wake_via_socket_carries_back_all_the_way_to_the_peer ... ok
+test natpmp::tests::external_address_against_mock ... ok
+test natpmp::tests::map_against_mock ... ok
+test natpmp::tests::timeout_without_server ... ok
+test pcp::tests::map_against_mock ... ok
+test punch_route::tests::both_failed_is_relay ... ok
+test punch_route::tests::both_verified_converge_to_direct ... ok
+test punch_route::tests::commit_before_local_is_out_of_order ... ok
+test punch_route::tests::handshake_validates_nonce_and_distinct_peer ... ok
+test punch_route::tests::mirror_case_also_falls_back ... ok
+test punch_route::tests::nonce_mismatch_is_rejected_not_treated_as_failure_flag ... ok
+test punch_route::tests::one_sided_success_falls_back_to_relay_on_both_sides ... ok
+test punch_route::tests::peer_rejecting_commit_forces_relay ... ok
+test punch_route::tests::pending_never_authorizes_direct ... ok
+test punch_route::tests::route_labels_are_machine_readable ... ok
+test punch_route::tests::self_echo_is_rejected ... ok
+test punch_route::tests::verdict_wire_roundtrip_and_strict_decode ... ok
+test punch_wire::tests::both_sides_verified_converge_to_direct_over_real_relay ... ok
+test punch_wire::tests::neither_side_verified_is_relay_not_error ... ok
+test punch_wire::tests::one_sided_success_must_fall_back_to_relay_on_both_sides ... ok
+test punch_wire::tests::payload_with_node_prefix_is_rejected ... ok
+test punch_wire::tests::session_nonce_differs_across_calls ... ok
+test reach::tests::all_three_cone_types_are_direct ... ok
+test reach::tests::cgnat_is_not_auto_classified ... ok
+test reach::tests::clock_going_backwards_counts_as_expired ... ok
+test reach::tests::default_ttl_is_usable ... ok
+test reach::tests::expired_declaration_degrades_to_unknown ... ok
+test reach::tests::json_carries_class_and_basis ... ok
+test reach::tests::no_udp_egress_means_unknown_even_if_type_says_cone ... ok
+test reach::tests::symmetric_is_relay_only ... ok
+test reach::tests::unknown_never_authorises_skipping_direct ... ok
+test reach::tests::wire_codes_roundtrip_and_unknown_codes_degrade ... ok
+test relay::tests::frame_roundtrip ... ok
+test relay::tests::frame_split_across_read_timeout_is_resumed_not_lost ... ok
+test relay::tests::idle_timeout_keeps_the_same_connection_usable ... ok
+test relay::tests::register_and_relay_against_mock ... ok
+test relay_server::tests::byte_bucket_refills_by_elapsed_time_and_never_partial ... ok
+test relay_server::tests::client_cannot_forge_peer_reach_snapshot ... ok
+test relay_server::tests::connection_cap_is_enforced ... ok
+test relay_server::tests::data_budget_blocks_payload_but_never_signaling ... ok
+test relay_server::tests::declaration_crosses_instances ... ok
+test relay_server::tests::declaration_disappears_when_node_disconnects ... ok
+test relay_server::tests::declared_limit_is_visible_to_another_client ... ok
+test relay_server::tests::declared_register_with_mismatched_id_is_rejected ... ok
+test relay_server::tests::denied_ip_is_closed_before_handshake ... ok
+test relay_server::tests::flooding_connection_is_rate_limited ... ok
+test relay_server::tests::frame_size_limit_is_enforced ... ok
+test relay_server::tests::inconsistent_register_payload_is_rejected ... ok
+test relay_server::tests::ip_state_is_released_after_disconnect ... ok
+test relay_server::tests::ipnet_parsing_and_matching ... ok
+test relay_server::tests::legacy_register_counts_as_undeclared ... ok
+test relay_server::tests::lookup_of_undeclared_node_returns_unknown_not_a_guess ... ok
+test relay_server::tests::peer_death_purges_its_nodes_from_registry_view ... ok
+test relay_server::tests::peer_sync_enables_cross_instance_delivery ... ok
+test relay_server::tests::per_ip_connection_cap_rejects_extra_connections ... ok
+test relay_server::tests::printable_instance_never_emits_control_bytes ... ok
+test relay_server::tests::registration_rate_limit_per_ip_closes_late_registrations ... ok
+test relay_server::tests::registry_len_counts_replacements_once_and_registry_survives_sharding ... ok
+test relay_server::tests::routes_frames_between_two_real_tcp_clients ... ok
+test relay_server::tests::secure_instance_rejects_plaintext_client ... ok
+test relay_server::tests::secure_instance_routes_between_authenticated_clients ... ok
+test relay_server::tests::stale_close_does_not_erase_reconnected_declaration ... ok
+test relay_server::tests::unknown_target_is_dropped_never_faked ... ok
+test relay_tunnel::tests::carries_one_mib_over_real_relay_without_channel_crosstalk ... ok
+test relay_tunnel::tests::data_on_unknown_channel_is_reported_not_silently_dropped ... ok
+test relay_tunnel::tests::derive_session_id_is_stable_and_disjoint_from_base ... ok
+test relay_tunnel::tests::frame_roundtrip_and_strict_decode ... ok
+test relay_tunnel::tests::handshake_frames_have_fixed_shapes ... ok
+test relay_tunnel::tests::max_body_frame_fits_relay_signal_threshold_and_budget ... ok
+test relay_tunnel::tests::open_frame_from_other_source_is_rejected ... ok
+test relay_tunnel::tests::open_handshake_then_splice_carries_bytes_over_real_relay ... ok
+test relay_tunnel::tests::opened_before_timeout_only_when_peer_confirms ... ok
+test relay_tunnel::tests::oversized_body_is_rejected_not_truncated ... ok
+test relay_udp::tests::carrier_fairness_tcp_vs_udp_probe ... ignored, fairness control probe; run with --ignored --nocapture
+test relay_udp::tests::data_byte_budget_rejects_with_reason_and_separate_count ... ok
+test relay_udp::tests::data_byte_budget_replenishes_over_time ... ok
+test relay_udp::tests::data_is_forwarded_between_two_clients ... ok
+test relay_udp::tests::data_without_hello_is_rejected_with_a_reason ... ok
+test relay_udp::tests::datagram_roundtrip_and_mac ... ok
+test relay_udp::tests::hello_then_ping_measures_rtt ... ok
+test relay_udp::tests::large_signaling_payload_is_not_charged_as_data ... ok
+test relay_udp::tests::mac_mismatch_gets_no_answer ... ok
+test relay_udp::tests::max_datagram_fits_ipv6_min_mtu ... ok
+test relay_udp::tests::oversized_payload_is_counted_and_dropped ... ok
+test relay_udp::tests::per_session_cap_disabled_by_default ... ok
+test relay_udp::tests::per_session_cap_queue_full_rejects_with_reason ... ok
+test relay_udp::tests::per_session_cap_shapes_one_flow_not_others ... ok
+test relay_udp::tests::replayed_datagram_is_dropped ... ok
+test relay_udp::tests::session_cap_rejects_with_reason ... ok
+test relay_udp::tests::signaling_survives_exhausted_data_budget ... ok
+test relay_udp::tests::udp_relay_data_fairness_probe ... ignored, fairness probe; run with --ignored --nocapture
+test relay_udp::tests::unknown_target_yields_target_absent_not_silence ... ok
+test relay_udp_stream::tests::carries_bytes_over_real_udp_relay ... ok
+test relay_udp_stream::tests::cc_aimd_increases_on_ack_and_halves_on_loss ... ok
+test relay_udp_stream::tests::cc_default_off_preserves_window_and_rto ... ok
+test relay_udp_stream::tests::cc_loss_halves_at_most_once_per_rtt ... ok
+test relay_udp_stream::tests::cc_pacing_spreads_new_segments_but_not_retransmits ... ok
+test relay_udp_stream::tests::data_payload_max_fits_udp_budget ... ok
+test relay_udp_stream::tests::gap_driven_ack_and_bounded_sack ... ok
+test relay_udp_stream::tests::open_handshake_and_splice_over_real_udp_relay ... ok
+test relay_udp_stream::tests::out_of_window_segments_are_dropped_bounded ... ok
+test relay_udp_stream::tests::real_udp_relay_carries_1mib_under_loss_reorder_and_duplicate_injection ... ok
+test relay_udp_stream::tests::recv_open_rejects_initiator_that_differs_from_observed_source ... ok
+test relay_udp_stream::tests::relay_backpressure_fast_retransmits_without_loss_or_rto_backoff ... ok
+test relay_udp_stream::tests::reliable_delivery_under_loss_reorder_and_duplication ... ok
+test relay_udp_stream::tests::reliable_window_rto_timeseries_probe ... ignored, window/RTO time-series probe; run with --ignored --nocapture
+test relay_udp_stream::tests::reorders_and_drops_duplicates_without_corruption ... ok
+test relay_udp_stream::tests::segment_wire_roundtrip_and_strict_decode ... ok
+test relay_udp_stream::tests::status_never_acts_as_ack ... ok
+test relay_udp_stream::tests::three_duplicate_acks_trigger_fast_retransmit ... ok
+test relay_udp_stream::tests::timeout_retransmits_with_backoff_and_stable_app_seq ... ok
+test relay_udp_stream::tests::udp_relay_stream_read_write_end_to_end ... ok
+test secure::tests::fill_pending_keeps_partial_bytes_across_timeouts ... ok
+test secure::tests::fill_pending_reports_closed_link_as_error ... ok
+test secure::tests::fingerprint_is_stable_and_key_dependent ... ok
+test secure::tests::handshake_and_encrypted_roundtrip ... ok
+test secure::tests::payload_is_not_readable_on_the_wire ... ok
+test secure::tests::ping_is_answered_with_pong ... ok
+test secure::tests::plaintext_client_fails_fast_against_secure_server ... ok
+test secure::tests::psk_parse_accepts_hex_and_file_form ... ok
+test secure::tests::replayed_record_is_rejected ... ok
+test secure::tests::tampered_ciphertext_is_rejected ... ok
+test secure::tests::wrong_key_is_rejected_at_handshake ... ok
+test stun::tests::change_request_flags_are_encoded ... ok
+test stun::tests::decode_plain_mapped_address ... ok
+test stun::tests::filter_full_cone_answers_change_ip ... ok
+test stun::tests::filter_ignored_change_request_is_not_full_cone ... ok
+test stun::tests::filter_port_restricted_when_no_change_answer ... ok
+test stun::tests::filter_restricted_cone_answers_only_change_port ... ok
+test stun::tests::filter_unknown_when_server_unreachable ... ok
+test stun::tests::ignored_change_port_is_untested_not_port_filtered ... ok
+test stun::tests::mismatched_tid_is_rejected ... ok
+test stun::tests::parse_xor_mapped_roundtrip ... ok
+test stun::tests::probe_against_mock_server ... ok
+test stun::tests::probe_against_real_vantage_reports_port_open ... ok
+test stun::tests::probe_without_alt_socket_is_untested_not_port_filtered ... ok
+test stun_server::tests::change_ip_is_rejected_with_420_not_silently_ignored ... ok
+test stun_server::tests::change_port_comes_from_the_other_socket ... ok
+test stun_server::tests::change_request_attribute_length_is_still_8_bytes ... ok
+test stun_server::tests::malformed_packets_do_not_get_answers ... ok
+test stun_server::tests::plain_request_is_answered_from_the_same_socket ... ok
+test stun_server::tests::single_socket_mode_rejects_change_port_instead_of_faking_it ... ok
+test tcp_discovery::tests::discover_single_observer_reports_port_but_not_eim ... ok
+test tcp_discovery::tests::judge_rejects_unparsable_mapped_endpoint ... ok
+test tcp_discovery::tests::judge_requires_two_consistent_observers ... ok
+test tcp_discovery::tests::malformed_observer_lines_are_errors_not_success ... ok
+test tcp_discovery::tests::observer_writes_back_source_endpoint ... ok
+test tcp_discovery::tests::parse_port_rejects_zero_and_garbage ... ok
+test tcp_discovery::tests::report_json_keeps_gate_constants ... ok
+test tcp_discovery::tests::two_loopback_observers_report_same_mapped_endpoint ... ok
+test tcp_discovery::tests::unreachable_observer_is_recorded_as_error_not_success ... ok
+test tcp_punch::tests::empty_peer_list_is_reported_not_guessed ... ok
+test tcp_punch::tests::punching_a_closed_port_times_out_without_inventing_success ... ok
+test tcp_punch::tests::simultaneous_open_on_loopback_establishes_and_carries_bytes ... ok
+test tcp_punch::tests::sockaddr_layout_is_network_order ... ok
+test tests::matrix_is_a_five_class_descriptive_inventory ... ok
+test tests::r04_has_no_numeric_commitment ... ok
+test tests::s6_stance_has_no_class_coverage_requirement_and_no_number ... ok
+test tests::symmetric_without_mapping_needs_relay ... ok
+test tests::upnp_available_means_no_relay_needed ... ok
+test upnp::tests::add_port_mapping_ok ... ok
+test upnp::tests::control_url_found ... ok
+test upnp::tests::extract_tag_works ... ok
+test upnp::tests::get_external_ip ... ok
+
+test result: ok. 211 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 17.72s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_notify-580e47a6f3057b66.exe)
+
+running 1 test
+test tests::module_is_optional ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_qos-4e6967b59e3a86a6.exe)
+
+running 6 tests
+test tests::default_ratio_is_calibrated_to_measured_evidence ... ok
+test tests::default_ratio_yields_a_real_bounded_cap ... ok
+test tests::hard_cap_rejects_over_budget_and_counts_real_bytes ... ok
+test tests::invalid_ratio_is_off_not_a_guess ... ok
+test tests::ratio_zero_disables_governor ... ok
+test tests::token_bucket_hard_cap ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_reputation-0011f112e1a711be.exe)
+
+running 2 tests
+test tests::skeleton_is_explicitly_not_implemented ... ok
+test tests::skeleton_records_milestone ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_sched-e8fed8db4bfafd6a.exe)
+
+running 8 tests
+test tests::deactivate_frees_a_slot ... ok
+test tests::fills_until_capacity_without_eviction ... ok
+test tests::full_pool_evicts_least_recently_used ... ok
+test tests::new_clamps_capacity_to_one ... ok
+test tests::oldest_matches_active_front ... ok
+test tests::repeated_activation_refreshes_order_and_is_idempotent ... ok
+test tests::set_cap_shrinks_by_lru_order_and_reports_victims ... ok
+test tests::set_cap_zero_clamps_and_keeps_newest ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_store-9e2e6584f271b2da.exe)
+
+running 11 tests
+test tests::atomic_save_leaves_no_temp_file ... ok
+test tests::both_files_broken_is_reported_not_hidden ... ok
+test tests::cold_handle_roundtrip_and_state_machine ... ok
+test tests::corrupt_main_file_recovers_from_backup ... ok
+test tests::ed2k_and_sha1_survive_restart ... ok
+test tests::failed_refresh_does_not_postpone_the_deadline ... ok
+test tests::json_snapshot_roundtrips_ten_thousand_entries_with_measured_cost ... ok
+test tests::kad_refresh_window_opens_at_one_third_of_ttl ... ok
+test tests::kad_ttl_fields_survive_restart ... ok
+test tests::old_v2_entry_without_ttl_fields_loads_as_never_published ... ok
+test tests::v1_index_is_migrated_in_place ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.54s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_torrent-86523efbcd0f8a3f.exe)
+
+running 5 tests
+test tests::announce_list_keeps_infohash_and_order ... ok
+test tests::infohash_is_sha1_of_raw_info_dict ... ok
+test tests::parse_recovers_metadata ... ok
+test tests::piece_verification_rejects_corruption ... ok
+test tests::single_tier_is_byte_identical_to_generate ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src\lib.rs (target\debug\deps\cr_wake-815d8cb920a1dfc7.exe)
+
+running 2 tests
+test tests::golden_field_sets_are_exact ... ok
+test tests::rejects_bad_version_challenge_window_and_replay ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_api
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_bridge
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_dht
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_ed2k
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_engine
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_guard
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_hash
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_indexer
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_kad
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_nat
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_notify
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_qos
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_reputation
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_sched
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_store
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_torrent
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests cr_wake
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

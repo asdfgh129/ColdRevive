@@ -1,0 +1,420 @@
+{
+ "probe": "nfr02_thread_prio_probe.py",
+ "pid": 675344,
+ "kernel_release": "6.2.0-39-generic",
+ "nproc": 2,
+ "rounds": 3,
+ "interval_sec": 3.0,
+ "engine_thread_name": "cr-engine-wrk",
+ "snapshots": [
+  {
+   "at": "2026-11-25T12:41:25+0000",
+   "threads": [
+    {
+     "tid": 675344,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "main"
+    },
+    {
+     "tid": 675346,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675347,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675348,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675349,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675351,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675352,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675353,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675354,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    }
+   ]
+  },
+  {
+   "at": "2026-11-25T12:41:28+0000",
+   "threads": [
+    {
+     "tid": 675344,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "main"
+    },
+    {
+     "tid": 675346,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675347,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675348,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675349,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675351,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675352,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675353,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675354,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    }
+   ]
+  },
+  {
+   "at": "2026-11-25T12:41:31+0000",
+   "threads": [
+    {
+     "tid": 675344,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "main"
+    },
+    {
+     "tid": 675346,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675347,
+     "comm": "cr-data-plane",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "wake_critical"
+    },
+    {
+     "tid": 675348,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675349,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675351,
+     "comm": "cr-engine-wrk",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "engine"
+    },
+    {
+     "tid": 675352,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675353,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    },
+    {
+     "tid": 675354,
+     "comm": "coldrevived",
+     "priority": 20,
+     "nice": 0,
+     "rt_priority": 0,
+     "policy": 0,
+     "policy_name": "SCHED_OTHER",
+     "role": "std"
+    }
+   ]
+  }
+ ],
+ "threads_union": [
+  {
+   "tid": 675344,
+   "comm": "coldrevived",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "main"
+  },
+  {
+   "tid": 675346,
+   "comm": "cr-data-plane",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "wake_critical"
+  },
+  {
+   "tid": 675347,
+   "comm": "cr-data-plane",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "wake_critical"
+  },
+  {
+   "tid": 675348,
+   "comm": "coldrevived",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "std"
+  },
+  {
+   "tid": 675349,
+   "comm": "cr-engine-wrk",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "engine"
+  },
+  {
+   "tid": 675351,
+   "comm": "cr-engine-wrk",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "engine"
+  },
+  {
+   "tid": 675352,
+   "comm": "coldrevived",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "std"
+  },
+  {
+   "tid": 675353,
+   "comm": "coldrevived",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "std"
+  },
+  {
+   "tid": 675354,
+   "comm": "coldrevived",
+   "priority": 20,
+   "nice": 0,
+   "rt_priority": 0,
+   "policy": 0,
+   "policy_name": "SCHED_OTHER",
+   "role": "std"
+  }
+ ],
+ "summary": {
+  "engine_threads": 2,
+  "engine_nice": [
+   0
+  ],
+  "engine_policy": [
+   "SCHED_OTHER"
+  ],
+  "engine_all_idle_in_every_snapshot": false,
+  "non_engine_threads": 7,
+  "non_engine_all_default_in_every_snapshot": true
+ },
+ "health_idle_priority": {
+  "requested": false,
+  "applied": 0,
+  "failed": 0,
+  "unsupported": 0
+ },
+ "health_pid": 675344,
+ "verdict": {
+  "nfr02_second_clause": "fail",
+  "wake_path_undisturbed": "pass",
+  "notes": []
+ },
+ "wording": {
+  "ok": "引擎线程（cr-engine-worker）以 Idle 优先级运行（nice 19 + SCHED_IDLE）",
+  "forbidden": [
+   "整个进程处于 Idle",
+   "所有线程 Idle",
+   "唤醒路径也降级了"
+  ]
+ }
+}

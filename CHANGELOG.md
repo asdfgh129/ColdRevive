@@ -1,3 +1,33 @@
+## [2.4.148] - 2026-11-25 — G-4 关闭：造种引擎线程实测以 Idle 优先级运行（含负向对照）；新开 G-5（macOS 未实现）
+
+> **这一条只关闭 G-4（NFR-02 第二分句）。** 第一分句（空闲 CPU ≤2%）早在 v2.4.142 关闭。
+> `g2_claim` 仍 `true`，三个工具字段仍 `false`。
+
+- **判据没动**：SRS NFR-02「造种任务仅以 Idle 优先级运行」原文未改、阈值未放松。
+- **实测（221 / `coldrevived-a` / 二进制 `ef34652b…` / commit `9ae510a`）**：
+  3 个引擎线程（`cr-engine-wrk`：2 worker + 1 存活阻塞池线程）全部 **nice 19 + `SCHED_IDLE`**，
+  3 次快照（间隔 3 s）每一次都成立；其余 7 个线程（主线程、2 个 `cr-data-plane`、4 个 std）
+  全部 `nice 0`/`SCHED_OTHER`——**唤醒路径没有被降级**（NFR-04 不受影响）。
+  `/health.idle_priority` = `requested=true, applied=3, failed=0, unsupported=0`。
+- **负向对照**（关键）：`engine.idle_priority=false` 重启后，同一批线程名仍在但回到
+  `nice 0`/`SCHED_OTHER`，判定变成 `fail`、`applied=0`。没有这一条，「探针只会印 pass」
+  就无法排除——探针测的是事实还是自证，靠对照区分。
+- **功能不敢假设**：引擎线程处于 Idle 时跑 LAN 用例（A 做种、B 拨入 68 B 握手唤醒），
+  1 MiB 落地 **md5 一致**（`6209e962…`）、`guard.handshakes=1/woken=1`、`seed_after=hot`。
+- **实现**：`cr_engine::prio`（Linux `nice 19`+`SCHED_IDLE`；Windows `THREAD_PRIORITY_IDLE(-15)`），
+  `Builder::on_thread_start` 里**按线程**降级；`engine.idle_priority` 默认 `true`。
+  `EngineOptions.idle_threads` 库层默认仍 `false`（不改既有证据的字节行为），由守护进程显式打开。
+- **macOS 未实现** → 新缺口 **G-5**：`cr_engine::prio` 在 macOS 返回 `Unsupported`，
+  `/health` 报 `unsupported`。darwin 有 `PRIO_DARWIN_BG`，但本仓库无 mac 机器实测，
+  按规矩不写「支持」。因此可写「NFR-02 在 Linux/Windows 两分句均有实测」，
+  **不可**写「三平台达标」。
+- 证据：`tests/ARCHIVE/evidence/nfr02-engine-idle-priority-20261125.json` + `.on.json`/`.off.json`
+  （两份原始探针输出，`-text` 锁字节）；探针 `scripts/nfr02_thread_prio_probe.py`。
+- **全量回归**：`CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1` → **547 passed / 0 failed / 3 ignored**（原 541 + 新增 6：`cr-engine::prio` 5 条、`cr-core` 配置 1 条），日志 `tests/ARCHIVE/evidence/regression-full-20261125d.log`。
+- 文档：DOC-34 第 1 节第 2 行改为「两分句 ✅」、§2 禁用措辞、§3 关闭记录、§7 签署栏、
+  新增 **§9 取证方法**；夹具 `[nfr02_idle_priority]`、`g2_claim_open_gaps` 用 G-5 换 G-4、
+  `CONFIG.md` 的 `engine.idle_priority` 行补线程名与 15 字符限制。
+
 ## [2.4.145] - 2026-11-25 — 记录 tokio 1.54 的关键实现事实：worker 本身就是阻塞池线程
 
 > 只是注释与一条测试，二进制不变。但它决定了「钩子能不能覆盖 worker」这个判断，

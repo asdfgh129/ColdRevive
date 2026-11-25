@@ -1,8 +1,9 @@
 # G2 出口记录（M2 出口 · 2026-11-25 声明达标）
 
 - 文档号：DOC-34
-- 状态：**已签 —— G2 达标（带两项书面例外与三项欠账：G-2 / G-3 / G-4）**
-- 版本：v1.1（2026-11-25，G-1 补采关闭；新增 G-4「Idle 优先级无运行时实现」）
+- 状态：**已签 —— G2 达标（带两项书面例外与三项欠账：G-2 / G-3 / G-5；G-1、G-4 已实测关闭）**
+- 版本：v1.2（2026-11-25：v1.1 补采关闭 G-1；本版实现并实测关闭 G-4「造种 Idle 优先级」，
+  因 macOS 未实现新开 G-5）
 - 声明人 / 决定权：项目所有者
 - 关联：`docs/06-plan/ROADMAP.md` §3 门禁表 G2 行、DOC-31（复评简报）、DOC-32（S6 折算）、
   DOC-33（公平性例外 EX-1）、`tests/fixtures/g2-spike-verdicts.toml`
@@ -11,7 +12,8 @@
 
 ## 0. 声明本身（唯一口径）
 
-> **G2 达标（所有者判定，2026-11-25T17:20+08:00），带两项书面例外与三项欠账（G-2 / G-3 / G-4）。**
+> **G2 达标（所有者判定，2026-11-25T17:20+08:00），带两项书面例外与三项欠账（G-2 / G-3 / G-5）。**
+> G-1（NFR-02 空闲 CPU）与 G-4（造种 Idle 优先级）均已实测关闭；G-5 是当日新开的缺口（macOS）。
 
 - **判据来源**：`ROADMAP.md` §3 ——「NFR-01/02/03 达标；S6 按 eMule 式可达语义结案
   （真实设备 + 两台物理主机 + 每条路径 30 次真实 `WAKEUP_ACK` + HighID/LowID 两半各有证据）。
@@ -27,14 +29,14 @@
 | # | 项 | 判据 | 2026-11-25 现状 | 证据 / 落点 | 支撑本声明？ |
 |---|---|---|---|---|---|
 | 1 | NFR-01 内存 | 1 万文件纯空闲 ≤ 100 MB（硬上限 200 MB） | 1 万 ≈ **7.79 MiB**、5 万 ≈ 15.9 MiB、20 万 ≈ 53 MiB | `tests/spikes/s4/`（S4 = pass） | ✅ 是 |
-| 2 | NFR-02 CPU | 空闲态平均 ≤ 2%，造种仅 Idle 优先级 | **前半句已实测**：600.63 s 空闲窗口内进程累计 CPU **0.18 s** → 均值 **0.03%**（单核口径；阈值 2%，余量 **66×**），`inst_p95=0.0%`、单点最大 1.33%。**后半句无实现**：全仓无 `setpriority` / `SetThreadPriority` / `SCHED_IDLE`，systemd `Nice=0` / `SCHED_OTHER` | `tests/ARCHIVE/evidence/nfr02-idle-cpu-20261125.json`（+ 逐样本 `.raw.json`） | 🟡 前半句 ✅ / 后半句 ❌ → 缺口 **G-4** |
+| 2 | NFR-02 CPU | 空闲态平均 ≤ 2%，造种仅 Idle 优先级 | **前半句**：600.63 s 空闲窗口内进程累计 CPU **0.18 s** → 均值 **0.03%**（单核；阈值 2%，余量 **66×**），`inst_p95=0.0%`、单点最大 1.33%。**后半句（2026-11-25T20:45 补实现并实测）**：引擎线程（`cr-engine-wrk`）**nice 19 + `SCHED_IDLE`**，3 次快照全部成立；唤醒关键路径（`cr-data-plane` ×2）与 std 线程全部 `nice 0`/`SCHED_OTHER` 未被降级。**负向对照**：`engine.idle_priority=false` 时同一批线程回到 `nice 0`/`SCHED_OTHER`，判定随之为 fail | `nfr02-idle-cpu-20261125.json`（+ `.raw.json`）、`nfr02-engine-idle-priority-20261125.json`（+ `.on.json`/`.off.json`） | ✅ 是（**Linux/Windows 两分句均有实测**；macOS 未实现 → G-5） |
 | 3 | NFR-03 带宽 | 后台上行 ≤ 阈值；前台劣化 ≤ 5% | 令牌桶默认 `ratio=0.02` → 前台劣化 **4.03%**（qos_bench）/ **2.70%**（真 rqbit uTP 栈）；**LEDBAT 不存在**（该 crate 只实现 CUBIC） | `tests/spikes/s5/`（S5 = `fallback`） | ✅ 是（**凭令牌桶，不凭 LEDBAT**） |
 | 4 | S6 NAT 可达性 | eMule 式可达语义结案 | `pass(closed_with_exceptions)`，2026-11-17 判；2026-11-25 按 DOC-32 **条件计入** | 夹具 `[[spike]] S6` + `ADR-016 §R3` | ✅ 是（**带四条例外**） |
 | 5 | 公平性（G2 第 1 项） | Jain ≥ 0.95、份额 ∈ [0.45,0.55]、每 arm 10 轮全过 | **FAIL 78/80**（`cc_on` 第 7 轮 0.430/0.570、`cc_paced` 第 8 轮 0.433/0.567） | DOC-33 / EX-1 | ❌ **否** → 作为**例外 EX-1** 计入 |
 | 6 | 实现项（M2 内涵） | cr-dht、LRU、中继、打洞 | 两项落地；中继欠运维项；打洞仅 3/30 且形态须区分 | 夹具 `g2_note_20261125` | 🟡 部分（见第 3 节） |
 
-**读法**：第 1、3、4 项**完整支撑**本声明；第 2 项的**前半句**（空闲 CPU ≤2%）实测支撑、
-**后半句**（造种仅 Idle 优先级）不支撑 → 缺口 **G-4**；第 5 项不支撑 → 例外 **EX-1**；
+**读法**：第 1、2、3、4 项**完整支撑**本声明（第 2 项两条分句都已实测：
+空闲 CPU 0.03%、引擎线程 `nice 19`+`SCHED_IDLE`，且带负向对照）；第 5 项不支撑 → 例外 **EX-1**；
 第 6 项部分支撑。**这正是「带例外」三个字的实际含义**——不是四舍五入，而是把不支撑的项点名写在旁边。
 
 ---
@@ -49,8 +51,10 @@
 - ❌ 「NAT 矩阵通过」/「4/4 类别覆盖」——实际 3/4，`restricted-cone` 按 R2 排除、`CGNAT` 未覆盖；
 - ❌ 任何可达率 / 成功率百分比（`direct 3/30`、`relay 30/30` 都是计数，不是比率结论）；
 - ❌ 「punched-direct 已打通」——只有 3/30，且 BT 公网那条属 `direct-via-static-dnat`；
-- ❌ 「NFR-02 达标」——空闲 CPU 已实测（0.03% ≤ 2%，G-1 关闭），但第二分句「造种任务仅以
-  Idle 优先级运行」无运行时实现（G-4）；可写「空闲 CPU 实测 0.03%」，不可写整条达标；
+- ❌ 「NFR-02 在三平台全部达标」——Linux/Windows 两分句均已实测，但 **macOS 未实现 Idle 降级**
+  （`cr_engine::prio` 返回 `Unsupported`，`/health` 报 `unsupported`）→ 缺口 **G-5**；
+  可写「NFR-02 在 Linux/Windows 上两分句均有实测」；
+- ❌ 「整个进程处于 Idle」——只有引擎线程降级，唤醒路径与 std 线程保持默认（这是设计要求）；
 - ❌ 把单机 netns、单条公网路径、组件级 Spike 的结论外推成「跨公网/跨运营商普遍成立」。
 
 ---
@@ -76,6 +80,13 @@
    在守护进程里**没有运行时实现**（全仓无 `setpriority` / `SetThreadPriority` / `SCHED_IDLE`，
    无 `libc`/`winapi` 依赖；systemd `Nice=0`、`CPUSchedulingPolicy=SCHED_OTHER`）。
    S7 基准里的「Idle 优先级」是**基准脚本自设**，属测试夹具属性，不是产品保证 → 缺口 **G-4**。
+   ~~→ **2026-11-25T20:45 已实现并实测关闭**：新增 `cr_engine::prio`（Linux `nice 19` +
+   `SCHED_IDLE`；Windows `THREAD_PRIORITY_IDLE(-15)`），在 `Builder::on_thread_start` 里
+   **按线程**降级，`engine.idle_priority` 默认 `true`。221 实测：3 个引擎线程（`cr-engine-wrk`，
+   含 2 个 worker + 1 个存活阻塞池线程）全部 `nice 19`/`SCHED_IDLE`，其余 7 个线程全部
+   `nice 0`/`SCHED_OTHER`；关掉开关的负向对照让同一批线程回到 `nice 0`。同期 1 MiB 真实传输
+   md5 一致（`6209e962…`）。证据 `nfr02-engine-idle-priority-20261125.json`。
+   **macOS 未实现**（无机器实测，不写「支持」）→ 新缺口 **G-5**。~~
    另：**S4/S5 的 `reports/` 与 S6 一样被 `.gitignore` 排除**（仅 `.gitkeep` 入库），
    S6 已逐字节归档、S4/S5 未归档 → 缺口 **G-2**（证据可移植性）。
 
@@ -120,10 +131,11 @@
 
 ## 7. 签署
 
-- **声明**：☑ G2 达标（带两项书面例外与三项欠账 G-2 / G-3 / G-4；G-1 已补采关闭）
+- **声明**：☑ G2 达标（带两项书面例外与三项欠账 G-2 / G-3 / G-5；G-1、G-4 已实测关闭）
 - **例外**：☑ EX-1（公平性，DOC-33）　☑ S6 条件计入（DOC-32 / ADR-016 §R3）
-- **欠账**：☑ G-1（NFR-02 空闲 CPU）**已实测关闭，0.03%**　☑ G-2（S4/S5 证据未归档）
-  　☑ G-3（中继运维面）　☑ G-4（造种 Idle 优先级无运行时实现）
+- **欠账/缺口**：~~G-1（NFR-02 空闲 CPU）~~ **已实测关闭 0.03%**　☑ G-2（S4/S5 证据未归档）
+  　☑ G-3（中继运维面）　~~G-4（造种 Idle 优先级无实现）~~ **已实现并实测关闭**
+  　☑ **G-5（macOS 未实现 Idle 优先级降级）**
 - **机器改动**：☑ `g2_claim: false → true`　☑ 其余三个字段不动
 - **签署人**：项目所有者　**日期**：2026-11-25
 
@@ -156,4 +168,56 @@
   python scripts/build_nfr02_evidence.py <raw.json> \
     tests/ARCHIVE/evidence/nfr02-idle-cpu-20261125.json
   ```
-- **不覆盖**：本采样不测「造种/哈希时对前台的抢占」，那需要 G-4 的实现先存在。
+- **不覆盖**：本采样只回答「空闲时 CPU 是多少」，不回答「造种时会不会抢占前台」——
+  后者靠第二分句的 Idle 优先级（见 §9），两者是不同的问法，别互相顶替。
+
+---
+
+## 9. 附：NFR-02 第二分句（造种 Idle 优先级）的实现与取证（G-4 关闭依据）
+
+- **判据**：SRS NFR-02 后半句「造种任务仅以 Idle 优先级运行」。**判据原文未改、未放松**。
+- **粒度（必须先说清）**：降的是**引擎线程**，不是进程。同进程里 cr-guard 的 68 B 握手、
+  cr-data-plane 的 UDP 数据面、HTTP API、DHT/KAD 都跑在别的线程上，整进程降级会把
+  NFR-04 的唤醒 P95 一起拖下去——那是拿一个门禁换另一个门禁。
+- **落到哪一层**：librqbit 只有一个线程池，做种/分片校验/上传/下载共用同一批 worker，
+  因此无法再细到「只降做种、不降下载」；成员角色的下载同样以 Idle 运行。这条边界写进
+  `EngineOptions::idle_threads` 文档、`docs/04-protocol/CONFIG.md` 与 `/health`，不藏。
+- **平台**：Linux `setpriority(19)` + `sched_setscheduler(SCHED_IDLE)`；Windows
+  `SetThreadPriority(THREAD_PRIORITY_IDLE = -15)`；**macOS 未实现**（返回 `Unsupported`，
+  `/health` 报 `unsupported`）→ 缺口 **G-5**。darwin 有 `PRIO_DARWIN_BG` 这条路，
+  但没有 mac 机器实测过，按规矩不写「支持」。
+- **为什么卡在出生点**：`Builder::on_thread_start` 里降级。事后按 tid 去 `/proc` 找线程，
+  会漏掉「线程已开始做种、还没被找到」的窗口，且依赖线程名这类非契约信息。
+  > tokio 1.54.1 的实现细节：`on_thread_start` 的回调**只由阻塞池**调用（`after_start`），
+  > 多线程 worker 之所以也被覆盖，是因为 `Launch::launch` 用 `spawn_blocking` 起 worker
+  > ——**worker 本身就是阻塞池线程**。这是版本相关的，不是公开契约，所以判定一律看读回。
+- **一律读回**：系统调用返回 0 不算数。Linux 读 `/proc/thread-self/stat`（**不是**
+  `/proc/self/stat`——后者是线程组组长，子线程里读到的是主线程的值，第一版就因此把
+  「已生效」误判成「没生效」）；Windows 读 `GetThreadPriority`。
+- **线程名**：`cr-engine-wrk`（**≤ 15 字符**，Linux `TASK_COMM_LEN=16` 含 NUL，更长的名字
+  会被静默截断；曾经用 16 字符名，`/proc` 里只剩 15 字符，按全名比对的探针报「0 个引擎线程」
+  ——看着像没降级，其实是名字对不上）。
+- **实测（221，`coldrevived-a`，二进制 `sha256 ef34652b…`，commit `9ae510a`）**：
+
+  | 角色 | 线程数 | nice | policy |
+  |---|---|---|---|
+  | engine（`cr-engine-wrk`） | 3（2 worker + 1 存活阻塞池线程） | **19** | **SCHED_IDLE** |
+  | wake_critical（`cr-data-plane`） | 2 | 0 | SCHED_OTHER |
+  | main / std | 5 | 0 | SCHED_OTHER |
+
+  3 次快照（间隔 3 s）**每一次**都成立；`/health.idle_priority` = `requested=true, applied=3,
+  failed=0, unsupported=0`。
+- **负向对照**（这条比正向更能说明探针在测事实）：`engine.idle_priority=false` 重启后，
+  同一批线程名仍在，但 `nice=0`/`SCHED_OTHER`，判定变成 `fail`、`applied=0`。
+  没有这条，「探针只会印 pass」就无法排除。
+- **功能不敢假设，直接测**：引擎线程处于 Idle 的状态下跑 LAN 用例（A 做种、B 拨入握手唤醒），
+  1 MiB 落地 **md5 一致**（`6209e962…`）、`guard.handshakes=1/woken=1`、`seed_after=hot`。
+  证据 `tests/ARCHIVE/evidence/bt-wake-on-handshake-lan-idleprio-20261125.json`。
+- **复现**：
+  ```
+  scp scripts/nfr02_thread_prio_probe.py root@192.168.1.221:/root/
+  python3 /root/nfr02_thread_prio_probe.py <pid> /var/tmp/nfr02-thread-prio.json \
+      http://127.0.0.1:17800/health 3 3
+  ```
+- **不覆盖**：「造种时前台吞吐劣化 ≤5%」属 NFR-03（S5，凭令牌桶）；本项只回答
+  「造种任务在哪个优先级上跑」。
