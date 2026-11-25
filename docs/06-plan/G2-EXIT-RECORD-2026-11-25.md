@@ -250,6 +250,8 @@
   `PRIO_DARWIN_BG` 是标志位不是 nice 值，所以 `ThreadPriority.nice` 在 darwin 恒 0（无意义），
   真实读数放 `policy`（0 = 前台类 / `0x10000` = 背景类）；`IdleOutcome` 新增
   `DarwinBackground`，`as_str()` 为 `"darwin_bg"`，`is_idle()` 为 `true`。
+  **它不是 Linux `SCHED_IDLE` 的同义词**：两者机制不同（darwin 的 QoS 背景类 vs Linux 的调度策略），
+  语义相近但不等价；本项判据只要求「仅以 Idle 优先级运行」，这一档是 darwin 上能拿到的最接近的东西。
 - **`getpriority` 的 -1 陷阱**：darwin 上 -1 既是错误返回值、又不可能是一个合法状态，
   所以先清 `errno`（darwin 的 `errno` 由 `__error()` 返回指针，不是全局变量），
   读到 -1 一律折成 `None`（读不出），**既不折算成 0，也不折算成成功**。

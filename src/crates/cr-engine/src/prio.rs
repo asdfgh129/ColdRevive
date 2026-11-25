@@ -18,7 +18,10 @@
 //!   `IDLE_PRIORITY_CLASS` 那档更低）。
 //! - **macOS**：`setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG)`，读回用
 //!   `getpriority(PRIO_DARWIN_THREAD, 0) == PRIO_DARWIN_BG`。darwin 没有 nice 语义，
-//!   「background」类就是它的 Idle 档（只在没有前台需求时被调度，且 I/O 一并被降权）。
+//!   「background」类是对应档：CPU 调度降到最低一档、I/O 一并被降权。
+//!   **但不要把它当成 Linux `SCHED_IDLE` 的同义词**——机制不同（QoS 类 vs 调度策略），
+//!   语义相近但不是等价物；本项目的判据只要求「仅以 Idle 优先级运行」，这一档是 darwin 上
+//!   能拿到的最接近的东西，真正的等效性要等真机数据来支撑。
 //!   **这一档在本仓库没有硬件实测**：没有 mac 机器，所以它只做到「实现 + 类型检查」——
 //!   `cargo check -p cr-engine --features darwin-check` 在 Linux/Windows 上把 darwin 分支
 //!   一起编译检查（见 [`darwin_verdict`] 与 `Cargo.toml` 的 feature 注释）。因此

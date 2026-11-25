@@ -15,13 +15,17 @@
   ],
   "implementation": {
     "file": "src/crates/cr-engine/src/prio.rs",
-    "sha256": "f187c979887b2a64cce4dd14b6d2ed0469f6ccd1f90df82bfe66faae410ed0ef",
+    "sha256": "78d8af1eae58f0a5227c212fc387af41b03b430128124864ddac21e458047bf7",
     "crate_manifest": "src/crates/cr-engine/Cargo.toml",
     "crate_manifest_sha256": "5a45ca99123b18ad93021ccb264b3ab4a5ed2eeefab11494691b7d5afc19d0e6",
     "syscall": "setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x10000)",
     "readback": "getpriority(PRIO_DARWIN_THREAD, 0) == 0x10000 才算生效；其它值一律判失败",
     "errno_handling": "darwin 的 errno 由 __error() 返回指针（不是全局变量），调用前清零；getpriority 返回 -1 折成 None（读不出），既不折算成 0 也不折算成成功",
-    "outcome_variant": { "name": "DarwinBackground", "as_str": "darwin_bg", "is_idle": true },
+    "outcome_variant": {
+      "name": "DarwinBackground",
+      "as_str": "darwin_bg",
+      "is_idle": true
+    },
     "thread_priority_mapping": "darwin 无 nice 语义：ThreadPriority.nice 恒 0（无意义），真实读数放 policy（0=前台类 / 0x10000=背景类）",
     "granularity": "与 Linux/Windows 一致：只降引擎 worker 线程（cr-engine-wrk），唤醒路径线程不动",
     "feature_gate": {
@@ -29,7 +33,8 @@
       "default": false,
       "purpose": "在无 mac 的机器上让 darwin 分支参与类型检查；不链接、不执行，生产构建行为不变",
       "command": "cargo check -p cr-engine --features darwin-check"
-    }
+    },
+    "not_equivalent_to_sched_idle": "darwin 的 QoS 背景类与 Linux SCHED_IDLE 机制不同，语义相近但不等价；判据只要求「仅以 Idle 优先级运行」"
   },
   "checks": {
     "host_default_check": {
@@ -128,5 +133,6 @@
     "docs/06-plan/G2-EXIT-RECORD-2026-11-25.md §10（macOS 取证与真机收尾清单）",
     "docs/04-protocol/CONFIG.md engine.idle_priority 行",
     "tests/fixtures/g2-spike-verdicts.toml [nfr02_idle_priority].macos / g2_wording_constraints"
-  ]
+  ],
+  "git_commit_note": "git_commit 是引入该分支的提交；如果实现文件后来只改注释，以 implementation.sha256 为准（sha 是主键，commit 是线索）"
 }
