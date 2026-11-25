@@ -51,6 +51,21 @@ python3 scripts/archive_test_run.py \
 - 门禁常量不得由归档脚本或测试脚本自动改写；`gate_impact` 只能是说明。
 - 账本为**追加式**：更正用新条目说明，不删除或改写旧条目。
 
+### 2.1 sha256 的口径（CRLF 陷阱，2026-11-25 补）
+
+账本里的 `sha256` 是**登记时证据文件的实际字节**。本仓库在 Windows 上工作，
+`core.autocrlf` 会把文本文件在提交时归一化成 LF、检出时还原成 CRLF，于是：
+
+- 未在 `tests/ARCHIVE/evidence/.gitattributes` 里声明 `-text` 的文件，
+  `git show HEAD:<path> | sha256sum` 与账本里的值**可能不同**（差的是 `\r`）。
+  这不是篡改，是换行归一化；比对前先看该文件有没有 `-text`。
+- 需要**字节级可复现**的证据（原始探针输出、抓包派生、与门禁判断直接相关的 JSON），
+  必须在 `.gitattributes` 里加 `-text`。已锁的有：`s6-verdict-20261117/*`、
+  `nfr02-idle-cpu-20261125.raw.json`、`nfr02-engine-idle-priority-20261125.{on,off}.json`、
+  `regression-full-20261125e.log`、`nfr02-macos-idle-priority-20261125.json`。
+  对这些文件，`git show HEAD:<path> | sha256sum` 必须等于账本值；不等就是真问题。
+- 新证据入库时：先定 `-text`，再登记哈希，最后用上面那条命令自查一遍。
+
 ## 3. 目录内容
 
 | 文件 | 用途 |
