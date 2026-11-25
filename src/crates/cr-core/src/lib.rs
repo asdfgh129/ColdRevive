@@ -403,6 +403,15 @@ pub struct Config {
     /// 默认关闭：既有 T0/T1/W5.x 证据的字节级行为不变；µTP 在代理模式下不外透，
     /// 因此该 opt-in 只宣称 TCP 握手拦截，不宣称 µTP 可达。
     pub bt_guard_handshake: bool,
+    /// NFR-02 第二分句：引擎工作线程（造种/校验/下载）是否降到 Idle 优先级。
+    ///
+    /// `engine.idle_priority`，**默认 `true`**（判据要求造种任务以 Idle 运行，
+    /// 所以这是产品默认，而不是 opt-in）。要全速下载的用户可以显式写 `false`。
+    ///
+    /// 与 `bt_guard_handshake` 相反的默认值是有意的，也因为这一点，**非法值的处理
+    /// 方向相反**：那里「写错 = 关」（安全默认），这里「写错 = 仍开」（判据默认）。
+    /// 写成字符串 `"false"` 不会关掉它——字符串不是布尔，按默认 `true` 处理。
+    pub engine_idle_priority: bool,
     /// 做种活跃池上限（`engine.max_active_seeds`，W4.3）。`None` = 用 `cr-sched` 的默认值。
     ///
     /// 只有活跃池里的任务会 `activate`；超过上限时逐出最久未用者并暂停它。
@@ -696,6 +705,12 @@ impl Config {
             .unwrap_or(false);
         let bt_guard_handshake =
             engine_flag("guard_handshake") || engine_flag("wake_on_handshake");
+        // NFR-02 第二分句：默认开。非布尔（含字符串 "false"）一律按默认 true 处理，
+        // 因为这条是判据要求，写错配置不该把造种悄悄提到正常优先级。
+        let engine_idle_priority = j.get("engine")
+            .and_then(|e| e.get("idle_priority"))
+            .and_then(Json::as_bool)
+            .unwrap_or(true);
         let role = match j.get("role").and_then(Json::as_str) {
             None => None,
             Some(s) => {
@@ -805,6 +820,7 @@ impl Config {
             limits_max_seeding_cpu_millipct,
             kad_ttl_secs,
             bt_guard_handshake,
+            engine_idle_priority,
         })
     }
 
@@ -1142,6 +1158,38 @@ mod tests {
         assert!(mk(r#"{"wake_on_handshake": true}"#));
         assert!(!mk(r#"{"wake_on_handshake": "true"}"#));
         assert!(!mk(r#"{"wake_on_handshake": false, "guard_handshake": false}"#));
+    }
+
+    /// NFR-02 第二分句：`engine.idle_priority` **默认开**，只有显式布尔 false 才关。
+    ///
+    /// 与 `guard_handshake` 的方向相反是有意的：那条是 opt-in（写错=关，安全默认），
+    /// 这条是判据要求（写错=仍开，判据默认）。字符串 "false" 不得把它关掉——
+    /// 那会让「配置里明明写了 false」与「造种仍在 Idle」之间无法解释。
+    #[test]
+    fn idle_priority_defaults_on_and_only_a_real_false_turns_it_off() {
+        let base = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {"A": {"host": "127.0.0.1", "http_port": 1, "wake_udp_port": 2, "bt_port": 3}},
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "engine": {ENGINE}
+        }"#;
+        let mk = |engine: &str| {
+            let txt = base.replace("{ENGINE}", engine);
+            let p = std::env::temp_dir().join("cr_core_idle_prio.json");
+            fs::write(&p, txt).unwrap();
+            let v = Config::load(&p).unwrap().engine_idle_priority;
+            let _ = fs::remove_file(&p);
+            v
+        };
+        assert!(mk("{}"), "缺省必须开启（NFR-02 判据要求）");
+        assert!(mk(r#"{"idle_priority": true}"#));
+        assert!(!mk(r#"{"idle_priority": false}"#));
+        assert!(mk(r#"{"idle_priority": "false"}"#), "字符串不是布尔，按默认 true");
+        assert!(mk(r#"{"idle_priority": 0}"#), "数字不是布尔，按默认 true");
+        // 与握手开关互不影响：两个键各自独立
+        assert!(mk(r#"{"guard_handshake": true}"#));
+        assert!(!mk(r#"{"guard_handshake": true, "idle_priority": false}"#));
     }
 
     /// FR-14：空闲休眠默认关闭；秒与分钟都按整数解析，0 是显式关闭。

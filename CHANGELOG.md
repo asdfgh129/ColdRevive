@@ -1,3 +1,28 @@
+## [2.4.143] - 2026-11-25 — 实现 NFR-02 第二分句：引擎工作线程降至 Idle（`engine.idle_priority`，默认开）
+
+> **这是实现，不是达标声明。** 数值与线程读数见下一条（v2.4.144 才关闭 G-4）。
+> 四个门禁机器字段一个没动。
+
+- **为什么按线程降、不按进程降**：同进程里还有唤醒关键路径（cr-guard 读 68 B 握手、
+  cr-data-plane 的 UDP、HTTP API）。整进程降到 Idle 会把 NFR-04 的唤醒 P95 一起拖下去
+  ——那是拿一个门禁换另一个门禁。221 上实测线程分布为：主线程 + 6 个未命名 std 线程 +
+  2 个 `cr-data-plane` + **2 个 `tokio-rt-worker`**，librqbit 的全部工作就在这 2 个上。
+- **粒度边界的诚实说法**：librqbit 只有一个线程池，做种/分片校验/下载共用同一批 worker，
+  因此降的是**整个引擎**，无法只降做种不降下载。这条写进 `EngineOptions::idle_threads`
+  的文档、CONFIG.md 与 `/health`，不藏。
+- **落点**：新增 `cr_engine::prio`（Linux `nice 19` + `SCHED_IDLE`；Windows
+  `THREAD_PRIORITY_IDLE(-15)`；macOS 返回 `Unsupported`，不假装支持）；`RqbitEngine`
+  在 `Builder::on_thread_start` 里降级——**必须卡在出生点**，事后按 tid 去 `/proc` 找
+  会漏掉「线程已开始做种、还没被找到」的窗口；`EngineOptions.idle_threads` 默认 `false`
+  （库层不动既有证据的字节行为），`coldrevived` 按 `engine.idle_priority`（**默认 `true`**）
+  显式打开。`/health.idle_priority` 报 `requested/applied/failed/unsupported`，
+  `applied` 是**读回校验通过**的线程数，不是「调用了几次」。
+- **一律读回**：系统调用返回 0 不算数，判定只看读回值（Linux `/proc/self/stat` 的
+  nice/policy，Windows `GetThreadPriority`）。
+- 单测：`cr-engine` 3 条（含「子线程降级不污染调用线程」）、`cr-core` 1 条
+  （默认开；字符串/数字不算布尔；与 `guard_handshake` 互不影响）。
+- 配置键文档：`docs/04-protocol/CONFIG.md` 新增 `engine.idle_priority` 行。
+
 ## [2.4.142] - 2026-11-25 — G-1 补采关闭：NFR-02 空闲 CPU 实测 0.03%；新增 G-4（Idle 优先级无实现）
 
 > **关闭的是「没有采点」，不是整条 NFR-02。** 第二分句「造种任务仅以 Idle 优先级运行」

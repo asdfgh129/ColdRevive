@@ -23,6 +23,14 @@ use librqbit::{
     SessionOptions, TorrentStatsState,
 };
 
+/// NFR-02 第二分句：让引擎工作线程以 Idle 优先级运行。
+///
+/// 放在本 crate 而不是守护进程里，是因为**只有这里能按住线程的出生点**：
+/// librqbit 的所有工作都跑在这个 crate 自建的 Tokio 运行时上，线程由
+/// `Builder::on_thread_start` 创建时才能确定地设置优先级。放到外面就只能
+/// 事后去 `/proc` 里猜哪个 tid 是引擎的。
+pub mod prio;
+
 /// 引擎内部任务号。与 `coldrevived` 的 aria2 `gid` 是两套编号，映射关系由调用方保存。
 pub type TaskId = u64;
 
@@ -132,6 +140,18 @@ pub struct EngineOptions {
     pub download_bps: Option<u32>,
     /// 初始化（读盘 + 校验已有分片）的等待上限，超时如实报错。
     pub init_timeout: Duration,
+    /// NFR-02 第二分句：把**引擎工作线程**降到 Idle 优先级（默认 `false`，由调用方
+    /// 按配置打开；`coldrevived` 的产品默认是开）。
+    ///
+    /// 粒度边界（必须说清，否则会被读成更强的承诺）：librqbit 只有一个线程池，
+    /// 做种、分片校验、下载都在同一批 worker 上，因此这里降的是**整个引擎**，
+    /// 不能只降做种、不降下载。守护进程里的唤醒关键路径（cr-guard 的 68 B 握手、
+    /// cr-data-plane 的 UDP、HTTP API）跑在自己的线程上，**不受影响**——这正是
+    /// 必须按线程降、不能按进程降的原因。
+    ///
+    /// 默认 `false` 的另一个理由：既有 T0/T1/W5.x 证据全是在默认优先级下采的，
+    /// 库层默认值一改，「同样的代码为什么行为不同」就说不清了。
+    pub idle_threads: bool,
 }
 
 impl EngineOptions {
@@ -147,6 +167,7 @@ impl EngineOptions {
             upload_bps: None,
             download_bps: None,
             init_timeout: Duration::from_secs(60),
+            idle_threads: false,
         }
     }
 }
@@ -191,9 +212,25 @@ impl RqbitEngine {
     pub fn new(opts: EngineOptions) -> Result<Self, String> {
         std::fs::create_dir_all(&opts.download_dir)
             .map_err(|e| format!("创建下载目录失败 {}: {e}", opts.download_dir.display()))?;
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
+        // NFR-02：引擎工作线程的 Idle 优先级必须**在出生点**设置。
+        // 事后去 /proc 里按 tid 找线程再改，会在「线程已开始做种、我们还没找到它」
+        // 的窗口里漏掉降级，而且依赖线程名这种非契约信息。
+        let mut rtb = tokio::runtime::Builder::new_multi_thread();
+        rtb.worker_threads(2).enable_all();
+        if opts.idle_threads {
+            rtb.on_thread_start(|| match prio::set_current_thread_idle() {
+                Ok(o) if o.is_idle() => {
+                    println!("[engine] 工作线程已降至 Idle 优先级（{}）", o.as_str());
+                }
+                Ok(o) => {
+                    // Unsupported：不假装降了，也不当作失败（平台没有这条路）。
+                    eprintln!("[engine] 本平台无 Idle 优先级支持（{}），造种按默认优先级运行",
+                              o.as_str());
+                }
+                Err(e) => eprintln!("[engine] 工作线程降级到 Idle 失败（按默认优先级继续）: {e}"),
+            });
+        }
+        let rt = rtb
             .build()
             .map_err(|e| format!("构建 Tokio 运行时失败: {e}"))?;
 

@@ -539,6 +539,9 @@ fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
         upload_bps: upload_cap,
         download_bps: None,
         init_timeout: Duration::from_secs(60),
+        // NFR-02 第二分句：造种跑在引擎 worker 上，必须按线程降到 Idle；
+        // 唤醒路径（guard / data-plane / HTTP）不在这些线程上，因此不受影响。
+        idle_threads: cfg.engine_idle_priority,
     })?;
     let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
     let mut primary: Option<cr_engine::TaskId> = None;
@@ -1196,6 +1199,19 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
                  ])
              }),
              ("idle", idle_json),
+             // NFR-02 第二分句：引擎工作线程的降级实况。
+             // `applied` 是**读回校验通过**的线程数（不是「调用了几次」），
+             // 所以 `requested=true, applied=0` 只有两种解释：引擎还没起，
+             // 或降级失败（后者会同时抬 `failed`）。
+             ("idle_priority", {
+                 let s = cr_engine::prio::stats();
+                 Json::obj(vec![
+                     ("requested", Json::b(cfg.engine_idle_priority)),
+                     ("applied", Json::n(s.applied as f64)),
+                     ("failed", Json::n(s.failed as f64)),
+                     ("unsupported", Json::n(s.unsupported as f64)),
+                 ])
+             }),
              // P1：api 只暴露 enabled，secret 值永不出现；其余均为真实观测状态。
              ("api", api_json),
              ("nat", nat_auto_json),
@@ -1474,7 +1490,7 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
 
             // 引擎在 NodeState 锁之外操作：创建会话 / 读盘校验可能耗时数百毫秒，
             // 不能把 /health、KAD 分发一起堵住。
-            let (slot, engine_dir, engine_listen, proxy_url, initial_peers) = {
+            let (slot, engine_dir, engine_listen, proxy_url, initial_peers, idle_priority) = {
                 let st = state.lock().unwrap();
                 let proxy = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
                 // v2.4.92：opt-in 时把「已经唤醒过的对端」直接交给引擎。
@@ -1491,14 +1507,15 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
                 } else {
                     Vec::new()
                 };
-                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen, proxy, peers)
+                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen, proxy, peers,
+                 st.cfg.engine_idle_priority)
             };
             let mut engine_task = None;
             let mut error = String::new();
             if let Some(bytes) = fetched.as_ref() {
                 let name = parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default();
                 match attach_to_engine(&slot, &engine_dir, engine_listen, proxy_url.as_deref(),
-                                       &name, bytes, &initial_peers) {
+                                       idle_priority, &name, bytes, &initial_peers) {
                     Ok(tid) => {
                         engine_task = Some(tid);
                         note = format!(
@@ -1661,6 +1678,7 @@ fn attach_to_engine(
     dir: &Path,
     listen: Option<std::net::SocketAddr>,
     proxy_url: Option<&str>,
+    idle_threads: bool,
     name: &str,
     bytes: &[u8],
     initial_peers: &[std::net::SocketAddr],
@@ -1670,6 +1688,8 @@ fn attach_to_engine(
         let mut opts = EngineOptions::new(dir);
         opts.listen = listen;
         opts.proxy_url = proxy_url.map(str::to_string);
+        // NFR-02：成员侧的引擎同样是「后台传播」通道，默认也降到 Idle。
+        opts.idle_threads = idle_threads;
         let e = RqbitEngine::new(opts)?;
         match e.listen_addr() {
             Some(a) => println!("[engine] BT 引擎已创建，监听 {}（下载目录 {}）", a, dir.display()),
