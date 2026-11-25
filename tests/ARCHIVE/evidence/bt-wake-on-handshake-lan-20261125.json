@@ -1324,5 +1324,11 @@
       "last": null,
       "note": "尚未到第一个周期"
     }
+  },
+  "correction_20261125_public": {
+    "what_was_wrong": "the public_path_probe note claimed the CPE stopped answering and that the mapping had to be restored",
+    "actual_cause": "nothing was listening on 0.0.0.0:19920 at probe time: engine.listen was 127.0.0.1:<bt_port> and the guard was not enabled yet, so the host itself answered RST. The CPE mapping was alive the whole time.",
+    "how_verified": "bt-wake-on-handshake-public-20261125.json: with guard bound to 0.0.0.0:19920, 82.157.68.159 and 119.29.150.254 both complete the TCP handshake and B's tcpdump shows their SYNs plus SYN/ACK on ens160",
+    "scope_change": "public-path direct BT is PASS, not BLOCKED; LAN result stands unchanged"
   }
 }
