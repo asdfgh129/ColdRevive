@@ -1,3 +1,28 @@
+## [2.4.142] - 2026-11-25 — G-1 补采关闭：NFR-02 空闲 CPU 实测 0.03%；新增 G-4（Idle 优先级无实现）
+
+> **关闭的是「没有采点」，不是整条 NFR-02。** 第二分句「造种任务仅以 Idle 优先级运行」
+> 在守护进程内没有运行时实现，转为缺口 **G-4**；因此仍不可写「NFR-02 达标」。
+> 无源码改动（只新增探针与证据）；四个机器字段一个没动（`g2_claim` 仍是 `true`，
+> 其余三个仍 `false`）。
+
+- **采点**：221 / `coldrevived-a` / 600.63 s 空闲窗口（`role=holder`、`seed_active=0`、
+  `served_bytes` 零增长、`dht.enabled=false`、无 `limits.*`）→ 进程累计 CPU **0.18 s**
+  → 均值 **0.03%**（单核口径；阈值 2%，余量 66×），`inst_p95=0.0%`、单点最大 1.33%；
+  RSS 恒 17,320 kB、9 线程；20 次 `/health` 全成功。
+- **为什么不用 `/health` 自采样**：`sysres::spawn()` 仅在配置了任一 `limits.*` 时才起线程，
+  本环境一条未配，故 `current=null` / `sample_at_secs=0`——**「没开采样」不等于「读不到 CPU」**；
+  早期长跑的 `cpu_percent_sampled=false` 实为采集脚本未取资源块（原件写 `No CPU time series was captured`）。
+- **构建溯源（顺带修掉一个真问题）**：221 的构建树有 8 个 `.rs` 落后于 HEAD，原部署二进制不是
+  HEAD 构建。已按 HEAD 重同步（86/86 与 git blob 逐字节一致）后 native build，新二进制
+  `sha256 74859068…`，旧件留档 `coldrevived.bak-nfr02`（`97dafe5a…`）。采样在新二进制上做。
+- **新增**：`scripts/nfr02_idle_cpu_probe.py`（只读探针，`/proc/<pid>/stat` 差分）、
+  `scripts/build_nfr02_evidence.py`（整理 + 填 provenance）；
+  证据 `tests/ARCHIVE/evidence/nfr02-idle-cpu-20261125.json` 与逐样本
+  `nfr02-idle-cpu-20261125.raw.json`（sha256 `426b2a18…`，`.gitattributes` 锁字节）。
+- **落点**：DOC-34 升至 v1.1（第 1 节第 2 行、第 2 节禁用措辞、第 3 节第 4 条、第 7 节签署、
+  新增第 8 节「采点方法」）；夹具 `g2_claim_open_gaps` 用 G-4 替换 G-1，新增
+  `[nfr02_idle_sample]`（含数值、sha、`wording_ok` / `wording_forbidden`）；DOC-31 与 `docs/README` 同步。
+
 ## [2.4.141] - 2026-11-25 — 所有者声明 G2 达标：`g2_claim` 改 `true`，新增 DOC-34 出口记录
 
 > **唯一变动的机器字段是 `g2_claim`（`false` → `true`，人为判定字段）。**
