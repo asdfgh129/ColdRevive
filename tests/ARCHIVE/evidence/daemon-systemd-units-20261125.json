@@ -1,0 +1,98 @@
+{
+  "recorded_at": "2026-11-25T10:36:11+08:00",
+  "scope": "make daemon supervision persistent across reboot; no gate impact",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "hosts": {
+    "B_pre": "-rwxr-xr-x 1 root root 13997136 Nov 25 01:56 /tmp/coldrevived-loopback\n-rw-r--r-- 1 root root      914 Nov 25 01:56 /tmp/cr-punch-pub/222/config.json",
+    "B_move": [
+      {
+        "cmd": "mkdir -p /opt/cr-punch-pub/222",
+        "out": ""
+      },
+      {
+        "cmd": "cp -f /tmp/coldrevived-loopback /opt/cr-punch-pub/222/coldrevived",
+        "out": ""
+      },
+      {
+        "cmd": "chmod +x /opt/cr-punch-pub/222/coldrevived",
+        "out": ""
+      },
+      {
+        "cmd": "cp -f /tmp/cr-punch-pub/222/config.json /opt/cr-punch-pub/222/config.json",
+        "out": ""
+      },
+      {
+        "cmd": "cp -a /tmp/cr-punch-pub/222/. /opt/cr-punch-pub/222/ 2>/dev/null || true",
+        "out": ""
+      }
+    ],
+    "B_config": {
+      "bind": "0.0.0.0",
+      "nodes": {
+        "B": {
+          "host": "192.168.34.222",
+          "http_port": 17900,
+          "wake_udp_port": 17901,
+          "bt_port": 19920
+        }
+      },
+      "workdir": "/opt/cr-punch-pub/222",
+      "sample_path": "/root/cr-w61/sample.bin",
+      "golden_req": "/opt/cr-punch-pub/222/req.json",
+      "golden_ack": "/opt/cr-punch-pub/222/ack.json",
+      "downloader": "/opt/cr-punch-pub/222/downloader",
+      "keywords": [
+        "cr-punch-pub"
+      ],
+      "namespace": "ColdRevive_V1:",
+      "challenge_window_sec": 300,
+      "role": "member",
+      "engine": {
+        "listen": "127.0.0.1:19920"
+      },
+      "nat": {
+        "enabled": true,
+        "bt_external": "112.5.32.34:19920",
+        "stun_servers": [
+          "119.29.150.254:3478",
+          "119.29.150.254:3479"
+        ],
+        "relay": "82.157.68.159:7100",
+        "relay_key": "file:/root/relay.key",
+        "punch_route": true,
+        "relay_rendezvous": "203.0.113.31",
+        "data_plane_carrier": "tcp"
+      }
+    },
+    "A": {
+      "unit": "coldrevived-a",
+      "enabled": "enabled",
+      "active": "active",
+      "unit_file": "# /etc/systemd/system/coldrevived-a.service\n[Unit]\nDescription=ColdRevive daemon A (bt + nat punch-capable)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory=/opt/cr-punch-pub/221\nExecStart=/opt/cr-punch-pub/221/coldrevived --config /opt/cr-punch-pub/221/config.json --node-id A --bind 0.0.0.0 --workdir /opt/cr-punch-pub/221\nRestart=on-failure\nRestartSec=3\nLimitNOFILE=65535\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target",
+      "health_ok": true,
+      "pid": 660943,
+      "node": "A",
+      "blob_md5": "1ba84f286fdab265e936fa65dfbc69e1  /opt/cr-punch-pub/221/coldrevived",
+      "listeners": "LISTEN 0      128          0.0.0.0:17800      0.0.0.0:*    users:((\"coldrevived\",pid=660943,fd=18))               \nLISTEN 0      1024       127.0.0.1:19910      0.0.0.0:*    users:((\"coldrevived\",pid=660943,fd=14))               \nLISTEN 0      128        127.0.0.1:35291      0.0.0.0:*    users:((\"coldrevived\",pid=660943,fd=7))",
+      "workdir_files": "total 13704\n-rw-r--r-- 1 root root        2 Nov 25 01:56 ack.json\n-rwxr-xr-x 1 root root 13997136 Nov 25 01:56 coldrevived\n-rw-r--r-- 1 root root      833 Nov 25 02:25 config.json\ndrwxr-xr-x 2 root root     4096 Nov 25 01:46 downloader\ndrwxr-xr-x 2 root root     4096 Nov 25 01:46 meta\n-rw-r--r-- 1 root root        2 Nov 25 01:56 req.json\n-rw-r--r-- 1 root root      752 Nov 25 02:36 state-A.json\n-rw-r--r-- 1 root root      752 Nov 25 02:25 state-A.json.bak"
+    },
+    "B": {
+      "unit": "coldrevived-b",
+      "enabled": "enabled",
+      "active": "active",
+      "unit_file": "# /etc/systemd/system/coldrevived-b.service\n[Unit]\nDescription=ColdRevive daemon B (bt + nat punch-capable)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nType=simple\nWorkingDirectory=/opt/cr-punch-pub/222\nExecStart=/opt/cr-punch-pub/222/coldrevived --config /opt/cr-punch-pub/222/config.json --node-id B --bind 0.0.0.0 --workdir /opt/cr-punch-pub/222\nRestart=on-failure\nRestartSec=3\nLimitNOFILE=65535\nStandardOutput=journal\nStandardError=journal\n\n[Install]\nWantedBy=multi-user.target",
+      "health_ok": true,
+      "pid": 1202955,
+      "node": "B",
+      "blob_md5": "1ba84f286fdab265e936fa65dfbc69e1  /opt/cr-punch-pub/222/coldrevived",
+      "listeners": "LISTEN 0      128        127.0.0.1:39763      0.0.0.0:*    users:((\"coldrevived\",pid=1202955,fd=7))                 \nLISTEN 0      128          0.0.0.0:17900      0.0.0.0:*    users:((\"coldrevived\",pid=1202955,fd=9))",
+      "workdir_files": "total 13692\n-rw-r--r-- 1 root root        2 Nov 25 01:56 ack.json\n-rwxr-xr-x 1 root root 13997136 Nov 25 02:36 coldrevived\n-rw-r--r-- 1 root root      915 Nov 25 02:36 config.json\ndrwxr-xr-x 2 root root     4096 Nov 25 01:47 downloader\ndrwxr-xr-x 2 root root     4096 Nov 25 01:58 downloads\n-rw-r--r-- 1 root root        2 Nov 25 01:56 req.json"
+    }
+  },
+  "verdict": "PASS"
+}

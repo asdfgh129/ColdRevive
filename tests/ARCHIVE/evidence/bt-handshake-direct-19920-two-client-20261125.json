@@ -1,0 +1,32 @@
+{
+  "recorded_at": "2026-11-25T10:44:18+08:00",
+  "scope": "real BitTorrent handshake to B's static CPE mapping 112.5.32.34:19920 from two independent clients (A 221 and cloud 82.157.68.159); no tracker/punch/relay",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "B_listeners": "LISTEN 0      128          0.0.0.0:17900      0.0.0.0:*    users:((\"coldrevived\",pid=1203953,fd=16))                \nLISTEN 0      1024         0.0.0.0:19920      0.0.0.0:*    users:((\"coldrevived\",pid=1203953,fd=12))                \nLISTEN 0      128        127.0.0.1:33265      0.0.0.0:*    users:((\"coldrevived\",pid=1203953,fd=7))",
+  "B_seed": "{\"seed\":{\"seeding_hot\":false,\"served_bytes\":0,\"engine_task\":1,\"seeding_active\":0,\"seeding_cap\":8,\"seeding_evictions\":0,\"utp_requested\":true,\"utp_udp_port_occupied\":true,\"state\":\"cold\",\"peers\":0,\"checked_bytes\":1048576,\"total_bytes\":1048576,\"finished\":true}}",
+  "tcpdump_unit": "Running as unit: crtcpdump.service",
+  "tcpdump_active": "active",
+  "probe_from_A": {
+    "stdout": "CONNECT_RC 0 ms 2\nGOT 0",
+    "stderr": ""
+  },
+  "probe_from_cloud": {
+    "stdout": "CONNECT_RC 0 ms 47\nGOT 0",
+    "stderr": ""
+  },
+  "b_tcpdump": "tcpdump: data link type LINUX_SLL2\ntcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes\n02:44:25.039503 ens160 In  IP 112.5.60.4.37312 > 192.168.34.222.19920: Flags [S], seq 2457420240, win 64240, options [mss 1460,sackOK,TS val 3122703092 ecr 0,nop,wscale 7], length 0\n02:44:25.039536 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.37312: Flags [S.], seq 1059310401, ack 2457420241, win 65160, options [mss 1460,sackOK,TS val 598617845 ecr 3122703092,nop,wscale 7], length 0\n02:44:25.041916 ens160 In  IP 112.5.60.4.37312 > 192.168.34.222.19920: Flags [.], ack 1, win 502, options [nop,nop,TS val 3122703095 ecr 598617845], length 0\n02:44:25.041973 ens160 In  IP 112.5.60.4.37312 > 192.168.34.222.19920: Flags [P.], seq 1:69, ack 1, win 502, options [nop,nop,TS val 3122703095 ecr 598617845], length 68\n02:44:25.041987 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.37312: Flags [.], ack 69, win 509, options [nop,nop,TS val 598617848 ecr 3122703095], length 0\n02:44:25.042150 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.37312: Flags [F.], seq 1, ack 69, win 509, options [nop,nop,TS val 598617848 ecr 3122703095], length 0\n02:44:25.044406 ens160 In  IP 112.5.60.4.37312 > 192.168.34.222.19920: Flags [F.], seq 69, ack 2, win 502, options [nop,nop,TS val 3122703098 ecr 598617848], length 0\n02:44:25.044425 ens160 Out IP 192.168.34.222.19920 > 112.5.60.4.37312: Flags [.], ack 70, win 509, options [nop,nop,TS val 598617850 ecr 3122703098], length 0\n02:44:27.165074 ens160 In  IP 82.157.68.159.40666 > 192.168.34.222.19920: Flags [S], seq 3031279450, win 64240, options [mss 1424,sackOK,TS val 1650284028 ecr 0,nop,wscale 7], length 0\n02:44:27.165101 ens160 Out IP 192.168.34.222.19920 > 82.157.68.159.40666: Flags [S.], seq 2138316589, ack 3031279451, win 65160, options [mss 1460,sackOK,TS val 2670894566 ecr 1650284028,nop,wscale 7], length 0\n02:44:27.212699 ens160 In  IP 82.157.68.159.40666 > 192.168.34.222.19920: Flags [.], ack 1, win 502, options [nop,nop,TS val 1650284076 ecr 2670894566], length 0\n02:44:27.212889 ens160 In  IP 82.157.68.159.40666 > 192.168.34.222.19920: Flags [P.], seq 1:69, ack 1, win 502, options [nop,nop,TS val 1650284076 ecr 2670894566], length 68\n02:44:27.212909 ens160 Out IP 192.168.34.222.19920 > 82.157.68.159.40666: Flags [.], ack 69, win 509, options [nop,nop,TS val 2670894613 ecr 1650284076], length 0\n02:44:27.212970 ens160 Out IP 192.168.34.222.19920 > 82.157.68.159.40666: Flags [F.], seq 1, ack 69, win 509, options [nop,nop,TS val 2670894614 ecr 1650284076], length 0\n02:44:27.260220 ens160 In  IP 82.157.68.159.40666 > 192.168.34.222.19920: Flags [F.], seq 69, ack 2, win 502, options [nop,nop,TS val 1650284123 ecr 2670894614], length 0\n02:44:27.260241 ens160 Out IP 192.168.34.222.19920 > 82.157.68.159.40666: Flags [.], ack 70, win 509, options [nop,nop,TS val 2670894661 ecr 1650284123], length 0\n\n16 packets captured\n16 packets received by filter\n0 packets dropped by kernel",
+  "b_tcpdump_counts": {
+    "from_A": "8",
+    "from_cloud": "8",
+    "lines": "23"
+  },
+  "verdict": "BLOCKED",
+  "reason": "no valid BT handshake returned from B engine",
+  "B_restored": "{\"status\":\"ok\",\"node\":\"B\",\"host\":\"192.168.34.222\",\"machine_id\":\"unknown\",\"pid\":1203993,\"seed_tasks\":"
+}

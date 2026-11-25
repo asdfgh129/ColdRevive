@@ -1,0 +1,1293 @@
+{
+  "recorded_at": "2026-11-25T10:38:55+08:00",
+  "scope": "real BT bytes over a DIRECT public dial A -> 112.5.32.34:19920 (B side static CPE DNAT). NOT a punched path, NOT relay.",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "gate_snapshot": {
+    "g2_claim": false,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "config_before": {
+    "A": {
+      "bind": "0.0.0.0",
+      "nodes": {
+        "A": {
+          "host": "192.168.1.221",
+          "http_port": 17800,
+          "wake_udp_port": 17801,
+          "bt_port": 19910
+        }
+      },
+      "workdir": "/opt/cr-punch-pub/221",
+      "sample_path": "/opt/g3-clients/amule-config/Incoming/ed2k-sample.bin",
+      "golden_req": "/opt/cr-punch-pub/221/req.json",
+      "golden_ack": "/opt/cr-punch-pub/221/ack.json",
+      "downloader": "/opt/cr-punch-pub/221/downloader",
+      "keywords": [
+        "cr-punch-pub"
+      ],
+      "namespace": "ColdRevive_V1:",
+      "challenge_window_sec": 300,
+      "role": "holder",
+      "engine": {
+        "listen": "127.0.0.1:19910"
+      },
+      "nat": {
+        "enabled": true,
+        "bt_external": "112.5.60.4:19910",
+        "stun_servers": [
+          "119.29.150.254:3478",
+          "119.29.150.254:3479"
+        ],
+        "relay": "82.157.68.159:7100",
+        "relay_key": "file:/root/relay.key",
+        "punch_route": true,
+        "relay_rendezvous": "203.0.113.31",
+        "data_plane_carrier": "tcp"
+      },
+      "dht": {
+        "enabled": false
+      }
+    },
+    "B": {
+      "bind": "0.0.0.0",
+      "nodes": {
+        "B": {
+          "host": "192.168.34.222",
+          "http_port": 17900,
+          "wake_udp_port": 17901,
+          "bt_port": 19920
+        }
+      },
+      "workdir": "/opt/cr-punch-pub/222",
+      "sample_path": "/root/cr-w61/sample.bin",
+      "golden_req": "/opt/cr-punch-pub/222/req.json",
+      "golden_ack": "/opt/cr-punch-pub/222/ack.json",
+      "downloader": "/opt/cr-punch-pub/222/downloader",
+      "keywords": [
+        "cr-punch-pub"
+      ],
+      "namespace": "ColdRevive_V1:",
+      "challenge_window_sec": 300,
+      "role": "member",
+      "engine": {
+        "listen": "127.0.0.1:19920"
+      },
+      "nat": {
+        "enabled": true,
+        "bt_external": "112.5.32.34:19920",
+        "stun_servers": [
+          "119.29.150.254:3478",
+          "119.29.150.254:3479"
+        ],
+        "relay": "82.157.68.159:7100",
+        "relay_key": "file:/root/relay.key",
+        "punch_route": true,
+        "relay_rendezvous": "203.0.113.31",
+        "data_plane_carrier": "tcp"
+      }
+    }
+  },
+  "b_seed_file_md5": "6209e962f3b26a13c9ec1ae70fd78e10  /opt/cr-punch-pub/222/downloads/ed2k-sample.bin",
+  "B_after_restart": {
+    "health": {
+      "status": "ok",
+      "node": "B",
+      "host": "192.168.34.222",
+      "machine_id": "unknown",
+      "pid": 1203704,
+      "seed_tasks": 1,
+      "seed_active": 0,
+      "served_bytes": 0,
+      "seeding": {
+        "cap": 8,
+        "scheduled": 0,
+        "evictions": 0
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "punch_route": {
+        "enabled": true,
+        "attempts": 0,
+        "direct": 0,
+        "relay": 0,
+        "failed": 0,
+        "relay_data_plane": "tcp-carrier-implemented",
+        "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+        "is_s6_evidence": false,
+        "g2_claim": false,
+        "s6_status": "not_run"
+      },
+      "data_plane": {
+        "enabled": true,
+        "proxy": "socks5://127.0.0.1:45401",
+        "socks5_registered": 0,
+        "served_registered": 0,
+        "bytes_relayed": 0,
+        "tunnels": 0,
+        "tunnels_alive": 0,
+        "carrier": "relay-tcp",
+        "udp_tunnels": 0,
+        "udp_tunnels_alive": 0,
+        "punched_registered": 0,
+        "punched_alive": 0,
+        "udp_cc_enabled": false,
+        "udp_cc_cwnd_x100": 0,
+        "udp_cc_srtt_ms": 0,
+        "udp_cc_loss_events": 0,
+        "udp_cc_rtt_samples": 0,
+        "udp_cc_paced_new": 0,
+        "udp_cc_backpressure": 0
+      },
+      "holder_data": {
+        "enabled": true,
+        "carrier": "relay-sub-tcp",
+        "opens": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "duplicate_open": 0,
+        "peer_mismatch": 0,
+        "unknown_channel": 0,
+        "data_frames": 0,
+        "bytes_to_engine": 0,
+        "bytes_from_engine": 0,
+        "splices_done": 0
+      },
+      "guard": {
+        "enabled": false,
+        "handshakes": 0,
+        "woken": 0,
+        "missed": 0
+      },
+      "idle": {
+        "enabled": false,
+        "threshold_secs": 0,
+        "idle_secs": 0,
+        "sleeps": 0,
+        "last_slept": []
+      },
+      "api": {
+        "rpc_secret": {
+          "enabled": false,
+          "note": "token 值不会出现在 /health 或任何响应中"
+        },
+        "web_ui": {
+          "enabled": false
+        },
+        "websocket": {
+          "enabled": false
+        }
+      },
+      "nat": {
+        "enabled": false,
+        "status": "disabled",
+        "attempts": [],
+        "note": "映射仅来自路由器真实应答；不改变 s6_status"
+      },
+      "qos": {
+        "enabled": true,
+        "background_upload_ratio": 0.02,
+        "reference_link_bps": 12500000,
+        "cap_bps": 250000,
+        "observed_bytes": 0,
+        "allowed_bytes": 0,
+        "denied_bytes": 0,
+        "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+      },
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "cross_protocol": {
+        "enabled": false,
+        "status": "not_implemented",
+        "bt_to_ed2k": "invalid_input",
+        "ed2k_to_bt": "invalid_input",
+        "note": "跨协议补源未实现；不生成来源、不伪造成功"
+      },
+      "reputation": {
+        "enabled": false,
+        "status": "not_implemented",
+        "score": null,
+        "note": "只记账不评分；信誉/激励尚未实现"
+      },
+      "kad_publish": {
+        "cycles": 0,
+        "last": null,
+        "note": "尚未到第一个周期"
+      }
+    },
+    "listeners": "LISTEN 0      128          0.0.0.0:17900      0.0.0.0:*    users:((\"coldrevived\",pid=1203704,fd=16))                \nLISTEN 0      1024         0.0.0.0:19920      0.0.0.0:*    users:((\"coldrevived\",pid=1203704,fd=12))                \nLISTEN 0      128        127.0.0.1:45401      0.0.0.0:*    users:((\"coldrevived\",pid=1203704,fd=7))"
+  },
+  "B_seed": {
+    "seed": {
+      "seeding_hot": false,
+      "served_bytes": 0,
+      "engine_task": 1,
+      "seeding_active": 0,
+      "seeding_cap": 8,
+      "seeding_evictions": 0,
+      "utp_requested": true,
+      "utp_udp_port_occupied": true,
+      "state": "cold",
+      "peers": 0,
+      "checked_bytes": 1048576,
+      "total_bytes": 1048576,
+      "finished": true
+    }
+  },
+  "B_torrent_fetch": "200 214",
+  "A_after_restart": {
+    "health": {
+      "status": "ok",
+      "node": "A",
+      "host": "192.168.1.221",
+      "machine_id": "unknown",
+      "pid": 661350,
+      "seed_tasks": 0,
+      "seed_active": 0,
+      "served_bytes": 0,
+      "seeding": {
+        "cap": 8,
+        "scheduled": 0,
+        "evictions": 0
+      },
+      "limits": {
+        "max_hot_seeds": null,
+        "hot": 0,
+        "max_peers": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "peers"
+        },
+        "max_upload_bytes_per_sec": {
+          "enabled": false,
+          "limit": null,
+          "current": 0,
+          "unit": "B/s"
+        },
+        "max_rss_mb": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "MiB"
+        },
+        "max_seeding_cpu_millipct": {
+          "enabled": false,
+          "limit": null,
+          "current": null,
+          "unit": "milli-percent",
+          "current_percent": null
+        },
+        "sample_at_secs": 0
+      },
+      "punch_route": {
+        "enabled": true,
+        "attempts": 0,
+        "direct": 0,
+        "relay": 0,
+        "failed": 0,
+        "relay_data_plane": "tcp-carrier-implemented",
+        "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+        "is_s6_evidence": false,
+        "g2_claim": false,
+        "s6_status": "not_run"
+      },
+      "data_plane": {
+        "enabled": true,
+        "proxy": "socks5://127.0.0.1:43579",
+        "socks5_registered": 0,
+        "served_registered": 0,
+        "bytes_relayed": 0,
+        "tunnels": 0,
+        "tunnels_alive": 0,
+        "carrier": "relay-tcp",
+        "udp_tunnels": 0,
+        "udp_tunnels_alive": 0,
+        "punched_registered": 0,
+        "punched_alive": 0,
+        "udp_cc_enabled": false,
+        "udp_cc_cwnd_x100": 0,
+        "udp_cc_srtt_ms": 0,
+        "udp_cc_loss_events": 0,
+        "udp_cc_rtt_samples": 0,
+        "udp_cc_paced_new": 0,
+        "udp_cc_backpressure": 0
+      },
+      "holder_data": {
+        "enabled": false,
+        "carrier": "none",
+        "opens": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "duplicate_open": 0,
+        "peer_mismatch": 0,
+        "unknown_channel": 0,
+        "data_frames": 0,
+        "bytes_to_engine": 0,
+        "bytes_from_engine": 0,
+        "splices_done": 0
+      },
+      "guard": {
+        "enabled": false,
+        "handshakes": 0,
+        "woken": 0,
+        "missed": 0
+      },
+      "idle": {
+        "enabled": false,
+        "threshold_secs": 0,
+        "idle_secs": 0,
+        "sleeps": 0,
+        "last_slept": []
+      },
+      "api": {
+        "rpc_secret": {
+          "enabled": false,
+          "note": "token 值不会出现在 /health 或任何响应中"
+        },
+        "web_ui": {
+          "enabled": false
+        },
+        "websocket": {
+          "enabled": false
+        }
+      },
+      "nat": {
+        "enabled": false,
+        "status": "disabled",
+        "attempts": [],
+        "note": "映射仅来自路由器真实应答；不改变 s6_status"
+      },
+      "qos": {
+        "enabled": true,
+        "background_upload_ratio": 0.02,
+        "reference_link_bps": 12500000,
+        "cap_bps": 250000,
+        "observed_bytes": 0,
+        "allowed_bytes": 0,
+        "denied_bytes": 0,
+        "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+      },
+      "dht": {
+        "enabled": false,
+        "status": "disabled",
+        "last_cycle_status": "",
+        "local_addr": null,
+        "bootstrap": [],
+        "seeds": 0,
+        "attempts": 0,
+        "verified": 0,
+        "no_token": 0,
+        "failed": 0,
+        "cycles": 0,
+        "requests": 0,
+        "discovered": 0,
+        "resource_skipped": 0,
+        "last_cycle_at_ms": 0,
+        "last_error": "",
+        "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+      },
+      "cross_protocol": {
+        "enabled": false,
+        "status": "not_implemented",
+        "bt_to_ed2k": "invalid_input",
+        "ed2k_to_bt": "invalid_input",
+        "note": "跨协议补源未实现；不生成来源、不伪造成功"
+      },
+      "reputation": {
+        "enabled": false,
+        "status": "not_implemented",
+        "score": null,
+        "note": "只记账不评分；信誉/激励尚未实现"
+      },
+      "kad_publish": {
+        "cycles": 0,
+        "last": null,
+        "note": "尚未到第一个周期"
+      }
+    },
+    "listeners": "LISTEN 0      128          0.0.0.0:17800      0.0.0.0:*    users:((\"coldrevived\",pid=661350,fd=8))                \nLISTEN 0      128        127.0.0.1:43579      0.0.0.0:*    users:((\"coldrevived\",pid=661350,fd=7))"
+  },
+  "A_public_19920_probe": "connect_ex 0",
+  "gid": "1a210921b450000",
+  "add_uri": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": "1a210921b450000"
+  },
+  "download": {
+    "final": {
+      "gid": "1a210921b450000",
+      "status": "active",
+      "totalLength": "1048576",
+      "completedLength": "0",
+      "uploadLength": "0",
+      "downloadSpeed": "0",
+      "uploadSpeed": "0",
+      "connections": "0",
+      "files": [
+        {
+          "index": "1",
+          "path": "/opt/cr-punch-pub/221/downloads/ed2k-sample.bin",
+          "length": "1048576",
+          "completedLength": "0",
+          "selected": true,
+          "uris": [
+            {
+              "uri": "http://192.168.1.222:17900/torrent/8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+              "status": "used"
+            }
+          ]
+        }
+      ],
+      "coldrevive.torrentParsed": true,
+      "coldrevive.pieceCount": "4",
+      "coldrevive.engineAttached": true,
+      "coldrevive.engineTask": "1",
+      "coldrevive.note": "已接入 BT 引擎（librqbit），下载目录 /opt/cr-punch-pub/221/downloads",
+      "bittorrent": {
+        "infoHash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1"
+      }
+    },
+    "progress_tail": [
+      {
+        "at": "10:42:04",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:05",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:06",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:07",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:08",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:09",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:11",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:12",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:13",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:14",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:15",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:16",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:17",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:18",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      },
+      {
+        "at": "10:42:19",
+        "status": "active",
+        "completed": "0",
+        "speed": "0",
+        "connections": "0"
+      }
+    ]
+  },
+  "b_tcpdump": "tcpdump: data link type LINUX_SLL2\ntcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes\n\n0 packets captured\n0 packets received by filter\n0 packets dropped by kernel",
+  "b_tcpdump_stats": "0",
+  "landed_candidates": "/opt/cr-punch-pub/221/downloads/ed2k-sample.bin",
+  "landed_md5": "",
+  "health_A": {
+    "status": "ok",
+    "node": "A",
+    "host": "192.168.1.221",
+    "machine_id": "unknown",
+    "pid": 661350,
+    "seed_tasks": 0,
+    "seed_active": 0,
+    "served_bytes": 0,
+    "seeding": {
+      "cap": 8,
+      "scheduled": 0,
+      "evictions": 0
+    },
+    "limits": {
+      "max_hot_seeds": null,
+      "hot": 0,
+      "max_peers": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "peers"
+      },
+      "max_upload_bytes_per_sec": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "B/s"
+      },
+      "max_rss_mb": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "MiB"
+      },
+      "max_seeding_cpu_millipct": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "milli-percent",
+        "current_percent": null
+      },
+      "sample_at_secs": 0
+    },
+    "punch_route": {
+      "enabled": true,
+      "attempts": 0,
+      "direct": 0,
+      "relay": 0,
+      "failed": 0,
+      "relay_data_plane": "tcp-carrier-implemented",
+      "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+      "is_s6_evidence": false,
+      "g2_claim": false,
+      "s6_status": "not_run"
+    },
+    "data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:43579",
+      "socks5_registered": 0,
+      "served_registered": 0,
+      "bytes_relayed": 0,
+      "tunnels": 0,
+      "tunnels_alive": 0,
+      "carrier": "relay-tcp",
+      "udp_tunnels": 0,
+      "udp_tunnels_alive": 0,
+      "punched_registered": 0,
+      "punched_alive": 0,
+      "udp_cc_enabled": false,
+      "udp_cc_cwnd_x100": 0,
+      "udp_cc_srtt_ms": 0,
+      "udp_cc_loss_events": 0,
+      "udp_cc_rtt_samples": 0,
+      "udp_cc_paced_new": 0,
+      "udp_cc_backpressure": 0
+    },
+    "holder_data": {
+      "enabled": false,
+      "carrier": "none",
+      "opens": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 0,
+      "bytes_to_engine": 0,
+      "bytes_from_engine": 0,
+      "splices_done": 0
+    },
+    "guard": {
+      "enabled": false,
+      "handshakes": 0,
+      "woken": 0,
+      "missed": 0
+    },
+    "idle": {
+      "enabled": false,
+      "threshold_secs": 0,
+      "idle_secs": 208,
+      "sleeps": 0,
+      "last_slept": []
+    },
+    "api": {
+      "rpc_secret": {
+        "enabled": false,
+        "note": "token 值不会出现在 /health 或任何响应中"
+      },
+      "web_ui": {
+        "enabled": false
+      },
+      "websocket": {
+        "enabled": false
+      }
+    },
+    "nat": {
+      "enabled": false,
+      "status": "disabled",
+      "attempts": [],
+      "note": "映射仅来自路由器真实应答；不改变 s6_status"
+    },
+    "qos": {
+      "enabled": true,
+      "background_upload_ratio": 0.02,
+      "reference_link_bps": 12500000,
+      "cap_bps": 250000,
+      "observed_bytes": 0,
+      "allowed_bytes": 0,
+      "denied_bytes": 0,
+      "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+    },
+    "dht": {
+      "enabled": false,
+      "status": "disabled",
+      "last_cycle_status": "",
+      "local_addr": null,
+      "bootstrap": [],
+      "seeds": 0,
+      "attempts": 0,
+      "verified": 0,
+      "no_token": 0,
+      "failed": 0,
+      "cycles": 0,
+      "requests": 0,
+      "discovered": 0,
+      "resource_skipped": 0,
+      "last_cycle_at_ms": 0,
+      "last_error": "",
+      "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+    },
+    "cross_protocol": {
+      "enabled": false,
+      "status": "not_implemented",
+      "bt_to_ed2k": "invalid_input",
+      "ed2k_to_bt": "invalid_input",
+      "note": "跨协议补源未实现；不生成来源、不伪造成功"
+    },
+    "reputation": {
+      "enabled": false,
+      "status": "not_implemented",
+      "score": null,
+      "note": "只记账不评分；信誉/激励尚未实现"
+    },
+    "kad_publish": {
+      "cycles": 0,
+      "last": null,
+      "note": "尚未到第一个周期"
+    }
+  },
+  "health_B": {
+    "status": "ok",
+    "node": "B",
+    "host": "192.168.34.222",
+    "machine_id": "unknown",
+    "pid": 1203704,
+    "seed_tasks": 1,
+    "seed_active": 0,
+    "served_bytes": 0,
+    "seeding": {
+      "cap": 8,
+      "scheduled": 0,
+      "evictions": 0
+    },
+    "limits": {
+      "max_hot_seeds": null,
+      "hot": 0,
+      "max_peers": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "peers"
+      },
+      "max_upload_bytes_per_sec": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "B/s"
+      },
+      "max_rss_mb": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "MiB"
+      },
+      "max_seeding_cpu_millipct": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "milli-percent",
+        "current_percent": null
+      },
+      "sample_at_secs": 0
+    },
+    "punch_route": {
+      "enabled": true,
+      "attempts": 0,
+      "direct": 0,
+      "relay": 0,
+      "failed": 0,
+      "relay_data_plane": "tcp-carrier-implemented",
+      "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+      "is_s6_evidence": false,
+      "g2_claim": false,
+      "s6_status": "not_run"
+    },
+    "data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:45401",
+      "socks5_registered": 0,
+      "served_registered": 0,
+      "bytes_relayed": 0,
+      "tunnels": 0,
+      "tunnels_alive": 0,
+      "carrier": "relay-tcp",
+      "udp_tunnels": 0,
+      "udp_tunnels_alive": 0,
+      "punched_registered": 0,
+      "punched_alive": 0,
+      "udp_cc_enabled": false,
+      "udp_cc_cwnd_x100": 0,
+      "udp_cc_srtt_ms": 0,
+      "udp_cc_loss_events": 0,
+      "udp_cc_rtt_samples": 0,
+      "udp_cc_paced_new": 0,
+      "udp_cc_backpressure": 0
+    },
+    "holder_data": {
+      "enabled": true,
+      "carrier": "relay-sub-tcp",
+      "opens": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 0,
+      "bytes_to_engine": 0,
+      "bytes_from_engine": 0,
+      "splices_done": 0
+    },
+    "guard": {
+      "enabled": false,
+      "handshakes": 0,
+      "woken": 0,
+      "missed": 0
+    },
+    "idle": {
+      "enabled": false,
+      "threshold_secs": 0,
+      "idle_secs": 208,
+      "sleeps": 0,
+      "last_slept": []
+    },
+    "api": {
+      "rpc_secret": {
+        "enabled": false,
+        "note": "token 值不会出现在 /health 或任何响应中"
+      },
+      "web_ui": {
+        "enabled": false
+      },
+      "websocket": {
+        "enabled": false
+      }
+    },
+    "nat": {
+      "enabled": false,
+      "status": "disabled",
+      "attempts": [],
+      "note": "映射仅来自路由器真实应答；不改变 s6_status"
+    },
+    "qos": {
+      "enabled": true,
+      "background_upload_ratio": 0.02,
+      "reference_link_bps": 12500000,
+      "cap_bps": 250000,
+      "observed_bytes": 0,
+      "allowed_bytes": 0,
+      "denied_bytes": 0,
+      "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+    },
+    "dht": {
+      "enabled": false,
+      "status": "disabled",
+      "last_cycle_status": "",
+      "local_addr": null,
+      "bootstrap": [],
+      "seeds": 0,
+      "attempts": 0,
+      "verified": 0,
+      "no_token": 0,
+      "failed": 0,
+      "cycles": 0,
+      "requests": 0,
+      "discovered": 0,
+      "resource_skipped": 0,
+      "last_cycle_at_ms": 0,
+      "last_error": "",
+      "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+    },
+    "cross_protocol": {
+      "enabled": false,
+      "status": "not_implemented",
+      "bt_to_ed2k": "invalid_input",
+      "ed2k_to_bt": "invalid_input",
+      "note": "跨协议补源未实现；不生成来源、不伪造成功"
+    },
+    "reputation": {
+      "enabled": false,
+      "status": "not_implemented",
+      "score": null,
+      "note": "只记账不评分；信誉/激励尚未实现"
+    },
+    "kad_publish": {
+      "cycles": 0,
+      "last": null,
+      "note": "尚未到第一个周期"
+    }
+  },
+  "verdict": "BLOCKED",
+  "reason": "status=active landed_md5=none",
+  "A_restored_health": {
+    "status": "ok",
+    "node": "A",
+    "host": "192.168.1.221",
+    "machine_id": "unknown",
+    "pid": 661777,
+    "seed_tasks": 1,
+    "seed_active": 0,
+    "served_bytes": 0,
+    "seeding": {
+      "cap": 8,
+      "scheduled": 0,
+      "evictions": 0
+    },
+    "limits": {
+      "max_hot_seeds": null,
+      "hot": 0,
+      "max_peers": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "peers"
+      },
+      "max_upload_bytes_per_sec": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "B/s"
+      },
+      "max_rss_mb": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "MiB"
+      },
+      "max_seeding_cpu_millipct": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "milli-percent",
+        "current_percent": null
+      },
+      "sample_at_secs": 0
+    },
+    "punch_route": {
+      "enabled": true,
+      "attempts": 0,
+      "direct": 0,
+      "relay": 0,
+      "failed": 0,
+      "relay_data_plane": "tcp-carrier-implemented",
+      "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+      "is_s6_evidence": false,
+      "g2_claim": false,
+      "s6_status": "not_run"
+    },
+    "data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:37743",
+      "socks5_registered": 0,
+      "served_registered": 0,
+      "bytes_relayed": 0,
+      "tunnels": 0,
+      "tunnels_alive": 0,
+      "carrier": "relay-tcp",
+      "udp_tunnels": 0,
+      "udp_tunnels_alive": 0,
+      "punched_registered": 0,
+      "punched_alive": 0,
+      "udp_cc_enabled": false,
+      "udp_cc_cwnd_x100": 0,
+      "udp_cc_srtt_ms": 0,
+      "udp_cc_loss_events": 0,
+      "udp_cc_rtt_samples": 0,
+      "udp_cc_paced_new": 0,
+      "udp_cc_backpressure": 0
+    },
+    "holder_data": {
+      "enabled": true,
+      "carrier": "relay-sub-tcp",
+      "opens": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 0,
+      "bytes_to_engine": 0,
+      "bytes_from_engine": 0,
+      "splices_done": 0
+    },
+    "guard": {
+      "enabled": false,
+      "handshakes": 0,
+      "woken": 0,
+      "missed": 0
+    },
+    "idle": {
+      "enabled": false,
+      "threshold_secs": 0,
+      "idle_secs": 1,
+      "sleeps": 0,
+      "last_slept": []
+    },
+    "api": {
+      "rpc_secret": {
+        "enabled": false,
+        "note": "token 值不会出现在 /health 或任何响应中"
+      },
+      "web_ui": {
+        "enabled": false
+      },
+      "websocket": {
+        "enabled": false
+      }
+    },
+    "nat": {
+      "enabled": false,
+      "status": "disabled",
+      "attempts": [],
+      "note": "映射仅来自路由器真实应答；不改变 s6_status"
+    },
+    "qos": {
+      "enabled": true,
+      "background_upload_ratio": 0.02,
+      "reference_link_bps": 12500000,
+      "cap_bps": 250000,
+      "observed_bytes": 0,
+      "allowed_bytes": 0,
+      "denied_bytes": 0,
+      "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+    },
+    "dht": {
+      "enabled": false,
+      "status": "disabled",
+      "last_cycle_status": "",
+      "local_addr": null,
+      "bootstrap": [],
+      "seeds": 0,
+      "attempts": 0,
+      "verified": 0,
+      "no_token": 0,
+      "failed": 0,
+      "cycles": 0,
+      "requests": 0,
+      "discovered": 0,
+      "resource_skipped": 0,
+      "last_cycle_at_ms": 0,
+      "last_error": "",
+      "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+    },
+    "cross_protocol": {
+      "enabled": false,
+      "status": "not_implemented",
+      "bt_to_ed2k": "invalid_input",
+      "ed2k_to_bt": "invalid_input",
+      "note": "跨协议补源未实现；不生成来源、不伪造成功"
+    },
+    "reputation": {
+      "enabled": false,
+      "status": "not_implemented",
+      "score": null,
+      "note": "只记账不评分；信誉/激励尚未实现"
+    },
+    "kad_publish": {
+      "cycles": 0,
+      "last": null,
+      "note": "尚未到第一个周期"
+    }
+  },
+  "B_restored_health": {
+    "status": "ok",
+    "node": "B",
+    "host": "192.168.34.222",
+    "machine_id": "unknown",
+    "pid": 1203743,
+    "seed_tasks": 0,
+    "seed_active": 0,
+    "served_bytes": 0,
+    "seeding": {
+      "cap": 8,
+      "scheduled": 0,
+      "evictions": 0
+    },
+    "limits": {
+      "max_hot_seeds": null,
+      "hot": 0,
+      "max_peers": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "peers"
+      },
+      "max_upload_bytes_per_sec": {
+        "enabled": false,
+        "limit": null,
+        "current": 0,
+        "unit": "B/s"
+      },
+      "max_rss_mb": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "MiB"
+      },
+      "max_seeding_cpu_millipct": {
+        "enabled": false,
+        "limit": null,
+        "current": null,
+        "unit": "milli-percent",
+        "current_percent": null
+      },
+      "sample_at_secs": 0
+    },
+    "punch_route": {
+      "enabled": true,
+      "attempts": 0,
+      "direct": 0,
+      "relay": 0,
+      "failed": 0,
+      "relay_data_plane": "tcp-carrier-implemented",
+      "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+      "is_s6_evidence": false,
+      "g2_claim": false,
+      "s6_status": "not_run"
+    },
+    "data_plane": {
+      "enabled": true,
+      "proxy": "socks5://127.0.0.1:44569",
+      "socks5_registered": 0,
+      "served_registered": 0,
+      "bytes_relayed": 0,
+      "tunnels": 0,
+      "tunnels_alive": 0,
+      "carrier": "relay-tcp",
+      "udp_tunnels": 0,
+      "udp_tunnels_alive": 0,
+      "punched_registered": 0,
+      "punched_alive": 0,
+      "udp_cc_enabled": false,
+      "udp_cc_cwnd_x100": 0,
+      "udp_cc_srtt_ms": 0,
+      "udp_cc_loss_events": 0,
+      "udp_cc_rtt_samples": 0,
+      "udp_cc_paced_new": 0,
+      "udp_cc_backpressure": 0
+    },
+    "holder_data": {
+      "enabled": false,
+      "carrier": "none",
+      "opens": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "duplicate_open": 0,
+      "peer_mismatch": 0,
+      "unknown_channel": 0,
+      "data_frames": 0,
+      "bytes_to_engine": 0,
+      "bytes_from_engine": 0,
+      "splices_done": 0
+    },
+    "guard": {
+      "enabled": false,
+      "handshakes": 0,
+      "woken": 0,
+      "missed": 0
+    },
+    "idle": {
+      "enabled": false,
+      "threshold_secs": 0,
+      "idle_secs": 0,
+      "sleeps": 0,
+      "last_slept": []
+    },
+    "api": {
+      "rpc_secret": {
+        "enabled": false,
+        "note": "token 值不会出现在 /health 或任何响应中"
+      },
+      "web_ui": {
+        "enabled": false
+      },
+      "websocket": {
+        "enabled": false
+      }
+    },
+    "nat": {
+      "enabled": false,
+      "status": "disabled",
+      "attempts": [],
+      "note": "映射仅来自路由器真实应答；不改变 s6_status"
+    },
+    "qos": {
+      "enabled": true,
+      "background_upload_ratio": 0.02,
+      "reference_link_bps": 12500000,
+      "cap_bps": 250000,
+      "observed_bytes": 0,
+      "allowed_bytes": 0,
+      "denied_bytes": 0,
+      "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+    },
+    "dht": {
+      "enabled": false,
+      "status": "disabled",
+      "last_cycle_status": "",
+      "local_addr": null,
+      "bootstrap": [],
+      "seeds": 0,
+      "attempts": 0,
+      "verified": 0,
+      "no_token": 0,
+      "failed": 0,
+      "cycles": 0,
+      "requests": 0,
+      "discovered": 0,
+      "resource_skipped": 0,
+      "last_cycle_at_ms": 0,
+      "last_error": "",
+      "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+    },
+    "cross_protocol": {
+      "enabled": false,
+      "status": "not_implemented",
+      "bt_to_ed2k": "invalid_input",
+      "ed2k_to_bt": "invalid_input",
+      "note": "跨协议补源未实现；不生成来源、不伪造成功"
+    },
+    "reputation": {
+      "enabled": false,
+      "status": "not_implemented",
+      "score": null,
+      "note": "只记账不评分；信誉/激励尚未实现"
+    },
+    "kad_publish": {
+      "cycles": 0,
+      "last": null,
+      "note": "尚未到第一个周期"
+    }
+  }
+}

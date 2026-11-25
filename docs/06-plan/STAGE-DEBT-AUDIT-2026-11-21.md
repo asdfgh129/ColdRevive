@@ -937,6 +937,41 @@ B 通过 SOCKS5 桥下载 `infohash=8b02…df1`，aria2 `status=complete`、
 这是**真实公网中继数据面**的组件级 PASS，不是 punched-direct PASS，
 不折算 S6/G2；机器常量仍全部为 `false` / `not_run`。
 
+### 22.6 绕过打洞直拨 B 的公网映射：网络层 PASS、应用层 BLOCKED（v2.4.129）
+
+§22.4 结论是「对称映射使双端同时打开无法收敛」。本轮改测另一条不依赖同时打开的路：
+B 本来就有静态映射 `112.5.32.34:19920 → 192.168.34.222:19920`，
+直接从这个已知公网地址拨入，不需要猜端口、不需要打洞。
+
+**网络层**：两个独立客户端都能与 `222:19920` 完成 TCP 三次握手——
+A（出口 `112.5.60.4`）与云观测机 `82.157.68.159`；B 上 `tcpdump` 对每个客户端各记录 8 个包，
+可见 SYN/SYN-ACK/ACK/68 字节 PSH/ACK。即静态 DNAT 入向**真实把连接送到了引擎端口**。
+证据 `bt-handshake-direct-19920-two-client-20261125.json`。
+
+**应用层**：两个客户端发出标准 68 字节 BitTorrent 握手后，
+B 的引擎先 ACK 该 68 字节，随后立即发 **FIN**（非 RST），全程不回握手；两次结果一致。
+
+根因（代码级）：B 的种子处于 `state=cold`。冷态由 `idle::sleep_hot_seeds()` 调
+`ops.pause_seed()` 把引擎内 torrent **暂停**，被暂停的 torrent 不接入向 peer。
+中继路径之所以能过（§22.5），是因为它会先 `nat wake` 激活持有者；直连路径没有任何环节做激活。
+
+加热路径当前不通，三组对照均归档：
+
+| 尝试 | 结果 |
+|---|---|
+| 直接 `nat wake` | `无活动 NAT 计划，先 nat probe / nat peer`，种子仍 cold |
+| `nat peer` + `nat probe` + `nat wake` | `ok=true` 但 `path=relay`（B 视角「对端无外部映射证据，仅私网直连候选」），种子仍 cold |
+| 同上后重打握手 | 仍 `GOT 0`，仍被 FIN |
+
+另有独立缺陷：`tracker_endpoint_for()` 对私网请求方返回空 peer 列表（防止把 RFC1918
+地址发给公网对端），于是 A 的 aria2 兼容接口长期 `connections=0`，引擎根本没去拨
+`112.5.32.34:19920`。证据 `bt-direct-public-19920-20261125.json`。
+
+结论：**「BT 跨公网直连」的剩余成本不在 CPE/NAT，而在两处应用层行为**——
+(a) 入向握手命中冷种子时应触发唤醒，或「被通告为 peer 期间不得暂停」；
+(b) 对端已有公网 `bt_external` 时 tracker 应下发该公网 endpoint。
+两者都是行为变更，须所有者确认后再改；本轮只记录，不改代码、不改门禁常量。
+
 ## 23. S6 语义复核材料（2026-11-25）
 
 - 2026-11-17 G0 已判 S6 `pass`，但 `tests/fixtures/g2-spike-verdicts.toml` 明确

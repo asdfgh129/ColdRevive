@@ -1,3 +1,26 @@
+## [2.4.129] - 2026-11-25 — daemon 固化 systemd unit；直拨 B 公网映射：网络层 PASS、应用层 BLOCKED
+
+> 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`。
+
+- 221/222 的 daemon 由 `systemd-run` 瞬态单元改为正式 unit
+  （`coldrevived-a` / `coldrevived-b`，`Restart=on-failure`，`systemctl enable` 开机自启）；
+  B 同时从 `/tmp` 迁到 `/opt/cr-punch-pub/222`，重启不再丢二进制与配置。
+  证据 `daemon-systemd-units-20261125.json`（两机 health ok、同 md5、unit enabled+active）。
+- 改测「不打洞、直接拨 B 的静态映射 `112.5.32.34:19920`」：
+  A（`112.5.60.4`）与云观测机 `82.157.68.159` 都能与 `222:19920` 完成 TCP 三次握手，
+  B 上 `tcpdump` 各记录 8 个包 → **网络层 PASS**。
+- 应用层 **BLOCKED**：两个客户端发出 68 字节真实 BitTorrent 握手后，
+  B 的引擎先 ACK 再立即 FIN，全程不回握手。根因是种子 `state=cold`
+  （`idle::sleep_hot_seeds()` → `pause_seed()` 暂停了引擎内 torrent），
+  被暂停的 torrent 不接入向 peer；中继路径能过正是因为它会先 `nat wake` 激活持有者。
+- 加热路径当前不通：直接 `nat wake` 被拒（无 NAT 计划）；补 `nat peer` + `nat probe`
+  后 `wake ok=true` 但 `path=relay`，种子仍 cold。三组对照均归档为 BLOCKED。
+- 独立缺陷：`tracker_endpoint_for()` 对私网请求方返回空 peer 列表，
+  下载侧 aria2 兼容接口长期 `connections=0`，引擎从未拨向 `112.5.32.34:19920`。
+- 结论：剩余成本不在 CPE/NAT，而在两处应用层行为（入向握手唤醒冷种子 /
+  有公网 `bt_external` 时下发公网 peer）。属行为变更，待所有者确认，本轮不改代码。
+
 ## [2.4.128] - 2026-11-25 — 守护进程自动 DHT 10 分钟有界长跑 PASS；S6 语义复核材料补齐
 
 > 门禁常量全部不变：`g2_claim=false`、`s6_status=not_run`、
