@@ -1,0 +1,75 @@
+# G-3 中继运维面判据（**先登记后采样**）
+#
+# 2026-11-26T08:29:00+08:00 登记。此文件一经登记，采样期间不得改动；
+# 阈值 sha 写入 docs/06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md。
+# 想重采必须：新时间戳 + 新 sha + 新的证据文件，不能调阈值解释旧数据。
+#
+# 这不是 G2 的三项机器常量，也不是公平性判据；它只回答「中继运维面能不能验收」。
+
+schema = "coldrevive.g3.relay-ops-thresholds/v1"
+registered_at = "2026-11-26T08:29:00+08:00"
+registered_by = "G-3 验收证据（待所有者复核，不自动改门禁）"
+doc = "docs/06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md"
+scope = "真实 coldrevive-relay 进程（回环 TCP + UDP 承载）+ coldrevive-relaybench + relay_ops_watch"
+sampling_rule = "判据与 sha 固定后再采样；不得调阈值解释数据；负向对照与正向样本同批留存"
+
+[window]
+sample_interval_ms = 200
+alert_window_secs = 2
+max_stale_secs = 2
+
+# 告警规则：每个值是「一个告警窗口内允许的累计增量」，0 = 增量 >0 即告警。
+# 计数器都是累计量；读取到比上次小视为进程重启（counter_reset），该窗不告警。
+[alert_rules]
+tcp_bandwidth_limited = 0
+tcp_ip_cap_rejected = 0
+tcp_conn_cap_rejected = 0
+tcp_rate_limited = 0
+udp_bandwidth_limited = 0
+udp_rate_limited = 0
+udp_per_session_limited = 0
+udp_per_session_dropped = 0
+
+# 基线与违约两组真实进程参数。违约组必须让至少一条告警规则触发。
+[baseline_relay]
+data_rate = 524288
+data_burst = 2097152
+udp_data_rate = 524288
+udp_data_burst = 2097152
+udp_per_session_rate = 0
+udp_per_session_burst = 0
+max_conns_per_ip = 16
+
+[breach_relay]
+data_rate = 1
+data_burst = 1
+udp_data_rate = 1
+udp_data_burst = 1
+udp_per_session_rate = 1
+udp_per_session_burst = 1
+max_conns_per_ip = 16
+
+[acceptance]
+bench_rounds = 50
+min_bench_echoes = 45          # 基线组：50 轮至少 45 轮回声，证明流量真的过了中继
+max_baseline_alerts = 0        # 基线组告警数必须为 0（负向对照）
+breach_must_alert = true       # 违约组必须至少 1 条 rule 告警
+alert_max_latency_secs = 3     # 从触发到告警文件出现的时间上限
+require_stale_alert = true     # 停掉 relay 后必须报 stats_stale
+require_reset_no_false_alert = true  # 重启 relay（计数归零）不得误报
+required_udp_stats_fields = [
+  "per_session_limited",
+  "per_session_limited_bytes",
+  "per_session_shaped",
+  "per_session_shaped_bytes",
+  "per_session_dropped",
+]
+stats_refresh_max_secs = 2     # 两份 stats 文件的 mtime 相对采样时刻的最大滞后
+
+[not_claimed]
+items = [
+  "不表示 NAT 矩阵通过或 G2 新增达标（g2_claim 不变）",
+  "不表示公网中继 119.29.150.254:7101 当前健康（本判据在回环独立实例上跑）",
+  "不表示任意链路上的中继带宽/丢包 SLO",
+  "不表示 relay 已配置 systemd unit（仓库内没有该 unit）",
+]

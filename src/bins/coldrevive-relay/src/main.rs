@@ -286,6 +286,9 @@ fn main() {
     if let (Some(path), Some(h)) = (udp_stats_file, udp_handle.as_ref()) {
         // UDP 计数单独一份文件：TCP 的 --stats-file 是既有 schema，往里加字段会让
         // 别的读者把「多出来的键」当成协议变更。两份文件、各自演进。
+        // 本 schema 比 UdpRelayStats 少五个 per-session 计数是 G-3 观测缺口，
+        // 2026-11-26 已补齐（limited/limited_bytes/shaped/shaped_bytes/dropped）；
+        // 旧读者按字段名取值，新增键不是破坏性变更。
         let addr = h.local_addr().to_string();
         let auth = auth_label.to_string();
         let fp_udp = fp.clone();
@@ -299,6 +302,9 @@ fn main() {
                  \"reject_out\":{},\"bye\":{},\"mac_fail\":{},\"bad_format\":{},\"magic_mismatch\":{},\
                  \"too_big\":{},\"replay\":{},\"rate_limited\":{},\"data_bytes_in\":{},\
                  \"data_bytes_out\":{},\"bandwidth_limited\":{},\"bandwidth_limited_bytes\":{},\
+                 \"per_session_limited\":{},\"per_session_limited_bytes\":{},\
+                 \"per_session_shaped\":{},\"per_session_shaped_bytes\":{},\
+                 \"per_session_dropped\":{},\
                  \"not_registered\":{},\
                  \"target_absent\":{},\"sessions_rejected\":{},\"sessions_active\":{},\
                  \"sessions_expired\":{}}}",
@@ -327,6 +333,11 @@ fn main() {
                 stats.data_bytes_out,
                 stats.bandwidth_limited,
                 stats.bandwidth_limited_bytes,
+                stats.per_session_limited,
+                stats.per_session_limited_bytes,
+                stats.per_session_shaped,
+                stats.per_session_shaped_bytes,
+                stats.per_session_dropped,
                 stats.not_registered,
                 stats.target_absent,
                 stats.sessions_rejected,

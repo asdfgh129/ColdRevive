@@ -1,0 +1,13 @@
+[coldrevive-relay] 警告：未配置 PSK，传输为**明文**。仅供回环/实验。
+RELAY_LISTEN=127.0.0.1:54551
+RELAY_MAX_FRAME=1048576
+RELAY_INSTANCE=RLYINST.S$Z....8
+RELAY_PEERS=
+RELAY_AUTH=none
+RELAY_KEY_FP=
+RELAY_LIMITS=rate:200/s,burst:400,idle:300s,max_conns:512,max_nodes:8192,data_rate:524288/s,data_burst:2097152,max_conns_per_ip:16,register_per_ip_per_min:240
+RELAY_DENY=
+[coldrevive-relay] 实例 RLYINST.S$Z....8 帧路由监听 127.0.0.1:54551，同侪 0 个；认证=无（明文）；无业务解析、不合成应答
+RELAY_UDP_LISTEN=127.0.0.1:61351
+RELAY_UDP_LIMITS=max_sessions:4096,max_per_ip:8,idle:60s,rate:2000/s,data_rate:524288/s,data_burst:2097152,per_session_rate:0/s,per_session_burst:0
+[coldrevive-relay] UDP 承载监听 127.0.0.1:61351（每报文 HMAC，最大负载 1168 字节）
