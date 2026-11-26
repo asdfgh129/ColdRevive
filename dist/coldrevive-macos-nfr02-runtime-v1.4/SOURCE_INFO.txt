@@ -6,4 +6,4 @@ cargo_lock_sha256=554114cc9aae42115db043ecdffeea89c5d24735b2f6e3e426033eb1b3d12b
 source_scope=Cargo.toml,Cargo.lock,src/**,tests/spikes/s2/kad-mini/src/**,tests/spikes/s2/ed2k-mini/src/**
 generated_at=2026-11-26T15:08:00+08:00
 criteria_ref=docs/06-plan/G2-EXIT-RECORD-2026-11-25.md v1.5 §10
-source_patch=prio.rs: PRIO_DARWIN_BG corrected 0x10000 -> 0x1000 (v2.4.153 worktree, uncommitted)
+source_patch=prio.rs: PRIO_DARWIN_BG corrected 0x10000 -> 0x1000; darwin readback split into PRIO_DARWIN_BG_READBACK=1 (set flag stays 0x1000), verdict/tests/messages updated; cr-nat/tcp_punch.rs: split Linux/Darwin errno, socket constants, EINPROGRESS and poll nfds type; run_all.sh: exec daemon so $! is the real PID; coldrevived/data_plane.rs: set_nonblocking(true) before TokioTcpStream::from_std; tcp_discovery.rs tests: bind before spawn + accept timeout + wait_until_listening (all five to be committed in v2.4.154)

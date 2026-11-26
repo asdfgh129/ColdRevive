@@ -1,0 +1,79 @@
+{
+  "schema": "coldrevive.nfr02.guard-wake-functional/v1",
+  "recorded_at_utc": "2026-11-26T10:44:07+00:00",
+  "note": "功能复核：握手唤醒 + 分片 md5；不证明唤醒线程优先级。",
+  "bt_target": "127.0.0.1:19602",
+  "infohash": "cd01931d79e5c99daed42e39857ebb78454dfda1",
+  "expected_md5": "5b1baa02cd1e35fbc9c2a80dd759ee7c",
+  "checks": [
+    {
+      "name": "guard enabled before probe",
+      "status": "pass",
+      "observed": {
+        "enabled": true,
+        "handshakes": 0,
+        "woken": 0,
+        "missed": 0
+      }
+    },
+    {
+      "name": "handshake echoed 68 bytes",
+      "status": "pass",
+      "observed": {
+        "bytes": 68
+      }
+    },
+    {
+      "name": "guard recorded handshake",
+      "status": "pass",
+      "observed": {
+        "before": 0,
+        "after": 1
+      }
+    },
+    {
+      "name": "guard woke seed task",
+      "status": "pass",
+      "observed": {
+        "before": 0,
+        "after": 1
+      }
+    },
+    {
+      "name": "seed_active >= 1 after wake",
+      "status": "pass",
+      "observed": {
+        "seed_active": 1
+      }
+    },
+    {
+      "name": "unchoke received",
+      "status": "pass",
+      "observed": {
+        "unchoked": true
+      }
+    },
+    {
+      "name": "full sample received",
+      "status": "pass",
+      "observed": {
+        "bytes": 262144,
+        "expected": 262144
+      }
+    },
+    {
+      "name": "md5 matches fixture",
+      "status": "pass",
+      "observed": {
+        "received": "5b1baa02cd1e35fbc9c2a80dd759ee7c",
+        "expected": "5b1baa02cd1e35fbc9c2a80dd759ee7c"
+      }
+    }
+  ],
+  "bytes_received": 262144,
+  "md5_received": "5b1baa02cd1e35fbc9c2a80dd759ee7c",
+  "counts": {
+    "pass": 8,
+    "fail": 0
+  }
+}

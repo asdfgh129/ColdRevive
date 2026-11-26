@@ -1,0 +1,18 @@
+warning: unused field `license` in `workspace.package`
+ --> Cargo.toml:8:1
+  |
+8 | license = "MIT"
+  | ^^^^^^^
+  |
+  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.license`
+warning: unused field `repository` in `workspace.package`
+ --> Cargo.toml:9:1
+  |
+9 | repository = "https://github.com/asdfgh129/ColdRevive"
+  | ^^^^^^^^^^
+  |
+help: consider removing the field `workspace.package.repository`
+warning: workspace (manifest) generated 2 warnings
+   Compiling coldrevived v0.1.0 (/Volumes/Data/Code/ColdRevive/dist/coldrevive-macos-nfr02-runtime-v1.4/source/src/bins/coldrevived)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.97s

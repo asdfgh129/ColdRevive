@@ -46,10 +46,27 @@ s4_s5_evidence_archive = { gap = "G-2", status = "closed", recorded_at = "2026-1
 
 # G-5（macOS 无 Idle 降级实现）的**代码缺口**已于 2026-11-25T21:5x 关闭：darwin 分支写出来了
 # （PRIO_DARWIN_BG）、判定逻辑有单测、分支经 --features darwin-check 类型检查。
-# 但本仓库没有 mac 硬件 → **不属于「开放缺口」，也不属于「已实测」**。它是一条措辞约束：
+# 下面这组措辞约束是 2026-11-25 签署时的原文，保留不改；2026-11-26 已有真机证据，
+# 但「是否据此改口径」属于所有者决定，见 DOC-34 §14 与本文件 nfr02_macos_runtime_20261126。
 g2_wording_constraints = [
   "macOS 只可写「已实现 + 类型检查」，不可写「已验证」「已支持」「三平台达标」：本仓库没有任何一台 mac 跑过这段代码，读回谓词本身也未经真机验证（DOC-34 §10）",
 ]
+
+# 2026-11-26 真机补记（事实登记；**不改写上面任何人为判定字段**）：
+# 首次 run1 FAIL 后修正了两个实现缺陷（BG 常量、设置/读回编码）与两处打包/脚本缺陷；
+# 复跑六项中五项 pass、唤醒线程逐线程优先级仍 not_verified，gate_claim=null。
+# runtime_verified / counts_toward_nfr02 仍保持 false，等待所有者书面改口径。
+[nfr02_macos_runtime_20261126]
+evidence = "tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/results/20261126T104241Z/summary.json"
+run_id = "20261126T104241Z"
+host = "Mac-mini.local / macOS 26.5.2 / Darwin 25.5.0 x86_64"
+set_flag = "PRIO_DARWIN_BG=0x1000（设置侧，Apple 头文件）"
+readback = "getpriority(PRIO_DARWIN_THREAD,0) 返回 1=后台 / 0=前台（man 2 setpriority + XNU 源码 + 独立探针）"
+counts = "5 pass / 1 not_verified / 0 fail / 0 blocked"
+gate_claim = "null（脚本不置位）"
+runtime_verified = false
+counts_toward_nfr02 = false
+decision_pending = "所有者是否将 macOS 计入 NFR-02 口径；唤醒线程逐线程优先级仍 not_verified，不得用进程级读数顶替"
 g2_claim_does_not_mean = [
   "不表示公平性达标",
   "不表示 NAT 矩阵通过或 4/4 类别覆盖",

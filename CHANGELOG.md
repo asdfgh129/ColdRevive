@@ -1,3 +1,38 @@
+## [2.4.154] - 2026-11-26 — macOS 真机复跑：套件 5 pass / 1 not_verified；修正 Darwin 读回判读
+
+> **不改门禁、不改判据**：`g2_claim` 与三个工具字段不动，`gate_claim=null`，唤醒线程逐线程
+> 优先级仍 `not_verified`。本次修的是实现与平台 API 语义不一致的 bug，**不写「NFR-02 三平台
+> 达标」或「macOS 已验证」**——是否改口径由所有者书面决定。
+
+- **Darwin 读回判读 bug（核心）**：`setpriority(PRIO_DARWIN_THREAD, 0, 0x1000)` 收的是标志位，
+  而 `getpriority(PRIO_DARWIN_THREAD, 0)` 按 `man 2 setpriority` 与 XNU `kern_resource.c`
+  返回**布尔值**：`1` = 后台、`0` = 前台。旧代码拿读回值和 `0x1000` 比，导致内核已切后台却
+  记成 `applied=0/failed>0` 的**假失败**。现拆成 `PRIO_DARWIN_BG`（设置侧 0x1000）与
+  `PRIO_DARWIN_BG_READBACK`（读回侧 1）；判读单测新增「读回 0x1000 必须失败」防止回退，
+  真机两条 idle 用例与 `/health` 错误文案同步。设置侧参数**一点没放宽**。
+- **附带修掉的三个缺陷**（不改变任何阈值）：`cr-nat/tcp_punch.rs` 把 `#[cfg(unix)]` 中
+  Linux 专有的 `__errno_location`、`EINPROGRESS=115`、socket 常量与 `poll` nfds 类型拆成
+  Linux/Darwin 两路（macOS 用 `__error`、`EINPROGRESS=36` 等），修复 daemon 链接失败；
+  `run_all.sh` 启动 daemon 时加 `exec`，让 `$!` 是真正 PID，避免旧进程残留导致负向对照
+  假失败；  `coldrevived/data_plane.rs` 在 `TcpStream::from_std` 前设非阻塞，修掉
+  tokio 1.54.1 拒绝注册阻塞 socket 的既有缺陷（由全量回归暴露，不是 flaky）；
+  `cr-nat/tcp_discovery.rs` 的测试夹具在主线程先 bind、再由 observer 线程 accept（带 5 s
+  上限），并等监听就绪后再连接，修掉端口竞态导致的 ConnectionRefused 与无限等待。
+- **验证**：测试包 run `20261126T104241Z`（Mac mini / macOS 26.5.2 / Darwin 25.5.0 x86_64）
+  → **5 pass / 1 not_verified / 0 fail / 0 blocked**，`gate_claim=null`；`/health` 三次快照
+  均为 `requested=true, applied=3, failed=0, unsupported=0`，负向对照 `applied=0`，握手唤醒
+  262144 B md5 一致。`cargo test -p cr-engine --lib` 13/13、`cargo test -p cr-nat` 211/0/3
+  （含真实回环 TCP 双向字节）；全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline
+  -- --test-threads=1` → **549 passed / 0 failed / 3 ignored**
+  （日志 `tests/ARCHIVE/evidence/regression-full-20261126-v154.log`）。
+- **落点**：`src/crates/cr-engine/src/prio.rs`、`src/crates/cr-nat/src/tcp_punch.rs`、
+  `src/bins/coldrevived/src/data_plane.rs`、`dist/coldrevive-macos-nfr02-runtime-v1.4/`
+  （源码/README/SOURCE_INFO/MANIFEST 与 zip 同步）、`docs/06-plan/G2-EXIT-RECORD-2026-11-25.md`
+  §14、`docs/README.md`、`tests/ARCHIVE/NOT-TESTED.md`、`tests/ARCHIVE/TEST-RUNS-2026-11-26.md`、
+  `tests/fixtures/g2-spike-verdicts.toml`（只加事实补记，未改人为判定字段）。
+- **证据**：`tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`（逐字节归档 + MANIFEST + sha256），
+  run1 旧失败证据保留未动。
+
 ## [2.4.153] - 2026-11-26 — 首次 macOS 真机运行：**FAIL**，定位并修复两个缺陷（待重测）
 
 > **不改变任何门禁判定**。`g2_claim=true`、EX-1 仍 FAIL、S6 仍「条件计入」；`runtime_verified`

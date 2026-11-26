@@ -1,0 +1,8 @@
+summary: /Volumes/Data/Code/ColdRevive/dist/coldrevive-macos-nfr02-runtime-v1.4/results/20261126T104241Z/summary.json
+  [        pass] cr-engine unit tests on macOS
+  [        pass] coldrevived builds on macOS
+  [        pass] daemon idle_priority on
+  [        pass] daemon idle_priority off (negative control)
+  [        pass] wake path functional (local BT handshake -> sample md5)
+  [not_verified] wake path not downgraded (guard / data-plane threads)
+  gate_claim: null (human decision required)

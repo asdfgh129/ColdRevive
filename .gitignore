@@ -25,6 +25,8 @@ docs/**/*.html
 
 # 编辑器与系统
 .DS_Store
+# macOS AppleDouble 伴生文件（在跨网络挂载的卷上由 Finder 自动生成）
+._*
 .idea/
 .vscode/
 *.swp

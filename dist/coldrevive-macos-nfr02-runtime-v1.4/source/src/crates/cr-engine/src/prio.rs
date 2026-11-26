@@ -16,21 +16,21 @@
 //!   nice 19 并如实上报成 `NiceOnly`，不假装成功。
 //! - **Windows**：`SetThreadPriority(THREAD_PRIORITY_IDLE)`（-15，比
 //!   `IDLE_PRIORITY_CLASS` 那档更低）。
-//! - **macOS**：`setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG)`，读回用
-//!   `getpriority(PRIO_DARWIN_THREAD, 0) == PRIO_DARWIN_BG`。darwin 没有 nice 语义，
-//!   「background」类是对应档：CPU 调度降到最低一档、I/O 一并被降权。
+//! - **macOS**：设置侧 `setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG=0x1000)`，
+//!   读回侧 `getpriority(PRIO_DARWIN_THREAD, 0)` 返回的是**布尔值**：`1` = 后台，`0` = 前台。
+//!   两侧编码不同，不能拿设置侧的 flag 去比读回值（见 [`darwin_verdict`]）。darwin 没有
+//!   nice 语义，「background」类是对应档：CPU 调度降到最低一档、I/O 一并被降权。
 //!   **但不要把它当成 Linux `SCHED_IDLE` 的同义词**——机制不同（QoS 类 vs 调度策略），
 //!   语义相近但不是等价物；本项目的判据只要求「仅以 Idle 优先级运行」，这一档是 darwin 上
-//!   能拿到的最接近的东西，真正的等效性要等真机数据来支撑。
-//!   **这一档在本仓库没有硬件实测**：没有 mac 机器，所以它只做到「实现 + 类型检查」——
-//!   `cargo check -p cr-engine --features darwin-check` 在 Linux/Windows 上把 darwin 分支
-//!   一起编译检查（见 [`darwin_verdict`] 与 `Cargo.toml` 的 feature 注释）。因此
-//!   NFR-02 的口径仍然是「**Linux/Windows 两平台有实测**」，不能写成三平台达标；
-//!   真机上跑一次 `/health.idle_priority` 就能把它变成实测，届时改的是证据，不是判据。
+//!   能拿到的最接近的东西，真正的等效性靠真机证据支撑。
+//!   `cargo check -p cr-engine --features darwin-check` 可在 Linux/Windows 上把 darwin 分支
+//!   一起编译检查（见 [`darwin_verdict`] 与 `Cargo.toml` 的 feature 注释）；真机证据见
+//!   `tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`。证据只说明这条分支按系统调用
+//!   语义生效，**不自动宣布 NFR-02 三平台达标**——口径改判由项目所有者决定。
 //!
 //! **一律读回校验**：系统调用返回 0 不等于状态真的变了（cgroup、seccomp、LSM 都可能
 //! 让调用「成功」却无效果）。读回的是 `/proc/thread-self/stat` 的 `nice` 与 `policy`
-//! （Linux）或 `GetThreadPriority`（Windows），判定只看读回值。
+//! （Linux）、`GetThreadPriority`（Windows）或 Darwin 的后台布尔值，判定只看读回值。
 //!
 //! # 钩子为什么能覆盖到 worker 线程（tokio 1.54.1 的实测结论）
 //!
@@ -78,7 +78,7 @@ pub enum IdleOutcome {
     NiceOnly,
     /// Windows：`THREAD_PRIORITY_IDLE` 生效。
     ThreadIdle,
-    /// macOS：`PRIO_DARWIN_BG` 生效（读回 `getpriority(PRIO_DARWIN_THREAD)` 等于 flag）。
+    /// macOS：`PRIO_DARWIN_BG` 生效（读回 `getpriority(PRIO_DARWIN_THREAD)` 为 1）。
     DarwinBackground,
     /// 本平台未实现（当前是 macOS 之外的其它平台，如 BSD）。**不当作失败**，但也不当作达标。
     Unsupported,
@@ -172,28 +172,34 @@ pub(crate) mod darwin_verdict {
 
     /// `<sys/resource.h>`：`PRIO_DARWIN_THREAD`（对当前线程操作）。
     pub const PRIO_DARWIN_THREAD: i32 = 3;
-    /// `PRIO_DARWIN_BG`：**标志位，不是 nice 值**。设上即「背景类」。
-    ///
-    /// 取自 Apple XNU `<bsd/sys/resource.h>`：`PRIO_DARWIN_BG = 0x1000`，
-    /// 而 `0x1001` 是已废弃的 `PRIO_DARWIN_NONUI`。此前误写成 `0x10000`，
-    /// 在 macOS 26.5.2 真机上 `setpriority` 返回 0 但读回仍为 0（降级未生效）；
-    /// 2026-11-26 run1 证据见 `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`。
+    /// **设置侧**：传给 `setpriority` 的标志位，不是 nice 值。取自 Apple XNU
+    /// `<bsd/sys/resource.h>`：`PRIO_DARWIN_BG = 0x1000`（`0x1001` 是废弃的
+    /// `PRIO_DARWIN_NONUI`）。此前误写成 `0x10000`，run1 真机上 `setpriority`
+    /// 返回 0 但读回仍为 0；证据见 `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`。
     pub const PRIO_DARWIN_BG: i32 = 0x1000;
+
+    /// **读回侧**：`getpriority(PRIO_DARWIN_THREAD, 0)` 返回 0/1 布尔值，`1` = 已在后台。
+    ///
+    /// 本机 `man 2 setpriority` 原文如此；XNU `kern_resource.c` 中该调用读的是
+    /// `proc_get_thread_policy(..., TASK_POLICY_DARWIN_BG)` 策略位。2026-11-26 独立 C 探针
+    /// 在 macOS 26.5.2 上复现：set(0x1000)→读回 1、set(0)→读回 0、set(0x1)→读回 0。
+    pub const PRIO_DARWIN_BG_READBACK: i32 = 1;
 
     /// `set_rc`/`set_errno` 是 `setpriority` 的返回与 `errno`；`read_back` 是
     /// `getpriority(PRIO_DARWIN_THREAD, 0)` 的读回值（`None` = 读不出或有歧义）。
     ///
-    /// 判定只认读回：`setpriority` 返回 0 只说明「调用没报错」，cgroup/沙箱/新内核语义
-    /// 都可能让它「成功」却无效果——这条规矩在本文档开头就写死了，darwin 不例外。
+    /// 判定只认读回：`setpriority` 返回 0 只说明「调用没报错」，沙箱/内核语义都可能
+    /// 让它「成功」却无效果——这条规矩在本文档开头就写死了，darwin 不例外。
+    /// 注意两侧编码不同：设置传 `PRIO_DARWIN_BG`，读回只接受 `PRIO_DARWIN_BG_READBACK`。
     pub fn from_readback(
         set_rc: i32,
         set_errno: i32,
         read_back: Option<i32>,
     ) -> Result<IdleOutcome, String> {
         match read_back {
-            Some(v) if v == PRIO_DARWIN_BG => Ok(IdleOutcome::DarwinBackground),
+            Some(v) if v == PRIO_DARWIN_BG_READBACK => Ok(IdleOutcome::DarwinBackground),
             Some(v) => Err(format!(
-                "降级未生效（读回 PRIO_DARWIN_THREAD = {v:#x}，期望 {PRIO_DARWIN_BG:#x}）{}",
+                "降级未生效（读回 PRIO_DARWIN_THREAD = {v}，期望 {PRIO_DARWIN_BG_READBACK}：1=后台/0=前台）{}",
                 set_note(set_rc, set_errno)
             )),
             None => Err(format!(
@@ -324,17 +330,18 @@ mod imp {
 
 // ---------------------------------------------------------------- macOS
 
-/// darwin：`PRIO_DARWIN_BG`。
+/// darwin：设置侧 `PRIO_DARWIN_BG`（0x1000）/ 读回侧后台布尔值（1）。
 ///
 /// 三个必须写清的点：
-/// 1. **不是 nice**。darwin 的 `getpriority` 在 `PRIO_DARWIN_THREAD` 上返回的是背景标志位
-///    （0 或 `PRIO_DARWIN_BG`），所以 `ThreadPriority::nice` 在 darwin 恒 0（无意义），
+/// 1. **不是 nice**。darwin 的 `getpriority` 在 `PRIO_DARWIN_THREAD` 上返回的是布尔策略位
+///    （`0` = 前台、`1` = 后台），所以 `ThreadPriority::nice` 在 darwin 恒 0（无意义），
 ///    真实读数放在 `policy` 里，别拿它跟 Linux 的 `SCHED_OTHER=0` 混着看。
 /// 2. **`getpriority` 的 -1 是歧义值**（合法返回值里不会出现 -1，但它也是出错返回值）。
 ///    所以先清 `errno` 再调用；拿到 -1 一律当「读不出」（`None`），**不当成功、也不当 0**。
-/// 3. **`PRIO_DARWIN_BG` 的有效性只在真机上成立**。本仓库没有 mac 机器，这段代码只经过
-///    `--features darwin-check` 的类型检查；`/health` 在 mac 上会如实报读回值，
-///    但「本仓库已实测 macOS」这句话在拿到真机证据之前不成立。
+/// 3. **两侧编码不同**：`setpriority` 收标志位 `0x1000`，`getpriority` 只返回 0/1。
+///    这条语义由本机 `man 2 setpriority`、XNU 源码与独立探针三重确认，2026-11-26
+///    真机证据见 `tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`。`/health` 如实报
+///    计数；是否据此改 NFR-02 口径由所有者决定，代码不自动宣布三平台达标。
 #[cfg(any(target_os = "macos", feature = "darwin-check"))]
 mod imp {
     use super::darwin_verdict::{from_readback, PRIO_DARWIN_BG, PRIO_DARWIN_THREAD};
@@ -347,12 +354,12 @@ mod imp {
         fn __error() -> *mut i32;
     }
 
-    /// 读背景标志位。返回 `None` = 读不出/有歧义（`-1`），**绝不折算成 0**。
+    /// 读后台策略位（0/1）。返回 `None` = 读不出/有歧义（`-1`），**绝不折算成 0**。
     fn read_raw() -> Option<i32> {
         unsafe { *__error() = 0 };
         let v = unsafe { getpriority(PRIO_DARWIN_THREAD, 0) };
         if v == -1 {
-            // 合法状态只有 0 与 PRIO_DARWIN_BG；-1 无法区分「出错」与「没设上」。
+            // 合法状态只有 0 与 1；-1 无法区分「出错」与「没设上」。
             return None;
         }
         Some(v)
@@ -361,7 +368,7 @@ mod imp {
     pub(super) fn read_back() -> Option<ThreadPriority> {
         read_raw().map(|bg| ThreadPriority {
             nice: 0,     // darwin 无 nice 语义
-            policy: bg,  // 0 = 前台类，PRIO_DARWIN_BG = 背景类
+            policy: bg,  // 0 = 前台，PRIO_DARWIN_BG_READBACK(1) = 后台
         })
     }
 
@@ -431,8 +438,8 @@ mod tests {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    assert_eq!(b.policy, darwin_verdict::PRIO_DARWIN_BG,
-                               "PRIO_DARWIN_BG 未生效（读回 {:#x}）", b.policy);
+                    assert_eq!(b.policy, darwin_verdict::PRIO_DARWIN_BG_READBACK,
+                               "后台策略位未生效（读回 {}，期望 1）", b.policy);
                 }
                 #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
                 {
@@ -520,8 +527,8 @@ mod tests {
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    assert_eq!(p.policy, darwin_verdict::PRIO_DARWIN_BG,
-                               "worker 线程没进背景类: 读回 {:#x}（线程名 {:?}）",
+                    assert_eq!(p.policy, darwin_verdict::PRIO_DARWIN_BG_READBACK,
+                               "worker 线程没进后台态: 读回 {}，期望 1（线程名 {:?}）",
                                p.policy, name);
                 }
             }
@@ -553,17 +560,18 @@ mod tests {
         assert!(IdleOutcome::DarwinBackground.is_idle());
     }
 
-    /// darwin 判定：**只认读回值**。
+    /// darwin 判定：**只认读回值，且两侧编码不同**。
     ///
-    /// 这条测试与平台无关（合成值），因此能在没有 mac 机器的情况下跑——这正是把判定
-    /// 逻辑从 FFI 里拆出来的原因。三种输入对应三种必须区分的事实：
-    /// 读回标志位 = 成功；读回 0 = 调用「成功」但状态没变（必须报失败）；读不出 = 不判定。
+    /// 这条测试与平台无关（合成值），所以能在任何平台上跑——这正是把判定逻辑从 FFI 里
+    /// 拆出来的原因。输入对应必须区分的事实：读回 1 = 后台；读回 0 = 调用「成功」但状态
+    /// 没变（必须报失败）；读回 0x1000 = 把设置侧标志误当读回值（必须报失败）；读不出 =
+    /// 不判定。
     #[test]
     fn darwin_verdict_reads_back_instead_of_trusting_return_code() {
-        use darwin_verdict::{from_readback, PRIO_DARWIN_BG};
+        use darwin_verdict::{from_readback, PRIO_DARWIN_BG, PRIO_DARWIN_BG_READBACK};
 
-        // 1) 调用返回 0 + 读回标志位 → 唯一算成功的组合。
-        assert_eq!(from_readback(0, 0, Some(PRIO_DARWIN_BG)),
+        // 1) 调用返回 0 + 读回 1 → 唯一算成功的组合。
+        assert_eq!(from_readback(0, 0, Some(PRIO_DARWIN_BG_READBACK)),
                    Ok(IdleOutcome::DarwinBackground));
 
         // 2) 调用返回 0 但读回 0：这是最危险的一种——只看返回码就会误报达标。
@@ -571,11 +579,15 @@ mod tests {
         assert!(e.contains("降级未生效"), "错误文案应说明未生效: {e}");
         assert!(!e.contains("errno 0"), "setpriority 成功时不该编造 errno: {e}");
 
-        // 3) 读不出（-1 歧义 / getpriority 出错）→ 不判定，且不许当成成功。
+        // 3) 把设置侧标志位当成读回值也必须失败：这正是 2026-11-26 run2 之前的假失败根因。
+        let e = from_readback(0, 0, Some(PRIO_DARWIN_BG)).expect_err("读回 0x1000 必须判失败");
+        assert!(e.contains("降级未生效"), "错误文案应说明未生效: {e}");
+
+        // 4) 读不出（-1 歧义 / getpriority 出错）→ 不判定，且不许当成成功。
         let e = from_readback(0, 0, None).expect_err("读不出必须判失败");
         assert!(e.contains("无法判定"), "错误文案应说明读不出: {e}");
 
-        // 4) 调用本身报错时要带上原因，便于真机上定位（沙箱/权限）。
+        // 5) 调用本身报错时要带上原因，便于真机上定位（沙箱/权限）。
         let e = from_readback(-1, 1, Some(0)).expect_err("应判失败");
         assert!(e.contains("errno 1"), "应带出 setpriority 的 errno: {e}");
     }
@@ -583,12 +595,13 @@ mod tests {
     /// darwin 的 -1 是歧义值：既可能是出错，也可能是「没设上」。两种都不能当成 0 或成功。
     #[test]
     fn darwin_echo_of_minus_one_is_never_a_priority() {
-        use darwin_verdict::PRIO_DARWIN_BG;
+        use darwin_verdict::{PRIO_DARWIN_BG, PRIO_DARWIN_BG_READBACK, PRIO_DARWIN_THREAD};
         // 合成「读回 -1」：实际 read_raw() 会把它折成 None，这里直接验证判定层不接受 -1。
         let r = darwin_verdict::from_readback(0, 0, Some(-1));
         assert!(r.is_err(), "-1 不是合法状态，不能被当成优先级");
-        // 交叉确认：标志位与 0 是仅有的两个合法状态；数值必须与 Apple 头文件一致。
+        // 钉住两侧数值：设置侧 0x1000 必须来自 Apple 头文件；读回侧按手册是布尔 1。
         assert_eq!(PRIO_DARWIN_BG, 0x1000);
-        assert_eq!(darwin_verdict::PRIO_DARWIN_THREAD, 3);
+        assert_eq!(PRIO_DARWIN_BG_READBACK, 1);
+        assert_eq!(PRIO_DARWIN_THREAD, 3);
     }
 }

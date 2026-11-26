@@ -375,12 +375,36 @@ mod sys {
     const AF_INET: i32 = 2;
     const SOCK_STREAM: i32 = 1;
     const IPPROTO_TCP: i32 = 6;
-    const SOL_SOCKET: i32 = 1;
-    const SO_REUSEADDR: i32 = 2;
-    const SO_ERROR: i32 = 4;
     const F_GETFL: i32 = 3;
     const F_SETFL: i32 = 4;
+
+    // Linux 与 Darwin/BSD 的 socket 常量、errno 入口和 poll 计数类型都不同。
+    // 早先用 #[cfg(unix)] 把 Linux 值套到 macOS：既链接不到 __errno_location，
+    // 又会把 SOL_SOCKET/SO_REUSEADDR/SO_ERROR 传成错误的值。按平台拆开。
+    #[cfg(target_os = "linux")]
+    const SOL_SOCKET: i32 = 1;
+    #[cfg(not(target_os = "linux"))]
+    const SOL_SOCKET: i32 = 0xffff;
+    #[cfg(target_os = "linux")]
+    const SO_REUSEADDR: i32 = 2;
+    #[cfg(not(target_os = "linux"))]
+    const SO_REUSEADDR: i32 = 0x0004;
+    #[cfg(target_os = "linux")]
+    const SO_ERROR: i32 = 4;
+    #[cfg(not(target_os = "linux"))]
+    const SO_ERROR: i32 = 0x1007;
+    #[cfg(target_os = "linux")]
     const EINPROGRESS: i32 = 115;
+    #[cfg(not(target_os = "linux"))]
+    const EINPROGRESS: i32 = 36;
+    #[cfg(target_os = "linux")]
+    const O_NONBLOCK: i32 = 0o4000;
+    #[cfg(not(target_os = "linux"))]
+    const O_NONBLOCK: i32 = 0x0004;
+    #[cfg(target_os = "linux")]
+    type PollNfds = u64;
+    #[cfg(not(target_os = "linux"))]
+    type PollNfds = u32;
 
     #[repr(C)]
     struct PollFd {
@@ -396,12 +420,20 @@ mod sys {
         fn bind(fd: i32, addr: *const u8, len: u32) -> i32;
         fn connect(fd: i32, addr: *const u8, len: u32) -> i32;
         fn fcntl(fd: i32, cmd: i32, ...) -> i32;
-        fn poll(fds: *mut PollFd, nfds: u64, timeout: i32) -> i32;
+        fn poll(fds: *mut PollFd, nfds: PollNfds, timeout: i32) -> i32;
         // 不能直接叫 `close`：本模块要导出同名的 `pub fn close`，同作用域下
         // 两个同名项会直接编译失败（Windows 分支看不到，只有 Linux 才暴露）。
         #[link_name = "close"]
         fn libc_close(fd: i32) -> i32;
+    }
+
+    #[cfg(target_os = "linux")]
+    extern "C" {
         fn __errno_location() -> *mut i32;
+    }
+    #[cfg(not(target_os = "linux"))]
+    extern "C" {
+        fn __error() -> *mut i32;
     }
 
     pub enum Connect {
@@ -416,8 +448,14 @@ mod sys {
         Failed(io::Error),
     }
 
+    #[cfg(target_os = "linux")]
     fn errno() -> i32 {
         unsafe { *__errno_location() }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn errno() -> i32 {
+        unsafe { *__error() }
     }
 
     fn last_error() -> io::Error {
@@ -453,9 +491,7 @@ mod sys {
         if flags < 0 {
             return Err(last_error());
         }
-        // O_NONBLOCK 在不同 Unix 上值不同：Linux 0o4000，macOS/BSD 0x0004。
-        let nonblock = if cfg!(target_os = "linux") { 0o4000 } else { 0x0004 };
-        if unsafe { fcntl(fd, F_SETFL, flags | nonblock) } < 0 {
+        if unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } < 0 {
             return Err(last_error());
         }
         Ok(())

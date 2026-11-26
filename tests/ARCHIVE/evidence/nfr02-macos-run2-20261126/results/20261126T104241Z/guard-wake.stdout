@@ -1,0 +1,9 @@
+  [pass] guard enabled before probe
+  [pass] handshake echoed 68 bytes
+  [pass] guard recorded handshake
+  [pass] guard woke seed task
+  [pass] seed_active >= 1 after wake
+  [pass] unchoke received
+  [pass] full sample received
+  [pass] md5 matches fixture
+  md5=5b1baa02cd1e35fbc9c2a80dd759ee7c expected=5b1baa02cd1e35fbc9c2a80dd759ee7c

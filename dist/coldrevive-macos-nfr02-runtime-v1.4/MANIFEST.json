@@ -1,18 +1,28 @@
 {
   "package": "coldrevive-macos-nfr02-runtime-v1.4",
-  "generated_at": "2026-11-26T15:08:00+08:00",
+  "generated_at": "2026-11-26T18:44:15+08:00",
   "source_git_commit": "e698d4bef371aeb7b6922c84c2d593051800a466",
-  "source_patch": "prio.rs PRIO_DARWIN_BG 0x1000 (uncommitted v2.4.153 worktree)",
+  "source_patch": "prio.rs: PRIO_DARWIN_BG=0x1000 (set) / PRIO_DARWIN_BG_READBACK=1 (get), verdict+tests+messages updated; cr-nat/tcp_punch.rs: Linux/Darwin errno, socket constants, EINPROGRESS, poll nfds split; run_all.sh: exec daemon for correct PID; all to be committed in v2.4.154",
   "criteria_ref": "DOC-34 v1.5 §10 + 2026-11-26 §13 addendum",
   "supersedes": "coldrevive-macos-nfr02-runtime-v1.3.zip",
-  "note": "v1.4 fixes run1 FAIL: Darwin BG constant and missing #[path] source files. MANIFEST covers all files except results/ and itself.",
+  "note": "v1.4 supersedes v1.3; fixes run1 FAIL (Darwin BG constant, missing #[path] files) and the later Darwin readback / cr-nat / daemon-PID defects. MANIFEST covers all files except results/, run/, target/ and itself.",
   "file_count": 134,
-  "total_bytes": 2377522,
+  "total_bytes": 2383701,
   "items": [
     {
       "path": ".gitignore",
       "bytes": 35,
       "sha256": "171c196c190a96c74a97f6d83ba13dc874a04e6ec8c7d95c2c879091e0927821"
+    },
+    {
+      "path": "README.md",
+      "bytes": 7757,
+      "sha256": "743faf1e9f8850d07aad06a276412a9b65904f61ee91cd1cabb55e1451f2245b"
+    },
+    {
+      "path": "SOURCE_INFO.txt",
+      "bytes": 972,
+      "sha256": "7115ad098d55802061210b5612ca567303b2a86f7a808e3d7c4e60639c083635"
     },
     {
       "path": "config/daemon-off.json",
@@ -50,14 +60,9 @@
       "sha256": "045d19f26c962c7e6edc9b59db863b14404ff052689955610763ee0511712246"
     },
     {
-      "path": "README.md",
-      "bytes": 6504,
-      "sha256": "abdac95181947532ca33ac1af7a8823d9195496af1c6189666926280a37c2d0f"
-    },
-    {
       "path": "run_all.sh",
-      "bytes": 6437,
-      "sha256": "04ac20911381fa0b73c9ec7f796e7dd3a3644c6ac3d00930cb8b64d9fe82dfff"
+      "bytes": 6619,
+      "sha256": "63a38741531511904b9397a3b5b24e9bbaa2d8fa905f75e221c81a8bb96d1f65"
     },
     {
       "path": "source/Cargo.lock",
@@ -68,6 +73,11 @@
       "path": "source/Cargo.toml",
       "bytes": 824,
       "sha256": "b3c966c6aea48583f7ec2e745f761716bbbd74b5066db1935c99c0b42c8ef666"
+    },
+    {
+      "path": "source/src/README.md",
+      "bytes": 5773,
+      "sha256": "52bafca3976256bd4849b554b8b211127443c8830dc57cf3aa44d3382b4a8dc1"
     },
     {
       "path": "source/src/bins/coldrevive-agent/Cargo.toml",
@@ -166,8 +176,8 @@
     },
     {
       "path": "source/src/bins/coldrevived/src/data_plane.rs",
-      "bytes": 27673,
-      "sha256": "45efa49cd823a2f6d8e85dc86b319818c17abb9086e41530fca1d73684efbf26"
+      "bytes": 27886,
+      "sha256": "12b352d03ca5f7df1a92a7ef28ae4d8214ae7d80582a868eacb037e02985cf13"
     },
     {
       "path": "source/src/bins/coldrevived/src/dht_daemon.rs",
@@ -401,8 +411,8 @@
     },
     {
       "path": "source/src/crates/cr-engine/src/prio.rs",
-      "bytes": 29223,
-      "sha256": "4692e8471b9e152f6c2bf02f4b3400b88af3a621d0ecf263649541be93e41327"
+      "bytes": 30472,
+      "sha256": "4d3416fb9bf79475b54c4a74610b17fa92571f1d11876b3eb36f8802f9f3bdea"
     },
     {
       "path": "source/src/crates/cr-engine/tests/bridge_librqbit_e2e.rs",
@@ -571,13 +581,13 @@
     },
     {
       "path": "source/src/crates/cr-nat/src/tcp_discovery.rs",
-      "bytes": 20606,
-      "sha256": "62c9821fa9d479e887069f081127333fde6c576f43e80184e6cfc612b84ed796"
+      "bytes": 22387,
+      "sha256": "bb1fc78636a718e682cb7e4449be5f2f91590838b41942955b4c0495bf2a5427"
     },
     {
       "path": "source/src/crates/cr-nat/src/tcp_punch.rs",
-      "bytes": 25901,
-      "sha256": "3a6448a2bf724c90b5d929bb80068ca1c49b3e48794f23c73f9b0f592cda189b"
+      "bytes": 26977,
+      "sha256": "fc8080cca8ac13c24bb9267eaf42c77c6dd8284052e6e20911846646e782191e"
     },
     {
       "path": "source/src/crates/cr-nat/src/upnp.rs",
@@ -655,11 +665,6 @@
       "sha256": "5fe1472a692d33da5997975b56a8a9c258a9eac5e77656578e7d8a488390fc46"
     },
     {
-      "path": "source/src/README.md",
-      "bytes": 5773,
-      "sha256": "52bafca3976256bd4849b554b8b211127443c8830dc57cf3aa44d3382b4a8dc1"
-    },
-    {
       "path": "source/tests/spikes/s2/ed2k-mini/src/wire.rs",
       "bytes": 34171,
       "sha256": "37a6d570fbeb92475e27fdb277403b63315005815e2e7474a017b8a25eb5002f"
@@ -673,11 +678,6 @@
       "path": "source/tests/spikes/s2/kad-mini/src/wire.rs",
       "bytes": 57681,
       "sha256": "c8de83d20a914b2719190184db77e10411e4171fed42b23920be259c91d81c60"
-    },
-    {
-      "path": "SOURCE_INFO.txt",
-      "bytes": 547,
-      "sha256": "9a83fd92d4be2cddd2911b04dc4d7d40082e7354f062651e63cc62986ccac2f8"
     }
   ]
 }

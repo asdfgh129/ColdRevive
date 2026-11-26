@@ -103,7 +103,9 @@ start_and_sample() {
   tag="$2"
   echo
   echo "=== daemon $tag: $cfg ==="
-  ( cd "$ROOT" && "$BIN" --config "$cfg" --node-id A ) \
+  # 必须 exec：否则 $! 是子 shell 的 PID，kill 后真正的 daemon 可能残留，
+  # 下一阶段会连到旧进程并撞 UDP 端口，导致负向对照假失败。
+  ( cd "$ROOT" && exec "$BIN" --config "$cfg" --node-id A ) \
     > "$RESULTS/daemon-$tag.log" 2>&1 &
   pid=$!
   echo "$pid" > "$RESULTS/daemon-$tag.pid"

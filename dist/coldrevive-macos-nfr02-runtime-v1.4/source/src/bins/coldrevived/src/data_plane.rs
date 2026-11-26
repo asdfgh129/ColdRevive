@@ -226,8 +226,10 @@ impl DataPlane {
         advertised_peer: SocketAddr,
         stream: std::net::TcpStream,
     ) -> Result<(), String> {
-        stream.set_nonblocking(false)
-            .map_err(|e| format!("punched socket 设阻塞失败: {e}"))?;
+        // tokio 1.54.1 的 `from_std` 会 debug_assert socket 必须是非阻塞的；
+        // 这里显式设 true，不能沿用打洞阶段的阻塞状态（此前设 false 会让注册直接 panic）。
+        stream.set_nonblocking(true)
+            .map_err(|e| format!("punched socket 设非阻塞失败: {e}"))?;
         // `from_std` 必须在 runtime 上下文里调用；CLI/控制面不保证调用方已经在 tokio 中。
         let socket = {
             let _guard = self.runtime.enter();

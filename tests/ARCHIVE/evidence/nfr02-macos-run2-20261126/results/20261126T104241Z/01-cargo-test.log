@@ -1,0 +1,47 @@
+warning: unused field `license` in `workspace.package`
+ --> Cargo.toml:8:1
+  |
+8 | license = "MIT"
+  | ^^^^^^^
+  |
+  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.license`
+warning: unused field `repository` in `workspace.package`
+ --> Cargo.toml:9:1
+  |
+9 | repository = "https://github.com/asdfgh129/ColdRevive"
+  | ^^^^^^^^^^
+  |
+help: consider removing the field `workspace.package.repository`
+warning: workspace (manifest) generated 2 warnings
+   Compiling cr-nat v0.1.0 (/Volumes/Data/Code/ColdRevive/dist/coldrevive-macos-nfr02-runtime-v1.4/source/src/crates/cr-nat)
+   Compiling cr-engine v0.1.0 (/Volumes/Data/Code/ColdRevive/dist/coldrevive-macos-nfr02-runtime-v1.4/source/src/crates/cr-engine)
+warning: unused variable: `a`
+   --> src/crates/cr-engine/src/prio.rs:428:21
+    |
+428 |                 let a = n0.expect("降级前应能读回");
+    |                     ^ help: if this is intentional, prefix it with an underscore: `_a`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cr-engine` (lib test) generated 1 warning (run `cargo fix --lib -p cr-engine --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 32.52s
+     Running unittests src/lib.rs (target/debug/build/cr-engine/a70985312729ebe8/out/cr_engine-a70985312729ebe8)
+
+running 13 tests
+test prio::tests::darwin_echo_of_minus_one_is_never_a_priority ... ok
+test prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code ... ok
+test prio::tests::engine_thread_name_fits_task_comm ... ok
+test prio::tests::idle_applies_to_the_calling_thread_only ... ok
+test prio::tests::outcome_strings_are_stable ... ok
+test prio::tests::runtime_worker_task_runs_at_idle_priority ... ok
+test prio::tests::stats_count_each_attempt ... ok
+test tests::engine_starts_without_listening ... ok
+test tests::garbage_torrent_is_rejected ... ok
+test tests::pause_on_unknown_task_errors ... ok
+test tests::state_names_are_stable ... ok
+test tests::utp_listens_on_udp_by_default ... ok
+test tests::utp_off_leaves_udp_port_free ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.02s
+

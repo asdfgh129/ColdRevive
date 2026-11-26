@@ -1,0 +1,159 @@
+{
+  "evidence": "NFR-02 macOS real-machine run 2 (after Darwin readback semantics fix)",
+  "run_id": "20261126T104241Z",
+  "captured_at": "2026-11-26T18:46:30+08:00",
+  "source_zip_sha256": "f4913f3dcde8c0cc93ce1ca5f14578a3510840aaa02a85ebdda370ea1be3e2d2",
+  "package": "coldrevive-macos-nfr02-runtime-v1.4 (source patched as v2.4.154)",
+  "host": "Mac-mini.local / macOS 26.5.2 / Darwin 25.5.0 x86_64",
+  "verdict": "5 pass / 1 not_verified / 0 fail / 0 blocked; gate_claim=null; do not claim three-platform NFR-02 pass without owner decision",
+  "note": "Byte-for-byte copy of the kit results directory. No evidence was edited or reclassified; wake-path per-thread priority remains not_verified.",
+  "file_count": 29,
+  "total_bytes": 72904,
+  "items": [
+    {
+      "path": ".gitattributes",
+      "bytes": 9,
+      "sha256": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992"
+    },
+    {
+      "path": "results/20261126T104241Z/01-cargo-test.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "results/20261126T104241Z/01-cargo-test.log",
+      "bytes": 2271,
+      "sha256": "ac1090f7759729a0c26520482f56d63269859c6bbac9ab93c6f55053c7d59b87"
+    },
+    {
+      "path": "results/20261126T104241Z/02-build.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "results/20261126T104241Z/02-build.log",
+      "bytes": 737,
+      "sha256": "05e678dc58e088fb5e04ebba74895c03b607fc25027b9c56d9145af2de2b8aa2"
+    },
+    {
+      "path": "results/20261126T104241Z/03-collect.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "results/20261126T104241Z/03-collect.stdout",
+      "bytes": 501,
+      "sha256": "e77c5cd0f2151eb535ee3a03aa90fe807eb04ec9f30ac835899f88af1f626610"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-off.log",
+      "bytes": 792,
+      "sha256": "cdff8cff20d2082f928119b090e00a20432b016384d4344804c08b79e71440a6"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-off.pid",
+      "bytes": 6,
+      "sha256": "2e15b87210925b4a385328a4fd6a798151845e917926a7c663d1eadc571e4ecc"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-off.ready",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-on.log",
+      "bytes": 2271,
+      "sha256": "041da42c74843e0a0d4052b206e4ec054627e8bea4a2cff19d64f56c8e6744af"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-on.pid",
+      "bytes": 6,
+      "sha256": "572a5687e1f3edae3c92ae9c47a6a6620f50b8173f8adbedbbd1d36655dfff57"
+    },
+    {
+      "path": "results/20261126T104241Z/daemon-on.ready",
+      "bytes": 2,
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    {
+      "path": "results/20261126T104241Z/guard-info.txt",
+      "bytes": 96,
+      "sha256": "9e9c310bae774bb09a6e110a2c14a9f4a96d0c82ca0fd1fa4158c120722367ef"
+    },
+    {
+      "path": "results/20261126T104241Z/guard-wake.exit",
+      "bytes": 2,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "results/20261126T104241Z/guard-wake.json",
+      "bytes": 1738,
+      "sha256": "6e53a854b434d94b6c7badbc32aa1dfdce46c5e3c909fb94837f77bdfcbeecff"
+    },
+    {
+      "path": "results/20261126T104241Z/guard-wake.stdout",
+      "bytes": 338,
+      "sha256": "193811618906d6f45137ab3e5cff40ce0d6ca88709ab900821b16bba3c65eb4d"
+    },
+    {
+      "path": "results/20261126T104241Z/health-off-1.json",
+      "bytes": 3046,
+      "sha256": "db064be3a5f6b2010f8c7488bba9750aba8ad7b5411804398b8a45fe9e8361ba"
+    },
+    {
+      "path": "results/20261126T104241Z/health-off-2.json",
+      "bytes": 3046,
+      "sha256": "9405331a9b37ccc6c4b88c52b7fb223c0571c6cc6a2682d96f1e97bac1d44acb"
+    },
+    {
+      "path": "results/20261126T104241Z/health-off-3.json",
+      "bytes": 3046,
+      "sha256": "a6517748ada221457f3c05ef5c2b6b7229140eb6b235bf11f1703dfbd7cbcdc6"
+    },
+    {
+      "path": "results/20261126T104241Z/health-off-probe.json",
+      "bytes": 3046,
+      "sha256": "db064be3a5f6b2010f8c7488bba9750aba8ad7b5411804398b8a45fe9e8361ba"
+    },
+    {
+      "path": "results/20261126T104241Z/health-on-1.json",
+      "bytes": 3045,
+      "sha256": "b145885b11cf56c40b68e2a4b390917f73184efba81faf93b83604ee24e60221"
+    },
+    {
+      "path": "results/20261126T104241Z/health-on-2.json",
+      "bytes": 3045,
+      "sha256": "58871b6b7fe88eac436979134bd68c1533b8966f6967b8691d2deadd7c590b13"
+    },
+    {
+      "path": "results/20261126T104241Z/health-on-3.json",
+      "bytes": 3045,
+      "sha256": "f01ea2d702a76f5be3fc911e1bfc5f92865c2ac44174c9754efa7ed28edbc347"
+    },
+    {
+      "path": "results/20261126T104241Z/health-on-probe.json",
+      "bytes": 3045,
+      "sha256": "b145885b11cf56c40b68e2a4b390917f73184efba81faf93b83604ee24e60221"
+    },
+    {
+      "path": "results/20261126T104241Z/platform.json",
+      "bytes": 790,
+      "sha256": "c1a8cb9563c8666e8e37e62d0e4130283b7987f44ab7cfafb8c22fa7931e5efe"
+    },
+    {
+      "path": "results/20261126T104241Z/preflight.txt",
+      "bytes": 685,
+      "sha256": "0d21cc9dd6051b33456b016703e5f5987c11662a128445937faa93298c837d38"
+    },
+    {
+      "path": "results/20261126T104241Z/summary.json",
+      "bytes": 13510,
+      "sha256": "cbbac173e85729a98f2d86bc64dbbf9d368d40975af4fb8121b72eb2566c6185"
+    },
+    {
+      "path": "results-original.zip",
+      "bytes": 24778,
+      "sha256": "f4913f3dcde8c0cc93ce1ca5f14578a3510840aaa02a85ebdda370ea1be3e2d2"
+    }
+  ]
+}

@@ -327,12 +327,45 @@ mod tests {
         }
     }
 
+    /// 等 observer 线程真正开始监听：`free_port()` 先释放端口、子线程再 bind，
+    /// 直接 connect 会偶发 ConnectionRefused（本机全量回归踩到过）。探测连接会被
+    /// observer 计为 write_failed，但单测不校验该计数，不影响判据。
+    fn wait_until_listening(addr: SocketAddr) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if TcpStream::connect_timeout(&addr, Duration::from_millis(100)).is_ok() {
+                return;
+            }
+            if Instant::now() >= deadline {
+                panic!("observer {addr} 未在 5s 内开始监听");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     /// 单连接 observer：按测试 intent 回写任意一行，用来覆盖异常输入路径。
+    ///
+    /// 在主线程先 `bind` 再交给子线程，避免 `free_port()` 释放端口后被别人抢走；
+    /// accept 带 5 s 上限，连接没来时让 `join()` 快速返回而不是永久挂住整轮回归。
     fn one_shot_observer(line: &'static str) -> (SocketAddr, std::thread::JoinHandle<()>) {
         let bind: SocketAddr = format!("127.0.0.1:{}", free_port()).parse().unwrap();
+        let listener = TcpListener::bind(bind).expect("bind");
         let handle = std::thread::spawn(move || {
-            let listener = TcpListener::bind(bind).expect("bind");
-            let (mut stream, _) = listener.accept().expect("accept");
+            listener.set_nonblocking(true).expect("set_nonblocking");
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let stream = loop {
+                match listener.accept() {
+                    Ok((stream, _)) => break stream,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        if Instant::now() >= deadline {
+                            return; // 没等到连接：交给测试断言报告失败，而不是挂死
+                        }
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    Err(e) => panic!("accept: {e}"),
+                }
+            };
+            let mut stream = stream;
             stream.write_all(line.as_bytes()).expect("write");
             stream.flush().expect("flush");
         });
@@ -357,6 +390,7 @@ mod tests {
             // 只服务到第一次写入后由客户端置 stop。
             serve_observer(bind, s2).expect("serve")
         });
+        wait_until_listening(bind);
         let mut client = TcpStream::connect(bind).expect("connect");
         let mut line = String::new();
         BufReader::new(&mut client)
@@ -379,6 +413,7 @@ mod tests {
         let stop = Arc::new(AtomicBool::new(false));
         let s2 = stop.clone();
         let server = std::thread::spawn(move || serve_observer(bind, s2).expect("serve"));
+        wait_until_listening(bind);
         // 回环上 source 就是 local，映射端点 == 本地端点。
         let local_port = free_port_except(&[port]);
         let local: SocketAddr = format!("127.0.0.1:{local_port}").parse().unwrap();
@@ -406,6 +441,8 @@ mod tests {
         let s2 = stop.clone();
         let h1 = std::thread::spawn(move || serve_observer(b1, s1).expect("serve"));
         let h2 = std::thread::spawn(move || serve_observer(b2, s2).expect("serve"));
+        wait_until_listening(b1);
+        wait_until_listening(b2);
 
         let local: SocketAddr = format!("127.0.0.1:{local_port}").parse().unwrap();
         let report = discover_tcp_port(local, &[b1, b2], Duration::from_secs(2));

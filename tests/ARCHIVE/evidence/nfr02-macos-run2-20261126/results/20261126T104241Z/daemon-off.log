@@ -1,0 +1,9 @@
+[A] 伴随种子 announce: http://127.0.0.1:19600/announce
+[A] 样本登记: sample.bin (262144 B), infohash=cd01931d79e5c99daed42e39857ebb78454dfda1
+[A] 样本入库: 1 条记录, 主 infohash=cd01931d79e5c99daed42e39857ebb78454dfda1, keys=4
+[A] 做种任务: infohash=cd01931d79e5c99daed42e39857ebb78454dfda1 任务 #1, 已核对 262144/262144 B, finished=true, state=cold
+[A] 做种引擎就绪: 请求监听 127.0.0.1:19602 / 实际 Some(127.0.0.1:61045), 任务 1 个, utp_requested=true, utp_udp_port_occupied=true
+[A] FR-11 握手唤醒已配置: 对外 127.0.0.1:19602 → 引擎内部 127.0.0.1:61045（代理在共享状态就绪后启动）
+[A] FR-11 guard 代理监听 127.0.0.1:19602（→ 引擎 127.0.0.1:61045）
+[A] UDP 监听 127.0.0.1:19601
+[A] HTTP 监听 127.0.0.1:19600

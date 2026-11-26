@@ -2,10 +2,11 @@
 
 - 文档号：DOC-34
 - 状态：**已签 —— G2 达标（带两项书面例外；G-1～G-5 欠账均已关闭）**
-- 版本：v1.5（2026-11-26：v1.1 补采关闭 G-1；v1.2 实现并实测关闭 G-4「造种 Idle 优先级」；
-  v1.3 实现 macOS `PRIO_DARWIN_BG` 分支并关闭 G-5 的**代码缺口** —— mac 上仍无硬件实测，
+- 版本：v1.6（2026-11-26：v1.1 补采关闭 G-1；v1.2 实现并实测关闭 G-4「造种 Idle 优先级」；
+  v1.3 实现 macOS `PRIO_DARWIN_BG` 分支并关闭 G-5 的**代码缺口** —— 签署时 mac 上仍无硬件实测，
   故 NFR-02 口径不变，见 §10；v1.4 逐字节归档 S4/S5 报告并关闭 G-2，见 §11；
-  本版按 DOC-35 实测关闭 G-3「中继运维面」—— 限流/观测/告警三项均 PASS，见 §12）
+  v1.5 按 DOC-35 实测关闭 G-3「中继运维面」—— 限流/观测/告警三项均 PASS，见 §12；
+  本版补记 macOS 真机复跑与 Darwin 判读修正，见 §14，**不改变 §0 的达标声明**）
 - 声明人 / 决定权：项目所有者
 - 关联：`docs/06-plan/ROADMAP.md` §3 门禁表 G2 行、DOC-31（复评简报）、DOC-32（S6 折算）、
   DOC-33（公平性例外 EX-1）、`tests/fixtures/g2-spike-verdicts.toml`
@@ -357,3 +358,44 @@
 - **没有改变**：`g2_claim=true`、三个工具字段、EX-1 的 FAIL 78/80、S6 条件计入、
   `runtime_verified=false`。修完必须重跑真机；在重跑证据回来前，NFR-02 仍只能说
   Linux/Windows 两分句已实测，不能说 macOS 已验证或三平台达标。
+
+---
+
+## 14. 补记：macOS 真机复跑（2026-11-26，run `20261126T104241Z`，**套件 5 pass / 1 not_verified；不改 §0 声明**）
+
+### 14.1 判读修正：这是 API 语义 bug，不是判据放宽
+
+- `setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG=0x1000)` 的 `0x1000` 是**设置侧标志位**；
+  `getpriority(PRIO_DARWIN_THREAD, 0)` 返回的是**读回侧布尔值**：`1`=后台、`0`=前台。
+  依据三重：本机 `man 2 setpriority` 原文、XNU `bsd/kern/kern_resource.c` 读取
+  `proc_get_thread_policy(..., TASK_POLICY_DARWIN_BG)`、2026-11-26 独立 C 探针
+  （set 0x1000→读回 1；set 0→读回 0；set 0x1→读回 0）。
+- §13 里「判据仍是读回等于 `PRIO_DARWIN_BG`」的表述据此更正为「读回等于 1」；
+  **设置侧仍传 `0x1000`，阈值与 NFR-02 原文未改**。run2 判据单测专门拒绝把
+  读回 `0x1000` 当成功，防止把错误编码悄悄收进来。
+- 附带修复：`cr-nat` 的 Linux/macOS errno/socket/poll 分支拆分（daemon 此前在 mac 上链接
+  失败）、`run_all.sh` 用 `exec` 对齐 daemon PID（此前负向对照撞残留进程）、
+  `coldrevived/data_plane.rs` 在 `from_std` 前设非阻塞（tokio 1.54.1 的既有缺陷）、
+  `cr-nat/tcp_discovery.rs` 测试夹具补监听就绪等待与 accept 超时（此前端口竞态会让全量回归挂死）。
+
+### 14.2 真机结果与证据
+
+- 机器：Mac mini（Macmini8,1 / Intel i5-9500）、macOS 26.5.2、Darwin 25.5.0 x86_64、
+  rustc/cargo 1.100.0；全部流量仅 `127.0.0.1`，不改配置与阈值。
+- `summary.json`（run `20261126T104241Z`）：**5 pass / 1 not_verified / 0 fail / 0 blocked**，
+  `gate_claim=null`。pass：cr-engine 单测、`coldrevived` 构建、`idle_priority on`、
+  负向对照 `idle_priority off`、本地 BT 握手唤醒（262144 B，md5 与样本一致）。
+  `not_verified`：唤醒线程逐线程优先级——按原口径保留，不用功能复核或进程级读数顶替。
+- `/health` 三次快照：`requested=true, applied=3, failed=0, unsupported=0`；负向对照三次
+  均 `requested=false, applied=0, failed=0, unsupported=0`。
+- 逐字节归档：`tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`
+  （29 份文件 + MANIFEST + sha256 + `* -text`）；run1 失败证据保留未改。
+
+### 14.3 口径边界（**未改判**）
+
+- 本补记只证明：macOS 上这条降级分支按系统调用语义生效、引擎线程读回为后台态、负向对照
+  成立、握手链路功能正常。**不等于 NFR-02 三平台达标，也不自动把 `runtime_verified` 或
+  `counts_toward_nfr02` 改成 true**——这两个字段是所有者判定域，见
+  `tests/fixtures/g2-spike-verdicts.toml` 的 `nfr02_macos_runtime_20261126` 事实补记。
+- `g2_claim=true`、三个工具字段、EX-1 与 S6 条件计入全部不变；§0 的达标声明一字未改。
+- 仍不得写「唤醒路径未降级（逐线程）已验证」：该项固定 `not_verified`。
