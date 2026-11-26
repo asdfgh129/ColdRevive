@@ -1,0 +1,104 @@
+{
+  "schema": "coldrevive.g2.g3-evidence-package/v1",
+  "purpose": "G-3 中继运维面三项判据的真实进程证据（限流/观测/告警），逐字节可校验。",
+  "packaged_at": "2026-11-26T08:32:50+08:00",
+  "verdict_ref": "docs/06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md",
+  "criteria": {
+    "path": "tests/fixtures/g3-relay-ops-thresholds.toml",
+    "sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
+    "registered_at": "2026-11-26T08:29:00+08:00"
+  },
+  "git_commit": "f1373d4af2dd897173f32c3fdc2954e1bc299cd0",
+  "clauses": {
+    "rate_limit": "PASS",
+    "observability": "PASS",
+    "alerting": "PASS"
+  },
+  "overall": "PASS",
+  "probe_schema": "coldrevive.g3.relay-ops-evidence/v1",
+  "integrity_check": "cd tests/ARCHIVE/evidence/g3-relay-ops-20261126 && python -c \"import json,sys;[sys.stdout.buffer.write((i['sha256']+'  '+i['file']+'\\n').encode()) for i in json.load(open('MANIFEST.json'))['items']]\" | sha256sum -c -",
+  "integrity_check_note": "Windows 上必须用 sys.stdout.buffer.write 写 LF；print 会产生 CRLF 使 sha256sum -c 全部 FAILED。",
+  "supersedes": "本目录第一次采样发生在实现提交之前（f1373d4 内附带），其 git_commit 字段指向旧提交；本次为 HEAD f1373d4 重建二进制后重采，覆盖旧文件。",
+  "do_not_claim": [
+    "Isolated loopback relay only; production relay 119.29.150.254:7101 untouched.",
+    "bench --udp uses two sockets on the same host; not evidence of two distinct NATs.",
+    "Thresholds come from the pre-registered criteria file; no runtime override."
+  ],
+  "items": [
+    {
+      "file": "alerts.jsonl",
+      "bytes": 1855,
+      "sha256": "bde82b5e8d31f90cdf3cef1e067e6513d3d513e483d56c5a997b2ad3cf2682f2"
+    },
+    {
+      "file": "baseline-relay.stdout.log",
+      "bytes": 819,
+      "sha256": "3b8ec1e9efff9581ce7df48784ad70eefd11b87a882151557690d96a4d646f79"
+    },
+    {
+      "file": "baseline-tcp-stats-final.json",
+      "bytes": 573,
+      "sha256": "3f1c9a97a0bae7f1dc0c153e8065add096d451917018e7f93f03cc9f0d79688c"
+    },
+    {
+      "file": "baseline-udp-stats-final.json",
+      "bytes": 640,
+      "sha256": "d50c88aba88f52899f2496c7c3a5b340764234ac3cc70457969a5cef32b33ea7"
+    },
+    {
+      "file": "breach-relay.stdout.log",
+      "bytes": 797,
+      "sha256": "e1a6de5a30f77be81c6ee601e2dcdf9c61aabec37bc71d35e7c395b6d607398f"
+    },
+    {
+      "file": "breach-tcp-stats-final.json",
+      "bytes": 577,
+      "sha256": "172c2e5a000c175957ac4202f314a8c1192fcca1fc4cc30a9695189d16ec6301"
+    },
+    {
+      "file": "breach-udp-stats-final.json",
+      "bytes": 622,
+      "sha256": "ca9b0a30864d482be66664d361a38d4d5d793ed027f93b333f72de678bcf9b37"
+    },
+    {
+      "file": "reset-tcp-stats-final.json",
+      "bytes": 571,
+      "sha256": "a66cf1c517b0b24d8d10e3d37144c481623dbee58a18a21b8c720213e8a6743b"
+    },
+    {
+      "file": "reset-udp-stats-final.json",
+      "bytes": 618,
+      "sha256": "0dc3a0ca95696ed9ebce33f1bd11e283f1eda4ef00e5b570478b26845de9054b"
+    },
+    {
+      "file": "summary.json",
+      "bytes": 25382,
+      "sha256": "cff30a3ceaabeafca69c23adf74f843f99cc81bf8b6ceebf12ee27fb58b8ffc4"
+    },
+    {
+      "file": "tcp-stats.json",
+      "bytes": 571,
+      "sha256": "a66cf1c517b0b24d8d10e3d37144c481623dbee58a18a21b8c720213e8a6743b"
+    },
+    {
+      "file": "udp-stats.json",
+      "bytes": 618,
+      "sha256": "0dc3a0ca95696ed9ebce33f1bd11e283f1eda4ef00e5b570478b26845de9054b"
+    },
+    {
+      "file": "watch-summary.json",
+      "bytes": 2773,
+      "sha256": "48141137f39d11222079323898da912fd33bac672864eaeb1f00959ca866e1ba"
+    },
+    {
+      "file": "watch.stdout.log",
+      "bytes": 1859,
+      "sha256": "0f6cf8bbd4cd7ecc58a515ebafedf8248d73041f365d1b2addd9b3a531f8e762"
+    },
+    {
+      "file": "watch.stop",
+      "bytes": 15,
+      "sha256": "268fea7443e2e1708ef611e4e7fd0b0422f89e7473831366eedb11a9e134bc44"
+    }
+  ]
+}

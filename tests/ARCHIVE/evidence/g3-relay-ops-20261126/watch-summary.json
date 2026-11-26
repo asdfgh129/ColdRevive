@@ -1,8 +1,8 @@
 {
   "schema": "coldrevive.g3.relay-watch-summary/v1",
-  "started_at": "2026-11-26T00:32:05.462+00:00",
-  "ended_at": "2026-11-26T00:32:05.462+00:00",
-  "elapsed_sec": 16.122,
+  "started_at": "2026-11-26T00:32:42.886+00:00",
+  "ended_at": "2026-11-26T00:32:42.886+00:00",
+  "elapsed_sec": 16.099,
   "criteria": "tests/fixtures/g3-relay-ops-thresholds.toml",
   "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
   "samples": 80,
@@ -12,7 +12,7 @@
   "records": [
     {
       "schema": "coldrevive.g3.relay-alert/v1",
-      "recorded_at": "2026-11-26T00:31:53.425+00:00",
+      "recorded_at": "2026-11-26T00:32:30.850+00:00",
       "state": "alert",
       "condition": "tcp_bandwidth_limited",
       "counter": "bandwidth_limited",
@@ -27,7 +27,7 @@
     },
     {
       "schema": "coldrevive.g3.relay-alert/v1",
-      "recorded_at": "2026-11-26T00:31:57.491+00:00",
+      "recorded_at": "2026-11-26T00:32:34.914+00:00",
       "state": "resolved",
       "condition": "tcp_bandwidth_limited",
       "counter": "bandwidth_limited",
@@ -42,7 +42,7 @@
     },
     {
       "schema": "coldrevive.g3.relay-alert/v1",
-      "recorded_at": "2026-11-26T00:32:03.408+00:00",
+      "recorded_at": "2026-11-26T00:32:40.833+00:00",
       "state": "alert",
       "condition": "tcp_stats_stale",
       "counter": null,
@@ -52,13 +52,13 @@
       "window_secs": 2,
       "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
       "observed": {
-        "stats_mtime": 1795653121.2304606,
-        "now": 1795653123.406491
+        "stats_mtime": 1795653158.6635325,
+        "now": 1795653160.8325708
       }
     },
     {
       "schema": "coldrevive.g3.relay-alert/v1",
-      "recorded_at": "2026-11-26T00:32:03.416+00:00",
+      "recorded_at": "2026-11-26T00:32:40.837+00:00",
       "state": "alert",
       "condition": "udp_stats_stale",
       "counter": null,
@@ -68,8 +68,8 @@
       "window_secs": 2,
       "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
       "observed": {
-        "stats_mtime": 1795653121.2294607,
-        "now": 1795653123.406491
+        "stats_mtime": 1795653158.6615334,
+        "now": 1795653160.8325708
       }
     }
   ]

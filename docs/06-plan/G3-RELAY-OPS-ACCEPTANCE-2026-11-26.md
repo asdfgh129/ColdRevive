@@ -1,8 +1,8 @@
 # G-3 中继运维面验收判据（预登记）
 
 - 文档号：DOC-35
-- 版本：v1.0（2026-11-26T08:29:00+08:00，**预登记；采样结果待补**）
-- 状态：判据已固定，尚未采样；本文件不签发 G-3 通过
+- 版本：v1.1（2026-11-26T08:32+08:00：预登记判据未改，追加 §5 实测结果）
+- 状态：**三项分句均实测通过；G-3 运维面关闭**（不改变 `g2_claim` 与三个工具字段）
 - 关联：DOC-34 §3 第 3 项（G-3 欠账原文）、ADR-014（数据预算）、`docs/07-operations/OPS.md`
 
 ## 1. 为什么先写这份
@@ -44,6 +44,27 @@ DOC-34 只写了「限流/观测/告警未单列验收」，**没有**可执行�
 - 不表示仓库内有 relay systemd unit（实际没有，只有 `coldrevived-a/b`）。
 - 不表示 S6 NAT 类别覆盖或公平性达标（EX-1 仍 FAIL 78/80）。
 
-## 5. 结果
+## 5. 结果（2026-11-26T08:32+08:00 采样，判据章节未改）
 
-待采样后以追加章节写入；判据章节不改写。
+**总判：三项分句全部 PASS，G-3 运维面关闭。** 采样在 HEAD `f1373d4`（实现提交）重建的二进制上完成，
+不是把旧构建的计数拿来充数。
+
+| 分句 | 结果 | 实测要点 |
+| :--- | :--- | :--- |
+| ① 限流 | **PASS** | 基线组 TCP `bandwidth_limited/ip_cap_rejected/conn_cap_rejected/rate_limited` 与 UDP 对应四项**全为 0**；违约组（`data_rate=1`）真实 stats 中 `bandwidth_limited` **0 → 10** |
+| ② 观测 | **PASS** | TCP/UDP 各 50/50 轮回声（门槛 45）；两份 stats mtime 滞后 **0.019 s / 0.020 s**（≤2 s）；UDP stats 五个 per-session 字段全部可见（此前只存在于内存结构体、未落盘，本次补齐） |
+| ③ 告警 | **PASS** | 基线组 **0** 条告警；违约启动后 **0.433 s** 出现 `tcp_bandwidth_limited` 告警（门槛 ≤3 s），并在计数停止增长后自动 `resolved`；停止 relay 后 2 条 `*_stats_stale`；重启使计数归零后 **0** 条规则告警、`counter_resets_seen=1` |
+
+- **告警实现**：`scripts/relay_ops_watch.py` 只读两份 stats 文件，按预登记阈值算窗口增量，
+  追加 JSON Lines 到告警文件；计数变小一律当进程重启，不告警。产出记录带
+  `condition / counter / delta_window / threshold / window_secs / recorded_at / criteria_sha256`。
+- **采样编排**：`tests/e2e/g3/relay_ops_probe.py` 依次跑基线 → 违约 → 重启(reset) → 停进程(stale)，
+  原始 stats 快照、告警文件、watch 摘要全部入库。
+- **证据**：`tests/ARCHIVE/evidence/g3-relay-ops-20261126/`
+  （`summary.json` sha256 `cff30a3ceaabeafca69c23adf74f843f99cc81bf8b6ceebf12ee27fb58b8ffc4`；
+  `MANIFEST.json` sha256 `5202e619fe23f39668259762a1e529a5b517f798ee782c1eb89ca9c35b63eae4`，
+  目录内 `* -text` 锁字节；15 份原始文件 sha 见 MANIFEST，`sha256sum -c` 全过）。
+- **首次采样被取代**：实现提交前曾做一次预跑（随 `f1373d4` 一并提交），其 `git_commit` 字段指向旧提交；
+  本次在 HEAD 重建二进制后重采并覆盖同名文件。MANIFEST 的 `supersedes` 字段保留此事实。
+- **复核边界不变**：仍是回环独立实例，不碰生产 `119.29.150.254:7101`；bench 的 UDP 两端在同机，
+  不能冒充两个 NAT；这些数字不是带宽/丢包 SLO，也不使 EX-1 或 S6 例外失效。

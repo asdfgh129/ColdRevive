@@ -60,8 +60,9 @@ python3 scripts/archive_test_run.py \
   `git show HEAD:<path> | sha256sum` 与账本里的值**可能不同**（差的是 `\r`）。
   这不是篡改，是换行归一化；比对前先看该文件有没有 `-text`。
 - 需要**字节级可复现**的证据（原始探针输出、抓包派生、与门禁判断直接相关的 JSON），
-  必须在 `.gitattributes` 里加 `-text`。已锁的有：`s6-verdict-20261117/*`、
-  `g2-s4-s5-reports-20261125/*`（目录内 `.gitattributes` 为 `* -text`）、
+  必须在 `.gitattributes` 里加 `-text`。  已锁的有：`s6-verdict-20261117/*`、
+  `g2-s4-s5-reports-20261125/*`、`g3-relay-ops-20261126/*`
+  （两个目录内 `.gitattributes` 均为 `* -text`）、
   `nfr02-idle-cpu-20261125.raw.json`、`nfr02-engine-idle-priority-20261125.{on,off}.json`、
   `regression-full-20261125e.log`、`nfr02-macos-idle-priority-20261125.json`。
   同理，从 MANIFEST 生成 `sha256sum -c` 清单时也必须用 `sys.stdout.buffer.write` 写 LF；

@@ -140,10 +140,17 @@ updated: YYYY-MM-DD
 - 技术内容变更 → 递增对应文档 `version`；仅结构调整 → 递增体系版本。
 - **v2.4.142 补记（2026-11-25 / DOC-34 §8 · G-1 补采关闭）**：NFR-02 空闲 CPU 首次独立采点——221 上 600.63 s 空闲窗口（`seed_active=0`、`served_bytes` 零增长、DHT 关）内进程累计 CPU **0.18 s** → 均值 **0.03%**（阈值 2%，余量 66×），`inst_p95=0.0%`。证据 `tests/ARCHIVE/evidence/nfr02-idle-cpu-20261125.json` 与逐样本 `.raw.json`，探针 `scripts/nfr02_idle_cpu_probe.py`、整理脚本 `scripts/build_nfr02_evidence.py`。**关闭的只是 G-1「无采点」**：NFR-02 第二分句「造种任务仅以 Idle 优先级运行」在守护进程内无运行时实现（无 `setpriority`/`SetThreadPriority`/`SCHED_IDLE`，systemd `Nice=0`），新增缺口 **G-4**，故仍不可写「NFR-02 达标」。采样前发现 221 构建树落后 HEAD 8 个 `.rs`，已按 HEAD 重同步（86/86 与 git blob 逐字节一致）并重建，旧二进制留档 `coldrevived.bak-nfr02`。
 - **v2.4.148 补记（2026-11-25 / G-4 关闭）**：NFR-02 第二分句实现并实测——引擎线程（`cr-engine-wrk`）以 `nice 19`+`SCHED_IDLE` 运行，唤醒路径未降级，并带**负向对照**（关掉开关回到 `nice 0`）；同期 1 MiB 传输 md5 一致。取证见 [DOC-34 §9](06-plan/G2-EXIT-RECORD-2026-11-25.md)，证据 `tests/ARCHIVE/evidence/nfr02-engine-idle-priority-20261125.json`。**macOS 未实现 → 新缺口 G-5**。
+- **v2.4.152 补记（2026-11-26 / G-3 关闭）**：中继运维面先预登记判据（[DOC-35](06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md)，
+  sha `8e91943a…`），再在 HEAD 重建的独立回环 relay 上实测：基线 50/50 回声且四类拒绝计数全 0、
+  违约 `bandwidth_limited` 0→10 且 **0.433 s** 出告警、停进程出 stale 告警、重启归零不误报。
+  限流/观测/告警三项 PASS，签署时的欠账至此全关。新增 `scripts/relay_ops_watch.py`（告警）
+  与 UDP stats 的 5 个 per-session 字段。**不表示公网 relay 当前健康或带宽 SLO**，
+  `g2_claim` 与三个工具字段不变；证据 `tests/ARCHIVE/evidence/g3-relay-ops-20261126/`。
 - **v2.4.150 补记（2026-11-25 / G-2 关闭）**：S4/S5 共 15 份被 `.gitignore` 排除的报告已逐字节归档到
   `tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/`（MANIFEST + sha256 + `-text` 锁字节）。只解决
-  「clone 后可校验」，不改 S4=`pass`/S5=`fallback` 判定，也不抬升证据等级。当前唯一开放欠账为
-  **G-3（中继运维面）**；mac 真机实测仍是未测项。详见 [DOC-34 §11](06-plan/G2-EXIT-RECORD-2026-11-25.md)。
+  「clone 后可校验」，  不改 S4=`pass`/S5=`fallback` 判定，也不抬升证据等级。当时余下的开放欠账为
+  **G-3（中继运维面，已于 v2.4.152 实测关闭）**；mac 真机实测仍是未测项。详见
+  [DOC-34 §11](06-plan/G2-EXIT-RECORD-2026-11-25.md)。
 - **v2.4.149 补记（2026-11-25 / G-5 代码缺口关闭）**：macOS 分支落地——`setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG)`，读回 `getpriority(PRIO_DARWIN_THREAD) == 0x10000` 才算成功，`-1` 折成「读不出」不折算成功；判定逻辑抽成与平台无关的 `darwin_verdict`（2 条单测在 Windows/Linux 真跑），分支经 `cargo check -p cr-engine --features darwin-check` 类型检查。**本仓库没有 mac 硬件 → 这不算 macOS 实测**，NFR-02 口径仍是「Linux/Windows 两分句已实测」，见 [DOC-34 §10](06-plan/G2-EXIT-RECORD-2026-11-25.md)。
 - **v2.4.141 补记（2026-11-25 / DOC-34 · G2 达标声明）**：所有者声明 **G2 达标**，`g2_claim` 由 `false` 改为 `true`（人为判定字段；`s6_status=not_run` / `evidence_valid_for_pass=false` / `auto_pass=false` 三个工具字段不动）。新增 [DOC-34 G2 出口记录](06-plan/G2-EXIT-RECORD-2026-11-25.md)，逐项写明「哪条撑得住、哪条撑不住」：NFR-01 ✅、NFR-03 ✅（凭令牌桶、无 LEDBAT）、S6 ✅（带四条例外）、**NFR-02 无独立采点 → 缺口 G-1**（该缺口已于 v2.4.142 补采关闭，见上条）、**公平性按原判据仍 FAIL 78/80 → 例外 EX-1**；另记 G-2（S4/S5 证据未归档；已于 v2.4.150 逐字节归档关闭，见上条）、G-3（中继运维面）。同时登记 [DOC-31](06-plan/G2-REVIEW-BRIEF-2026-11-25.md)（复评简报）、[DOC-32](06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md)（S6 折算）、[DOC-33](06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md)（公平性例外）。
 - **v2.4.121 补记（2026-11-24 / DOC-30）**：新增 [TCP 映射端口发现与 EIM 判定 Runbook](07-operations/TCP-DISCOVERY-RUNBOOK.md)，固化 EIM 四态判定、`--serve-observer` / `--discover-tcp-port` 参数、常规方法失效时的适用性判断与回退边界。`cr_nat::tcp_discovery::judge_observations` 抽出纯判定函数：≥2 observer 回写不一致时 `discovered_port=null`（不再给出不可外推端口）。新增 5 条定点单测（共 9 条）与 `tests/e2e/w56/tcp_discovery_selftest.py`（6/6 PASS）；全量串行回归 530 passed / 0 failed / 3 ignored。门禁常量不变。

@@ -68,6 +68,32 @@ updated: 2026-11-09
 
 提供「网络自检」页面：`nat_type`、KAD 连通性、发布成功率、最近唤醒结果，降低用户排障门槛。
 
+### 3.5 中继运维面（G-3，2026-11-26 起）
+
+relay 是独立进程，**不经过** `/api/v1/metrics`；可观测性走文件，告警由独立只读进程产出：
+
+```bash
+coldrevive-relay --listen 0.0.0.0:7100 --auth-key file:/path/to/psk \
+  --stats-file /var/lib/coldrevive/relay-tcp.json \
+  --udp-listen 0.0.0.0:7100 --udp-stats-file /var/lib/coldrevive/relay-udp.json
+python3 scripts/relay_ops_watch.py \
+  --tcp-stats /var/lib/coldrevive/relay-tcp.json \
+  --udp-stats /var/lib/coldrevive/relay-udp.json \
+  --alert-file /var/log/coldrevive/relay-alerts.jsonl \
+  --summary-file /var/log/coldrevive/relay-watch-summary.json \
+  --criteria tests/fixtures/g3-relay-ops-thresholds.toml
+```
+
+- 两份 stats 各 200 ms 覆盖写一份；UDP 文件含 5 个 per-session 计数
+  （`per_session_limited/limited_bytes/shaped/shaped_bytes/dropped`），此前只在内存里、不可抓取。
+- 阈值**只从** `tests/fixtures/g3-relay-ops-thresholds.toml` 读，告警进程没有内置兜底阈值；
+  改阈值等于改判据，必须换新时间戳 + 新 sha 与新证据。
+- 读数为累计量；watch 按窗口算增量。计数变小视为 relay 重启（`counter_reset`），该窗不告警；
+  stats 文件过期本身就是 `*_stats_stale` 告警。告警记录带 `condition/counter/delta_window/threshold/recorded_at/criteria_sha256`。
+- 仓库内**没有** relay systemd unit（只有 `coldrevived-a/b`），watch 进程需要由部署侧 supervisor 常驻。
+- 这里是「运维面可用性」，不是带宽/丢包 SLO；判据与实测边界见
+  [DOC-35](../06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md)。
+
 ## 4. 升级与数据迁移
 
 - `schema_version` 顺序迁移，向下兼容至少 2 个版本；失败则拒绝启动并保留原库。

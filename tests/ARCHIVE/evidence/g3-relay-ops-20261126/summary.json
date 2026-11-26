@@ -1,6 +1,6 @@
 {
   "schema": "coldrevive.g3.relay-ops-evidence/v1",
-  "recorded_at": "2026-11-26T00:32:05.488+00:00",
+  "recorded_at": "2026-11-26T00:32:42.914+00:00",
   "criteria": {
     "path": "tests/fixtures/g3-relay-ops-thresholds.toml",
     "sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
@@ -21,7 +21,7 @@
     },
     "python": "3.13.14"
   },
-  "git_commit": "95420eb66fd00d7481826c725156a1de7f4ccdf6",
+  "git_commit": "f1373d4af2dd897173f32c3fdc2954e1bc299cd0",
   "watch_args": [
     "C:\\Users\\bemin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python.exe",
     "scripts/relay_ops_watch.py",
@@ -39,15 +39,15 @@
     "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\ARCHIVE\\evidence\\g3-relay-ops-20261126\\watch.stop"
   ],
   "boundaries": {
-    "watch_start": "2026-11-26T00:31:48.937+00:00",
-    "baseline_end": "2026-11-26T00:31:52.872+00:00",
-    "breach_start": "2026-11-26T00:31:52.989+00:00",
-    "breach_trigger_observed": "2026-11-26T00:31:55.300+00:00",
-    "breach_end": "2026-11-26T00:31:58.307+00:00",
-    "reset_start": "2026-11-26T00:31:58.419+00:00",
-    "reset_end": "2026-11-26T00:32:01.426+00:00",
-    "stale_start": "2026-11-26T00:32:01.428+00:00",
-    "stale_end": "2026-11-26T00:32:05.429+00:00"
+    "watch_start": "2026-11-26T00:32:26.275+00:00",
+    "baseline_end": "2026-11-26T00:32:30.309+00:00",
+    "breach_start": "2026-11-26T00:32:30.417+00:00",
+    "breach_trigger_observed": "2026-11-26T00:32:32.722+00:00",
+    "breach_end": "2026-11-26T00:32:35.725+00:00",
+    "reset_start": "2026-11-26T00:32:35.835+00:00",
+    "reset_end": "2026-11-26T00:32:38.848+00:00",
+    "stale_start": "2026-11-26T00:32:38.851+00:00",
+    "stale_end": "2026-11-26T00:32:42.851+00:00"
   },
   "phases": {
     "baseline": {
@@ -72,14 +72,14 @@
         "--max-conns-per-ip",
         "16"
       ],
-      "tcp_listen": "127.0.0.1:54551",
-      "udp_listen": "127.0.0.1:61351",
+      "tcp_listen": "127.0.0.1:54571",
+      "udp_listen": "127.0.0.1:58297",
       "bench_tcp": {
         "tag": "baseline-tcp",
         "args": [
           "C:/Users/bemin/WorkBuddy/ColdRevive/target/release/coldrevive-relaybench.exe",
           "--relay",
-          "127.0.0.1:54551",
+          "127.0.0.1:54571",
           "--rounds",
           "50",
           "--payload",
@@ -92,7 +92,7 @@
         "json": {
           "ok": true,
           "mode": "relay-bench",
-          "relay": "127.0.0.1:54551",
+          "relay": "127.0.0.1:54571",
           "rounds": 50,
           "payload_bytes": 64,
           "timeout_ms": 1000,
@@ -100,16 +100,16 @@
           "received": 50,
           "lost": 0,
           "loss_pct": 0.0,
-          "rtt_ms_min": 0.063,
-          "rtt_ms_p50": 0.082,
-          "rtt_ms_p90": 0.117,
-          "rtt_ms_p99": 0.236,
-          "rtt_ms_max": 0.236,
-          "rtt_ms_mean": 0.088,
-          "total_ms": 236,
+          "rtt_ms_min": 0.046,
+          "rtt_ms_p50": 0.063,
+          "rtt_ms_p90": 0.08,
+          "rtt_ms_p99": 0.175,
+          "rtt_ms_max": 0.175,
+          "rtt_ms_mean": 0.066,
+          "total_ms": 237,
           "evidence_scope": "real-network-roundtrip"
         },
-        "stdout_tail": "{\"ok\":true,\"mode\":\"relay-bench\",\"relay\":\"127.0.0.1:54551\",\"rounds\":50,\"payload_bytes\":64,\"timeout_ms\":1000,\"echoed\":50,\"received\":50,\"lost\":0,\"loss_pct\":0.00,\"rtt_ms_min\":0.063,\"rtt_ms_p50\":0.082,\"rtt_ms_p90\":0.117,\"rtt_ms_p99\":0.236,\"rtt_ms_max\":0.236,\"rtt_ms_mean\":0.088,\"total_ms\":236,\"evidence_scope\":\"real-network-roundtrip\"}\n",
+        "stdout_tail": "{\"ok\":true,\"mode\":\"relay-bench\",\"relay\":\"127.0.0.1:54571\",\"rounds\":50,\"payload_bytes\":64,\"timeout_ms\":1000,\"echoed\":50,\"received\":50,\"lost\":0,\"loss_pct\":0.00,\"rtt_ms_min\":0.046,\"rtt_ms_p50\":0.063,\"rtt_ms_p90\":0.080,\"rtt_ms_p99\":0.175,\"rtt_ms_max\":0.175,\"rtt_ms_mean\":0.066,\"total_ms\":237,\"evidence_scope\":\"real-network-roundtrip\"}\n",
         "stderr_tail": ""
       },
       "bench_udp": {
@@ -117,7 +117,7 @@
         "args": [
           "C:/Users/bemin/WorkBuddy/ColdRevive/target/release/coldrevive-relaybench.exe",
           "--relay",
-          "127.0.0.1:61351",
+          "127.0.0.1:58297",
           "--rounds",
           "50",
           "--payload",
@@ -131,9 +131,9 @@
         "json": {
           "ok": true,
           "mode": "relay-bench-udp",
-          "relay": "127.0.0.1:61351",
-          "relay_server": "127.0.0.1:61351",
-          "local_addr": "127.0.0.1:56104",
+          "relay": "127.0.0.1:58297",
+          "relay_server": "127.0.0.1:58297",
+          "local_addr": "127.0.0.1:58298",
           "rounds": 50,
           "payload_bytes": 64,
           "timeout_ms": 1000,
@@ -142,27 +142,27 @@
           "received": 50,
           "lost": 0,
           "loss_pct": 0.0,
-          "rtt_ms_min": 0.246,
-          "rtt_ms_p50": 0.26,
-          "rtt_ms_p90": 0.284,
-          "rtt_ms_p99": 0.359,
-          "rtt_ms_max": 0.359,
-          "rtt_ms_mean": 0.265,
-          "jitter_ms_mean_abs": 0.002,
+          "rtt_ms_min": 0.282,
+          "rtt_ms_p50": 0.285,
+          "rtt_ms_p90": 0.364,
+          "rtt_ms_p99": 0.78,
+          "rtt_ms_max": 0.78,
+          "rtt_ms_mean": 0.31,
+          "jitter_ms_mean_abs": 0.01,
           "status_forwarded": 50,
           "status_target_absent": 0,
           "status_rate_limited": 0,
           "status_other": 0,
-          "total_ms": 15,
+          "total_ms": 17,
           "evidence_scope": "real-network-roundtrip-udp-relay"
         },
-        "stdout_tail": "{\"ok\":true,\"mode\":\"relay-bench-udp\",\"relay\":\"127.0.0.1:61351\",\"relay_server\":\"127.0.0.1:61351\",\"local_addr\":\"127.0.0.1:56104\",\"rounds\":50,\"payload_bytes\":64,\"timeout_ms\":1000,\"echoed\":50,\"echo_fail\":0,\"received\":50,\"lost\":0,\"loss_pct\":0.00,\"rtt_ms_min\":0.246,\"rtt_ms_p50\":0.260,\"rtt_ms_p90\":0.284,\"rtt_ms_p99\":0.359,\"rtt_ms_max\":0.359,\"rtt_ms_mean\":0.265,\"jitter_ms_mean_abs\":0.002,\"status_forwarded\":50,\"status_target_absent\":0,\"status_rate_limited\":0,\"status_other\":0,\"total_ms\":15,\"evidence_scope\":\"real-network-roundtrip-udp-relay\"}\n",
+        "stdout_tail": "{\"ok\":true,\"mode\":\"relay-bench-udp\",\"relay\":\"127.0.0.1:58297\",\"relay_server\":\"127.0.0.1:58297\",\"local_addr\":\"127.0.0.1:58298\",\"rounds\":50,\"payload_bytes\":64,\"timeout_ms\":1000,\"echoed\":50,\"echo_fail\":0,\"received\":50,\"lost\":0,\"loss_pct\":0.00,\"rtt_ms_min\":0.282,\"rtt_ms_p50\":0.285,\"rtt_ms_p90\":0.364,\"rtt_ms_p99\":0.780,\"rtt_ms_max\":0.780,\"rtt_ms_mean\":0.310,\"jitter_ms_mean_abs\":0.010,\"status_forwarded\":50,\"status_target_absent\":0,\"status_rate_limited\":0,\"status_other\":0,\"total_ms\":17,\"evidence_scope\":\"real-network-roundtrip-udp-relay\"}\n",
         "stderr_tail": ""
       },
       "stats": {
         "tcp": {
-          "listen": "127.0.0.1:54551",
-          "instance": "RLYINST.S$Z....8",
+          "listen": "127.0.0.1:54571",
+          "instance": "RLYINSTDH%.,.(.,",
           "auth": "none",
           "key_fp": "",
           "connections": 2,
@@ -194,7 +194,7 @@
           "ip_tracked": 1
         },
         "udp": {
-          "udp_listen": "127.0.0.1:61351",
+          "udp_listen": "127.0.0.1:58297",
           "auth": "none",
           "key_fp": "",
           "datagrams": 103,
@@ -230,8 +230,8 @@
           "sessions_active": 1,
           "sessions_expired": 0
         },
-        "tcp_mtime_age_sec": 0.181,
-        "udp_mtime_age_sec": 0.181
+        "tcp_mtime_age_sec": 0.18,
+        "udp_mtime_age_sec": 0.18
       }
     },
     "breach": {
@@ -260,14 +260,14 @@
         "--udp-per-session-burst",
         "1"
       ],
-      "tcp_listen": "127.0.0.1:54554",
-      "udp_listen": "127.0.0.1:50132",
+      "tcp_listen": "127.0.0.1:54575",
+      "udp_listen": "127.0.0.1:54774",
       "bench_tcp": {
         "tag": "breach-tcp",
         "args": [
           "C:/Users/bemin/WorkBuddy/ColdRevive/target/release/coldrevive-relaybench.exe",
           "--relay",
-          "127.0.0.1:54554",
+          "127.0.0.1:54575",
           "--rounds",
           "10",
           "--payload",
@@ -280,7 +280,7 @@
         "json": {
           "ok": false,
           "mode": "relay-bench",
-          "relay": "127.0.0.1:54554",
+          "relay": "127.0.0.1:54575",
           "rounds": 10,
           "payload_bytes": 60000,
           "timeout_ms": 200,
@@ -294,10 +294,10 @@
           "rtt_ms_p99": 0.0,
           "rtt_ms_max": 0.0,
           "rtt_ms_mean": 0.0,
-          "total_ms": 2268,
+          "total_ms": 2267,
           "evidence_scope": "real-network-roundtrip"
         },
-        "stdout_tail": "{\"ok\":false,\"mode\":\"relay-bench\",\"relay\":\"127.0.0.1:54554\",\"rounds\":10,\"payload_bytes\":60000,\"timeout_ms\":200,\"echoed\":0,\"received\":0,\"lost\":10,\"loss_pct\":100.00,\"rtt_ms_min\":0.000,\"rtt_ms_p50\":0.000,\"rtt_ms_p90\":0.000,\"rtt_ms_p99\":0.000,\"rtt_ms_max\":0.000,\"rtt_ms_mean\":0.000,\"total_ms\":2268,\"evidence_scope\":\"real-network-roundtrip\"}\n",
+        "stdout_tail": "{\"ok\":false,\"mode\":\"relay-bench\",\"relay\":\"127.0.0.1:54575\",\"rounds\":10,\"payload_bytes\":60000,\"timeout_ms\":200,\"echoed\":0,\"received\":0,\"lost\":10,\"loss_pct\":100.00,\"rtt_ms_min\":0.000,\"rtt_ms_p50\":0.000,\"rtt_ms_p90\":0.000,\"rtt_ms_p99\":0.000,\"rtt_ms_max\":0.000,\"rtt_ms_mean\":0.000,\"total_ms\":2267,\"evidence_scope\":\"real-network-roundtrip\"}\n",
         "stderr_tail": "{\"ok\":false,\"error\":\"丢包率过高：10/10\"}\n"
       },
       "bench_udp": {
@@ -305,7 +305,7 @@
         "args": [
           "C:/Users/bemin/WorkBuddy/ColdRevive/target/release/coldrevive-relaybench.exe",
           "--relay",
-          "127.0.0.1:50132",
+          "127.0.0.1:54774",
           "--rounds",
           "10",
           "--payload",
@@ -322,8 +322,8 @@
       },
       "stats": {
         "tcp": {
-          "listen": "127.0.0.1:54554",
-          "instance": "RLYINST...|.....",
+          "listen": "127.0.0.1:54575",
+          "instance": "RLYINST..S..m.D.",
           "auth": "none",
           "key_fp": "",
           "connections": 2,
@@ -355,7 +355,7 @@
           "ip_tracked": 1
         },
         "udp": {
-          "udp_listen": "127.0.0.1:50132",
+          "udp_listen": "127.0.0.1:54774",
           "auth": "none",
           "key_fp": "",
           "datagrams": 2,
@@ -391,8 +391,8 @@
           "sessions_active": 2,
           "sessions_expired": 0
         },
-        "tcp_mtime_age_sec": 0.004,
-        "udp_mtime_age_sec": 0.006
+        "tcp_mtime_age_sec": 0.191,
+        "udp_mtime_age_sec": 0.19
       },
       "counters_increased": [
         [
@@ -431,8 +431,8 @@
       ],
       "stats": {
         "tcp": {
-          "listen": "127.0.0.1:54557",
-          "instance": "RLYINST......x.<",
+          "listen": "127.0.0.1:54580",
+          "instance": "RLYINST...%..h.8",
           "auth": "none",
           "key_fp": "",
           "connections": 0,
@@ -464,7 +464,7 @@
           "ip_tracked": 0
         },
         "udp": {
-          "udp_listen": "127.0.0.1:50135",
+          "udp_listen": "127.0.0.1:54777",
           "auth": "none",
           "key_fp": "",
           "datagrams": 0,
@@ -500,19 +500,19 @@
           "sessions_active": 0,
           "sessions_expired": 0
         },
-        "tcp_mtime_age_sec": 0.19,
-        "udp_mtime_age_sec": 0.192
+        "tcp_mtime_age_sec": 0.177,
+        "udp_mtime_age_sec": 0.18
       }
     },
     "stale": {
-      "relay_stopped_at": "2026-11-26T00:32:01.428+00:00"
+      "relay_stopped_at": "2026-11-26T00:32:38.851+00:00"
     }
   },
   "alerts": {
     "all": [
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:31:53.425+00:00",
+        "recorded_at": "2026-11-26T00:32:30.850+00:00",
         "state": "alert",
         "condition": "tcp_bandwidth_limited",
         "counter": "bandwidth_limited",
@@ -527,7 +527,7 @@
       },
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:31:57.491+00:00",
+        "recorded_at": "2026-11-26T00:32:34.914+00:00",
         "state": "resolved",
         "condition": "tcp_bandwidth_limited",
         "counter": "bandwidth_limited",
@@ -542,7 +542,7 @@
       },
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:32:03.408+00:00",
+        "recorded_at": "2026-11-26T00:32:40.833+00:00",
         "state": "alert",
         "condition": "tcp_stats_stale",
         "counter": null,
@@ -552,13 +552,13 @@
         "window_secs": 2,
         "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
         "observed": {
-          "stats_mtime": 1795653121.2304606,
-          "now": 1795653123.406491
+          "stats_mtime": 1795653158.6635325,
+          "now": 1795653160.8325708
         }
       },
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:32:03.416+00:00",
+        "recorded_at": "2026-11-26T00:32:40.837+00:00",
         "state": "alert",
         "condition": "udp_stats_stale",
         "counter": null,
@@ -568,8 +568,8 @@
         "window_secs": 2,
         "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
         "observed": {
-          "stats_mtime": 1795653121.2294607,
-          "now": 1795653123.406491
+          "stats_mtime": 1795653158.6615334,
+          "now": 1795653160.8325708
         }
       }
     ],
@@ -577,7 +577,7 @@
     "breach": [
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:31:53.425+00:00",
+        "recorded_at": "2026-11-26T00:32:30.850+00:00",
         "state": "alert",
         "condition": "tcp_bandwidth_limited",
         "counter": "bandwidth_limited",
@@ -595,7 +595,7 @@
     "stale": [
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:32:03.408+00:00",
+        "recorded_at": "2026-11-26T00:32:40.833+00:00",
         "state": "alert",
         "condition": "tcp_stats_stale",
         "counter": null,
@@ -605,13 +605,13 @@
         "window_secs": 2,
         "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
         "observed": {
-          "stats_mtime": 1795653121.2304606,
-          "now": 1795653123.406491
+          "stats_mtime": 1795653158.6635325,
+          "now": 1795653160.8325708
         }
       },
       {
         "schema": "coldrevive.g3.relay-alert/v1",
-        "recorded_at": "2026-11-26T00:32:03.416+00:00",
+        "recorded_at": "2026-11-26T00:32:40.837+00:00",
         "state": "alert",
         "condition": "udp_stats_stale",
         "counter": null,
@@ -621,17 +621,17 @@
         "window_secs": 2,
         "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
         "observed": {
-          "stats_mtime": 1795653121.2294607,
-          "now": 1795653123.406491
+          "stats_mtime": 1795653158.6615334,
+          "now": 1795653160.8325708
         }
       }
     ],
-    "breach_latency_sec": 0.436,
+    "breach_latency_sec": 0.433,
     "watch_summary": {
       "schema": "coldrevive.g3.relay-watch-summary/v1",
-      "started_at": "2026-11-26T00:32:05.462+00:00",
-      "ended_at": "2026-11-26T00:32:05.462+00:00",
-      "elapsed_sec": 16.122,
+      "started_at": "2026-11-26T00:32:42.886+00:00",
+      "ended_at": "2026-11-26T00:32:42.886+00:00",
+      "elapsed_sec": 16.099,
       "criteria": "tests/fixtures/g3-relay-ops-thresholds.toml",
       "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
       "samples": 80,
@@ -641,7 +641,7 @@
       "records": [
         {
           "schema": "coldrevive.g3.relay-alert/v1",
-          "recorded_at": "2026-11-26T00:31:53.425+00:00",
+          "recorded_at": "2026-11-26T00:32:30.850+00:00",
           "state": "alert",
           "condition": "tcp_bandwidth_limited",
           "counter": "bandwidth_limited",
@@ -656,7 +656,7 @@
         },
         {
           "schema": "coldrevive.g3.relay-alert/v1",
-          "recorded_at": "2026-11-26T00:31:57.491+00:00",
+          "recorded_at": "2026-11-26T00:32:34.914+00:00",
           "state": "resolved",
           "condition": "tcp_bandwidth_limited",
           "counter": "bandwidth_limited",
@@ -671,7 +671,7 @@
         },
         {
           "schema": "coldrevive.g3.relay-alert/v1",
-          "recorded_at": "2026-11-26T00:32:03.408+00:00",
+          "recorded_at": "2026-11-26T00:32:40.833+00:00",
           "state": "alert",
           "condition": "tcp_stats_stale",
           "counter": null,
@@ -681,13 +681,13 @@
           "window_secs": 2,
           "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
           "observed": {
-            "stats_mtime": 1795653121.2304606,
-            "now": 1795653123.406491
+            "stats_mtime": 1795653158.6635325,
+            "now": 1795653160.8325708
           }
         },
         {
           "schema": "coldrevive.g3.relay-alert/v1",
-          "recorded_at": "2026-11-26T00:32:03.416+00:00",
+          "recorded_at": "2026-11-26T00:32:40.837+00:00",
           "state": "alert",
           "condition": "udp_stats_stale",
           "counter": null,
@@ -697,8 +697,8 @@
           "window_secs": 2,
           "criteria_sha256": "8e91943a6d46cca21e3b1a5fa1f03f2bf709a1c9db1542c9a590145452f11ed6",
           "observed": {
-            "stats_mtime": 1795653121.2294607,
-            "now": 1795653123.406491
+            "stats_mtime": 1795653158.6615334,
+            "now": 1795653160.8325708
           }
         }
       ]
@@ -726,8 +726,8 @@
     "bench_echoes_udp": 50,
     "min_bench_echoes": 45,
     "baseline_stats_mtime_age_sec": [
-      0.181,
-      0.181
+      0.18,
+      0.18
     ],
     "counter_resets_seen": 1
   },

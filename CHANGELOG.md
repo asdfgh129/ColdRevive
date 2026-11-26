@@ -1,8 +1,34 @@
+## [2.4.152] - 2026-11-26 — G-3 关闭：中继运维面限流/观测/告警三项实测 PASS
+
+> **先登记判据再采样**：DOC-35 + `tests/fixtures/g3-relay-ops-thresholds.toml`
+> （sha `8e91943a6d46…`，登记后未改）。采样在 HEAD `f1373d4` 重建的二进制上完成，
+> 独立回环 relay，**生产 `119.29.150.254:7101` 未触碰**。`g2_claim` 与三个工具字段未动，
+> EX-1 仍 FAIL 78/80，mac 真机实测仍是未测项。
+
+- **补实现缺口**（v2.4.151 提交 `f1373d4`）：此前**没有告警**；新增
+  `scripts/relay_ops_watch.py`——只读两份 stats 文件、按预登记阈值算窗口增量、追加 JSON Lines
+  告警，计数变小视为进程重启不告警，stats 过期本身也是告警。`coldrevive-relay` 的
+  `--udp-stats-file` 补齐 5 个 per-session 计数（此前只在内存结构体里）。
+- **采样编排**：`tests/e2e/g3/relay_ops_probe.py` 基线 → 违约 → 重启(reset) → 停进程(stale)，
+  每段真实 stats 快照与告警文件入库。基线 TCP/UDP 各 50/50 回声、四类拒绝计数全 0、
+  stats 滞后 0.019/0.020 s；违约 `bandwidth_limited` 0→10、告警 **0.433 s** 出现并自动 resolved；
+  stale 2 条；reset 阶段 0 条规则告警且 `counter_resets_seen=1`。
+- **三项判据**：限流 PASS / 观测 PASS / 告警 PASS。不是带宽丢包 SLO，不表示公网 relay 当前健康，
+  不表示两个 NAT 互达（bench UDP 两端同机），也不使 S6 类别或 EX-1 例外变化。
+- **落点**：DOC-35 v1.1（含结果）、DOC-34 v1.5 + §12、夹具 `g3_relay_ops` 与空 `g2_claim_open_gaps`、
+  `docs/README.md`、`G2-REVIEW-BRIEF` 补记、`OPS.md` 运维用法。
+- **证据**：`tests/ARCHIVE/evidence/g3-relay-ops-20261126/`（15 份原始文件 + MANIFEST + `* -text`，
+  `summary.json` sha `cff30a3ceaabeafca69c23adf74f843f99cc81bf8b6ceebf12ee27fb58b8ffc4`）。
+  实现提交前的一次预跑随 `f1373d4` 误入库，已在 HEAD 重建后重采覆盖；MANIFEST `supersedes` 留痕。
+- **回归**：全量串行最终 **549/0/3**（`regression-full-20261126c.log`，锁字节）。当天前两次全量都撞上
+  `cr-ed2k::server_satisfies_amule_style_sliding_window` 的连接超时，单跑 4/4、第三次全量通过，
+  按计时型 flaky 记账（与本次改动无关，未碰 cr-ed2k），未隐藏也未声明已修。
+
 ## [2.4.150] - 2026-11-25 — G-2 关闭：S4/S5 报告逐字节归档（15 份 + sha256 清单；不改判定）
 
 > **关的是「证据在 clone 后读不到」，不是「证据等级提高」。** S4=`pass`、S5=`fallback` 原判定，
 > 各报告的 `evidence_valid_for_pass=false`（除 netem 的 `evidence_valid=true`）原值，`g2_claim=true`
-> 与三个工具字段 `not_run/false/false` 全部未动。唯一开放欠账现为 G-3（中继运维面）。
+> 与三个工具字段 `not_run/false/false` 全部未动。当时唯一开放欠账为 G-3（中继运维面，已于 v2.4.152 关闭）。
 
 - 新增 `tests/ARCHIVE/evidence/g2-s4-s5-reports-20261125/`：S4 4 份（含 1 份 0 B 空产出，标注不用于判定）、
   S5 qos 7 份 / utp 3 份 / utp_netem 1 份，共 68,498 B。每份都是原件逐字节副本。
