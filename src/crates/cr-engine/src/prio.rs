@@ -173,7 +173,12 @@ pub(crate) mod darwin_verdict {
     /// `<sys/resource.h>`：`PRIO_DARWIN_THREAD`（对当前线程操作）。
     pub const PRIO_DARWIN_THREAD: i32 = 3;
     /// `PRIO_DARWIN_BG`：**标志位，不是 nice 值**。设上即「背景类」。
-    pub const PRIO_DARWIN_BG: i32 = 0x10000;
+    ///
+    /// 取自 Apple XNU `<bsd/sys/resource.h>`：`PRIO_DARWIN_BG = 0x1000`，
+    /// 而 `0x1001` 是已废弃的 `PRIO_DARWIN_NONUI`。此前误写成 `0x10000`，
+    /// 在 macOS 26.5.2 真机上 `setpriority` 返回 0 但读回仍为 0（降级未生效）；
+    /// 2026-11-26 run1 证据见 `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`。
+    pub const PRIO_DARWIN_BG: i32 = 0x1000;
 
     /// `set_rc`/`set_errno` 是 `setpriority` 的返回与 `errno`；`read_back` 是
     /// `getpriority(PRIO_DARWIN_THREAD, 0)` 的读回值（`None` = 读不出或有歧义）。
@@ -582,8 +587,8 @@ mod tests {
         // 合成「读回 -1」：实际 read_raw() 会把它折成 None，这里直接验证判定层不接受 -1。
         let r = darwin_verdict::from_readback(0, 0, Some(-1));
         assert!(r.is_err(), "-1 不是合法状态，不能被当成优先级");
-        // 交叉确认：标志位与 0 是仅有的两个合法状态。
-        assert_eq!(PRIO_DARWIN_BG, 0x10000);
+        // 交叉确认：标志位与 0 是仅有的两个合法状态；数值必须与 Apple 头文件一致。
+        assert_eq!(PRIO_DARWIN_BG, 0x1000);
         assert_eq!(darwin_verdict::PRIO_DARWIN_THREAD, 3);
     }
 }

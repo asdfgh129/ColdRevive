@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-fairness-probe"
+version.workspace = true
+edition.workspace = true
+description = "G2 fairness measurement only: real UdpRelayStream flows over a real kernel bottleneck"
+
+[dependencies]
+cr-nat = { path = "../../crates/cr-nat" }

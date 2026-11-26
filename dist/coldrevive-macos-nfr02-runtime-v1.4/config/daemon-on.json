@@ -1,0 +1,30 @@
+{
+  "role": "holder",
+  "bind": "127.0.0.1",
+  "nodes": {
+    "A": {
+      "host": "127.0.0.1",
+      "http_port": 19600,
+      "wake_udp_port": 19601,
+      "bt_port": 19602
+    },
+    "B": {
+      "host": "127.0.0.1",
+      "http_port": 19600,
+      "wake_udp_port": 19601,
+      "bt_port": 19602
+    }
+  },
+  "sample_path": "fixtures/sample.bin",
+  "samples": ["fixtures/sample.bin"],
+  "keywords": ["nfr02", "macos", "runtime"],
+  "workdir": "run/on",
+  "golden_req": "fixtures/golden_req.json",
+  "golden_ack": "fixtures/golden_ack.json",
+  "downloader": "run/on/downloads",
+  "engine": {
+    "listen": "127.0.0.1:19602",
+    "idle_priority": true,
+    "guard_handshake": true
+  }
+}

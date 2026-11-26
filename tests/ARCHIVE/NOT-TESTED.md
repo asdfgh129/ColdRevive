@@ -21,7 +21,7 @@
 | 公平性阈值 / 拥塞语义 | **预注册阈值实测已完成，整体 FAIL**：L1 三 arms 与 L2 cc_off 10/10 达标，L2 cc_on/cc_paced 各 9/10，cap arms 多轮失败；按 `all_rounds_must_pass` 不达标 | 见 `tests/e2e/w61/reports/g2-fairness-20261124T073344Z/`、审计 §20.1；阈值 fixture 未事后修改，仍不能写公平性达标 |
 | Mainline DHT 公共引导邻居发现 | **已闭环（2026-11-24）**：从 `dht.transmissionbt.com` 发现 `37.48.95.218:3691`（`token_len=4`），222 受控 announce + 221 独立 get_peers 回查到 `112.5.32.34:17200`；v2.4.116 daemon 已补治理与有界 find_node | 见 `tests/e2e/dht-announce/reports/mainline-announce-verify-20261124.json`；daemon 自动加入仍缺公网可达率/NAT 矩阵证据 |
 | TCP 打洞接 BT 数据面 | 原语通过，handoff 已接线并回环验证；公网双侧 **BLOCKED**（2026-11-24 各 34 次 SYN 静默丢弃；15:09 复核 19910/19920 仍不可达且无本地 DNAT） | 需要所有者在 CPE 上真实建 endpoint-independent TCP DNAT；symmetric 不可直连是正确结论 |
-| NFR-02 macOS `PRIO_DARWIN_BG` **运行时** | **实现完成，运行时 BLOCKED**（2026-11-25，v2.4.149）：darwin 分支已写、判定逻辑有单测、分支经 `--features darwin-check` 类型检查并带负向对照；**本仓库没有 mac 硬件**，`getpriority` 读回谓词与负向对照都没在真机跑过 → `runtime_verified=false`、`counts_toward_nfr02=false` | 一台真实 Mac：`/health.idle_priority` 应 `applied≥1/failed=0`，关掉开关应 `applied=0` 且读回 `policy=0`；见 DOC-34 §10 收尾清单 |
+| NFR-02 macOS `PRIO_DARWIN_BG` **运行时** | **首次真机 run1 FAIL（2026-11-26）**：0 pass / 4 fail / 1 blocked / 1 not_verified；根因为常量误写 `0x10000`（Apple 头文件为 `0x1000`）与运行包漏 `#[path]` 文件。v2.4.153 worktree 已修常量、v1.4 包已补文件，但**尚未重跑** → `runtime_verified=false`、`counts_toward_nfr02=false`。证据 `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/` | 用 v1.4 在真实 Mac 重跑：`/health.idle_priority` 应 `applied≥1/failed=0`，关掉开关应 `applied=0` 且读回 `policy=0`；见 DOC-34 §10 与 §13 补记 |
 | G2 / S6 自动通过 | 机器常量固定 `g2_claim=false`、`s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` | 只能由项目所有者书面判定 |
 
 ## C. 已补齐的可移植证据

@@ -337,3 +337,23 @@
 - **没有改变**：`g2_claim=true`、`s6_status=not_run`、`evidence_valid_for_pass=false`、
   `auto_pass=false`；EX-1 仍 FAIL 78/80；mac 真机实测仍是未测项。
   「运维面关闭」只针对回环独立实例的限流/观测/告警，不是公网 SLO、不是 NAT 矩阵、不是三平台达标。
+
+---
+
+## 13. 补记：首次 macOS 真机运行结果（2026-11-26T15:05+08:00，**FAIL，未改门禁**）
+
+- 用户在 Mac mini（macOS 26.5.2 / Darwin 25.5.0 / x86_64 / rustc 1.100.0）上运行
+  `coldrevive-macos-nfr02-runtime-v1.2`，回传 `results.zip`。逐字节归档于
+  `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`（含 MANIFEST 与 sha256）。
+  汇总为 **0 pass / 4 fail / 1 blocked / 1 not_verified**；`gate_claim=null`。
+- **§10 中举例的数值 `0x10000` 是错的**：Apple XNU `<bsd/sys/resource.h>` 定义
+  `PRIO_DARWIN_BG = 0x1000`，`0x1001` 是废弃的 `PRIO_DARWIN_NONUI`。真机上
+  `setpriority(PRIO_DARWIN_THREAD, 0, 0x10000)` 返回 0 但读回仍为 0，两条 idle 用例 FAIL。
+  已把实现常量与钉值单测改为 `0x1000`。**判据未降低**：仍是「读回等于 `PRIO_DARWIN_BG`」，
+  只是原先文档里的数值举例写错，不能据此把 run1 改判为 PASS。
+- 第二个 FAIL 是运行包漏文件：`cr-ed2k` 通过 `#[path]` 引用 `tests/spikes/**`，而包只收了
+  `src/**`，构建直接报缺 `sha1.rs`；v1.4 起补入三个源文件。本次没有 daemon 日志与 `/health`
+  快照，故唤醒功能项 `blocked`，逐线程优先级项仍固定 `not_verified`。
+- **没有改变**：`g2_claim=true`、三个工具字段、EX-1 的 FAIL 78/80、S6 条件计入、
+  `runtime_verified=false`。修完必须重跑真机；在重跑证据回来前，NFR-02 仍只能说
+  Linux/Windows 两分句已实测，不能说 macOS 已验证或三平台达标。

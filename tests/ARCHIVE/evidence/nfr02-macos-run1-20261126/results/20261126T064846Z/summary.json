@@ -1,0 +1,193 @@
+{
+  "schema": "coldrevive.nfr02.macos-runtime/v1",
+  "recorded_at_utc": "2026-11-26T06:57:24+00:00",
+  "clause": "SRS NFR-02 第二分句：造种任务仅以 Idle 优先级运行",
+  "criteria_ref": "DOC-34 v1.5 §10 真机收尾清单",
+  "source": {
+    "package": "coldrevive-macos-nfr02-runtime-v1.2",
+    "version": "v2.4.152",
+    "git_commit": "e698d4bef371aeb7b6922c84c2d593051800a466",
+    "git_commit_time": "2026-11-26T08:39:18+08:00",
+    "cargo_lock_sha256": "554114cc9aae42115db043ecdffeea89c5d24735b2f6e3e426033eb1b3d12b49",
+    "source_scope": "Cargo.toml,Cargo.lock,src/**",
+    "generated_at": "2026-11-26T11:48:00+08:00",
+    "criteria_ref": "docs/06-plan/G2-EXIT-RECORD-2026-11-25.md v1.5 §10"
+  },
+  "environment": {
+    "run_id": "20261126T064846Z",
+    "utc": "2026-11-26T06:48:46Z",
+    "local": "2026-11-26T14:48:46+0800",
+    "hostname": "Mac-mini.local",
+    "uname": "Darwin Mac-mini.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:26:23 PDT 2026; root:xnu-12377.121.10~1/RELEASE_X86_64 x86_64",
+    "arch": "x86_64",
+    "sw_vers": "ProductName:\t\tmacOS ProductVersion:\t\t26.5.2 BuildVersion:\t\t25F84",
+    "cargo": "cargo 1.100.0",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09) (built from a source tarball)",
+    "curl": "curl 8.23.0 (x86_64-apple-darwin25.6.0) libcurl/8.23.0 OpenSSL/3.6.5 zlib/1.4 brotli/1.2.1 zstd/1.5.7 libidn2/2.3.8 libpsl/0.23.3 nghttp2/1.71.0",
+    "xcode_select": "/Applications/Xcode.app/Contents/Developer",
+    "source_commit": "e698d4bef371aeb7b6922c84c2d593051800a466"
+  },
+  "checks": [
+    {
+      "name": "cr-engine unit tests on macOS",
+      "status": "fail",
+      "observed": {
+        "exit_code": 101,
+        "required_tests": [
+          "prio::tests::idle_applies_to_the_calling_thread_only",
+          "prio::tests::runtime_worker_task_runs_at_idle_priority",
+          "prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code",
+          "prio::tests::darwin_echo_of_minus_one_is_never_a_priority",
+          "prio::tests::outcome_strings_are_stable"
+        ],
+        "seen_ok": [
+          "prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code",
+          "prio::tests::darwin_echo_of_minus_one_is_never_a_priority",
+          "prio::tests::outcome_strings_are_stable"
+        ],
+        "missing_from_log": [],
+        "test_summary_tail": [
+          "test result: FAILED. 11 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.04s",
+          "",
+          "error: test failed, to rerun pass `-p cr-engine --lib`"
+        ]
+      },
+      "expected": "exit 0 and all required darwin/idle tests report ok"
+    },
+    {
+      "name": "coldrevived builds on macOS",
+      "status": "fail",
+      "observed": {
+        "exit_code": 101,
+        "binary_path": "/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/target/debug/coldrevived",
+        "binary_exists": false,
+        "binary_sha256": null
+      },
+      "expected": "exit 0 and binary exists"
+    },
+    {
+      "name": "daemon idle_priority on",
+      "status": "fail",
+      "observed": {
+        "pid": "",
+        "daemon_log_tail": [],
+        "snapshots": [
+          {
+            "index": 1,
+            "health": null
+          },
+          {
+            "index": 2,
+            "health": null
+          },
+          {
+            "index": 3,
+            "health": null
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "node": "A",
+        "seed_tasks": ">= 1",
+        "idle_priority.requested": true,
+        "idle_priority.applied": ">= 1",
+        "idle_priority.failed": 0,
+        "idle_priority.unsupported": 0,
+        "snapshots": "3/3 must hold"
+      }
+    },
+    {
+      "name": "daemon idle_priority off (negative control)",
+      "status": "fail",
+      "observed": {
+        "pid": "",
+        "daemon_log_tail": [],
+        "snapshots": [
+          {
+            "index": 1,
+            "health": null
+          },
+          {
+            "index": 2,
+            "health": null
+          },
+          {
+            "index": 3,
+            "health": null
+          }
+        ]
+      },
+      "expected": {
+        "status": "ok",
+        "node": "A",
+        "seed_tasks": ">= 1",
+        "idle_priority.requested": false,
+        "idle_priority.applied": 0,
+        "idle_priority.failed": 0,
+        "idle_priority.unsupported": 0,
+        "snapshots": "3/3 must hold"
+      }
+    },
+    {
+      "name": "wake path functional (local BT handshake -> sample md5)",
+      "status": "blocked",
+      "observed": {
+        "reason": "guard-wake.json not produced"
+      },
+      "expected": "handshake wakes seed and full sample md5 matches fixture"
+    },
+    {
+      "name": "wake path not downgraded (guard / data-plane threads)",
+      "status": "not_verified",
+      "observed": {
+        "reason": "Darwin getpriority(PRIO_DARWIN_THREAD, 0) only reads the calling thread; this kit does not add an in-process per-thread reader for wake threads."
+      },
+      "expected": "DOC-34 §10: confirm foreground class on wake threads, or state explicitly that per-thread readback is unavailable. Do not substitute process-level data."
+    }
+  ],
+  "evidence_files": [
+    {
+      "file": "01-cargo-test.exit",
+      "bytes": 4,
+      "sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c"
+    },
+    {
+      "file": "01-cargo-test.log",
+      "bytes": 20282,
+      "sha256": "d33a800a85f70a69301befa6ab3471a6dc414966dda5df43abb708a1f0eb0468"
+    },
+    {
+      "file": "02-build.exit",
+      "bytes": 4,
+      "sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c"
+    },
+    {
+      "file": "02-build.log",
+      "bytes": 2336,
+      "sha256": "2a0b50fc2743c98d143f0d0be9d9ed69bf223ed9070e9b7ad82068bbac737112"
+    },
+    {
+      "file": "platform.json",
+      "bytes": 790,
+      "sha256": "9a00035fd53a1643db20d1e1882e823a408ed917e5883bef5da1b8600f691708"
+    },
+    {
+      "file": "preflight.txt",
+      "bytes": 685,
+      "sha256": "902817262778175c0976b9522f80bc41c83d41bfabfd9df76f0fae62300655d1"
+    }
+  ],
+  "counts": {
+    "pass": 0,
+    "fail": 4,
+    "not_verified": 1,
+    "blocked": 1
+  },
+  "gate_claim": null,
+  "gate_claim_note": "脚本只整理证据与逐项判定；g2_claim / NFR-02 口径由所有者决定，脚本不置位。",
+  "wording_constraints": [
+    "不可写「NFR-02 三平台达标」或「macOS 已验证」，除非所有者书面改口径。",
+    "wake path 一项为 not_verified，不得用进程级读数或 Linux/Windows 结果外推。"
+  ]
+}

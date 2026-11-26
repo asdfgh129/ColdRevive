@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-cli"
+version.workspace = true
+edition.workspace = true
+description = "M1: CLI v1 契约（--json --node <A|B> <command>）"
+
+[dependencies]
+cr-core = { path = "../../crates/cr-core" }

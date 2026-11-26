@@ -1,0 +1,8 @@
+[package]
+name = "cr-bridge"
+version.workspace = true
+edition.workspace = true
+description = "M2 (P3): 把已打通的 TCP socket 喂给 BT 引擎——本地 SOCKS5 钩子 + 回环 splice（ADR-021，不改 librqbit）"
+
+[dependencies]
+tokio.workspace = true

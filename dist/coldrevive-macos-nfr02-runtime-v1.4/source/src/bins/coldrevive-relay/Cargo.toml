@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-relay"
+version.workspace = true
+edition.workspace = true
+description = "M2/W3.4: 生产中继服务端（TCP 帧路由，LowID 回退部署组件）"
+
+[dependencies]
+cr-nat = { path = "../../crates/cr-nat" }

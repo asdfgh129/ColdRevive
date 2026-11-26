@@ -1,0 +1,592 @@
+//! cr-engine — W5.1 BT 引擎门面。
+//!
+//! 边界（[ADR-002](../../../docs/02-architecture/adr/ADR-002-bt-engine.md) 选项 A + [ADR-015]）：
+//! 业务 crate 只依赖本文件的 `Engine` Trait / `RqbitEngine`，不直接 `use librqbit`。
+//! 依赖分层见 [ADR-015](../../../docs/02-architecture/adr/ADR-015-dependency-layering.md)：
+//! 协议与信令 crate 保持 std-only，只有本 crate 与 `coldrevived` 允许引入 librqbit + tokio。
+//!
+//! 设计取舍：`coldrevived` 是 std 线程模型（`thread::spawn` + `Arc<Mutex<..>>`），
+//! 而 librqbit 是 async。这里把 Tokio 运行时**关在本 crate 内部**：`RqbitEngine` 持有一个
+//! 多线程 Runtime，对外全部是同步方法，调用方不需要是 async。每次调用只 `block_on` 一小段
+//! 有超时的 future，下载本身由运行时后台推进，不占用调用线程。
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use librqbit::api::TorrentIdOrHash;
+use librqbit::{
+    AddTorrent, AddTorrentOptions, ConnectionOptions, ListenerMode, ListenerOptions, Session,
+    SessionOptions, TorrentStatsState,
+};
+
+/// NFR-02 第二分句：让引擎工作线程以 Idle 优先级运行。
+///
+/// 放在本 crate 而不是守护进程里，是因为**只有这里能按住线程的出生点**：
+/// librqbit 的所有工作都跑在这个 crate 自建的 Tokio 运行时上，线程由
+/// `Builder::on_thread_start` 创建时才能确定地设置优先级。放到外面就只能
+/// 事后去 `/proc` 里猜哪个 tid 是引擎的。
+pub mod prio;
+
+/// 引擎内部任务号。与 `coldrevived` 的 aria2 `gid` 是两套编号，映射关系由调用方保存。
+pub type TaskId = u64;
+
+/// 单个任务的引擎状态。
+///
+/// `Cold` = 已实例化但未传输（paused / 还没开始），`Waking` = 正在初始化或建连，
+/// `Hot` = 正在传输，`Failed` = 引擎报错（错误原文在 `EngineProgress::error`），
+/// `Stopped` = 已从引擎移除。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineState {
+    Stopped,
+    Cold,
+    Waking,
+    Hot,
+    Failed,
+}
+
+impl EngineState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EngineState::Stopped => "stopped",
+            EngineState::Cold => "cold",
+            EngineState::Waking => "waking",
+            EngineState::Hot => "hot",
+            EngineState::Failed => "failed",
+        }
+    }
+}
+
+impl std::fmt::Display for EngineState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// 一次采样的真实计数器。**全部字段来自引擎自身观测**，没有估算值。
+#[derive(Debug, Clone)]
+pub struct EngineProgress {
+    pub state: EngineState,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub uploaded_bytes: u64,
+    pub peers: usize,
+    pub finished: bool,
+    /// 引擎自报的下行速率（Mbps，librqbit 原始单位）。不**换算**成字节/秒：
+    /// 换算规则若猜错就会把速度报成假的，宁可按引擎原样透出。
+    pub download_mbps: f64,
+    pub error: Option<String>,
+}
+
+/// 加入一个种子所需的全部输入。
+pub struct TorrentSpec<'a> {
+    /// 展示名（aria2 兼容层用），可以为空。
+    pub name: &'a str,
+    /// `.torrent` 原始字节（必须是完整 bencode，由调用方负责取回）。
+    pub bytes: &'a [u8],
+    /// 覆盖会话默认下载目录；`None` 用 `EngineOptions::download_dir`。
+    pub output_dir: Option<PathBuf>,
+    /// 已知 peer（跨主机时由调用方给出）；空表示只用 tracker/DHT。
+    pub initial_peers: Vec<SocketAddr>,
+    /// `true` = 实例化后保持暂停（冷态），用于按需唤醒的 COLD 语义。
+    pub paused: bool,
+    /// 已存在同名文件时是否允许覆盖（做种/续传必须为 `true`）。
+    pub overwrite: bool,
+    /// 忽略种子内嵌 tracker（本地取证环境需要）。
+    pub disable_trackers: bool,
+}
+
+impl<'a> TorrentSpec<'a> {
+    pub fn new(name: &'a str, bytes: &'a [u8]) -> Self {
+        Self {
+            name,
+            bytes,
+            output_dir: None,
+            initial_peers: Vec::new(),
+            paused: false,
+            overwrite: true,
+            disable_trackers: false,
+        }
+    }
+}
+
+/// 会话级参数。
+#[derive(Debug, Clone)]
+pub struct EngineOptions {
+    pub download_dir: PathBuf,
+    /// `None` = **不监听任何入站端口**（只做下载方）。做种必须显式给出地址。
+    pub listen: Option<SocketAddr>,
+    /// 默认 `false`：不加入公共 DHT。要开必须由调用方显式承担公网报文。
+    pub enable_dht: bool,
+    /// 默认 `true`：用种子内嵌的 tracker。
+    pub enable_trackers: bool,
+    /// 默认 `true`：监听时**同时**开 TCP 与 uTP（BEP 29，UDP 同端口）。
+    ///
+    /// librqbit 9.x 自带 `librqbit-utp`，但 `ListenerOptions` 默认是 `TcpOnly`——
+    /// 不显式改成 `TcpAndUtp` 就只剩 TCP。曾把「默认关」误读成「库不支持」，
+    /// 结果让默认配置的 Transmission 在首连时干等 µTP，看起来像「连上了却没数据」。
+    pub enable_utp: bool,
+    pub ipv4_only: bool,
+    /// 出站 peer 连接走 SOCKS5（librqbit `ConnectionOptions.proxy_url`）。
+    ///
+    /// `Some("socks5://127.0.0.1:port")` 时**所有**出站 TCP 都过代理；
+    /// 代理侧负责把未登记的 peer 回落直连。ADR-021 用它把已打通的 socket
+    /// 交给引擎，不修改 librqbit。
+    pub proxy_url: Option<String>,
+    pub upload_bps: Option<u32>,
+    pub download_bps: Option<u32>,
+    /// 初始化（读盘 + 校验已有分片）的等待上限，超时如实报错。
+    pub init_timeout: Duration,
+    /// NFR-02 第二分句：把**引擎工作线程**降到 Idle 优先级（默认 `false`，由调用方
+    /// 按配置打开；`coldrevived` 的产品默认是开）。
+    ///
+    /// 粒度边界（必须说清，否则会被读成更强的承诺）：librqbit 只有一个线程池，
+    /// 做种、分片校验、下载都在同一批 worker 上，因此这里降的是**整个引擎**，
+    /// 不能只降做种、不降下载。守护进程里的唤醒关键路径（cr-guard 的 68 B 握手、
+    /// cr-data-plane 的 UDP、HTTP API）跑在自己的线程上，**不受影响**——这正是
+    /// 必须按线程降、不能按进程降的原因。
+    ///
+    /// 默认 `false` 的另一个理由：既有 T0/T1/W5.x 证据全是在默认优先级下采的，
+    /// 库层默认值一改，「同样的代码为什么行为不同」就说不清了。
+    pub idle_threads: bool,
+}
+
+impl EngineOptions {
+    pub fn new<P: AsRef<Path>>(download_dir: P) -> Self {
+        Self {
+            download_dir: download_dir.as_ref().to_path_buf(),
+            listen: None,
+            enable_dht: false,
+            enable_trackers: true,
+            enable_utp: true,
+            ipv4_only: true,
+            proxy_url: None,
+            upload_bps: None,
+            download_bps: None,
+            init_timeout: Duration::from_secs(60),
+            idle_threads: false,
+        }
+    }
+}
+
+struct Task {
+    handle: Arc<librqbit::ManagedTorrent>,
+    info_hash: String,
+    name: String,
+}
+
+/// 业务侧唯一可见的引擎接口。
+///
+/// 与 W5.1 骨架相比，`&mut self` 的全局 pause/resume 换成了**按任务**的形态：
+/// 一个守护进程要同时持有多个种子（下载中的、做种中的、冷态的），
+/// 全局开关无法表达 LRU 活跃池。
+pub trait Engine {
+    fn add_torrent(&mut self, spec: &TorrentSpec<'_>) -> Result<TaskId, String>;
+    fn activate(&mut self, task: TaskId) -> Result<(), String>;
+    fn pause(&mut self, task: TaskId) -> Result<(), String>;
+    fn resume(&mut self, task: TaskId) -> Result<(), String>;
+    fn state(&self, task: TaskId) -> EngineState;
+    fn progress(&self, task: TaskId) -> Option<EngineProgress>;
+    fn remove(&mut self, task: TaskId, delete_files: bool) -> Result<(), String>;
+    fn shutdown(&mut self);
+}
+
+/// librqbit 9.1.0 实现。
+pub struct RqbitEngine {
+    rt: tokio::runtime::Runtime,
+    session: Arc<Session>,
+    tasks: Mutex<HashMap<TaskId, Task>>,
+    next_id: AtomicU64,
+    download_dir: PathBuf,
+    /// 调用方是否要求了 µTP（配置意图，不代表端口真的绑上）。
+    utp_requested: bool,
+    /// 建会话后对同端口做一次 UDP 绑定探测的结果：`true` = 端口被占用。
+    /// 语义是「UDP 端口被占」，不是「本引擎占着」——归属要看系统连接表里的 PID。
+    utp_port_occupied: bool,
+}
+
+impl RqbitEngine {
+    pub fn new(opts: EngineOptions) -> Result<Self, String> {
+        std::fs::create_dir_all(&opts.download_dir)
+            .map_err(|e| format!("创建下载目录失败 {}: {e}", opts.download_dir.display()))?;
+        // NFR-02：引擎工作线程的 Idle 优先级必须**在出生点**设置。
+        // 事后去 /proc 里按 tid 找线程再改，会在「线程已开始做种、我们还没找到它」
+        // 的窗口里漏掉降级，而且依赖线程名这种非契约信息。
+        let mut rtb = tokio::runtime::Builder::new_multi_thread();
+        // 线程名由本 crate 指定（不走 tokio 默认名）：探针与运维按它认引擎线程。
+        rtb.worker_threads(2).enable_all().thread_name(prio::ENGINE_THREAD_NAME);
+        if opts.idle_threads {
+            rtb.on_thread_start(|| match prio::set_current_thread_idle() {
+                Ok(o) if o.is_idle() => {
+                    println!("[engine] 工作线程已降至 Idle 优先级（{}，线程名 {}）",
+                             o.as_str(), prio::ENGINE_THREAD_NAME);
+                }
+                Ok(o) => {
+                    // Unsupported：不假装降了，也不当作失败（平台没有这条路）。
+                    eprintln!("[engine] 本平台无 Idle 优先级支持（{}），造种按默认优先级运行",
+                              o.as_str());
+                }
+                Err(e) => eprintln!("[engine] 工作线程降级到 Idle 失败（按默认优先级继续）: {e}"),
+            });
+        }
+        let rt = rtb
+            .build()
+            .map_err(|e| format!("构建 Tokio 运行时失败: {e}"))?;
+
+        let mut so = SessionOptions {
+            dht: None,
+            disable_trackers: !opts.enable_trackers,
+            disable_local_service_discovery: true,
+            listen: None,
+            // rqbit 构造连接器时要求至少启用一种传输；这里恒定启用 TCP 出站，
+            // 入站是否可达由 `listen` 决定，两者不可混为一谈。
+            connect: Some(ConnectionOptions {
+                enable_tcp: true,
+                proxy_url: opts.proxy_url.clone(),
+                ..Default::default()
+            }),
+            ipv4_only: opts.ipv4_only,
+            client_name_and_version: Some(format!("ColdRevive/{}", env!("CARGO_PKG_VERSION"))),
+            ..Default::default()
+        };
+        if let Some(addr) = opts.listen {
+            so.listen = Some(ListenerOptions {
+                // µTP 走 UDP，与 `listen_addr` 同端口；TCP 仍照旧。
+                mode: if opts.enable_utp {
+                    ListenerMode::TcpAndUtp
+                } else {
+                    ListenerMode::TcpOnly
+                },
+                listen_addr: addr,
+                enable_upnp_port_forwarding: false,
+                ipv4_only: opts.ipv4_only,
+                ..Default::default()
+            });
+        }
+        if opts.enable_dht {
+            so.dht = Some(librqbit::DhtSessionConfig::default());
+        }
+        if let Some(u) = opts.upload_bps {
+            so.ratelimits.upload_bps = std::num::NonZeroU32::new(u);
+        }
+        if let Some(d) = opts.download_bps {
+            so.ratelimits.download_bps = std::num::NonZeroU32::new(d);
+        }
+
+        let dir = opts.download_dir.clone();
+        let session = rt
+            .block_on(async { Session::new_with_opts(dir, so).await })
+            .map_err(|e| format!("创建 BT 会话失败: {e}"))?;
+        // uTP 没绑上时 librqbit 只打一条日志（TCP 照旧），属于**静默降级**。
+        // 这里对同端口做一次 UDP 绑定探测：绑不上 = 端口被占（引擎已经拿走）；
+        // 绑得上 = uTP 实际没监听。只报事实，不替引擎下「uTP 可用」的结论。
+        let utp_requested = opts.enable_utp && opts.listen.is_some();
+        let utp_port_occupied = if utp_requested {
+            session.listen_addr()
+                .map(|a| std::net::UdpSocket::bind(a).is_err())
+                .unwrap_or(false)
+        } else {
+            false
+        };
+        Ok(Self {
+            rt,
+            session,
+            tasks: Mutex::new(HashMap::new()),
+            next_id: AtomicU64::new(1),
+            download_dir: opts.download_dir,
+            utp_requested,
+            utp_port_occupied,
+        })
+    }
+
+    pub fn download_dir(&self) -> &Path {
+        &self.download_dir
+    }
+
+    /// 本会话实际监听地址；`None` 表示没有入站端口。
+    pub fn listen_addr(&self) -> Option<SocketAddr> {
+        self.session.listen_addr()
+    }
+
+    /// 是否请求了 µTP（配置意图，不代表端口真绑上）。
+    pub fn utp_requested(&self) -> bool {
+        self.utp_requested
+    }
+
+    /// 建会话后探测到的「UDP 同端口已被占用」。
+    /// `utp_requested()` 为真而这里为假，说明 uTP 监听没起来（librqbit 对此只打日志）。
+    /// 反过来不成立：占用也可能来自别的进程，归属要看系统连接表里的 PID。
+    pub fn utp_port_occupied(&self) -> bool {
+        self.utp_port_occupied
+    }
+
+    pub fn info_hash(&self, task: TaskId) -> Option<String> {
+        self.tasks.lock().unwrap().get(&task).map(|t| t.info_hash.clone())
+    }
+
+    /// 本会话里是否已有同一 infohash 的任务。
+    ///
+    /// librqbit 对重复 add 会返回**同一个已完成句柄**，于是调用方拿到一个号码、
+    /// 进度立刻是 100%，但磁盘文件可能早被删了——这是「假完成」。
+    /// 调用方必须先用这个方法识别出复用，再核对产物是否真的在盘上。
+    pub fn task_by_infohash(&self, info_hash: &str) -> Option<TaskId> {
+        self.tasks.lock().unwrap().iter()
+            .find(|(_, t)| t.info_hash == info_hash)
+            .map(|(id, _)| *id)
+    }
+
+    pub fn add_torrent_with_timeout(&mut self, spec: &TorrentSpec<'_>, init_timeout: Duration) -> Result<TaskId, String> {
+        let out_dir = spec.output_dir.clone().unwrap_or_else(|| self.download_dir.clone());
+        std::fs::create_dir_all(&out_dir)
+            .map_err(|e| format!("创建任务目录失败 {}: {e}", out_dir.display()))?;
+
+        let add_opts = AddTorrentOptions {
+            paused: spec.paused,
+            overwrite: spec.overwrite,
+            disable_trackers: spec.disable_trackers,
+            output_folder: Some(out_dir.to_string_lossy().into_owned()),
+            initial_peers: if spec.initial_peers.is_empty() {
+                None
+            } else {
+                Some(spec.initial_peers.clone())
+            },
+            ..Default::default()
+        };
+        let session = self.session.clone();
+        let bytes = bytes::Bytes::copy_from_slice(spec.bytes);
+        let fut = async move {
+            let resp = session
+                .add_torrent(AddTorrent::TorrentFileBytes(bytes), Some(add_opts))
+                .await
+                .map_err(|e| format!("add_torrent: {e}"))?;
+            let handle = resp
+                .into_handle()
+                .ok_or_else(|| "add_torrent 只返回了列表（list_only），没有可管理句柄".to_string())?;
+            handle
+                .wait_until_initialized()
+                .await
+                .map_err(|e| format!("初始化任务失败: {e}"))?;
+            Ok::<_, String>(handle)
+        };
+        let handle = self
+            .rt
+            .block_on(async { tokio::time::timeout(init_timeout, fut).await })
+            .map_err(|_| format!("初始化超时（{}s）", init_timeout.as_secs()))??;
+
+        let info_hash = handle.info_hash().as_string();
+        let name = handle.name().unwrap_or_default();
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.tasks.lock().unwrap().insert(
+            id,
+            Task { handle, info_hash, name },
+        );
+        Ok(id)
+    }
+
+    /// 种子内嵌的展示名（来自元数据，不是调用方给的 URI）。
+    pub fn name(&self, task: TaskId) -> Option<String> {
+        self.tasks.lock().unwrap().get(&task).map(|t| t.name.clone())
+    }
+
+    /// 采样一次；任务不在引擎里返回 `None`（调用方据此如实报 error，而不是编状态）。
+    pub fn sample(&self, task: TaskId) -> Option<EngineProgress> {
+        let h = { self.tasks.lock().unwrap().get(&task).map(|t| t.handle.clone()) }?;
+        let s = h.stats();
+        let state = match s.state {
+            TorrentStatsState::Live => EngineState::Hot,
+            TorrentStatsState::Paused => EngineState::Cold,
+            TorrentStatsState::Initializing { .. } => EngineState::Waking,
+            TorrentStatsState::Error => EngineState::Failed,
+        };
+        let peers = s
+            .live
+            .as_ref()
+            .map(|l| l.snapshot.peer_stats.live as usize)
+            .unwrap_or(0);
+        let download_mbps = s.live.as_ref().map(|l| l.download_speed.mbps).unwrap_or(0.0);
+        Some(EngineProgress {
+            state,
+            downloaded_bytes: s.progress_bytes,
+            total_bytes: s.total_bytes,
+            uploaded_bytes: s.uploaded_bytes,
+            peers,
+            finished: s.finished,
+            download_mbps,
+            error: s.error.clone(),
+        })
+    }
+
+    pub fn pause(&self, task: TaskId) -> Result<(), String> {
+        let h = { self.tasks.lock().unwrap().get(&task).map(|t| t.handle.clone()) }
+            .ok_or_else(|| format!("任务 {task} 不存在"))?;
+        self.rt
+            .block_on(async { self.session.pause(&h).await })
+            .map_err(|e| format!("pause: {e}"))
+    }
+
+    pub fn resume(&self, task: TaskId) -> Result<(), String> {
+        let h = { self.tasks.lock().unwrap().get(&task).map(|t| t.handle.clone()) }
+            .ok_or_else(|| format!("任务 {task} 不存在"))?;
+        self.rt
+            .block_on(async { self.session.unpause(&h).await })
+            .map_err(|e| format!("resume: {e}"))
+    }
+
+    pub fn remove(&mut self, task: TaskId, delete_files: bool) -> Result<(), String> {
+        let t = self
+            .tasks
+            .lock()
+            .unwrap()
+            .remove(&task)
+            .ok_or_else(|| format!("任务 {task} 不存在"))?;
+        let id = TorrentIdOrHash::Id(t.handle.id());
+        self.rt
+            .block_on(async { self.session.delete(id, delete_files).await })
+            .map_err(|e| format!("delete: {e}"))
+    }
+
+    /// 停会话并回收运行时。重复调用安全（第二次调用时任务表已空）。
+    pub fn shutdown(&mut self) {
+        self.tasks.lock().unwrap().clear();
+        self.rt.block_on(async { self.session.stop().await });
+    }
+}
+
+impl Engine for RqbitEngine {
+    fn add_torrent(&mut self, spec: &TorrentSpec<'_>) -> Result<TaskId, String> {
+        RqbitEngine::add_torrent_with_timeout(self, spec, Duration::from_secs(60))
+    }
+
+    fn activate(&mut self, task: TaskId) -> Result<(), String> {
+        // 冷态任务被唤醒：从暂停转运行。
+        //
+        // **必须幂等**：librqbit 的 `unpause` 对已经 live 的任务会 `bail!("torrent is already live")`，
+        // 而重复唤醒是正常流量（T0-10 连发 30 次采样、客户端重试、用户重复点一下）。
+        // 若不在这里挡住，第二次唤醒就会返回 Err，调用方把「已就绪」翻成 false ——
+        // 门禁看到的是一个假的「唤醒后不供片」。
+        if self.state(task) == EngineState::Hot {
+            return Ok(());
+        }
+        self.resume(task)
+    }
+
+    fn pause(&mut self, task: TaskId) -> Result<(), String> {
+        RqbitEngine::pause(self, task)
+    }
+
+    fn resume(&mut self, task: TaskId) -> Result<(), String> {
+        RqbitEngine::resume(self, task)
+    }
+
+    fn state(&self, task: TaskId) -> EngineState {
+        self.sample(task).map(|p| p.state).unwrap_or(EngineState::Stopped)
+    }
+
+    fn progress(&self, task: TaskId) -> Option<EngineProgress> {
+        self.sample(task)
+    }
+
+    fn remove(&mut self, task: TaskId, delete_files: bool) -> Result<(), String> {
+        RqbitEngine::remove(self, task, delete_files)
+    }
+
+    fn shutdown(&mut self) {
+        RqbitEngine::shutdown(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "cr-engine-test-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn state_names_are_stable() {
+        // 名字进 aria2 兼容层与报告，不能随手改。
+        assert_eq!(EngineState::Cold.as_str(), "cold");
+        assert_eq!(EngineState::Hot.to_string(), "hot");
+    }
+
+    #[test]
+    fn engine_starts_without_listening() {
+        let dir = tmp_dir("nolsn");
+        let mut e = RqbitEngine::new(EngineOptions::new(&dir)).expect("engine must start");
+        assert!(e.listen_addr().is_none(), "默认不得监听任何入站端口");
+        assert_eq!(e.state(999), EngineState::Stopped);
+        assert!(e.progress(999).is_none());
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn garbage_torrent_is_rejected() {
+        let dir = tmp_dir("garbage");
+        let mut e = RqbitEngine::new(EngineOptions::new(&dir)).expect("engine must start");
+        let spec = TorrentSpec::new("bad", b"this is not a torrent");
+        let err = Engine::add_torrent(&mut e, &spec).expect_err("垃圾字节必须失败");
+        assert!(!err.is_empty(), "错误必须带原因，不能是空串");
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn pause_on_unknown_task_errors() {
+        let dir = tmp_dir("unknown");
+        let mut e = RqbitEngine::new(EngineOptions::new(&dir)).expect("engine must start");
+        assert!(RqbitEngine::pause(&e, 42).is_err());
+        assert!(RqbitEngine::resume(&e, 42).is_err());
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// µTP 默认开启：监听时同端口必须有 UDP——否则「本节点支持 µTP」只是配置幻觉。
+    #[test]
+    fn utp_listens_on_udp_by_default() {
+        let dir = tmp_dir("utp-on");
+        let mut opts = EngineOptions::new(&dir);
+        opts.listen = Some("127.0.0.1:0".parse().unwrap());
+        assert!(opts.enable_utp, "EngineOptions 默认必须请求 µTP");
+        let mut e = RqbitEngine::new(opts).expect("engine must start");
+        let addr = e.listen_addr().expect("要监听端口");
+        assert_ne!(addr.port(), 0, "端口必须真的绑上");
+        assert!(e.utp_requested());
+        assert!(e.utp_port_occupied(), "同端口 UDP 应已被引擎占用（{addr}）");
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 关掉 µTP 之后，同端口 UDP 必须**空着**——这是「真的没开」的可证伪判据。
+    #[test]
+    fn utp_off_leaves_udp_port_free() {
+        let dir = tmp_dir("utp-off");
+        // 不能拿 `127.0.0.1:0` 随机出来的端口去做这个判据：Windows 的动态端口保留段
+        // 对 UDP bind 会回 WSAEACCES(10013)，看起来像「uTP 关了还占着端口」。
+        // 选一个 IANA 非保留段端口，且先确认 TCP 侧空闲。
+        let port = (38762..38780)
+            .find(|p| std::net::TcpListener::bind(("127.0.0.1", *p)).is_ok())
+            .expect("需要一个可绑定的测试端口");
+        let mut opts = EngineOptions::new(&dir);
+        opts.listen = Some(format!("127.0.0.1:{port}").parse().unwrap());
+        opts.enable_utp = false;
+        let mut e = RqbitEngine::new(opts).expect("engine must start");
+        let addr = e.listen_addr().expect("要监听端口");
+        assert!(!e.utp_requested());
+        assert!(!e.utp_port_occupied(), "关掉 µTP 时不得占用同端口 UDP");
+        let probe = std::net::UdpSocket::bind(addr)
+            .unwrap_or_else(|e| panic!("uTP 关闭后 UDP {addr} 仍被占用: {e}"));
+        drop(probe);
+        e.shutdown();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

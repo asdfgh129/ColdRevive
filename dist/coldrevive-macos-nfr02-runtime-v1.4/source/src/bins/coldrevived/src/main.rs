@@ -1,0 +1,2524 @@
+//! coldrevived — M1 双节点守护进程。
+//!
+//! 真实链路（T0 / G1）：
+//!   A: 共享样本 → SHA-256 → 伴随 .torrent → COLD 影子索引 → 本地 KAD 命名空间发布
+//!   B: KAD 关键词发现 → UDP WAKEUP_REQ(PROTO v1) → A 校验 Challenge/时间窗/nonce
+//!      → COLD/WAKING/HOT → WAKEUP_ACK(magnet + torrent_url) → 标准 BT 数据面
+//!
+//! 数据面归属（ADR-015）：W5.1 起 B 侧下载走 `cr-engine`（librqbit），W5.1b 起 A 侧做种也走它，
+//! 手写 Peer Wire 种子端已删除，`bt.rs` 只剩本地 tracker 的 bencode 响应。
+//! 第三方 aria2 仍参与验收（T0-08 / `tests/e2e/w51b`）——它是「外部客户端能不能收」的那一票。
+//!
+//! 红线：只监听 127.0.0.1；不向公共 KAD 发包；所有观测取自真实文件 / 真实网络 / 真实进程，
+//! 绝不返回「看起来像通过」的合成常量。
+
+mod bt;
+mod commands;
+mod data_plane;
+mod dht_daemon;
+mod ed2k_tasks;
+mod idle;
+mod kad_republish;
+mod nat_auto;
+mod nat_path;
+mod p1_config;
+mod punch_route;
+mod qos_seed;
+mod ratelimit;
+mod relay_sub;
+mod sched;
+mod sysres;
+mod watch;
+
+use cr_core::{Config, Json};
+use cr_engine::{Engine, EngineOptions, EngineState, RqbitEngine, TorrentSpec};
+use cr_indexer::inspect as inspect_file;
+use cr_kad::{find_result, publish_keys};
+use cr_sched::LruScheduler;
+use cr_store::{FileEntry, ShadowIndex};
+use cr_torrent::Torrent;
+use cr_wake::{build_ack, reject, validate_req};
+use std::collections::{HashMap, HashSet};
+use std::env;
+use std::fs;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
+use std::path::{Path, PathBuf};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+/// T0 golden 的 piece_size（262144 B = 样本大小，1 片）。
+pub const PIECE_SIZE: usize = 262144;
+/// node_secret_seed：同一 T0 子网内两节点共享，仅用于 Challenge，不是用户口令。
+pub const NODE_SECRET: &[u8] = b"coldrevive-t0-local-secret-v1";
+
+pub struct DownloadRecord {
+    pub path: PathBuf,
+    pub sha256: String,
+    pub piece_ok: bool,
+    pub complete: bool,
+    pub private_seen: bool,
+}
+
+/// UDP 监听 socket 的共享句柄。M2：`nat probe` 必须复用这个 socket 做 STUN，
+/// 才能保证学习到的外部映射端口与实际唤醒端口一致。
+#[derive(Clone)]
+pub struct UdpHub {
+    pub socket: Arc<UdpSocket>,
+    /// 探测期间由 UDP 分发线程把 STUN 响应转交给 probe 的 channel。
+    pub stun_sink: Arc<Mutex<Option<mpsc::Sender<Vec<u8>>>>>,
+}
+
+/// W6.1 M3 接入层 + W5.1 引擎真下载：一条 `/jsonrpc` 任务的完整记录。
+///
+/// `engine_task = None` 表示这条任务**没有**接入引擎（只登记了 URI，或 `.torrent` 取回/解析失败）。
+/// 这种任务永远停在 `waiting`、进度全为 0 —— 不编字节数。接入引擎后，进度与状态全部来自
+/// `cr_engine::EngineProgress`（librqbit 的真实计数器）。
+#[derive(Clone)]
+pub struct RpcTask {
+    pub gid: String,
+    pub uri: String,
+    /// aria2 兼容状态：waiting / active / paused / error / complete / removed。
+    pub status: String,
+    pub created_unix: u64,
+    /// 任务若来自可解析的 `.torrent`，这里记真实值；拿不到就是空/0，绝不编造。
+    pub info_hash: String,
+    pub name: String,
+    pub total_length: u64,
+    pub piece_count: usize,
+    /// 是否真的把 `.torrent` 取回来并解析过（GUI/前端据此区分「已解析」与「只登记了 URI」）。
+    pub torrent_parsed: bool,
+    pub note: String,
+    /// 引擎内部任务号；`None` = 本任务没有数据面。
+    pub engine_task: Option<u64>,
+    pub output_path: String,
+    pub error: String,
+    /// 最近一次采样的已完成字节 / 上传字节 / 连接数，全部来自引擎。
+    pub completed_bytes: u64,
+    pub uploaded_bytes: u64,
+    pub peers: usize,
+    /// 实测速率采样点：用「两次真实采样之差 / 真实时间差」算，不猜引擎的速率单位。
+    pub sample_bytes: u64,
+    pub sample_unix_ms: u64,
+    pub speed_bps: u64,
+}
+
+/// 惰性引擎槽：只有在真的收到可解析的 `.torrent` 任务时才创建。
+/// T0/T1 的复活路径完全不经过它，因此 nat/engine 段缺省时行为逐字节不变。
+pub type SharedEngine = Arc<Mutex<Option<RqbitEngine>>>;
+
+pub struct NodeState {
+    pub cfg: Config,
+    pub index: ShadowIndex,
+    /// FR-09：控制面按来源 IP 的令牌桶（`api.rate_per_sec` 缺省 = None = 关闭）。
+    pub api_limiter: Option<std::sync::Arc<std::sync::Mutex<ratelimit::IpLimiter>>>,
+    pub nonces: HashSet<String>,
+    pub remote_keys: HashMap<String, String>,
+    pub last_ack: Option<Json>,
+    pub sample: Option<Vec<u8>>,
+    pub torrent: Option<Torrent>,
+    pub bt_seeding: bool,
+    pub download: Option<DownloadRecord>,
+    pub stale_pids: Vec<String>,
+    pub blacklist: HashSet<String>,
+    pub last_file_hash: Option<String>,
+    pub nat: nat_path::NatContext,
+    pub hub: UdpHub,
+    pub rpc_tasks: Vec<RpcTask>,
+    /// FR-25：daemon eD2k 任务注册表（link/serve/download）。用独立 Arc<Mutex<_>>
+    /// 是为了让后台供片/取片线程能在不持有 NodeState 锁的情况下回写真实结果。
+    pub ed2k_tasks: ed2k_tasks::SharedEd2kTasks,
+    /// BT 引擎。B 侧惰性创建（`/jsonrpc` 收到可解析种子时）；A 侧**启动即创建**，
+    /// 因为持有者要监听 `bt_port` 做种，而 T0-07 的 `bt_port_listening` 是真实 TCP 连接探测。
+    pub engine: SharedEngine,
+    /// A 侧做种任务在引擎里的编号（W5.2）。`None` = 本节点不做种。
+    /// P0 之后它只是**主样本**的编号，多任务见 `seed_tasks`。
+    pub seed_task: Option<cr_engine::TaskId>,
+    /// P0：infohash → 引擎任务号。多任务做种的核心映射：
+    /// 唤醒必须激活**请求的那一个**，否则多样本下会拿 A 的片去应答 B 的请求。
+    pub seed_tasks: HashMap<String, cr_engine::TaskId>,
+    /// 做种活跃池（W4.3）。**所有** `activate` 都必须经 `sched::wake_seed`，
+    /// 否则活跃任务数会随唤醒次数无上限增长（调度器记账与实际引擎状态脱节）。
+    pub sched: LruScheduler,
+    /// FR-14：最后一次真实唤醒的时间。只由 wake_seed 成功路径刷新；
+    /// HTTP 健康检查与轮询不算活动，否则节点永远不会休眠。
+    pub last_activity: Instant,
+    /// FR-14：真实发生过的自动休眠次数与任务号（观测用，不参与决策）。
+    pub idle_sleep_count: u64,
+    pub idle_slept_tasks: Vec<cr_engine::TaskId>,
+    /// 上次尝试休眠的时刻；避免 pause 失败时每秒刷同一条错误。
+    /// 只有新的唤醒把 `last_activity` 推到它之后，才会开启下一轮休眠尝试。
+    pub idle_last_attempt: Option<Instant>,
+    /// FR-11 握手拦截统计（只有 opt-in 时才非零）：(收到握手数, 命中并唤醒数, 未命中数)。
+    pub guard_stats: Arc<Mutex<(u64, u64, u64)>>,
+    /// FR-11：引擎内部监听地址。只有 `bt_guard_handshake=true` 时 `Some`；
+    /// 值是 `engine.listen_addr()` 的实测回环地址，splice 必须连它。
+    pub guard_internal: Option<SocketAddr>,
+    /// FR-11：guard 代理对外占用的地址（原 bt_port 监听地址）。
+    pub guard_external: Option<SocketAddr>,
+    /// ADR-022：打洞优先 / 中继兜底的协商观测（默认关闭，仅诊断，不进门禁）。
+    pub punch_route: punch_route::PunchRouteState,
+    /// ADR-023：opt-in 的中继数据面。None 时引擎 proxy_url 保持 None。
+    pub data_plane: Option<std::sync::Arc<data_plane::DataPlane>>,
+    /// FR-15：真实资源采样（RSS / 对端连接数 / 上行速率）。
+    /// 只由采样线程写入，准入判定只读；未配置任何采样阈值时保持 unknown。
+    pub res: sysres::Meter,
+    /// P1 新增 opt-in 配置（从同一份 JSON 额外读取；cr_core::Config 保持不变）。
+    pub p1: p1_config::P1Config,
+    /// FR-17：启动时的真实 NAT 映射结果（未启用时是显式 disabled）。
+    pub nat_auto: nat_auto::AutoMapStatus,
+    /// FR-16：BT 做种上传字节预算（真实 `uploaded_bytes`  feeding）。
+    pub qos: qos_seed::SeedingQos,
+    /// FR-18：Mainline DHT 宣告状态（只报真实 get_peers/announce 结果）。
+    pub dht: dht_daemon::DhtStatus,
+}
+
+fn main() {
+    let args: Vec<String> = env::args().skip(1).collect();
+    let opt = |name: &str| -> Option<String> {
+        args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
+    };
+    let Some(cfg_path) = opt("--config") else {
+        eprintln!("用法: coldrevived --config <file> --node-id <A|B> [--bind ...]");
+        std::process::exit(2);
+    };
+    let node_id = opt("--node-id").unwrap_or_else(|| "A".to_string());
+    let mut cfg = match Config::load(Path::new(&cfg_path)) {
+        Ok(c) => c,
+        Err(e) => { eprintln!("配置载入失败: {}", e); std::process::exit(2); }
+    };
+    // P1 opt-in 段与 cr_core::Config 读同一份文件，但独立解析；老配置缺省全关。
+    let p1 = p1_config::P1Config::load(Path::new(&cfg_path));
+    cfg.node_id = node_id.clone();
+    if let Some(b) = opt("--bind") { cfg.bind = b; }
+    // T1 双机：本进程所在主机的对外地址覆盖 nodes.<self>.host；
+    // 两端可共用同一份配置，仅 --bind / --self-host 不同。
+    if let Some(h) = opt("--self-host") {
+        if let Some(n) = cfg.nodes.get_mut(&node_id) { n.host = h; }
+    }
+    // T1 两端工作目录 / 样本 / 下载器路径可各自不同，按启动参数覆盖共享配置。
+    if let Some(w) = opt("--workdir") { cfg.workdir = PathBuf::from(w); }
+    if let Some(s) = opt("--sample") { cfg.sample_path = PathBuf::from(s); }
+    if let Some(d) = opt("--downloader") { cfg.downloader = PathBuf::from(d); }
+    // 中继 PSK：`nat.relay_key`（64 位十六进制或 file:<路径>）。写错就打字说明并**不覆盖**
+    // 现有设置——静默退回明文会让「本来加密」的部署以为自己还在加密。
+    match cr_nat::relay::set_psk_from_spec(cfg.nat_relay_key.as_deref()) {
+        Ok(Some(k)) => eprintln!("[nat] 中继 PSK 已装载，指纹 {}（须与中继端一致）",
+                                 cr_nat::secure::fingerprint(&k)),
+        Ok(None) => {}
+        Err(e) => eprintln!("[nat] nat.relay_key 非法: {}（中继仍按未配置处理）", e),
+    }
+
+    let me = match cfg.me() {
+        Ok(m) => m.clone(),
+        Err(e) => { eprintln!("{}", e); std::process::exit(2); }
+    };
+
+    let state_path = cfg.workdir.join(format!("state-{}.json", node_id));
+    // 残留进程检查：harness 每次 prepare() 会清空 .run/；这里只记录启动时已存在的 .pid 文件。
+    let stale_pids: Vec<String> = fs::read_dir(&cfg.workdir).ok().into_iter().flatten()
+        .filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|n| n.ends_with(".pid")).collect();
+
+    // UDP socket 在启动线程前绑定一次：M1 的 KAD/唤醒分发与 M2 的 STUN 探测共用它。
+    let udp_socket = match UdpSocket::bind(format!("{}:{}", cfg.bind, me.wake_udp_port)) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("[{}] UDP 绑定失败: {}", node_id, e); std::process::exit(2); }
+    };
+    let hub = UdpHub {
+        socket: Arc::new(udp_socket),
+        stun_sink: Arc::new(Mutex::new(None)),
+    };
+
+    // ADR-023：数据面 opt-in。未开启时连 runtime 都不创建，既有部署行为不变。
+    // PSK 必须在任何 RelayClient::connect 之前装进进程默认，否则数据面会明文连公网中继。
+    let data_plane = if cfg.nat_punch_route {
+        if let Some(spec) = cfg.nat_relay_key.as_deref() {
+            if let Err(e) = cr_nat::relay::set_psk_from_spec(Some(spec)) {
+                eprintln!("[{node_id}] 中继 PSK 无效: {e}");
+                std::process::exit(2);
+            }
+        }
+        match data_plane::DataPlane::new_from_config(&cfg) {
+            Ok(dp) => Some(dp),
+            Err(e) => {
+                eprintln!("[{node_id}] 数据面启动失败: {e}");
+                std::process::exit(2);
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut st = NodeState {
+        index: ShadowIndex::open(&state_path),
+        api_limiter: cfg.api_rate_per_sec.map(|r| std::sync::Arc::new(std::sync::Mutex::new(
+            ratelimit::IpLimiter::new(r, cfg.api_rate_burst)))),
+        cfg: cfg.clone(),
+        nonces: HashSet::new(),
+        remote_keys: HashMap::new(),
+        last_ack: None,
+        sample: None,
+        torrent: None,
+        bt_seeding: false,
+        download: None,
+        stale_pids,
+        blacklist: HashSet::new(),
+        last_file_hash: None,
+        nat: nat_path::NatContext::from_config(&cfg),
+        hub: hub.clone(),
+        rpc_tasks: Vec::new(),
+        ed2k_tasks: ed2k_tasks::registry(),
+        engine: Arc::new(Mutex::new(None)),
+        seed_task: None,
+        seed_tasks: HashMap::new(),
+        // 容量来自 `engine.max_active_seeds`；缺省用 cr-sched 的工程默认值。
+        sched: LruScheduler::new(
+            cfg.engine_max_active_seeds.unwrap_or(cr_sched::MAX_ACTIVE_SEEDS),
+        ),
+        last_activity: Instant::now(),
+        idle_sleep_count: 0,
+        idle_slept_tasks: Vec::new(),
+        idle_last_attempt: None,
+        guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+        guard_internal: None,
+        guard_external: None,
+        punch_route: punch_route::PunchRouteState::from_config(&cfg),
+        data_plane,
+        res: sysres::Meter::new(),
+        p1: p1.clone(),
+        // FR-17：opt-in 时在此真实调用 UPnP/NAT-PMP；失败就是失败，不填占位映射。
+        nat_auto: nat_auto::attempt(&p1, me.wake_udp_port, me.bt_port),
+        qos: qos_seed::SeedingQos::from_p1(&p1),
+        dht: dht_daemon::DhtStatus::disabled(),
+    };
+    if p1.nat_auto_map {
+        println!("[{}] FR-17 NAT 自动映射结果: {}", node_id,
+                 st.nat_auto.json().dump());
+    }
+    if !st.stale_pids.is_empty() {
+        println!("[{}] 启动时发现残留 .pid 文件: {:?}", node_id, st.stale_pids);
+    }
+    // M2/W3.4：nat 段启用且配置了中继时，本节点作为持有者订阅中继帧。
+    // nat 缺省时完全不启动，T0/T1 行为逐字节不变。
+    relay_sub::spawn(&cfg);
+
+    // 角色由配置显式决定；缺省仍按旧口径 node_id == "A" 推断，老配置行为不变。
+    // 之前把角色焊死在节点名字面量上：远端节点用 --node-id 222 启动时静默走 member
+    // 分支，不建种子、不打日志，只表现为 seed_tasks=0，排查会一路怀疑配置和网络。
+    let is_holder = cfg.role.as_deref()
+        .map(|r| r == "holder")
+        .unwrap_or(node_id == "A");
+    if is_holder {
+        if let Err(e) = bootstrap_holder(&cfg, &mut st) {
+            eprintln!("A 节点初始化失败: {}", e);
+            std::process::exit(2);
+        }
+        // W5.2：做种交给 BT 引擎。绑定失败/种子加不进引擎一律**启动即失败**，
+        // 不静默降级成「能唤醒但没有数据面」——那种状态在门禁里会表现成下载超时，
+        // 排查成本远高于现在报错退出。
+        if let Err(e) = start_engine_seeder(&mut st) {
+            eprintln!("[{}] 做种引擎启动失败: {}", cfg.node_id, e);
+            std::process::exit(2);
+        }
+        if cfg.nat_bt_external.is_some() || cfg.nat_http_external.is_some() {
+            println!("[{}] 公网入向配置（未经外部实测）: {}",
+                     cfg.node_id, nat_path::public_status(&cfg).dump());
+        }
+        let shared = Arc::new(Mutex::new(st));
+        spawn_udp(hub.clone(), cfg.clone(), shared.clone());
+        // FR-11：握手拦截代理必须在共享状态与引擎都就绪后才监听对外口，
+        // 否则 seed_tasks 还是空的，pick_seed_task 会拿空映射退化成「唤醒主样本」。
+        spawn_handshake_guard(cfg.clone(), shared.clone());
+        // FR-01：配置了 indexer.watch_secs 才起监听线程；未配置时逐字节保持旧行为。
+        watch::spawn(shared.clone());
+        spawn_http(cfg.clone(), me.http_port, shared.clone());
+        spawn_idle_sleeper(cfg.clone(), shared.clone());
+        // FR-05/06：KAD 周期重发布（只对已发布条目重发，不新增关键词）。
+        kad_republish::spawn(shared.clone());
+        // FR-15：真实资源采样（peers / 上行速率 / RSS）。没配阈值就不起线程。
+        sysres::spawn(shared.clone());
+        // FR-16：采样引擎真实 `uploaded_bytes` 喂令牌桶；ratio=0 时不建线程。
+        if shared.lock().unwrap().qos.enabled() {
+            qos_seed::spawn(shared.clone());
+        }
+        // FR-18：opt-in Mainline DHT：用真实活跃种子的 infohash 走宣告路径。
+        let dht_hashes: Vec<[u8; cr_api::dht::ID_LEN]> = {
+            let st = shared.lock().unwrap();
+            st.seed_tasks.keys().filter_map(|h| dht_daemon::parse_infohash(h)).collect()
+        };
+        // 句柄留到进程结束；退出作用域时 Drop 会置 stop，避免后台 DHT 线程悬挂。
+        let _dht_handle = if p1.dht_enabled {
+            dht_daemon::spawn(shared.clone(), p1.clone(), dht_hashes, me.bt_port)
+        } else {
+            None
+        };
+        loop { thread::sleep(Duration::from_secs(3600)); }
+    } else {
+        let shared = Arc::new(Mutex::new(st));
+        spawn_udp(hub.clone(), cfg.clone(), shared.clone());
+        watch::spawn(shared.clone());
+        kad_republish::spawn(shared.clone());
+        sysres::spawn(shared.clone());
+        spawn_http(cfg.clone(), me.http_port, shared);
+        loop { thread::sleep(Duration::from_secs(3600)); }
+    }
+}
+
+fn bootstrap_holder(cfg: &Config, st: &mut NodeState) -> Result<(), String> {
+    let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
+    let lan_announce = format!("http://{}:{}/announce", cfg.host(&cfg.node_id), http_port);
+    // 公网入向（W5.1d）：配了 `nat.http_external` 就写 BEP 12 `announce-list`——
+    // 同一份种子同时服务 LAN 与公网客户端（tracker 再按请求方 IP 决定回哪个 peer）。
+    // 没有配置时只有一条，输出与旧版逐字节一致。
+    let tiers = match &cfg.nat_http_external {
+        Some((ip, port)) => vec![
+            vec![lan_announce.clone()],
+            vec![format!("http://{}:{}/announce", ip, port)],
+        ],
+        None => vec![vec![lan_announce.clone()]],
+    };
+    println!("[{}] 伴随种子 announce{}: {}", cfg.node_id,
+             if tiers.len() > 1 { "-list" } else { "" },
+             tiers.iter().flatten().cloned().collect::<Vec<_>>().join(" , "));
+
+    // P0：多样本。顺序固定为「`sample_path` 在前，`samples` 依次追加」，
+    // 因此旧配置（不写 `samples`）走的还是完全相同的单样本路径。
+    let paths = cfg.sample_paths();
+    let mut primary: Option<(Vec<u8>, Torrent)> = None;
+    for path in &paths {
+        let facts = inspect_file(path)?;
+        let torrent = cr_torrent::generate_with_announce_list(
+            &facts.data, &facts.name, PIECE_SIZE, &tiers);
+        let torrent_path = cfg.workdir.join("meta").join(format!("{}.torrent", torrent.info_hash));
+        torrent.write_to(&torrent_path)?;
+
+        let mut e = FileEntry::new(&facts.file_hash, &commands::canonical_or(path.clone()),
+                                   &facts.name, facts.size);
+        // FR-02：多哈希一次算全，后续生成 ed2k link / 跨协议补源不再重扫磁盘。
+        e.sha1 = facts.sha1.clone();
+        e.ed2k_hash = facts.ed2k_hash.clone();
+        e.torrent_path = torrent_path;
+        e.infohash = torrent.info_hash.clone();
+        e.piece_size = PIECE_SIZE;
+        e.keywords = cfg.keywords.clone();
+        e.published_keys = publish_keys(&cfg.namespace, &facts.file_hash, &cfg.keywords);
+        e.kad_published = true;
+        st.index.insert(e);
+        println!("[{}] 样本登记: {} ({} B), infohash={}",
+                 cfg.node_id, facts.name, facts.size, torrent.info_hash);
+        if primary.is_none() {
+            primary = Some((facts.data, torrent));
+        }
+    }
+    st.index.save()?;
+    let (data, torrent) = primary.ok_or("配置里没有任何可做种的样本")?;
+    st.sample = Some(data);
+    st.torrent = Some(torrent);
+    // 这里印的是**索引条数**，不是字节数：旧文案写成 "{} B"，把「1 条」读成「1 字节」，
+    // 排查「为什么唤醒被 REJECT_NOT_FOUND」时会把人带到「样本太小/没写完」的错误方向。
+    println!("[{}] 样本入库: {} 条记录, 主 infohash={}, keys={}",
+             cfg.node_id, st.index.len(), st.torrent.as_ref().unwrap().info_hash,
+             st.index.all_published_keys().len());
+    Ok(())
+}
+
+/// FR-11：握手代理的对外绑定地址。
+///
+/// 抽成纯函数是为了能钉住一个**只在现场出现**的缺陷：显式 `engine.listen=127.0.0.1:<bt_port>`
+/// 的部署里，代理若沿用 `listen` 就只绑回环，DNAT 过来的握手永远进不了代理，
+/// 而本机回环自测仍然全绿。声明了外部映射时，对外入口必须是 `0.0.0.0:bt_port`。
+fn guard_bind_addr(
+    bt_port: u16,
+    listen: SocketAddr,
+    has_external: bool,
+) -> Result<SocketAddr, String> {
+    if has_external {
+        return format!("0.0.0.0:{bt_port}").parse()
+            .map_err(|e| format!("guard 对外监听地址非法: {e}"));
+    }
+    Ok(listen)
+}
+
+#[cfg(test)]
+mod guard_bind_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_engine_listen_does_not_drag_the_proxy_onto_loopback() {
+        // 现场部署形态：引擎显式绑回环、对外靠 DNAT。代理必须绑所有接口，
+        // 否则公网握手到不了「读握手 → 唤醒」那段代码（本机回环自测看不出来）。
+        let listen: SocketAddr = "127.0.0.1:19920".parse().unwrap();
+        let got = guard_bind_addr(19920, listen, true).unwrap();
+        assert_eq!(got.to_string(), "0.0.0.0:19920");
+    }
+
+    #[test]
+    fn without_external_mapping_the_proxy_binds_exactly_where_the_engine_would() {
+        let listen: SocketAddr = "127.0.0.1:17802".parse().unwrap();
+        assert_eq!(guard_bind_addr(17802, listen, false).unwrap(), listen);
+        let listen: SocketAddr = "0.0.0.0:17802".parse().unwrap();
+        assert_eq!(guard_bind_addr(17802, listen, true).unwrap(), listen);
+    }
+}
+
+/// W5.2：用 BT 引擎做种（ADR-015 之后，生产只有这一条做种路径）。
+///
+/// 三条约束，都是门禁直接看到的：
+/// - **启动即监听** `bt_port`：T0-07 的 `bt_port_listening` 是真实 TCP `connect`，
+///   不能等到被唤醒才开端口；
+/// - **加入时暂停**（COLD 语义）：端口在听，但没唤醒就不传任何分片，
+///   `WAKEUP_REQ` 到达才 `activate` 解除暂停；
+/// - **关闭 tracker / DHT**：持有者只等入站连接。本地 tracker 由 `bt::tracker_response`
+///   回答别人，引擎自己不去 announce——否则会把自己当 peer 连回来。
+fn start_engine_seeder(st: &mut NodeState) -> Result<(), String> {
+    let cfg = st.cfg.clone();
+    // P0：把**每一个**已入库的样本都以 paused 加入引擎。单个样本时这条路径与旧版一致
+    // （只有一次 add_torrent，任务号相同），多个样本时才有第二、第三个任务。
+    let entries: Vec<FileEntry> = st.index.entries.values().cloned().collect();
+    if entries.is_empty() {
+        return Err("bootstrap 未生成伴随种子".into());
+    }
+    let share_dir = cfg.sample_path.parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| cfg.workdir.clone());
+    let bt_port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
+    // 公网入向（W5.1d）：一旦声明了任意外部映射，监听必须落在 **所有接口** 上——
+    // 路由器 DNAT 会把目的地址改成内网 IP，但若这里绑的是回环（或缺省 127.0.0.1），
+    // 外部包永远进不来，而本机自测仍然全绿。这属于「本地测不出来」的坑，故显式写死。
+    let listen: SocketAddr = match cfg.engine_listen {
+        Some(a) => a,
+        None if cfg.nat_bt_external.is_some() || cfg.nat_http_external.is_some() =>
+            format!("0.0.0.0:{bt_port}").parse()
+                .map_err(|e| format!("bt 监听地址非法: {e}"))?,
+        None => format!("{}:{}", cfg.bind, bt_port).parse()
+            .map_err(|e| format!("bt 监听地址非法: {e}"))?,
+    };
+
+    // FR-11/FR-14：guard 的**对外**绑定地址。
+    //
+    // 不能沿用 `engine.listen`：部署里常把它写成 `127.0.0.1:<bt_port>`，把 LAN 上的
+    // bt_port 让给打洞 socket。若 guard 跟着绑回环，路由器 DNAT 过来的握手根本到不了
+    // 「读 68 字节 → 按 infohash 唤醒」这段代码：本机回环自测全绿，现场恒 FIN。
+    // 只要声明了任意外部映射，对外入口就必须落在所有接口的 bt_port 上。
+    let guard_bind: SocketAddr = guard_bind_addr(bt_port, listen,
+                                                 cfg.nat_bt_external.is_some()
+                                                     || cfg.nat_http_external.is_some())?;
+
+    // FR-11（opt-in）：引擎退到回环内部口，对外 bt_port 交给 cr-guard 代理。
+    // 代理在 main 里拿到 Arc<NodeState> 后启动（这里还是 &mut，尚无共享句柄）。
+    // 引擎实际监听地址通过 engine.listen_addr() 取，不猜端口：librqbit 绑定
+    // 127.0.0.1:0 后由内核分配，splice 必须连它真正绑上的那个地址。
+    let engine_bind = if cfg.bt_guard_handshake {
+        // 先向内核要一个空闲回环端口再释放：bt_port+1 可能是 HTTP/唤醒端口，
+        // 写死会撞车；0 端口交给 librqbit 则会让 µTP 探测绑到错误端口上误报。
+        let probe = TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| format!("guard 内部端口探测失败: {e}"))?;
+        probe.local_addr().map_err(|e| format!("guard 内部端口读取失败: {e}"))?
+    } else {
+        listen
+    };
+
+    let proxy_url = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
+    // FR-16：把 ratio 换算出的字节硬上限交给引擎；None（ratio=0）时保持旧行为。
+    let upload_cap = st.qos.engine_cap_bps();
+    let mut engine = RqbitEngine::new(EngineOptions {
+        download_dir: share_dir.clone(),
+        listen: Some(engine_bind),
+        enable_dht: false,
+        enable_trackers: false,
+        // W5.1e：µTP 默认开。librqbit 只把它当成一个 `ListenerMode` 开关，
+        // 默认是 `TcpOnly`——不显式打开就只剩 TCP，默认配置的 Transmission
+        // 会先试 µTP、干等一段才回落，现场看着像「连上了却没数据」。
+        enable_utp: cfg.nat_utp,
+        ipv4_only: true,
+        // opt-in（ADR-023）：默认 None 逐字节保持旧行为；开启后所有出站连接
+        // 经本地 SOCKS5，未登记目标仍回落真实直连（cr-bridge 既有语义）。
+        proxy_url,
+        upload_bps: upload_cap,
+        download_bps: None,
+        init_timeout: Duration::from_secs(60),
+        // NFR-02 第二分句：造种跑在引擎 worker 上，必须按线程降到 Idle；
+        // 唤醒路径（guard / data-plane / HTTP）不在这些线程上，因此不受影响。
+        idle_threads: cfg.engine_idle_priority,
+    })?;
+    let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
+    let mut primary: Option<cr_engine::TaskId> = None;
+    for e in &entries {
+        // 索引里可能有「只有文件、没有伴随种子」的条目：目录监听（FR-01）登记的
+        // 新文件就是这种。以前这里直接 `fs::read(torrent_path)` → 空路径 error 3，
+        // 于是**往共享目录丢一个文件就会让下次重启起不来**（e2e 抓到过）。
+        // 这类条目跳过并如实打印，不静默、也不拖垮整个节点。
+        if e.torrent_path.as_os_str().is_empty() || !e.torrent_path.is_file() {
+            eprintln!("[{}] 跳过无伴随种子的索引条目: {}（只登记未生成种子）",
+                      cfg.node_id, e.name);
+            continue;
+        }
+        let bytes = fs::read(&e.torrent_path)
+            .map_err(|e2| format!("读取伴随种子 {} 失败: {e2}", e.torrent_path.display()))?;
+        // 每个样本的落盘目录取它自己所在目录：多样本可能来自不同目录，
+        // 统一塞进 `share_dir` 会让引擎按种子里的文件名互相覆盖。
+        let output_dir = e.path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| share_dir.clone());
+        let spec = TorrentSpec {
+            name: &e.name,
+            bytes: &bytes,
+            output_dir: Some(output_dir),
+            initial_peers: Vec::new(),
+            paused: true,
+            overwrite: true,
+            disable_trackers: true,
+        };
+        let task = engine.add_torrent(&spec)?;
+        let p = engine.progress(task).ok_or("任务加入引擎后立刻查不到状态")?;
+        if p.total_bytes == 0 {
+            return Err(format!("引擎报种子 {} 总长为 0，拒绝以空任务做种", e.name));
+        }
+        println!(
+            "[{}] 做种任务: infohash={} 任务 #{}, 已核对 {}/{} B, finished={}, state={}",
+            cfg.node_id, e.infohash, task, p.downloaded_bytes, p.total_bytes,
+            p.finished, p.state
+        );
+        tasks.insert(e.infohash.clone(), task);
+        if primary.is_none() {
+            primary = Some(task);
+        }
+    }
+    println!(
+        "[{}] 做种引擎就绪: 请求监听 {} / 实际 {:?}, 任务 {} 个, utp_requested={}, \
+         utp_udp_port_occupied={}",
+        cfg.node_id, listen, engine.listen_addr(), tasks.len(),
+        engine.utp_requested(), engine.utp_port_occupied()
+    );
+    st.seed_tasks = tasks;
+    st.seed_task = primary;
+    if cfg.bt_guard_handshake {
+        let actual = engine.listen_addr().ok_or(
+            "guard 模式要求引擎有回环内部监听地址，但 listen_addr() 为 None"
+        )?;
+        st.guard_internal = Some(actual);
+        st.guard_external = Some(guard_bind);
+        println!(
+            "[{}] FR-11 握手唤醒已配置: 对外 {} → 引擎内部 {}（代理在共享状态就绪后启动）",
+            cfg.node_id, guard_bind, actual
+        );
+    }
+    st.engine = Arc::new(Mutex::new(Some(engine)));
+    Ok(())
+}
+
+/// P0：按请求的 infohash 选出要激活的引擎任务。
+///
+/// 顺序不能换，三条规则各有理由：
+/// 1. **精确命中** `seed_tasks` → 用它（多样本的正确路径）；
+/// 2. 映射为空 → 退回 `seed_task`（旧单任务路径，以及引擎尚未建好的时点）；
+/// 3. 映射非空但不含该 infohash → `None`，**绝不拿别的样本顶上**。
+///    第 3 条是这次改造的核心：多样本下「随便挑一个任务激活」会让持有者
+///    按错的样本应答，第三方客户端表现成「连上了但 0 速度」。
+fn seed_task_for(st: &NodeState, infohash: &str) -> Option<cr_engine::TaskId> {
+    pick_seed_task(&st.seed_tasks, st.seed_task, infohash)
+}
+
+/// 纯逻辑部分，单独拆出来是为了能回归——这段判断一旦退回「随便挑一个」，
+/// 单样本测试仍然全绿，只有多样本现场才会暴露。
+fn pick_seed_task(
+    tasks: &HashMap<String, cr_engine::TaskId>,
+    fallback: Option<cr_engine::TaskId>,
+    infohash: &str,
+) -> Option<cr_engine::TaskId> {
+    if let Some(t) = tasks.get(infohash) {
+        return Some(*t);
+    }
+    if tasks.is_empty() {
+        return fallback;
+    }
+    None
+}
+
+/// FR-11（opt-in）：启动 BT 握手拦截代理。
+///
+/// 只占用配置的外部 `bt_port`；引擎已在回环内部口监听。每条连接：
+/// 读 68 字节标准握手 → 解析 infohash → `sched::wake_seed` 本地唤醒对应样本
+/// → 把已读字节补回并 splice 给引擎。
+///
+/// 负例（非 BT 握手 / 未知 infohash）不唤醒、不断开整个服务：直接关该连接即可，
+/// 让 T0-07 那种「只 connect 不发字节」的健康探测也能安全超时退出。
+/// FR-14：空闲自动休眠。默认不启用；启用后只按**真实唤醒时间**计时，
+/// `/health` 轮询不会续命。每次尝试只做一轮，失败留给下一次成功唤醒再触发，
+/// 不会把同一个引擎错误刷成日志洪泛。
+fn spawn_idle_sleeper(cfg: Config, state: Arc<Mutex<NodeState>>) {
+    let Some(threshold) = cfg.engine_idle_sleep_secs.filter(|n| *n > 0) else { return };
+    let tick = threshold.min(5).max(1);
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(tick));
+        let mut guard = state.lock().unwrap();
+        let st = &mut *guard; // 通过 &mut NodeState 取不相交字段，避免 MutexGuard 整体借用冲突
+        if st.last_activity.elapsed().as_secs() < threshold { continue; }
+        if let Some(attempt) = st.idle_last_attempt {
+            if attempt >= st.last_activity { continue; }
+        }
+        if st.sched.is_empty() { continue; }
+        let engine_slot = st.engine.clone();
+        let mut eg = engine_slot.lock().unwrap();
+        let Some(eng) = eg.as_mut() else { continue; };
+        st.idle_last_attempt = Some(Instant::now());
+        let out = idle::sleep_hot_seeds(&mut st.sched, eng, &mut st.index, &st.seed_tasks);
+        if !out.slept.is_empty() {
+            st.idle_sleep_count += 1;
+            st.idle_slept_tasks = out.slept.clone();
+            if let Err(e) = st.index.save() {
+                eprintln!("[{}] FR-14 影子索引持久化失败: {}", cfg.node_id, e);
+            }
+            println!("[{}] FR-14 空闲 {}s：{} 个任务切回 COLD（影子索引 {} 条保留）",
+                     cfg.node_id, threshold, out.slept.len(), st.index.len());
+        }
+        for e in out.errors {
+            eprintln!("[{}] FR-14 {}", cfg.node_id, e);
+        }
+    });
+}
+
+fn spawn_handshake_guard(cfg: Config, state: Arc<Mutex<NodeState>>) {
+    let (external, internal) = {
+        let st = state.lock().unwrap();
+        match (st.guard_external, st.guard_internal) {
+            (Some(e), Some(i)) => (e, i),
+            _ => return,
+        }
+    };
+    let listener = match TcpListener::bind(external) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[{}] FR-11 guard 绑定 {} 失败: {}", cfg.node_id, external, e);
+            return;
+        }
+    };
+    println!("[{}] FR-11 guard 代理监听 {}（→ 引擎 {}）", cfg.node_id, external, internal);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(client) = stream else { continue };
+            let cfg = cfg.clone();
+            let state = state.clone();
+            thread::spawn(move || handle_guard_connection(client, cfg, state, internal));
+        }
+    });
+}
+
+/// FR-15：一次拒绝的完整理由。**必须**带上 `limit_name/limit/current`——
+/// 只说「资源不足」会让运维无法区分「HOT 满了」和「内存超了」。
+pub(crate) struct Refusal {
+    pub name: &'static str,
+    pub limit: u64,
+    pub current: u64,
+    pub unit: &'static str,
+}
+
+/// FR-15：资源阈值准入。返回 `Some(..)` 表示**应当拒绝**这次唤醒。
+///
+/// 刻意的选择：
+/// - 计数取索引里真实的 `HOT` 条目，不取「配置里登记了几个样本」——空载节点一个 HOT
+///   都没有，按配置数算会在第一个请求就误拒；
+/// - 已经在 HOT 的那一个不拒（幂等重复唤醒），否则同一个客户端重连一次就被自己的
+///   历史记成「超限」；
+/// - **一条阈值读不到（如平台拿不到 RSS）时，那条不参与判定**，且 `/health` 会把它
+///   标成 `enabled=false/unavailable`。宁可承认没生效，也不假装生效。
+/// - 多条阈值同时超限时按固定顺序取第一条：hot → peers → bandwidth → rss → cpu。
+///   顺序固定才能让 e2e 断言「是哪条拦的」。
+///
+/// 与 `engine.max_active_seeds` 的分工：那个是容量（满了逐出最久未用者继续服务），
+/// 这个是阈值（超了直接拒绝新唤醒，已在供片的不动）。
+fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<Refusal> {
+    let already_hot = st.index.get(file_hash)
+        .map(|e| e.state == cr_store::FileState::Hot)
+        .unwrap_or(false);
+    let hot = st.index.entries.values()
+        .filter(|e| e.state == cr_store::FileState::Hot).count();
+
+    if let Some(limit) = cfg.limits_max_hot_seeds {
+        // 已在 HOT 的重复唤醒不算新增占用。
+        if !already_hot && hot >= limit {
+            return Some(Refusal { name: "max_hot_seeds", limit: limit as u64,
+                                  current: hot as u64, unit: "entries" });
+        }
+    }
+    if already_hot {
+        // 同一个条目重复唤醒：它已经在占资源，再按 peers/带宽/内存拦一次没有任何收益，
+        // 只会让本来就该成功的重连变成拒绝。
+        return None;
+    }
+    if let Some(limit) = cfg.limits_max_peers {
+        let current = st.res.sample.peers as u64;
+        if current >= limit as u64 {
+            return Some(Refusal { name: "max_peers", limit: limit as u64,
+                                  current, unit: "peers" });
+        }
+    }
+    if let Some(limit) = cfg.limits_max_upload_bytes_per_sec {
+        let current = st.res.sample.up_bps;
+        if current >= limit {
+            return Some(Refusal { name: "max_upload_bytes_per_sec", limit,
+                                  current, unit: "B/s" });
+        }
+    }
+    if let Some(limit) = cfg.limits_max_rss_mb {
+        // 读不到 RSS 就**不判定**（见函数文档）；`/health` 会显式标 unavailable。
+        if let Some(current) = st.res.sample.rss_mb {
+            if current >= limit {
+                return Some(Refusal { name: "max_rss_mb", limit, current, unit: "MiB" });
+            }
+        }
+    }
+    if let Some(limit) = cfg.limits_max_seeding_cpu_millipct {
+        // 与 RSS 同理：读不到就不判定，绝不把「没读到」当成 0 让阈值假生效。
+        // 单位是千分百分点（1000 = 单核 1%），是**滞后**指标，只拒绝新唤醒。
+        if let Some(current) = st.res.sample.cpu_millipct {
+            if current >= limit {
+                return Some(Refusal { name: "max_seeding_cpu_millipct", limit, current,
+                                      unit: "milli-percent" });
+            }
+        }
+    }
+    None
+}
+
+fn handle_guard_connection(
+    mut client: TcpStream,
+    cfg: Config,
+    state: Arc<Mutex<NodeState>>,
+    internal: SocketAddr,
+) {
+    // 裸 connect（T0-07）与慢速客户端不能长期挂线程：5 s 读超时后直接关连接。
+    let Ok(prefix) = cr_guard::read_handshake(&mut client, Duration::from_secs(5)) else {
+        return;
+    };
+    let Ok(ih) = cr_guard::handshake_infohash_hex(&prefix) else {
+        // 非标准 BT 握手：不唤醒，直接关。这是零信任，不猜 infohash。
+        return;
+    };
+    let mut woken: Option<(cr_engine::TaskId, SharedEngine)> = None;
+    let hit = {
+        let mut st = state.lock().unwrap();
+        st.guard_stats.lock().unwrap().0 += 1;
+        // FR-15：阈值同样约束「被动唤醒」。只拦 UDP 唤醒的话，任何客户端裸连
+        // bt_port 就能绕过阈值把热任务数顶上去，那条阈值就成了摆设。
+        let over = st.index.entries.values()
+            .find(|e| e.infohash == ih)
+            .and_then(|e| hot_admission(&cfg, &st, &e.file_hash));
+        if let Some(over) = over {
+            eprintln!("[{}] FR-15 拒绝握手唤醒: {} {} 已达上限 {}（infohash={}）",
+                      cfg.node_id, over.name, over.current, over.limit, ih);
+            st.guard_stats.lock().unwrap().2 += 1;
+            return;
+        }
+        if let Some(task) = seed_task_for(&st, &ih) {
+            // 与 UDP 唤醒同一套状态跃迁与记账：唯一合法 activate 入口是 wake_seed。
+            let engine_slot = st.engine.clone();
+            let mut eg = engine_slot.lock().unwrap();
+            let outcome = match eg.as_mut() {
+                Some(eng) => Some(sched::wake_seed(&mut st.sched, eng, task)),
+                None => None,
+            };
+            drop(eg);
+            if let Some(o) = outcome.as_ref() {
+                if let Some(ev) = o.evicted {
+                    println!("[{}] FR-11 活跃池逐出任务 #{} 以服务握手唤醒", cfg.node_id, ev);
+                }
+                for e in &o.errors {
+                    eprintln!("[{}] FR-11 活跃池: {}", cfg.node_id, e);
+                }
+            }
+            let serving = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
+            if serving {
+                st.last_activity = Instant::now();
+                st.guard_stats.lock().unwrap().1 += 1;
+                // 找到该 infohash 对应的索引项做 COLD→HOT；绝不用别的样本顶上。
+                if let Some(fh) = st.index.entries.values()
+                    .find(|e| e.infohash == ih).map(|e| e.file_hash.clone())
+                {
+                    let already_hot = st.index.get(&fh)
+                        .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
+                    if !already_hot {
+                        if let Some(e) = st.index.get_mut(&fh) {
+                            e.transition(cr_store::FileState::Waking);
+                            e.transition(cr_store::FileState::Hot);
+                        }
+                    }
+                }
+                st.bt_seeding = true;
+                let _ = st.index.save();
+                woken = Some((task, engine_slot.clone()));
+            }
+            serving
+        } else {
+            st.guard_stats.lock().unwrap().2 += 1;
+            eprintln!("[{}] FR-11 握手 infohash={} 未命中本节点做种任务", cfg.node_id, ih);
+            false
+        }
+    };
+    let _ = hit; // 命中与否都继续 splice：让标准 BT 流程走完（未知 infohash 由引擎自己拒）。
+
+    // 等引擎真的报 HOT 再补握手。`activate` 返回 Ok 只代表 librqbit 接受了指令，
+    // 不代表它已经能处理这个 infohash 的入站握手；立刻 splice 会把 68 字节喂给一个
+    // 仍在暂停的任务，引擎回 FIN —— 现场看起来和「没唤醒」一模一样。
+    // 有界等待：超时也照样 splice，由引擎按真实状态回答，而不是我们提前关连接。
+    if let Some((task, slot)) = woken {
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        loop {
+            let hot = {
+                let mut eg = slot.lock().unwrap();
+                match eg.as_mut() {
+                    Some(eng) => Engine::state(eng, task) == EngineState::Hot,
+                    None => false,
+                }
+            };
+            if hot { break; }
+            if Instant::now() >= deadline {
+                eprintln!(
+                    "[{}] FR-11 握手唤醒后 3s 内引擎未报 HOT（任务 #{}），按真实状态 splice",
+                    cfg.node_id, task
+                );
+                break;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    // 补回已读的 68 字节再双向搬运。丢前缀是 ADR-021 记过的典型坑：
+    // 唤醒看起来成功，但引擎收到截断握手 → 0 字节数据面。
+    if let Err(e) = cr_guard::splice_prefaced(client, internal, &prefix) {
+        eprintln!("[{}] FR-11 splice 失败: {}", cfg.node_id, e);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP（最小 std-only 实现；axum / RPC / WS 属 M3）
+// ---------------------------------------------------------------------------
+fn spawn_http(cfg: Config, port: u16, state: Arc<Mutex<NodeState>>) {
+    thread::spawn(move || {
+        let listener = match TcpListener::bind(format!("{}:{}", cfg.bind, port)) {
+            Ok(l) => l,
+            Err(e) => { eprintln!("[{}] HTTP 绑定失败: {}", cfg.node_id, e); return; }
+        };
+        println!("[{}] HTTP 监听 {}:{}", cfg.node_id, cfg.bind, port);
+        for stream in listener.incoming() {
+            if let Ok(s) = stream {
+                let st = state.clone();
+                let c = cfg.clone();
+                thread::spawn(move || handle_conn(s, c, st));
+            }
+        }
+    });
+}
+
+fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(130)));
+    let requester_ip = stream.peer_addr().ok()
+        .map(|a| a.ip().to_string()).unwrap_or_default();
+    let req = match read_http(&mut stream) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
+    let (method, path, raw_headers, body) = req;
+    // P1：布尔开关先取一次，避免下面在同一条 `Json::obj(vec![...])` 里重复 lock 死锁。
+    let (web_ui_enabled, ws_enabled) = {
+        let st = state.lock().unwrap();
+        (st.p1.web_ui, st.p1.websocket)
+    };
+    // FR-09：控制面按来源 IP 限流。`/health` 与 `/nat/*` 是探活/诊断面，
+    // 参与限流会让「机器忙」被读成「服务挂了」；`/cli`、`/jsonrpc`、`/inject`
+    // 走同一处判断，换个路径绕不过去。
+    if !(path.starts_with("/health") || path.starts_with("/nat/")) {
+        let limiter = state.lock().ok().and_then(|st| st.api_limiter.clone());
+        if let Some(lim) = limiter {
+            let (verdict, per_sec) = match lim.lock() {
+                Ok(mut g) => {
+                    let per_sec = g.per_sec();
+                    (g.check(&requester_ip), per_sec)
+                }
+                Err(_) => (Ok(()), 0.0),
+            };
+            if let Err(wait) = verdict {
+                let payload = Json::obj(vec![
+                    ("status", Json::s("rate_limited")),
+                    ("reason", Json::s("rate_limited")),
+                    ("retry_after_ms", Json::n(wait.as_millis() as f64)),
+                    ("limit_per_sec", Json::n(per_sec)),
+                    ("remote_ip", Json::s(&requester_ip)),
+                ]).dump().into_bytes();
+                write_http(&mut stream, "429 Too Many Requests", "application/json", &payload);
+                return;
+            }
+        }
+    }
+    // FR-20：配置了 api.rpc_secret 时，mutating JSON-RPC 调用必须带正确 token。
+    // 只读方法（tell*/get*/ed2kStatus）不受影响；secret 值不进任何响应。
+    if path == "/jsonrpc" && method == "POST" {
+        let secret = { state.lock().unwrap().p1.rpc_secret.clone() };
+        if secret.is_some() {
+            if let Ok(req_json) = Json::parse(&String::from_utf8_lossy(&body)) {
+                let m = req_json.get("method").and_then(Json::as_str).unwrap_or("");
+                let params = req_json.get("params").and_then(Json::as_arr).unwrap_or(&[]);
+                let header_token = raw_headers.lines().find_map(|line| {
+                    let (k, v) = line.split_once(':')?;
+                    let name = k.trim();
+                    if name.eq_ignore_ascii_case("Authorization")
+                        || name.eq_ignore_ascii_case("X-RPC-Secret") {
+                        Some(v.trim())
+                    } else { None }
+                });
+                if cr_api::rpc::authorize(secret.as_deref(), params, header_token, m).is_err() {
+                    let id = req_json.get("id").cloned().unwrap_or(Json::Null);
+                    let payload = Json::obj(vec![
+                        ("jsonrpc", Json::s("2.0")), ("id", id),
+                        ("error", Json::obj(vec![
+                            ("code", Json::n(-32000.0)),
+                            ("message", Json::s("rpc_secret: missing or invalid token")),
+                        ])),
+                    ]).dump().into_bytes();
+                    write_http_cors(&mut stream, "200 OK", "application/json", &payload);
+                    return;
+                }
+            }
+        }
+    }
+    let mut cors = false;
+    let response: (String, Vec<u8>, &'static str) = if path.starts_with("/health") {
+        // T1 双机取证：host / machine_id / pid 均取自运行环境，不接受配置伪造。
+        let machine = env::var("COMPUTERNAME").or_else(|_| env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "unknown".to_string());
+        // 冷态不是故障：做种任务默认 paused，必须唤醒才供片。
+        // 以前 /health 只有 seed_tasks 数量，冷态和热态长得一模一样，
+        // 于是一次「没唤醒的取片测试」会被误读成 BT 数据面坏了。这里只报实测值。
+        //
+        // v2.4.92 修复：**整个 /health 只取一次 `state` 锁**。
+        // 原先在 `Json::obj(vec![...])` 的每个元素里各写一次 `state.lock()`，
+        // 而 `vec!` 的元素是同一个数组表达式里的临时值——前一个元素的 guard 活到
+        // 语句结束，于是同一线程第二次 `lock()` 就把自己锁死：表现是 `/health`
+        // 永远超时，而 `/nat/public`（不碰 state）正常，看起来像「数据面把进程搞挂了」。
+        // 同一个坑在 punch_route 打开时最容易撞上，所以它长期被记成「punch_route 的 bug」。
+        // FR-10：容量与逐出必须同屏可见。`seed_active` 只说明当下有几个热任务，
+        // 不说明「上限是多少」「有没有真的逐出过」；把 cap/evictions 一起报出来，
+        // 才可能区分「没触发」和「触发了但逐出没生效」。
+        let seeding_json = {
+            let st = state.lock().unwrap();
+            Json::obj(vec![
+                ("cap", Json::n(st.sched.cap() as f64)),
+                ("scheduled", Json::n(st.sched.len() as f64)),
+                ("evictions", Json::n(st.sched.evictions() as f64)),
+            ])
+        };
+        // FR-15：阈值与「现在有几个真的 HOT」同屏。只报 `max_hot_seeds` 而不报 `hot`
+        // 的话，「被拒了」和「没被拒但也没热起来」在运维眼里长得一样。
+        // 新增三条（peers/带宽/RSS）各自带 `enabled` 与实测 `current`：
+        // RSS 在某些平台读不到时 `enabled=false` + `unavailable`，不写 0 冒充。
+        let limits_json = {
+            let st = state.lock().unwrap();
+            let hot = st.index.entries.values()
+                .filter(|e| e.state == cr_store::FileState::Hot).count();
+            let res = &st.res.sample;
+            let rss_json = match (cfg.limits_max_rss_mb, res.rss_mb) {
+                (Some(limit), Some(cur)) => Json::obj(vec![
+                    ("enabled", Json::b(true)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::n(cur as f64)),
+                    ("unit", Json::s("MiB")),
+                ]),
+                (Some(limit), None) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::Null),
+                    ("unit", Json::s("MiB")),
+                    ("unavailable", Json::s("本平台未实现 RSS 读取；该阈值未生效")),
+                ]),
+                (None, cur) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::Null),
+                    ("current", match cur { Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("unit", Json::s("MiB")),
+                ]),
+            };
+            let cpu_json = match (cfg.limits_max_seeding_cpu_millipct, res.cpu_millipct) {
+                (Some(limit), Some(cur)) => Json::obj(vec![
+                    ("enabled", Json::b(true)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::n(cur as f64)),
+                    ("unit", Json::s("milli-percent")),
+                    ("limit_percent", Json::n(limit as f64 / 1000.0)),
+                    ("current_percent", Json::n(cur as f64 / 1000.0)),
+                ]),
+                (Some(limit), None) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::n(limit as f64)),
+                    ("current", Json::Null),
+                    ("unit", Json::s("milli-percent")),
+                    ("limit_percent", Json::n(limit as f64 / 1000.0)),
+                    ("unavailable", Json::s("本平台未实现进程 CPU 读取；该阈值未生效")),
+                ]),
+                (None, cur) => Json::obj(vec![
+                    ("enabled", Json::b(false)),
+                    ("limit", Json::Null),
+                    ("current", match cur { Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("unit", Json::s("milli-percent")),
+                    ("current_percent", match cur {
+                        Some(v) => Json::n(v as f64 / 1000.0), None => Json::Null }),
+                ]),
+            };
+            Json::obj(vec![
+                ("max_hot_seeds", match cfg.limits_max_hot_seeds {
+                    Some(v) => Json::n(v as f64),
+                    None => Json::Null,
+                }),
+                ("hot", Json::n(hot as f64)),
+                ("max_peers", Json::obj(vec![
+                    ("enabled", Json::b(cfg.limits_max_peers.is_some())),
+                    ("limit", match cfg.limits_max_peers {
+                        Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("current", Json::n(res.peers as f64)),
+                    ("unit", Json::s("peers")),
+                ])),
+                ("max_upload_bytes_per_sec", Json::obj(vec![
+                    ("enabled", Json::b(cfg.limits_max_upload_bytes_per_sec.is_some())),
+                    ("limit", match cfg.limits_max_upload_bytes_per_sec {
+                        Some(v) => Json::n(v as f64), None => Json::Null }),
+                    ("current", Json::n(res.up_bps as f64)),
+                    ("unit", Json::s("B/s")),
+                ])),
+                ("max_rss_mb", rss_json),
+                ("max_seeding_cpu_millipct", cpu_json),
+                // 采样时刻（相对进程启动的秒数），用来判断读数是否新鲜。
+                ("sample_at_secs", Json::n(res.at_secs as f64)),
+            ])
+        };
+        let (seed_count, seed_active, served_bytes, punch_route_json) = {
+            let st = state.lock().unwrap();
+            let mut active = 0usize;
+            let mut served = 0u64;
+            if let Ok(guard) = st.engine.lock() {
+                if let Some(e) = guard.as_ref() {
+                    for task in st.seed_tasks.values() {
+                        if let Some(p) = e.progress(*task) {
+                            if p.state == cr_engine::EngineState::Hot { active += 1; }
+                            served = served.saturating_add(p.uploaded_bytes);
+                        }
+                    }
+                }
+            }
+            (st.seed_tasks.len(), active, served, st.punch_route.json())
+        };
+        // 数据面 / 持有者计数各有自己的锁，放在 state 之外取，避免锁序纠缠。
+        let data_plane_json = {
+            let st = state.lock().unwrap();
+            match st.data_plane.as_ref() {
+                Some(dp) => dp.json(),
+                None => cr_core::Json::obj(vec![
+                    ("enabled", cr_core::Json::b(false)),
+                    ("carrier", cr_core::Json::s("none")),
+                ]),
+            }
+        };
+        // FR-14：只报实测休眠次数与剩余空闲秒数；`/health` 轮询不会重置计时。
+        let idle_json = {
+            let st = state.lock().unwrap();
+            Json::obj(vec![
+                ("enabled", Json::b(cfg.engine_idle_sleep_secs.is_some())),
+                ("threshold_secs", Json::n(cfg.engine_idle_sleep_secs.unwrap_or(0) as f64)),
+                ("idle_secs", Json::n(st.last_activity.elapsed().as_secs() as f64)),
+                ("sleeps", Json::n(st.idle_sleep_count as f64)),
+                ("last_slept", Json::arr(st.idle_slept_tasks.iter()
+                    .map(|t| Json::n(*t as f64)).collect())),
+            ])
+        };
+        // P1：五块状态各自在 obj 之外取锁。绝不在同一个 `Json::obj(vec![...])` 里
+        // 再加 `state.lock()`——上一个 guard 活到语句结束会把自己锁死（历史坑）。
+        let api_json = { state.lock().unwrap().p1.health_json() };
+        let nat_auto_json = { state.lock().unwrap().nat_auto.json() };
+        let qos_json = { state.lock().unwrap().qos.json() };
+        let dht_json = { state.lock().unwrap().dht.json() };
+        let cross_protocol_json = Json::obj(vec![
+            ("enabled", Json::b(false)),
+            ("status", Json::s(cr_bridge::cross_protocol::SOURCE_SUPPLEMENT_STATUS)),
+            ("bt_to_ed2k", Json::s(cr_bridge::cross_protocol::supplement_bt_to_ed2k("")
+                .status_label())),
+            ("ed2k_to_bt", Json::s(cr_bridge::cross_protocol::supplement_ed2k_to_bt("")
+                .status_label())),
+            ("note", Json::s("跨协议补源未实现；不生成来源、不伪造成功")),
+        ]);
+        let reputation_json = {
+            let ledger = cr_api::reputation::ReputationLedger::new();
+            Json::obj(vec![
+                ("enabled", Json::b(ledger.enabled())),
+                ("status", Json::s(ledger.status())),
+                ("score", Json::Null),
+                ("note", Json::s("只记账不评分；信誉/激励尚未实现")),
+            ])
+        };
+        let holder_json = relay_sub::holder_stats_json();
+        let byte_accounting = byte_accounting_json(
+            served_bytes,
+            data_plane_json.get("bytes_relayed").and_then(Json::as_i64).unwrap_or(0) as u64,
+            holder_json.get("bytes_from_engine").and_then(Json::as_i64).unwrap_or(0) as u64,
+        );
+        ("200 OK".into(),
+         Json::obj(vec![
+             ("status", Json::s("ok")),
+             ("node", Json::s(&cfg.node_id)),
+             ("host", Json::s(cfg.me_host())),
+             ("machine_id", Json::s(&machine)),
+             ("pid", Json::n(std::process::id() as f64)),
+             // P0：多样本做种的**可观测面**。只报实际登记数，不把"配置了几个"当"做种几个"。
+             ("seed_tasks", Json::n(seed_count as f64)),
+             // 冷/热与真实供片量：`seed_active < seed_tasks` 就是「有任务但没供片」。
+             ("seed_active", Json::n(seed_active as f64)),
+             ("served_bytes", Json::n(served_bytes as f64)),
+             // FR-10：做种活跃池的容量/占用/逐出次数。
+             ("seeding", seeding_json),
+             // FR-15：准入阈值与当前真实 HOT 数。
+             ("limits", limits_json),
+             // ADR-022：协商观测。承载维度分开写，防止把「决策回落到中继」读成
+             // 「BT 取片已走中继」。
+             ("punch_route", punch_route_json),
+             // ADR-023：opt-in 数据面。缺省是一个明确的 disabled 对象，不省略字段。
+             ("data_plane", data_plane_json),
+             // 持有者侧（被下载的一方）的 splice 计数：真实 OPEN/拨号/字节数。
+             // 「接了但没有数据流过」在这几个字段上一眼可见。
+             ("holder_data", holder_json),
+             // 字节口径对照：显式标注哪些是本进程写入、哪些缺失对端证明。
+             ("byte_accounting", byte_accounting),
+             // FR-11：握手拦截的可观测面。默认 opt-in 关闭，stats 全 0。
+             // 只有 (woken>0) 才能证明「旧客户端直接连入触发了唤醒」。
+             ("guard", {
+                 let st = state.lock().unwrap();
+                 let (seen, woken, missed) = *st.guard_stats.lock().unwrap();
+                 Json::obj(vec![
+                     ("enabled", Json::b(cfg.bt_guard_handshake)),
+                     ("handshakes", Json::n(seen as f64)),
+                     ("woken", Json::n(woken as f64)),
+                     ("missed", Json::n(missed as f64)),
+                 ])
+             }),
+             ("idle", idle_json),
+             // NFR-02 第二分句：引擎工作线程的降级实况。
+             // `applied` 是**读回校验通过**的线程数（不是「调用了几次」），
+             // 所以 `requested=true, applied=0` 只有两种解释：引擎还没起，
+             // 或降级失败（后者会同时抬 `failed`）。
+             ("idle_priority", {
+                 let s = cr_engine::prio::stats();
+                 Json::obj(vec![
+                     ("requested", Json::b(cfg.engine_idle_priority)),
+                     ("applied", Json::n(s.applied as f64)),
+                     ("failed", Json::n(s.failed as f64)),
+                     ("unsupported", Json::n(s.unsupported as f64)),
+                 ])
+             }),
+             // P1：api 只暴露 enabled，secret 值永不出现；其余均为真实观测状态。
+             ("api", api_json),
+             ("nat", nat_auto_json),
+             ("qos", qos_json),
+             ("dht", dht_json),
+             ("cross_protocol", cross_protocol_json),
+             ("reputation", reputation_json),
+             // FR-05/06：周期重发布的真实结果（cycles=0 表示还没到第一个周期）。
+             ("kad_publish", kad_republish::stats_json()),
+         ]).dump().into_bytes(), "application/json")
+    } else if path == "/cli" && method == "POST" {
+        let out = match Json::parse(&String::from_utf8_lossy(&body)) {
+            Ok(j) => commands::dispatch(&state, &j),
+            Err(e) => Json::obj(vec![("error", Json::s(format!("非法请求: {}", e)))]),
+        };
+        ("200 OK".into(), out.dump().into_bytes(), "application/json")
+    } else if path == "/inject" && method == "POST" {
+        let out = handle_inject(&state, &body);
+        ("200 OK".into(), out.dump().into_bytes(), "application/json")
+    } else if path.starts_with("/torrent/") {
+        let wanted = path.trim_start_matches("/torrent/");
+        let found = {
+            let st = state.lock().unwrap();
+            st.index.entries.values().find(|e| e.infohash == wanted || e.file_hash == wanted)
+                .map(|e| e.torrent_path.clone())
+        };
+        match found.and_then(|p| fs::read(&p).ok()) {
+            Some(bytes) => ("200 OK".into(), bytes, "application/x-bittorrent"),
+            None => ("404 Not Found".into(), b"no torrent".to_vec(), "text/plain"),
+        }
+    } else if path == "/nat/advertise" && method == "GET" {
+        ("200 OK".into(),
+         nat_path::advertisement_json(&nat_path::self_advertisement(&state, &cfg))
+             .dump().into_bytes(), "application/json")
+    } else if path == "/nat/public" && method == "GET" {
+        // W5.1d：公网入向的**配置态**。`inbound_verified` 恒 false——本机无法自证入向，
+        // 只有外部主机的实测（tests/e2e/w51d）能改这个结论。
+        ("200 OK".into(), nat_path::public_status(&cfg).dump().into_bytes(),
+         "application/json")
+    } else if path.starts_with("/announce") {
+        let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+        // M1 口径（nat 关闭）：仍走原 tracker_response，字节级不变。
+        // M2 口径：按请求方 IP 分流，公网请求方且无真实公网 BT 映射时返回空 peer 列表，
+        // 绝不把 RFC1918 私网地址发给公网对端，也不捏造占位地址。
+        let body = if state.lock().unwrap().nat.enabled {
+            let target = nat_path::tracker_target(&state, &cfg, &requester_ip);
+            bt::tracker_response_optional(query, target.as_ref()
+                .map(|(ip, port)| (ip.as_str(), *port)))
+        } else {
+            let port = cfg.me().map(|m| m.bt_port).unwrap_or(0);
+            bt::tracker_response(query, cfg.host("A"), port)
+        };
+        ("200 OK".into(), body, "application/x-bittorrent")
+    } else if path.starts_with("/scrape") {
+        // 标准客户端加种子后会同时发 announce 和 scrape。以前这里落到 404，
+        // Transmission 会一直报 "Scrape error: 404" 并退避——虽然不影响下载
+        // （announce 单独走），但在日志里是持续的假故障，排查时极易误导。
+        let query = path.split_once('?').map(|(_, q)| q).unwrap_or("");
+        ("200 OK".into(), bt::scrape_response(query), "application/x-bittorrent")
+    } else if path == "/jsonrpc" && method == "POST" {
+        cors = true;
+        let out = handle_jsonrpc(&state, &body);
+        ("200 OK".into(), out.dump().into_bytes(), "application/json")
+    } else if path == "/jsonrpc" && method == "OPTIONS" {
+        cors = true;
+        ("204 No Content".into(), Vec::new(), "text/plain")
+    } else if path == "/ws" && method == "GET" && ws_enabled {
+        // RFC6455：握手后转为帧连接，绕过普通 HTTP 响应写回。
+        handle_ws(&mut stream, &raw_headers, &state);
+        return;
+    } else if cr_api::webui::is_web_ui_path(&path, web_ui_enabled) && method == "GET" {
+        ("200 OK".into(), cr_api::webui::INDEX_HTML.as_bytes().to_vec(),
+         cr_api::webui::CONTENT_TYPE)
+    } else if path == "/openapi.json" && method == "GET" {
+        ("200 OK".into(), cr_api::openapi::document_json().dump().into_bytes(),
+         "application/json")
+    } else {
+        ("404 Not Found".into(), b"not found".to_vec(), "text/plain")
+    };
+    if cors { write_http_cors(&mut stream, &response.0, response.2, &response.1) }
+    else { write_http(&mut stream, &response.0, response.2, &response.1) }
+}
+
+/// /ws 每次推送的状态：只读真实引擎计数，不构造“好看”的数字。
+fn ws_status_json(state: &Arc<Mutex<NodeState>>) -> Json {
+    let st = state.lock().unwrap();
+    let mut served = 0u64;
+    if let Ok(guard) = st.engine.lock() {
+        if let Some(engine) = guard.as_ref() {
+            for task in st.seed_tasks.values() {
+                if let Some(p) = engine.progress(*task) {
+                    served = served.saturating_add(p.uploaded_bytes);
+                }
+            }
+        }
+    }
+    Json::obj(vec![
+        ("node", Json::s(&st.cfg.node_id)),
+        ("seed_tasks", Json::n(st.seed_tasks.len() as f64)),
+        ("served_bytes", Json::n(served as f64)),
+        ("ts_ms", Json::n(now_unix_ms() as f64)),
+    ])
+}
+
+/// RFC6455 状态推送。握手成功后每秒发一帧 text；识别客户端的 close/ping。
+fn handle_ws(stream: &mut TcpStream, raw_headers: &str, state: &Arc<Mutex<NodeState>>) {
+    let response = match cr_api::ws::handshake_response(cr_api::ws::key_from_request(raw_headers)) {
+        Ok(r) => r,
+        Err(e) => {
+            write_http(stream, "400 Bad Request", "text/plain", e.as_bytes());
+            return;
+        }
+    };
+    if stream.write_all(response.as_bytes()).is_err() || stream.flush().is_err() { return; }
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut buf = [0u8; 4096];
+    loop {
+        let payload = ws_status_json(state).dump();
+        if stream.write_all(&cr_api::ws::encode_text(payload.as_bytes())).is_err() { return; }
+        if stream.flush().is_err() { return; }
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while Instant::now() < deadline {
+            match stream.read(&mut buf) {
+                Ok(0) => return,
+                Ok(n) => {
+                    if let Ok((frame, _)) = cr_api::ws::decode_client_frame(&buf[..n]) {
+                        match frame.opcode {
+                            0x8 => {
+                                let _ = stream.write_all(&cr_api::ws::encode_close());
+                                return;
+                            }
+                            0x9 => {
+                                let _ = stream.write_all(&cr_api::ws::encode_pong(&frame.payload));
+                                let _ = stream.flush();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(_) => return,
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+/// 故障注入控制面（仅 127.0.0.1、仅 T0 测试用）。A 节点真实移动/恢复样本文件。
+fn handle_inject(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
+    let Ok(j) = Json::parse(&String::from_utf8_lossy(body)) else {
+        return Json::obj(vec![("ok", Json::b(false))]);
+    };
+    let kind = j.get("kind").and_then(Json::as_str).unwrap_or("");
+    let mut st = state.lock().unwrap();
+    let path = st.cfg.sample_path.clone();
+    let gone = path.with_extension("bin.gone");
+    match kind {
+        "file-gone" => {
+            let ok = fs::rename(&path, &gone).is_ok();
+            Json::obj(vec![("ok", Json::b(ok)), ("kind", Json::s(kind))])
+        }
+        "restore" => {
+            let ok = if gone.exists() { fs::rename(&gone, &path).is_ok() } else { path.exists() };
+            if ok {
+                let (namespace, keywords) = (st.cfg.namespace.clone(), st.cfg.keywords.clone());
+                let mut all_published: Vec<(String, Vec<String>)> = st.index.entries.iter()
+                    .map(|(h, _)| (h.clone(), publish_keys(&namespace, h, &keywords)))
+                    .collect();
+                for (h, keys) in all_published.drain(..) {
+                    if let Some(e) = st.index.get_mut(&h) {
+                        e.kad_published = true;
+                        e.published_keys = keys;
+                    }
+                }
+                let _ = st.index.save();
+            }
+            Json::obj(vec![("ok", Json::b(ok)), ("kind", Json::s(kind))])
+        }
+        _ => Json::obj(vec![("ok", Json::b(false)), ("kind", Json::s(kind))]),
+    }
+}
+
+fn read_http(stream: &mut TcpStream) -> Result<(String, String, String, Vec<u8>), String> {
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 4096];
+    let header_end;
+    loop {
+        let n = stream.read(&mut tmp).map_err(|e| e.to_string())?;
+        if n == 0 { return Err("连接提前关闭".into()); }
+        buf.extend_from_slice(&tmp[..n]);
+        if let Some(p) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            header_end = p + 4;
+            break;
+        }
+        if buf.len() > 1024 * 1024 { return Err("请求头过大".into()); }
+    }
+    let head = String::from_utf8_lossy(&buf[..header_end]).to_string();
+    let first = head.lines().next().unwrap_or("");
+    let mut it = first.split_whitespace();
+    let method = it.next().unwrap_or("").to_string();
+    let path = it.next().unwrap_or("").to_string();
+    let len: usize = head.lines()
+        .find(|l| l.to_ascii_lowercase().starts_with("content-length:"))
+        .and_then(|l| l.split_once(':')).and_then(|(_, v)| v.trim().parse().ok())
+        .unwrap_or(0);
+    while buf.len() < header_end + len {
+        let n = stream.read(&mut tmp).map_err(|e| e.to_string())?;
+        if n == 0 { break; }
+        buf.extend_from_slice(&tmp[..n]);
+    }
+    Ok((method, path, head,
+        buf[header_end..header_end + len.min(buf.len() - header_end)].to_vec()))
+}
+
+/// 取 `aria2.addUri` 的第一个 URI。
+///
+/// aria2 的签名是 `addUri(secret, uris, options)`；本进程没有 RPC secret，调用方
+/// （AriaNg / 浏览器插件 / 验收脚本）常直接发 `params: [[uri]]`。两种位置都接受——
+/// `tellStatus` 当初只认一个下标，结果任务明明在队列里却回「任务不存在」。
+fn first_uri_param(params: &[Json]) -> String {
+    (0..params.len().min(2))
+        .find_map(|i| {
+            params
+                .get(i)
+                .and_then(Json::as_arr)
+                .and_then(|a| a.first())
+                .and_then(Json::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default()
+}
+
+/// aria2 兼容 JSON-RPC 子集（M3/W6.1 + M2/W5.1）。
+///
+/// `addUri` 收到可解析的 `.torrent` 时会把任务**真的**交给 `cr-engine`（librqbit）下载；
+/// 引擎创建失败、任务接入失败都如实写进 `coldrevive.note` / `coldrevive.error`，任务状态回到
+/// `waiting`（不假装在传）。`tellStatus` / `tellActive` / `tellWaiting` / `tellStopped` 每次都会
+/// 从引擎**重新采样**，不缓存、不猜。
+fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
+    let rpc_err = |id: Json, code: i64, msg: &str| Json::obj(vec![
+        ("jsonrpc", Json::s("2.0")), ("id", id),
+        ("error", Json::obj(vec![("code", Json::n(code as f64)), ("message", Json::s(msg))])),
+    ]);
+    let req = match Json::parse(&String::from_utf8_lossy(body)) {
+        Ok(j) => j,
+        Err(e) => return rpc_err(Json::Null, -32700, &format!("parse: {e}")),
+    };
+    let id = req.get("id").cloned().unwrap_or(Json::Null);
+    let method = req.get("method").and_then(Json::as_str).unwrap_or("");
+    let params = req.get("params").and_then(Json::as_arr).unwrap_or(&[]);
+    let arg = |i: usize| params.get(i).cloned().unwrap_or(Json::Null);
+    let ok = |id: &Json, result: Json| Json::obj(vec![
+        ("jsonrpc", Json::s("2.0")), ("id", id.clone()), ("result", result),
+    ]);
+    match method {
+        "aria2.addUri" => {
+            let uri = first_uri_param(params);
+            if uri.is_empty() { return rpc_err(id, -32602, "addUri 需要至少一个 URI"); }
+            // `.torrent` 链接就真的取回来解析：任务带着真实 info_hash / 长度 / 片数。
+            // 解析成功才谈得上接引擎；解析失败如实记录，任务停在 waiting。
+            let (parsed, fetched, mut note): (Option<Torrent>, Option<Vec<u8>>, String) =
+                if uri.starts_with("http://") {
+                    match http_fetch(&uri, Duration::from_secs(10)) {
+                        Ok(body) => match cr_torrent::parse(&body) {
+                            Ok(t) => (Some(t), Some(body), String::new()),
+                            Err(e) => (None, None, format!("取回成功但解析失败: {e}")),
+                        },
+                        Err(e) => (None, None, format!("取回 .torrent 失败: {e}")),
+                    }
+                } else if uri.starts_with("https://") {
+                    (None, None, "https:// 需要 TLS，本进程的最小 HTTP 客户端不支持；任务未解析".to_string())
+                } else {
+                    (None, None, "非 http(s) 的 .torrent 链接：只登记 URI，未解析".to_string())
+                };
+
+            // 引擎在 NodeState 锁之外操作：创建会话 / 读盘校验可能耗时数百毫秒，
+            // 不能把 /health、KAD 分发一起堵住。
+            let (slot, engine_dir, engine_listen, proxy_url, initial_peers, idle_priority) = {
+                let st = state.lock().unwrap();
+                let proxy = st.data_plane.as_ref().map(|d| d.proxy_url().to_string());
+                // v2.4.92：opt-in 时把「已经唤醒过的对端」直接交给引擎。
+                //
+                // 为什么不能只靠 tracker：中继场景里持有者没有任何入向映射，它的
+                // tracker 只能通告中继会合地址；而会合地址在 `is_public_ipv4` 意义下
+                // 不可路由，只有本地桥能把拨号改道。既然如此，就没必要再让引擎绕一圈
+                // 去 announce —— 守护进程本来就知道该拨谁（`nat peer` 拿到的通告）。
+                let peers = if st.cfg.nat_punch_route {
+                    st.nat.peer_adv.as_ref()
+                        .and_then(|a| a.bt_external.as_ref())
+                        .and_then(|e| e.addr().parse::<std::net::SocketAddr>().ok())
+                        .into_iter().collect()
+                } else {
+                    Vec::new()
+                };
+                (st.engine.clone(), st.cfg.engine_dir.clone(), st.cfg.engine_listen, proxy, peers,
+                 st.cfg.engine_idle_priority)
+            };
+            let mut engine_task = None;
+            let mut error = String::new();
+            if let Some(bytes) = fetched.as_ref() {
+                let name = parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default();
+                match attach_to_engine(&slot, &engine_dir, engine_listen, proxy_url.as_deref(),
+                                       idle_priority, &name, bytes, &initial_peers) {
+                    Ok(tid) => {
+                        engine_task = Some(tid);
+                        note = format!(
+                            "已接入 BT 引擎（librqbit），下载目录 {}",
+                            engine_dir.display()
+                        );
+                    }
+                    Err(e) => {
+                        error = format!("引擎接入失败: {e}");
+                        note = error.clone();
+                    }
+                }
+            }
+
+            let mut st = state.lock().unwrap();
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+            let gid = format!("{:x}{:04x}", now.as_millis() as u64, st.rpc_tasks.len());
+            let output_path = match (&parsed, engine_task.is_some()) {
+                (Some(t), true) => engine_dir.join(&t.name).to_string_lossy().into_owned(),
+                (Some(t), false) => t.name.clone(),
+                (None, _) => String::new(),
+            };
+            st.rpc_tasks.push(RpcTask {
+                gid: gid.clone(), uri: uri.to_string(),
+                // 只有接入引擎才会立即变成 active；否则如实停在 waiting。
+                status: if engine_task.is_some() { "active".into() } else { "waiting".into() },
+                created_unix: now.as_secs(),
+                info_hash: parsed.as_ref().map(|t| t.info_hash.clone()).unwrap_or_default(),
+                name: parsed.as_ref().map(|t| t.name.clone()).unwrap_or_default(),
+                total_length: parsed.as_ref().map(|t| t.length as u64).unwrap_or(0),
+                piece_count: parsed.as_ref().map(|t| t.pieces.len()).unwrap_or(0),
+                torrent_parsed: parsed.is_some(),
+                note,
+                engine_task,
+                output_path,
+                error,
+                completed_bytes: 0, uploaded_bytes: 0, peers: 0,
+                sample_bytes: 0, sample_unix_ms: now.as_millis() as u64, speed_bps: 0,
+            });
+            ok(&id, Json::s(gid))
+        }
+        "aria2.tellStatus" => {
+            let gid_param = arg(1);
+            // aria2 的 tellStatus 签名是 tellStatus(gid, keys)，gid 在 params[0]；
+            // 早先这里错取 params[1]，导致任务明明在队列里却回「任务不存在」。
+            // 两种位置都接受，避免调用方按不同习惯写就查不到。
+            let first_param = arg(0);
+            let gid = gid_param
+                .as_str()
+                .or_else(|| first_param.as_str())
+                .unwrap_or("");
+            let (found, slot) = {
+                let st = state.lock().unwrap();
+                (st.rpc_tasks.iter().find(|t| t.gid == gid).cloned(), st.engine.clone())
+            };
+            match found {
+                Some(mut t) => {
+                    refresh_task_progress(&slot, &mut t);
+                    // 采样后的状态写回，tellActive/Waiting/Stopped 才不会各说各话。
+                    {
+                        let mut st = state.lock().unwrap();
+                        if let Some(slot_task) = st.rpc_tasks.iter_mut().find(|x| x.gid == gid) {
+                            *slot_task = t.clone();
+                        }
+                    }
+                    ok(&id, rpc_task_json(&t))
+                }
+                None => rpc_err(id, -32001, "任务不存在"),
+            }
+        }
+        "aria2.tellActive" | "aria2.tellWaiting" | "aria2.tellStopped" => {
+            // 先全部刷新一遍：否则 tellActive 永远看不到引擎刚推进的任务。
+            let slot = { state.lock().unwrap().engine.clone() };
+            let mut lists: Vec<RpcTask> = {
+                let st = state.lock().unwrap();
+                st.rpc_tasks.clone()
+            };
+            for t in lists.iter_mut() { refresh_task_progress(&slot, t); }
+            {
+                let mut st = state.lock().unwrap();
+                for t in lists.iter() {
+                    if let Some(dst) = st.rpc_tasks.iter_mut().find(|x| x.gid == t.gid) {
+                        *dst = t.clone();
+                    }
+                }
+            }
+            let want = if method.ends_with("tellActive") { "active" }
+                       else if method.ends_with("tellWaiting") { "waiting" }
+                       else { "stopped" };
+            let list: Vec<Json> = lists.iter()
+                .filter(|t| match want {
+                    // aria2 的 paused 属于 tellWaiting，不属于 tellActive。
+                    "active" => t.status == "active",
+                    "waiting" => t.status == "waiting" || t.status == "paused",
+                    _ => matches!(t.status.as_str(), "complete" | "error" | "removed"),
+                })
+                .map(rpc_task_json).collect();
+            ok(&id, Json::arr(list))
+        }
+        "aria2.getGlobalStat" => {
+            let slot = { state.lock().unwrap().engine.clone() };
+            let mut tasks: Vec<RpcTask> = { state.lock().unwrap().rpc_tasks.clone() };
+            for t in tasks.iter_mut() { refresh_task_progress(&slot, t); }
+            let active = tasks.iter().filter(|t| t.status == "active").count();
+            let waiting = tasks.iter().filter(|t| t.status == "waiting").count();
+            let stopped = tasks.iter()
+                .filter(|t| matches!(t.status.as_str(), "complete" | "error" | "removed"))
+                .count();
+            let speed: u64 = tasks.iter().filter(|t| t.status == "active").map(|t| t.speed_bps).sum();
+            let upload: u64 = 0; // 引擎未对下行任务报上传速率，不编造。
+            ok(&id, Json::obj(vec![
+                ("downloadSpeed", Json::s(speed.to_string())),
+                ("uploadSpeed", Json::s(upload.to_string())),
+                ("numActive", Json::s(active.to_string())),
+                ("numWaiting", Json::s(waiting.to_string())),
+                ("numStopped", Json::s(stopped.to_string())),
+                ("numStoppedTotal", Json::s(stopped.to_string())),
+            ]))
+        }
+        "aria2.getVersion" => ok(&id, Json::obj(vec![
+            ("version", Json::s("ColdRevive/2.4.68 (aria2-compatible subset)")),
+            ("enabledFeatures", Json::arr(vec![Json::s("BitTorrent"), Json::s("JSON-RPC")])),
+        ])),
+        "coldrevive.ed2kStatus" => {
+            // FR-25 daemon 侧只读监控：gid 省略时列全部任务，否则查单条真实结果。
+            let tasks = { state.lock().unwrap().ed2k_tasks.clone() };
+            let gid = arg(0).as_str().unwrap_or("").to_string();
+            let out = if gid.is_empty() {
+                ed2k_tasks::list_cmd(&tasks)
+            } else {
+                ed2k_tasks::status_cmd(&tasks, &[gid])
+            };
+            ok(&id, out)
+        }
+        _ => rpc_err(id, -32601, &format!("不支持的方法 {method}")),
+    }
+}
+
+/// 惰性创建引擎并把一个 `.torrent` 交给它。
+///
+/// 失败原因（目录不可写、运行时起不来、种子字节非法）**原样上抛**，由调用方记进任务里。
+/// 重复 `addUri` 的假完成防线。
+///
+/// librqbit 对同一 infohash 的二次 add 返回已有句柄，进度立刻是 100%；
+/// 若此时产物已被删除，调用方就会拿到一个「下载成功」却没有任何文件的任务。
+/// 这里只看两个事实：既有任务是否已完成、产物是否真的在盘上；不成立时如实报错。
+fn duplicate_download_error(existing_finished: bool, output: &Path) -> Option<String> {
+    if existing_finished && !output.exists() {
+        Some(format!(
+            "同一 infohash 的任务已完成，但产物 {} 不在盘上：拒绝复用并返回假完成",
+            output.display()
+        ))
+    } else {
+        None
+    }
+}
+
+fn attach_to_engine(
+    slot: &SharedEngine,
+    dir: &Path,
+    listen: Option<std::net::SocketAddr>,
+    proxy_url: Option<&str>,
+    idle_threads: bool,
+    name: &str,
+    bytes: &[u8],
+    initial_peers: &[std::net::SocketAddr],
+) -> Result<u64, String> {
+    let mut guard = slot.lock().unwrap();
+    if guard.is_none() {
+        let mut opts = EngineOptions::new(dir);
+        opts.listen = listen;
+        opts.proxy_url = proxy_url.map(str::to_string);
+        // NFR-02：成员侧的引擎同样是「后台传播」通道，默认也降到 Idle。
+        opts.idle_threads = idle_threads;
+        let e = RqbitEngine::new(opts)?;
+        match e.listen_addr() {
+            Some(a) => println!("[engine] BT 引擎已创建，监听 {}（下载目录 {}）", a, dir.display()),
+            None => println!("[engine] BT 引擎已创建，不监听入站（下载目录 {}）", dir.display()),
+        }
+        *guard = Some(e);
+    }
+    let engine = guard.as_mut().expect("刚创建的引擎不会消失");
+    if let Ok(t) = cr_torrent::parse(bytes) {
+        if let Some(existing) = engine.task_by_infohash(&t.info_hash) {
+            let finished = engine.progress(existing).map(|p| p.finished).unwrap_or(false);
+            let output = dir.join(&t.name);
+            if let Some(err) = duplicate_download_error(finished, &output) {
+                return Err(err);
+            }
+        }
+    }
+    let mut spec = TorrentSpec::new(name, bytes);
+    if !initial_peers.is_empty() {
+        println!("[engine] 已知 peer（来自对端通告）: {:?}", initial_peers);
+        spec.initial_peers = initial_peers.to_vec();
+    }
+    engine.add_torrent(&spec)
+}
+
+fn now_unix_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
+/// 从引擎取一次真实采样，刷新任务的状态与计数器，并据「两次采样之差」算实测速率。
+fn refresh_task_progress(slot: &SharedEngine, t: &mut RpcTask) {
+    let Some(tid) = t.engine_task else { return };
+    let sample = {
+        let guard = slot.lock().unwrap();
+        match guard.as_ref() {
+            Some(e) => e.progress(tid),
+            None => None,
+        }
+    };
+    let Some(p) = sample else {
+        // 引擎对象不在了却还有 engine_task：这是真的异常，明说，不装成没任务。
+        t.status = "error".into();
+        t.error = format!("引擎中已找不到任务 {tid}");
+        return;
+    };
+    if p.total_bytes > 0 { t.total_length = p.total_bytes; }
+    t.completed_bytes = p.downloaded_bytes;
+    t.uploaded_bytes = p.uploaded_bytes;
+    t.peers = p.peers;
+    let now = now_unix_ms();
+    if now > t.sample_unix_ms && p.downloaded_bytes >= t.sample_bytes {
+        let db = p.downloaded_bytes - t.sample_bytes;
+        let dt = now - t.sample_unix_ms;
+        // 字节/秒，取整数；短间隔抖动如实反映，不做平滑。
+        t.speed_bps = ((db as u128) * 1000 / (dt as u128)) as u64;
+        t.sample_bytes = p.downloaded_bytes;
+        t.sample_unix_ms = now;
+    }
+    t.status = if p.finished {
+        "complete".to_string()
+    } else {
+        match p.state.as_str() {
+            "hot" | "waking" => "active",
+            "cold" => "paused",
+            "failed" => "error",
+            _ => "removed",
+        }.to_string()
+    };
+    if let Some(err) = p.error { t.error = err; }
+}
+
+fn rpc_task_json(t: &RpcTask) -> Json {
+    let total = t.total_length.to_string();
+    let done = t.completed_bytes.to_string();
+    let path = if !t.output_path.is_empty() { t.output_path.clone() }
+               else if !t.name.is_empty() { t.name.clone() }
+               else { t.uri.clone() };
+    let mut fields = vec![
+        ("gid", Json::s(&t.gid)), ("status", Json::s(&t.status)),
+        // 长度/进度/速率全部来自引擎真实采样；没接引擎就是 0，不猜。
+        ("totalLength", Json::s(&total)), ("completedLength", Json::s(&done)),
+        ("uploadLength", Json::s(&t.uploaded_bytes.to_string())),
+        ("downloadSpeed", Json::s(&t.speed_bps.to_string())),
+        ("uploadSpeed", Json::s("0")),
+        ("connections", Json::s(&t.peers.to_string())),
+        ("files", Json::arr(vec![Json::obj(vec![
+            ("index", Json::s("1")), ("path", Json::s(&path)),
+            ("length", Json::s(&total)), ("completedLength", Json::s(&done)),
+            ("selected", Json::b(true)),
+            ("uris", Json::arr(vec![Json::obj(vec![
+                ("uri", Json::s(&t.uri)), ("status", Json::s("used")),
+            ])])),
+        ])])),
+        ("coldrevive.torrentParsed", Json::b(t.torrent_parsed)),
+        ("coldrevive.pieceCount", Json::s(t.piece_count.to_string())),
+        ("coldrevive.engineAttached", Json::b(t.engine_task.is_some())),
+        ("coldrevive.engineTask", Json::s(match t.engine_task {
+            Some(v) => v.to_string(), None => String::new(),
+        })),
+        ("coldrevive.note", Json::s(&t.note)),
+    ];
+    if !t.error.is_empty() {
+        fields.push(("errorMessage", Json::s(&t.error)));
+        fields.push(("coldrevive.error", Json::s(&t.error)));
+    }
+    if !t.info_hash.is_empty() {
+        fields.push(("bittorrent", Json::obj(vec![("infoHash", Json::s(&t.info_hash))])));
+    }
+    Json::obj(fields)
+}
+
+/// 最小 HTTP/1.1 GET，只用于取回 `.torrent`（RFC1918 / 回环的取证环境）。
+///
+/// 不引入第三方 HTTP 客户端是刻意的：这里只需要「发一个 GET、读到 EOF、取 body」。
+/// 只支持 `http://`（取证服务器是明文 HTTP）；`https://` 会明确报错而不是静默降级。
+/// 不支持 chunked 编码时如实报错，解析失败由调用方记录，绝不假装拿到完整 body。
+fn http_fetch(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
+    let rest = url
+        .strip_prefix("http://")
+        .ok_or_else(|| "只支持 http:// 链接（https:// 需要 TLS，本进程未实现）".to_string())?;
+    let (authority, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], &rest[i..]),
+        None => (rest, "/"),
+    };
+    if authority.is_empty() {
+        return Err("URL 缺少主机名".into());
+    }
+    let (host, port) = match authority.rsplit_once(':') {
+        Some((h, p)) => (h, p.parse::<u16>().map_err(|_| format!("端口非法: {p}"))?),
+        None => (authority, 80u16),
+    };
+    let addr = format!("{host}:{port}");
+    let mut stream = TcpStream::connect(&addr).map_err(|e| format!("connect {addr}: {e}"))?;
+    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    let req = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    stream.write_all(req.as_bytes()).map_err(|e| format!("write request: {e}"))?;
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).map_err(|e| format!("read response: {e}"))?;
+    let split = buf
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| "响应缺少头部分隔".to_string())?;
+    let head = String::from_utf8_lossy(&buf[..split]).to_string();
+    let body = buf[split + 4..].to_vec();
+    let status_line = head.lines().next().unwrap_or("").to_string();
+    if !status_line.contains(" 200") {
+        return Err(format!("HTTP 状态非 200: {status_line}"));
+    }
+    if head.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+        return Err("响应使用 chunked 编码，本最小客户端未实现".into());
+    }
+    Ok(body)
+}
+
+fn write_http_cors(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {
+    // 只给本地插件/前端跨源读取；生产部署须按 ADR-008 收紧为显式白名单。
+    let head = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
+         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Methods: POST, OPTIONS\r\n\
+         Access-Control-Allow-Headers: Content-Type\r\n\
+         Connection: close\r\n\r\n",
+        status, ctype, body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+}
+
+fn write_http(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]) {
+    let head = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        status, ctype, body.len()
+    );
+    let _ = stream.write_all(head.as_bytes());
+    let _ = stream.write_all(body);
+    let _ = stream.flush();
+}
+
+/// 真实 HTTP GET（取伴随种子、tracker 等）。失败返回 Err，绝不返回占位字节。
+pub fn http_get(url: &str) -> Result<Vec<u8>, String> {
+    let rest = url.strip_prefix("http://").ok_or_else(|| "仅支持 http://".to_string())?;
+    let (authority, path) = rest.split_once('/').map(|(a, p)| (a, format!("/{}", p)))
+        .unwrap_or((rest, "/".to_string()));
+    let mut stream = TcpStream::connect(authority).map_err(|e| format!("连接 {} 失败: {}", authority, e))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
+    let req = format!("GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n", path, authority);
+    stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
+    let pos = raw.windows(4).position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| "HTTP 响应无头部".to_string())?;
+    let head = String::from_utf8_lossy(&raw[..pos]).to_string();
+    if !head.starts_with("HTTP/1.1 200") {
+        return Err(format!("HTTP {}", head.lines().next().unwrap_or("")));
+    }
+    Ok(raw[pos + 4..].to_vec())
+}
+
+/// 真实 HTTP POST JSON，供 B 节点调用 A 的 /inject 与 /cli。
+pub fn http_post_json(url: &str, body: &Json) -> Result<Json, String> {
+    let rest = url.strip_prefix("http://").ok_or_else(|| "仅支持 http://".to_string())?;
+    let (authority, path) = rest.split_once('/').map(|(a, p)| (a, format!("/{}", p)))
+        .unwrap_or((rest, "/".to_string()));
+    let mut stream = TcpStream::connect(authority).map_err(|e| e.to_string())?;
+    stream.set_read_timeout(Some(Duration::from_secs(10))).ok();
+    let payload = body.dump();
+    let req = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        path, authority, payload.as_bytes().len(), payload
+    );
+    stream.write_all(req.as_bytes()).map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).map_err(|e| e.to_string())?;
+    let pos = raw.windows(4).position(|w| w == b"\r\n\r\n")
+        .ok_or_else(|| "HTTP 响应无头部".to_string())?;
+    Json::parse(&String::from_utf8_lossy(&raw[pos + 4..]))
+        .map_err(|e| format!("响应非法 JSON: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// UDP（KAD 发现 + 私有唤醒）
+// ---------------------------------------------------------------------------
+
+fn spawn_udp(hub: UdpHub, cfg: Config, state: Arc<Mutex<NodeState>>) {
+    thread::spawn(move || {
+        let sock = &hub.socket;
+        println!("[{}] UDP 监听 {}:{}", cfg.node_id, cfg.bind,
+                 sock.local_addr().map(|a| a.port()).unwrap_or(0));
+        let mut buf = [0u8; 65535];
+        // W3.6：回打限流（该帧无需鉴权，不设上限等于把唤醒端口变成放大器）
+        let mut back_rate = cr_nat::holepunch::BackRate::new();
+        loop {
+            let (n, src) = match sock.recv_from(&mut buf) { Ok(v) => v, Err(_) => continue };
+            // M2: STUN Binding 响应交给正在进行的 nat probe（复用同一监听 socket）
+            if nat_path::is_stun_datagram(&buf[..n]) {
+                if let Some(tx) = hub.stun_sink.lock().unwrap().as_ref() {
+                    let _ = tx.send(buf[..n].to_vec());
+                }
+                continue;
+            }
+            let frame = match Json::parse(&String::from_utf8_lossy(&buf[..n])) {
+                Ok(j) => j, Err(_) => continue,
+            };
+            // M2: 打洞帧从监听 socket 回 ACK —— 真实回包打开/维持本侧 NAT 映射。
+            // 该帧不属于 PROTO v1 golden，不改变 WAKEUP_REQ/ACK 字段集合。
+            let frame_type = frame.get("t").and_then(Json::as_str).unwrap_or("");
+            if frame_type == cr_nat::holepunch::PUNCH_TYPE {
+                let token = frame.get("token").and_then(Json::as_str).unwrap_or("");
+                // W3.6 双向打洞：请求侧把自身映射候选放在 back 里（可能经中继送达），
+                // 持有者据此**主动回打**，在自身网关上开出过滤项。否则受限锥及以上
+                // 网关会把请求侧的首个入向包当 unsolicited 丢弃（W3.5② 实测 direct 0/30）。
+                let back = cr_nat::holepunch::punch_back(&buf[..n]);
+                if !back.is_empty() && back_rate.allow() {
+                    let sent = cr_nat::holepunch::punch_back_to(
+                        sock, &back, &cfg.node_id, token,
+                        cr_nat::holepunch::PUNCH_BACK_FRAMES);
+                    if sent > 0 {
+                        println!("[{}] punch-back → {} 个候选，真实发出 {} 帧",
+                                 cfg.node_id, back.len(), sent);
+                    }
+                }
+                let _ = sock.send_to(
+                    &cr_nat::holepunch::punch_ack(&cfg.node_id, token), src);
+                continue;
+            }
+            if let Some(r) = handle_udp_frame(&cfg, &state, &frame, src) {
+                let _ = sock.send_to(r.dump().as_bytes(), src);
+            }
+        }
+    });
+}
+
+/// 唤醒应答里的取种 URL（W5.1d）。
+///
+/// 公网请求者必须拿到公网端点——ACK 里给一个 RFC1918 地址，对方会「唤醒成功但取不到种子」，
+/// 而且在持有者本地日志里看不出任何异常。私网/回环请求者维持 M1 口径不变。
+fn ack_torrent_url(cfg: &Config, infohash: &str, requester_ip: &str) -> String {
+    let http_port = cfg.node_http(&cfg.node_id).unwrap_or(0);
+    match (cr_nat::is_public_ipv4(requester_ip), &cfg.nat_http_external) {
+        (true, Some((ip, port))) => format!("http://{}:{}/torrent/{}", ip, port, infohash),
+        _ => format!("http://{}:{}/torrent/{}",
+                     cfg.host(&cfg.node_id), http_port, infohash),
+    }
+}
+
+fn handle_udp_frame(cfg: &Config, state: &Arc<Mutex<NodeState>>,
+                    frame: &Json, src: SocketAddr) -> Option<Json> {
+    let t = frame.get("t").and_then(Json::as_str).unwrap_or("");
+    if t == "KAD_FIND" {
+        let key = frame.get("key").and_then(Json::as_str).unwrap_or("");
+        let st = state.lock().unwrap();
+        let keys = st.index.all_published_keys();
+        let hit = keys.iter().any(|k| k == key) || st.remote_keys.contains_key(key);
+        return Some(find_result(if hit { &cfg.node_id } else { "" }, if hit { 1 } else { 0 }));
+    }
+    if t == "KAD_PUBLISH" {
+        let node = frame.get("node").and_then(Json::as_str).unwrap_or("").to_string();
+        if let Some(keys) = frame.get("keys").and_then(Json::as_arr) {
+            let mut st = state.lock().unwrap();
+            for k in keys.iter().filter_map(Json::as_str) {
+                st.remote_keys.insert(k.to_string(), node.clone());
+            }
+        }
+        return Some(Json::obj(vec![("t", Json::s("KAD_PUBLISH_ACK"))]));
+    }
+    if frame.get("type").and_then(Json::as_str) == Some("WAKEUP_REQ") {
+        let trace = frame.get("trace_id").and_then(Json::as_str).unwrap_or("").to_string();
+        let file_hash = frame.get("file_hash").and_then(Json::as_str).unwrap_or("").to_string();
+        let mut st = state.lock().unwrap();
+        if let Err(code) = validate_req(frame, NODE_SECRET, cr_core::unix_ts(), &mut st.nonces) {
+            return Some(reject(&trace, code));
+        }
+        let entry = match st.index.get(&file_hash).cloned() {
+            Some(e) => e,
+            None => return Some(reject(&trace, "REJECT_NOT_FOUND")),
+        };
+        if !entry.path.is_file() {
+            if let Some(e) = st.index.get_mut(&file_hash) {
+                e.kad_published = false;
+                e.published_keys.clear();
+            }
+            let _ = st.index.save();
+            let mut r = reject(&trace, "REJECT_FILE_GONE");
+            if let Json::Obj(ref mut p) = r { p.push(("kad_revoked".into(), Json::b(true))); }
+            return Some(r);
+        }
+        // 幂等激活：已处于 HOT 的持有者不因重复唤醒再次跃迁（PROTO §3.1 / T0-17）。
+        // 这样 COLD → WAKING → HOT 每个激活周期只记录一次，也不会重复拉起做种。
+        // FR-15 的阈值检查放在状态跃迁**之前**：先拒绝就不该留 WAKING/HOT 痕迹。
+        if let Some(over) = hot_admission(cfg, &st, &file_hash) {
+            eprintln!("[{}] FR-15 拒绝唤醒 {}: {} {} 已达上限 {}（单位 {}）",
+                      cfg.node_id, entry.name, over.name, over.current, over.limit, over.unit);
+            let mut r = reject(&trace, "REJECT_RESOURCE_LIMIT");
+            if let Json::Obj(ref mut p) = r {
+                p.push(("limit_name".into(), Json::s(over.name)));
+                p.push(("limit".into(), Json::n(over.limit as f64)));
+                p.push(("current".into(), Json::n(over.current as f64)));
+                p.push(("limit_unit".into(), Json::s(over.unit)));
+            }
+            return Some(r);
+        }
+        let already_hot = st.index.get(&file_hash)
+            .map(|e| e.state == cr_store::FileState::Hot).unwrap_or(false);
+        if !already_hot {
+            st.index.get_mut(&file_hash).unwrap().transition(cr_store::FileState::Waking);
+            st.index.get_mut(&file_hash).unwrap().transition(cr_store::FileState::Hot);
+        }
+        // W5.2：COLD→HOT 的实际动作是「解除引擎暂停」。只有真的激活成功才置 `bt_seeding`，
+        // 否则门禁会看到「已就绪」而引擎还在暂停——那种状态在第三方客户端侧表现成一直空转，
+        // 比直接报失败难查得多。
+        // 先取出引擎槽与任务号再上锁：`wake_seed` 需要同时改 `sched` 与引擎，
+        // 直接持有 `st.engine` 的借用会让 `&mut st.sched` 冲突（两个字段同属一个 guard）。
+        let seed_task = seed_task_for(&st, &entry.infohash);
+        let engine_slot = st.engine.clone();
+        let mut eg = engine_slot.lock().unwrap();
+        let outcome = match (seed_task, eg.as_mut()) {
+            (Some(task), Some(eng)) => Some(sched::wake_seed(&mut st.sched, eng, task)),
+            (None, _) => {
+                // 没有做种任务却收到唤醒：如实记，不伪造供片。
+                // 多样本下这里也覆盖「请求的 infohash 不在本节点」——不能退化成「随便挑一个」。
+                eprintln!("[{}] 收到唤醒但本节点没有 infohash={} 的做种任务", cfg.node_id, entry.infohash);
+                None
+            }
+            (Some(_), None) => {
+                eprintln!("[{}] 收到唤醒但引擎尚未创建，无法供片", cfg.node_id);
+                None
+            }
+        };
+        drop(eg);
+        // 逐出/失败都要留痕：活跃池被挤满时的行为必须可观测，否则「偶尔供不上片」
+        // 会被误读成网络问题。
+        if let Some(o) = outcome.as_ref() {
+            if let Some(ev) = o.evicted {
+                println!("[{}] 活跃池已满，逐出任务 #{} 以服务本次唤醒", cfg.node_id, ev);
+            }
+            for e in &o.errors {
+                eprintln!("[{}] 活跃池: {}", cfg.node_id, e);
+            }
+        }
+        st.bt_seeding = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
+        if st.bt_seeding { st.last_activity = Instant::now(); }
+        let _ = st.index.save();
+        let me = cfg.me().ok()?;
+        let url = ack_torrent_url(cfg, &entry.infohash, &src.ip().to_string());
+        return Some(build_ack(&trace, &entry.infohash, &url, entry.size,
+                              entry.piece_size, me.bt_port));
+    }
+    None
+}
+
+/// 字节口径对照块。刻意不提供"对端实际收到字节"字段——本进程观测不到：
+/// 本地写入（隧道/SOCKS5/splice）与引擎自报上传都不是对端确认，对端落地
+/// 只能由 e2e 读对端文件 md5 证明（W59/W60/W61 就是这么判的）。
+/// 这里把能测的三项各自标注 scope，并明确写出缺哪一项，避免再次把
+/// `bytes_relayed` / `bytes_from_engine` 误读成"对面收到了"。
+fn byte_accounting_json(engine_reported_uploaded: u64,
+                        tunnel_written: u64,
+                        splice_written: u64) -> Json {
+    Json::obj(vec![
+        ("engine_reported_uploaded", Json::n(engine_reported_uploaded as f64)),
+        ("tunnel_written", Json::n(tunnel_written as f64)),
+        ("splice_written", Json::n(splice_written as f64)),
+        ("peer_received_bytes", Json::Null),
+        ("peer_received_status", Json::s("not_observable_from_this_process")),
+        ("note", Json::s(concat!(
+            "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；",
+            "splice_written=写入本地 socket。三者都不是对端确认字节。",
+            "对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"))),
+    ])
+}
+
+#[cfg(test)]
+mod byte_accounting_tests {
+    use super::*;
+
+    #[test]
+    fn byte_accounting_never_claims_peer_receipt() {
+        let j = byte_accounting_json(10, 20, 30);
+        assert_eq!(j.get("engine_reported_uploaded").and_then(Json::as_i64), Some(10));
+        assert_eq!(j.get("tunnel_written").and_then(Json::as_i64), Some(20));
+        assert_eq!(j.get("splice_written").and_then(Json::as_i64), Some(30));
+        // 关键：绝不伪造"对端收到"数字。
+        assert!(matches!(j.get("peer_received_bytes"), Some(Json::Null)));
+        assert_eq!(j.get("peer_received_status").and_then(Json::as_str),
+                   Some("not_observable_from_this_process"));
+    }
+}
+
+#[cfg(test)]
+mod rpc_tests {
+    use super::*;
+
+    /// 起一个只服务一次的极简 HTTP 服务，把给定 body 作为 200 响应发出去。
+    fn serve_once(body: Vec<u8>) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = s.read(&mut buf);
+                let head = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/x-bittorrent\r\n\
+                     Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    body.len()
+                );
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&body);
+                let _ = s.flush();
+            }
+        });
+        format!("http://127.0.0.1:{}/sample.torrent", addr.port())
+    }
+
+    /// v2.4.92 回归：`/health` 曾经**在同一线程里把 `state` 锁了两次**。
+    ///
+    /// `Json::obj(vec![...])` 里的每个元素都是同一条语句中的临时值，前一个元素
+    /// `state.lock()` 的 guard 活到语句结束，于是后一个元素的 `state.lock()` 把
+    /// 自己锁死：症状是「`/health` 永远超时，但 `/nat/public`（不碰 state）正常」。
+    /// 因为最容易在 `punch_route=true` 的部署上撞到，它长期被误记成「数据面把进程搞挂」。
+    ///
+    /// 判据用读超时：自锁时读不到任何字节。
+    #[test]
+    fn health_answers_promptly_even_with_data_plane_enabled() {
+        let dir = std::env::temp_dir().join(format!("cr_health_dl_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801, "bt_port": 17802},
+                "B": {"http_port": 17900, "wake_udp_port": 17901, "bt_port": 17902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {"enabled": true, "relay": "127.0.0.1:7100", "punch_route": true}
+        }"#;
+        let p = dir.join("c.json");
+        std::fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let hub = UdpHub {
+            socket: Arc::new(udp),
+            stun_sink: Arc::new(Mutex::new(None)),
+        };
+        let st = NodeState {
+            cfg: cfg.clone(),
+            index: ShadowIndex::open(&dir.join("state.json")),
+            api_limiter: None,
+            nonces: HashSet::new(),
+            remote_keys: HashMap::new(),
+            last_ack: None,
+            sample: None,
+            torrent: None,
+            bt_seeding: false,
+            download: None,
+            stale_pids: Vec::new(),
+            blacklist: HashSet::new(),
+            last_file_hash: None,
+            nat: nat_path::NatContext::from_config(&cfg),
+            hub,
+            rpc_tasks: Vec::new(),
+            ed2k_tasks: ed2k_tasks::registry(),
+            engine: Arc::new(Mutex::new(None)),
+            seed_task: None,
+            seed_tasks: HashMap::new(),
+            sched: LruScheduler::new(1),
+            last_activity: Instant::now(),
+            idle_sleep_count: 0,
+            idle_slept_tasks: Vec::new(),
+            idle_last_attempt: None,
+            guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+            guard_internal: None,
+            guard_external: None,
+            punch_route: punch_route::PunchRouteState::from_config(&cfg),
+            data_plane: data_plane::DataPlane::new().ok(),
+            res: sysres::Meter::new(),
+            p1: p1_config::P1Config::default(),
+            nat_auto: nat_auto::AutoMapStatus::disabled(),
+            qos: qos_seed::SeedingQos::from_p1(&p1_config::P1Config::default()),
+            dht: dht_daemon::DhtStatus::disabled(),
+        };
+        assert!(st.data_plane.is_some(), "本用例的前提就是数据面已开启");
+        assert!(st.punch_route.enabled);
+        let state = Arc::new(Mutex::new(st));
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        {
+            let st2 = state.clone();
+            let cfg2 = cfg.clone();
+            thread::spawn(move || {
+                if let Ok((s, _)) = listener.accept() {
+                    handle_conn(s, cfg2, st2);
+                }
+            });
+        }
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(b"GET /health HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n").unwrap();
+        let mut buf = Vec::new();
+        c.read_to_end(&mut buf).expect("3 s 内必须读到响应（自锁会读超时）");
+        let text = String::from_utf8_lossy(&buf);
+        assert!(text.contains("200 OK"), "{}", text);
+        assert!(text.contains("\"status\":\"ok\""), "{}", text);
+        // 三段都要在：多锁一次就会少一段，少一段等于运维看不全。
+        assert!(text.contains("\"punch_route\""), "{}", text);
+        assert!(text.contains("\"data_plane\""), "{}", text);
+        assert!(text.contains("\"holder_data\""), "{}", text);
+        assert!(text.contains("\"byte_accounting\""), "{}", text);
+        assert!(text.contains("\"peer_received_bytes\":null"), "{}", text);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn seed_task_is_chosen_by_infohash_and_never_by_luck() {        let mut tasks: HashMap<String, cr_engine::TaskId> = HashMap::new();
+        tasks.insert("aa".into(), 7);
+        tasks.insert("bb".into(), 9);
+        assert_eq!(pick_seed_task(&tasks, Some(7), "bb"), Some(9), "必须激活请求的那一个");
+        assert_eq!(pick_seed_task(&tasks, Some(7), "cc"), None,
+                   "不在本节点的 infohash 不得拿别的样本顶上");
+        assert_eq!(pick_seed_task(&HashMap::new(), Some(3), "cc"), Some(3),
+                   "映射为空时保持旧单任务行为");
+    }
+
+    #[test]
+    fn adduri_accepts_both_param_layouts() {
+        // 带 secret：params = [token, [uri]]；不带 secret：params = [[uri]]。
+        // 只认一种就会让另一种调用方收到「需要至少一个 URI」。
+        let with_secret = vec![Json::s("token"), Json::arr(vec![Json::s("http://h/a.torrent")])];
+        let without_secret = vec![Json::arr(vec![Json::s("http://h/a.torrent")])];
+        assert_eq!(first_uri_param(&with_secret), "http://h/a.torrent");
+        assert_eq!(first_uri_param(&without_secret), "http://h/a.torrent");
+        assert_eq!(first_uri_param(&[]), "");
+        // 只有 options、没有 uris 时必须返回空，而不是把对象当成 URI。
+        assert_eq!(first_uri_param(&[Json::obj(vec![("dir", Json::s("/tmp"))])]), "");
+    }
+
+    #[test]
+    fn adduri_fetches_and_parses_real_torrent() {
+        let data = vec![7u8; 40_000];
+        let torrent = cr_torrent::generate(&data, "rpc-sample.bin", 16_384, "http://127.0.0.1:1/announce");
+        let url = serve_once(torrent.raw.clone());
+
+        let fetched = http_fetch(&url, Duration::from_secs(5)).expect("fetch");
+        assert_eq!(fetched, torrent.raw, "取回的字节必须与发出的种子完全一致");
+
+        let parsed = cr_torrent::parse(&fetched).expect("parse");
+        assert_eq!(parsed.info_hash, torrent.info_hash);
+        assert_eq!(parsed.length, 40_000);
+        assert_eq!(parsed.name, "rpc-sample.bin");
+        assert_eq!(parsed.pieces.len(), 3, "40000 / 16384 向上取整 = 3 片");
+    }
+
+    #[test]
+    fn https_is_rejected_instead_of_silently_downgraded() {
+        let err = http_fetch("https://127.0.0.1:1/x.torrent", Duration::from_millis(200))
+            .expect_err("https 必须报错");
+        assert!(err.contains("http://"), "错误信息要说清楚只支持 http://: {err}");
+    }
+
+    #[test]
+    fn non_200_is_an_error_not_an_empty_torrent() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 512];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                let _ = s.flush();
+            }
+        });
+        let err = http_fetch(&format!("http://127.0.0.1:{}/missing.torrent", addr.port()), Duration::from_secs(3))
+            .expect_err("404 必须报错");
+        assert!(err.contains("404"), "错误信息要带上状态行: {err}");
+    }
+
+    /// W5.1d：ACK 里的取种 URL 必须按请求者来源选择端点。
+    /// 公网请求者拿到 RFC1918 地址 = 「唤醒成功但取不到种子」，本地日志毫无异常。
+    #[test]
+    fn ack_url_follows_requester_network() {
+        let dir = std::env::temp_dir().join(format!("cr_ackurl_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "0.0.0.0",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801,
+                       "bt_port": 17802, "host": "192.168.1.210"},
+                "B": {"http_port": 17900, "wake_udp_port": 17901, "bt_port": 17902}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json",
+            "nat": {"enabled": true, "bt_external": "112.5.60.4:17802",
+                    "http_external": "112.5.60.4:17800"}
+        }"#;
+        let p = dir.join("c.json");
+        std::fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+
+        assert_eq!(ack_torrent_url(&cfg, "IH", "112.5.32.34"),
+                   "http://112.5.60.4:17800/torrent/IH");
+        assert_eq!(ack_torrent_url(&cfg, "IH", "192.168.1.221"),
+                   "http://192.168.1.210:17800/torrent/IH");
+        assert_eq!(ack_torrent_url(&cfg, "IH", "127.0.0.1"),
+                   "http://192.168.1.210:17800/torrent/IH");
+
+        // 没配公网 HTTP 映射时，公网请求者也只能拿到原地址（如实，不编造）
+        cfg.nat_http_external = None;
+        assert_eq!(ack_torrent_url(&cfg, "IH", "112.5.32.34"),
+                   "http://192.168.1.210:17800/torrent/IH");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod duplicate_task_tests {
+    use super::*;
+
+    #[test]
+    fn finished_task_without_output_is_reported_not_fabricated() {
+        let dir = std::env::temp_dir().join(format!("cr_dup_task_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let out = dir.join("sample.bin");
+        let _ = fs::remove_file(&out);
+
+        // 既有任务已完成但文件不在盘上 → 必须报错，不能返回一个 100% 的空任务。
+        let err = duplicate_download_error(true, &out).expect("必须识别假完成");
+        assert!(err.contains("不在盘上"), "{err}");
+        // 任务未完成、或产物确实在盘上，都属于正常复用。
+        assert!(duplicate_download_error(false, &out).is_none());
+        fs::write(&out, b"real bytes").unwrap();
+        assert!(duplicate_download_error(true, &out).is_none());
+
+        let _ = fs::remove_file(&out);
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod p1_http_tests {
+    use super::*;
+
+    fn state_with(p1: p1_config::P1Config) -> (Arc<Mutex<NodeState>>, Config, std::path::PathBuf) {
+        let id = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("cr_p1_http_{id}"));
+        fs::create_dir_all(&dir).unwrap();
+        let text = r#"{
+            "bind": "127.0.0.1",
+            "nodes": {
+                "A": {"http_port": 17800, "wake_udp_port": 17801, "bt_port": 17802}
+            },
+            "sample_path": "s.bin", "keywords": [], "workdir": ".run",
+            "golden_req": "r.json", "golden_ack": "a.json"
+        }"#;
+        let p = dir.join("c.json");
+        fs::write(&p, text).unwrap();
+        let mut cfg = Config::load(&p).unwrap();
+        cfg.node_id = "A".into();
+        let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let st = NodeState {
+            cfg: cfg.clone(),
+            index: ShadowIndex::open(&dir.join("state.json")),
+            api_limiter: None,
+            nonces: HashSet::new(), remote_keys: HashMap::new(), last_ack: None,
+            sample: None, torrent: None, bt_seeding: false, download: None,
+            stale_pids: Vec::new(), blacklist: HashSet::new(), last_file_hash: None,
+            nat: nat_path::NatContext::from_config(&cfg),
+            hub: UdpHub { socket: Arc::new(udp), stun_sink: Arc::new(Mutex::new(None)) },
+            rpc_tasks: Vec::new(), ed2k_tasks: ed2k_tasks::registry(),
+            engine: Arc::new(Mutex::new(None)), seed_task: None,
+            seed_tasks: HashMap::new(), sched: LruScheduler::new(1),
+            last_activity: Instant::now(), idle_sleep_count: 0,
+            idle_slept_tasks: Vec::new(), idle_last_attempt: None,
+            guard_stats: Arc::new(Mutex::new((0, 0, 0))),
+            guard_internal: None, guard_external: None,
+            punch_route: punch_route::PunchRouteState::from_config(&cfg),
+            data_plane: None, res: sysres::Meter::new(),
+            p1, nat_auto: nat_auto::AutoMapStatus::disabled(),
+            qos: qos_seed::SeedingQos::from_p1(&p1_config::P1Config::default()),
+            dht: dht_daemon::DhtStatus::disabled(),
+        };
+        (Arc::new(Mutex::new(st)), cfg, dir)
+    }
+
+    fn serve(state: Arc<Mutex<NodeState>>, cfg: Config) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for s in listener.incoming() {
+                if let Ok(s) = s {
+                    let (st, c) = (state.clone(), cfg.clone());
+                    thread::spawn(move || handle_conn(s, c, st));
+                }
+            }
+        });
+        addr
+    }
+
+    fn request(addr: SocketAddr, raw: &[u8]) -> String {
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(raw).unwrap();
+        let mut out = Vec::new();
+        c.read_to_end(&mut out).unwrap();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn post(addr: SocketAddr, path: &str, body: &str) -> String {
+        let raw = format!(
+            "POST {path} HTTP/1.1\r\nHost: h\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len());
+        request(addr, raw.as_bytes())
+    }
+
+    #[test]
+    fn web_ui_and_openapi_do_not_shadow_existing_endpoints() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            web_ui: true, ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let health = request(addr, b"GET /health HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(health.contains("\"status\":\"ok\"") && health.contains("\"api\""), "{health}");
+        assert!(!health.contains("<!doctype html>"), "/health 被 Web UI 遮蔽");
+        let openapi = request(addr, b"GET /openapi.json HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(openapi.contains("\"openapi\":\"3.0.3\""), "{openapi}");
+        assert!(openapi.contains("\"/health\""), "{openapi}");
+        let cli = post(addr, "/cli", r#"{"command":"unknown"}"#);
+        assert!(cli.contains("\"error\"") && !cli.contains("<!doctype html>"), "{cli}");
+        let root = request(addr, b"GET / HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(root.contains("<!doctype html>") && root.contains("ColdRevive status"), "{root}");
+        let options = request(addr, b"OPTIONS /jsonrpc HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(options.contains("204 No Content"), "{options}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rpc_secret_blocks_mutating_calls_without_leaking_it() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            rpc_secret: Some("TOPSECRET".into()), ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let no_token = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":1,"method":"aria2.addUri","params":[["magnet:?"]]}"#);
+        assert!(no_token.contains("-32000"), "{no_token}");
+        assert!(!no_token.contains("TOPSECRET"), "secret 泄漏到响应");
+        let with_token = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":2,"method":"aria2.addUri","params":["token:TOPSECRET",["magnet:?"]]}"#);
+        assert!(!with_token.contains("-32000"), "{with_token}");
+        assert!(with_token.contains("\"result\""), "{with_token}");
+        let readonly = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":3,"method":"aria2.getVersion","params":[]}"#);
+        assert!(readonly.contains("\"result\""), "只读调用不该要求 token: {readonly}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn websocket_upgrade_sends_real_rfc6455_text_frame() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config {
+            websocket: true, ..Default::default()
+        });
+        let addr = serve(state, cfg);
+        let mut c = TcpStream::connect(addr).unwrap();
+        c.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        c.write_all(b"GET /ws HTTP/1.1\r\nHost: h\r\nUpgrade: websocket\r\n\
+                      Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
+                      Sec-WebSocket-Version: 13\r\n\r\n").unwrap();
+        let mut head = Vec::new();
+        let mut one = [0u8; 1];
+        loop {
+            c.read_exact(&mut one).unwrap();
+            head.push(one[0]);
+            if head.ends_with(b"\r\n\r\n") { break; }
+        }
+        let head = String::from_utf8_lossy(&head);
+        assert!(head.starts_with("HTTP/1.1 101 Switching Protocols"), "{head}");
+        assert!(head.contains("s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+        let mut hdr = [0u8; 2];
+        c.read_exact(&mut hdr).unwrap();
+        assert_eq!(hdr[0], 0x81, "服务端 text 帧不掩码");
+        let len = (hdr[1] & 0x7f) as usize;
+        let mut payload = vec![0u8; len];
+        c.read_exact(&mut payload).unwrap();
+        let text = String::from_utf8_lossy(&payload);
+        assert!(text.contains("\"node\"") && text.contains("\"seed_tasks\""), "{text}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+}

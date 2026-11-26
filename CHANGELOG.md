@@ -1,3 +1,26 @@
+## [2.4.153] - 2026-11-26 — 首次 macOS 真机运行：**FAIL**，定位并修复两个缺陷（待重测）
+
+> **不改变任何门禁判定**。`g2_claim=true`、EX-1 仍 FAIL、S6 仍「条件计入」；`runtime_verified`
+> 仍为 `false`。本次只是把真机 FAIL 证据归档并修掉两处实现/打包缺陷。
+
+- **真机结果**：用户 Mac mini（macOS 26.5.2 / Darwin 25.5.0 / x86_64 / rustc 1.100.0）跑
+  `coldrevive-macos-nfr02-runtime-v1.2` → `summary.json` **0 pass / 4 fail / 1 blocked /
+  1 not_verified**。原始 `results.zip` 与解包文件逐字节入库
+  `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`（MANIFEST + sha256 + `* -text`）。
+- **FAIL 根因 1（代码常量错）**：`darwin_verdict::PRIO_DARWIN_BG` 被写成 `0x10000`，而 Apple XNU
+  `<bsd/sys/resource.h>` 定义的是 **`0x1000`**（`0x1001` 才是废弃的 `PRIO_DARWIN_NONUI`）。
+  真机日志：两条 idle 用例读回 `PRIO_DARWIN_THREAD = 0x0`、`applied 0 -> 0`。已改常量与钉值单测；
+  这是**修正实现以符合 Darwin API**，不是降低判据——判据仍是「读回等于 `PRIO_DARWIN_BG`」。
+- **FAIL 根因 2（运行包漏文件）**：`cr-ed2k/src/lib.rs` 用 `#[path]` 从 `tests/spikes/...` 纳入
+  三个源文件，而运行包只收 `src/**`，`cargo build --bin coldrevived` 报 `couldn't find file
+  sha1.rs`。v1.4 起把这三个文件按原相对路径一并收入。
+- **仍缺**：这次没有 daemon 日志与 `/health` 快照，握手功能项 `blocked`；唤醒线程逐线程优先级项
+  按设计固定 `not_verified`。修完后必须**重跑真机**，不能据本次证据写「macOS 已验证」。
+- **回归**：全量串行 `CARGO_INCREMENTAL=0 cargo test --workspace --offline -- --test-threads=1`
+  → **549 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/regression-full-20261126-v153.log`）。
+- **落点**：`src/crates/cr-engine/src/prio.rs`、本条 CHANGELOG、
+  `tests/ARCHIVE/TEST-RUNS-2026-11-26.md`、`dist/coldrevive-macos-nfr02-runtime-v1.4.zip`。
+
 ## [2.4.152] - 2026-11-26 — G-3 关闭：中继运维面限流/观测/告警三项实测 PASS
 
 > **先登记判据再采样**：DOC-35 + `tests/fixtures/g3-relay-ops-thresholds.toml`

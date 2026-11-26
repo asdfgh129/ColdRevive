@@ -1,0 +1,37 @@
+warning: unused field `license` in `workspace.package`
+ --> Cargo.toml:8:1
+  |
+8 | license = "MIT"
+  | ^^^^^^^
+  |
+  = note: `cargo::unused_workspace_package_fields` is set to `warn` by default
+help: consider removing the field `workspace.package.license`
+warning: unused field `repository` in `workspace.package`
+ --> Cargo.toml:9:1
+  |
+9 | repository = "https://github.com/asdfgh129/ColdRevive"
+  | ^^^^^^^^^^
+  |
+help: consider removing the field `workspace.package.repository`
+warning: workspace (manifest) generated 2 warnings
+   Compiling cr-dht v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-dht)
+   Compiling cr-qos v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-qos)
+   Compiling cr-reputation v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-reputation)
+   Compiling cr-kad v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-kad)
+   Compiling cr-store v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-store)
+   Compiling cr-engine v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-engine)
+   Compiling cr-wake v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-wake)
+   Compiling cr-torrent v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-torrent)
+   Compiling cr-indexer v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-indexer)
+   Compiling cr-sched v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-sched)
+   Compiling cr-guard v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-guard)
+   Compiling cr-api v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-api)
+   Compiling cr-ed2k v0.1.0 (/Users/bemin/Desktop/coldrevive-macos-nfr02-runtime-v1.2/source/src/crates/cr-ed2k)
+error: couldn't find file `src/crates/cr-ed2k/src/../../../../tests/spikes/s2/kad-mini/src/sha1.rs`
+  --> src/crates/cr-ed2k/src/lib.rs:19:1
+   |
+19 | pub mod sha1;
+   | ^^^^^^^^^^^^^
+
+error: could not compile `cr-ed2k` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

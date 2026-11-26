@@ -1,0 +1,7 @@
+[package]
+name = "coldrevive-agent"
+version.workspace = true
+edition.workspace = true
+description = "M3: 托盘 / 浏览器捕获 / UPnP 续租 / 看护（骨架）"
+
+[dependencies]

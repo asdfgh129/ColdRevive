@@ -1,0 +1,7 @@
+[package]
+name = "cr-ed2k"
+version.workspace = true
+edition.workspace = true
+description = "FR-25: ADR-011 L2 最小 eD2k 传输栈（下载/上传共用一份，stdlib-only；公网仍 BLOCKED）"
+
+[dependencies]

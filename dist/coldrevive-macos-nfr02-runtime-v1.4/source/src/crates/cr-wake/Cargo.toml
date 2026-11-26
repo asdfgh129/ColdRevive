@@ -1,0 +1,9 @@
+[package]
+name = "cr-wake"
+version.workspace = true
+edition.workspace = true
+description = "M1 (W4.1): 私有唤醒协议 PROTOCOL_VERSION=1 Challenge-Response 与错误码"
+
+[dependencies]
+cr-core = { path = "../cr-core" }
+cr-hash = { path = "../cr-hash" }

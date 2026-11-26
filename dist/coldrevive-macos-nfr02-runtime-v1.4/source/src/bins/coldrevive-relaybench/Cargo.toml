@@ -1,0 +1,8 @@
+[package]
+name = "coldrevive-relaybench"
+version.workspace = true
+edition.workspace = true
+description = "W3.9 后续: 中继真实网络测量（RTT / 丢包 / 单 IP 并发上限外部观测）"
+
+[dependencies]
+cr-nat = { path = "../../crates/cr-nat" }

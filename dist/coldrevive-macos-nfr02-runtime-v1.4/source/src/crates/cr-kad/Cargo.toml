@@ -1,0 +1,9 @@
+[package]
+name = "cr-kad"
+version.workspace = true
+edition.workspace = true
+description = "M1 (W3.1): 专属命名空间 Key、双栈 ID 宽度与本地双节点 UDP 发现"
+
+[dependencies]
+cr-core = { path = "../cr-core" }
+cr-hash = { path = "../cr-hash" }

@@ -1,0 +1,59 @@
+{
+  "evidence": "NFR-02 macOS real-machine run 1",
+  "run_id": "20261126T064846Z",
+  "captured_at": "2026-11-26T15:05:00+08:00",
+  "source_zip_sha256": "6e03fe82fad4d925164b71236be403ebb8544ca5d901f09c5ccb4af03fc5e7a6",
+  "package": "coldrevive-macos-nfr02-runtime-v1.2",
+  "host": "Mac-mini.local / macOS 26.5.2 / Darwin 25.5.0 x86_64",
+  "verdict": "FAIL: 4 fail, 1 blocked, 1 not_verified, 0 pass; do not claim macOS verified",
+  "note": "Byte-for-byte archive of user-returned results.zip. No evidence was edited or reclassified.",
+  "file_count": 9,
+  "total_bytes": 41949,
+  "items": [
+    {
+      "path": ".gitattributes",
+      "bytes": 9,
+      "sha256": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992"
+    },
+    {
+      "path": "results/20261126T064846Z/01-cargo-test.exit",
+      "bytes": 4,
+      "sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c"
+    },
+    {
+      "path": "results/20261126T064846Z/01-cargo-test.log",
+      "bytes": 20282,
+      "sha256": "d33a800a85f70a69301befa6ab3471a6dc414966dda5df43abb708a1f0eb0468"
+    },
+    {
+      "path": "results/20261126T064846Z/02-build.exit",
+      "bytes": 4,
+      "sha256": "39b8dc3fc8b44765c8e6f1adee04c5b465e555ab791cc42d0d9e810d5b64297c"
+    },
+    {
+      "path": "results/20261126T064846Z/02-build.log",
+      "bytes": 2336,
+      "sha256": "2a0b50fc2743c98d143f0d0be9d9ed69bf223ed9070e9b7ad82068bbac737112"
+    },
+    {
+      "path": "results/20261126T064846Z/platform.json",
+      "bytes": 790,
+      "sha256": "9a00035fd53a1643db20d1e1882e823a408ed917e5883bef5da1b8600f691708"
+    },
+    {
+      "path": "results/20261126T064846Z/preflight.txt",
+      "bytes": 685,
+      "sha256": "902817262778175c0976b9522f80bc41c83d41bfabfd9df76f0fae62300655d1"
+    },
+    {
+      "path": "results/20261126T064846Z/summary.json",
+      "bytes": 6613,
+      "sha256": "23e99dc9f84a6151b9520977d52b070a6692f773f07faf89176bd1e8a5ee6910"
+    },
+    {
+      "path": "results-original.zip",
+      "bytes": 11226,
+      "sha256": "6e03fe82fad4d925164b71236be403ebb8544ca5d901f09c5ccb4af03fc5e7a6"
+    }
+  ]
+}

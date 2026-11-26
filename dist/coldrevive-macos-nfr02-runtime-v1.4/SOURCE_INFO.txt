@@ -1,0 +1,9 @@
+package=coldrevive-macos-nfr02-runtime-v1.4
+version=v2.4.152
+git_commit=e698d4bef371aeb7b6922c84c2d593051800a466
+git_commit_time=2026-11-26T08:39:18+08:00
+cargo_lock_sha256=554114cc9aae42115db043ecdffeea89c5d24735b2f6e3e426033eb1b3d12b49
+source_scope=Cargo.toml,Cargo.lock,src/**,tests/spikes/s2/kad-mini/src/**,tests/spikes/s2/ed2k-mini/src/**
+generated_at=2026-11-26T15:08:00+08:00
+criteria_ref=docs/06-plan/G2-EXIT-RECORD-2026-11-25.md v1.5 §10
+source_patch=prio.rs: PRIO_DARWIN_BG corrected 0x10000 -> 0x1000 (v2.4.153 worktree, uncommitted)

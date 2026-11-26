@@ -1,0 +1,7 @@
+[package]
+name = "cr-qos"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W7.1): 后台做种令牌桶与 S5 实测标定默认值（骨架 + 可验证模型）"
+
+[dependencies]

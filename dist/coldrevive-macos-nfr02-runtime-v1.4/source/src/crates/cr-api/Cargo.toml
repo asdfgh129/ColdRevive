@@ -1,0 +1,12 @@
+[package]
+name = "cr-api"
+version.workspace = true
+edition.workspace = true
+description = "M3 (W6.1/6.2/6.3): HTTP / JSON-RPC / WebSocket 接入层（std-only helpers）"
+
+[dependencies]
+cr-core = { path = "../cr-core" }
+cr-hash = { path = "../cr-hash" }
+cr-qos = { path = "../cr-qos" }
+cr-dht = { path = "../cr-dht" }
+cr-reputation = { path = "../cr-reputation" }

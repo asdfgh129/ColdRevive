@@ -1,0 +1,7 @@
+[package]
+name = "cr-dht"
+version.workspace = true
+edition.workspace = true
+description = "M2 (W3.2): Mainline DHT（BEP 5）适配层——bencode / 160 位 ID / Kademlia 桶 / KRPC（std-only）"
+
+[dependencies]

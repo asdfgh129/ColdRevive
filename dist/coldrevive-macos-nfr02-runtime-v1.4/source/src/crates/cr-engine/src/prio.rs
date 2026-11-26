@@ -1,0 +1,594 @@
+//! NFR-02 第二分句：**造种任务仅以 Idle 优先级运行**。
+//!
+//! 为什么落在**线程**上而不是进程上：同一进程里还有唤醒关键路径（cr-guard 读 68 B
+//! 握手、cr-data-plane 的 UDP 数据面、HTTP API）。把整个进程降到 Idle 会把 NFR-04
+//! 的唤醒 P95 一起拖下去——那是拿一个门禁换另一个门禁，不算解决。
+//!
+//! 为什么只能到「引擎 worker 线程」这一粒度：librqbit 只有一个线程池，做种、分片校验、
+//! 下载都跑在它的 worker 上，库里没有「单 torrent 线程」这层。所以本模块能保证的边界是
+//! **引擎工作线程整体 Idle**，无法再细到「只降做种任务、不降下载任务」。这条边界写在
+//! `EngineOptions::idle_threads` 的文档里，`/health` 的 `idle_priority` 也如实呈现。
+//!
+//! 平台：
+//! - **Linux**：`setpriority(PRIO_PROCESS, 0, 19)` + `sched_setscheduler(0, SCHED_IDLE)`。
+//!   两者都对**调用线程**生效（Linux 的 nice 是 per-thread）。`SCHED_IDLE` 是
+//!   「仅当没有别的可运行任务时才被调度」，比 nice 19 更强；若内核/权限拒绝，只保留
+//!   nice 19 并如实上报成 `NiceOnly`，不假装成功。
+//! - **Windows**：`SetThreadPriority(THREAD_PRIORITY_IDLE)`（-15，比
+//!   `IDLE_PRIORITY_CLASS` 那档更低）。
+//! - **macOS**：`setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG)`，读回用
+//!   `getpriority(PRIO_DARWIN_THREAD, 0) == PRIO_DARWIN_BG`。darwin 没有 nice 语义，
+//!   「background」类是对应档：CPU 调度降到最低一档、I/O 一并被降权。
+//!   **但不要把它当成 Linux `SCHED_IDLE` 的同义词**——机制不同（QoS 类 vs 调度策略），
+//!   语义相近但不是等价物；本项目的判据只要求「仅以 Idle 优先级运行」，这一档是 darwin 上
+//!   能拿到的最接近的东西，真正的等效性要等真机数据来支撑。
+//!   **这一档在本仓库没有硬件实测**：没有 mac 机器，所以它只做到「实现 + 类型检查」——
+//!   `cargo check -p cr-engine --features darwin-check` 在 Linux/Windows 上把 darwin 分支
+//!   一起编译检查（见 [`darwin_verdict`] 与 `Cargo.toml` 的 feature 注释）。因此
+//!   NFR-02 的口径仍然是「**Linux/Windows 两平台有实测**」，不能写成三平台达标；
+//!   真机上跑一次 `/health.idle_priority` 就能把它变成实测，届时改的是证据，不是判据。
+//!
+//! **一律读回校验**：系统调用返回 0 不等于状态真的变了（cgroup、seccomp、LSM 都可能
+//! 让调用「成功」却无效果）。读回的是 `/proc/thread-self/stat` 的 `nice` 与 `policy`
+//! （Linux）或 `GetThreadPriority`（Windows），判定只看读回值。
+//!
+//! # 钩子为什么能覆盖到 worker 线程（tokio 1.54.1 的实测结论）
+//!
+//! 这一点不看实现会误判：`Builder::on_thread_start` 的回调在 tokio 1.54.1 里**只由
+//! 阻塞池** `blocking::pool::Inner::run` 调用（`after_start`），多线程调度器的
+//! `worker.rs` 里没有第二处调用点。之所以照样覆盖到 worker，是因为
+//! `scheduler/multi_thread/worker.rs::Launch::launch` 把每个 worker 交给
+//! `runtime::spawn_blocking(move || run(worker))` 起线程——**worker 本身就是阻塞池线程**，
+//! 于是它们既拿到同一个 `thread_name`，也走同一个 `after_start`。
+//!
+//! 这是**版本相关的实现细节**，不是 tokio 的公开契约。所以：
+//! - 代码不靠「钩子一定被调用」来声称达标，靠的是**读回**（`/health.idle_priority.applied`
+//!   与探针里逐个 tid 的 nice/policy）；
+//! - 升级 tokio 后若 worker 不再走阻塞池，表现会是 `applied` 变小 / 探针里出现
+//!   `nice=0` 的引擎线程——**看得见**，不会静默变成「声称降了其实没降」。
+//! - `runtime_worker_task_runs_at_idle_priority` 这条测试就是钉这个行为的：它在
+//!   **worker 上实际执行的 task 里**读自己的线程优先级。
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// 降到最低的静态优先级（Linux `nice` 上限）。
+pub const IDLE_NICE: i32 = 19;
+
+/// 引擎线程名。**必须由我们指定**，不能用 tokio 的默认名（`tokio-rt-worker`）：
+/// 探针与运维要按这个名字在 `/proc/<pid>/task/*/comm` 里认人，而默认名是 tokio
+/// 的实现细节、随版本可变。名字写在这里，等于把「哪些线程属于引擎」变成自己的契约。
+///
+/// **长度必须 ≤ 15 个字符**：Linux 的 `TASK_COMM_LEN` 是 16（含结尾 NUL），`comm`
+/// 会被**静默截断**。曾经用 `"cr-engine-worker"`（16 字符）→ `/proc` 里只剩
+/// `cr-engine-worke`，按全名精确比对的探针随即报「0 个引擎线程」，
+/// 看着像「一个都没降」，其实是名字对不上。`engine_thread_name_fits_task_comm`
+/// 这条测试钉住这个上限。
+pub const ENGINE_THREAD_NAME: &str = "cr-engine-wrk";
+
+/// Linux `comm` 的可见长度上限（`TASK_COMM_LEN - 1`）。
+pub const TASK_COMM_MAX: usize = 15;
+
+
+/// 降级结果。**这是读回校验后的状态**，不是「调用有没有返回 0」。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IdleOutcome {
+    /// Linux：nice 19 **且** `SCHED_IDLE` 都生效（最强的一档）。
+    NiceAndSchedIdle,
+    /// Linux：nice 19 生效，但 `SCHED_IDLE` 没切上（权限/内核限制）。
+    NiceOnly,
+    /// Windows：`THREAD_PRIORITY_IDLE` 生效。
+    ThreadIdle,
+    /// macOS：`PRIO_DARWIN_BG` 生效（读回 `getpriority(PRIO_DARWIN_THREAD)` 等于 flag）。
+    DarwinBackground,
+    /// 本平台未实现（当前是 macOS 之外的其它平台，如 BSD）。**不当作失败**，但也不当作达标。
+    Unsupported,
+}
+
+impl IdleOutcome {
+    /// 是否真的处于 Idle 类。`Unsupported` 一律 `false`。
+    pub fn is_idle(self) -> bool {
+        !matches!(self, IdleOutcome::Unsupported)
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            IdleOutcome::NiceAndSchedIdle => "nice19+sched_idle",
+            IdleOutcome::NiceOnly => "nice19",
+            IdleOutcome::ThreadIdle => "thread_priority_idle",
+            IdleOutcome::DarwinBackground => "darwin_bg",
+            IdleOutcome::Unsupported => "unsupported",
+        }
+    }
+}
+
+/// 一个线程的优先级读数（读回值，不是设置意图）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ThreadPriority {
+    /// Linux `nice`（-20..19）。
+    pub nice: i32,
+    /// Linux 调度策略号：0 = `SCHED_OTHER`，5 = `SCHED_IDLE`。非 Linux 恒 0。
+    pub policy: i32,
+}
+
+/// 进程内累计计数，供 `/health` 呈现「到底降了几个线程」。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PrioStats {
+    pub applied: u64,
+    pub failed: u64,
+    pub unsupported: u64,
+}
+
+static APPLIED: AtomicU64 = AtomicU64::new(0);
+static FAILED: AtomicU64 = AtomicU64::new(0);
+static UNSUPPORTED: AtomicU64 = AtomicU64::new(0);
+
+pub fn stats() -> PrioStats {
+    PrioStats {
+        applied: APPLIED.load(Ordering::Relaxed),
+        failed: FAILED.load(Ordering::Relaxed),
+        unsupported: UNSUPPORTED.load(Ordering::Relaxed),
+    }
+}
+
+/// 把**调用线程**降到 Idle。必须在目标线程内调用（不要在 A 线程里调、指望降 B）。
+///
+/// 返回读回校验后的真实状态；失败时返回错误文本，调用方必须如实上报，
+/// 不能把 `Err` 当成「大概降了」。
+pub fn set_current_thread_idle() -> Result<IdleOutcome, String> {
+    match imp::down() {
+        Ok(o) => {
+            if o == IdleOutcome::Unsupported {
+                UNSUPPORTED.fetch_add(1, Ordering::Relaxed);
+            } else {
+                APPLIED.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(o)
+        }
+        Err(e) => {
+            FAILED.fetch_add(1, Ordering::Relaxed);
+            Err(e)
+        }
+    }
+}
+
+/// 读回当前线程的优先级。拿不到返回 `None`（**不返回 0 冒充**）。
+pub fn current_thread_priority() -> Option<ThreadPriority> {
+    imp::read_back()
+}
+
+// ---------------------------------------------------------------- darwin 判定核心
+
+/// darwin 分支的**判定逻辑**，刻意与平台 API 解耦，好让它在 Linux/Windows 上也能跑单测。
+///
+/// 为什么值得单独拆出来：本项目**没有 mac 硬件**，FFI 那几行最多只能做到类型检查；
+/// 但「什么样的读回算成功、什么样算失败」是纯逻辑，可以用合成值在这里全部跑一遍。
+/// 不拆的话 darwin 分支连判定规则都没被测过——那样的「实现」只是能编译而已。
+///
+/// 非 darwin 平台上这个模块只被单测用到，因此会在 `cargo build` 里报 dead_code；
+/// 这里显式标注并由 `darwin_verdict_reads_back_instead_of_trusting_return_code`
+/// 等用例保证它真的被执行到——**不是**为了让编译安静而写的空模块。
+#[allow(dead_code)]
+pub(crate) mod darwin_verdict {
+    use super::IdleOutcome;
+
+    /// `<sys/resource.h>`：`PRIO_DARWIN_THREAD`（对当前线程操作）。
+    pub const PRIO_DARWIN_THREAD: i32 = 3;
+    /// `PRIO_DARWIN_BG`：**标志位，不是 nice 值**。设上即「背景类」。
+    ///
+    /// 取自 Apple XNU `<bsd/sys/resource.h>`：`PRIO_DARWIN_BG = 0x1000`，
+    /// 而 `0x1001` 是已废弃的 `PRIO_DARWIN_NONUI`。此前误写成 `0x10000`，
+    /// 在 macOS 26.5.2 真机上 `setpriority` 返回 0 但读回仍为 0（降级未生效）；
+    /// 2026-11-26 run1 证据见 `tests/ARCHIVE/evidence/nfr02-macos-run1-20261126/`。
+    pub const PRIO_DARWIN_BG: i32 = 0x1000;
+
+    /// `set_rc`/`set_errno` 是 `setpriority` 的返回与 `errno`；`read_back` 是
+    /// `getpriority(PRIO_DARWIN_THREAD, 0)` 的读回值（`None` = 读不出或有歧义）。
+    ///
+    /// 判定只认读回：`setpriority` 返回 0 只说明「调用没报错」，cgroup/沙箱/新内核语义
+    /// 都可能让它「成功」却无效果——这条规矩在本文档开头就写死了，darwin 不例外。
+    pub fn from_readback(
+        set_rc: i32,
+        set_errno: i32,
+        read_back: Option<i32>,
+    ) -> Result<IdleOutcome, String> {
+        match read_back {
+            Some(v) if v == PRIO_DARWIN_BG => Ok(IdleOutcome::DarwinBackground),
+            Some(v) => Err(format!(
+                "降级未生效（读回 PRIO_DARWIN_THREAD = {v:#x}，期望 {PRIO_DARWIN_BG:#x}）{}",
+                set_note(set_rc, set_errno)
+            )),
+            None => Err(format!(
+                "getpriority(PRIO_DARWIN_THREAD) 读回失败或返回值有歧义，无法判定{}",
+                set_note(set_rc, set_errno)
+            )),
+        }
+    }
+
+    fn set_note(set_rc: i32, set_errno: i32) -> String {
+        if set_rc == 0 && set_errno == 0 {
+            String::new()
+        } else {
+            format!("；setpriority 返回 {set_rc}，errno {set_errno}")
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Linux
+
+#[cfg(all(target_os = "linux", not(feature = "darwin-check")))]
+mod imp {
+    use super::{IdleOutcome, ThreadPriority, IDLE_NICE};
+
+    const PRIO_PROCESS: i32 = 0;
+    const SCHED_IDLE: i32 = 5;
+
+    #[repr(C)]
+    struct SchedParam {
+        sched_priority: i32,
+    }
+
+    extern "C" {
+        fn setpriority(which: i32, who: u32, prio: i32) -> i32;
+        fn sched_setscheduler(pid: i32, policy: i32, param: *const SchedParam) -> i32;
+    }
+
+    /// 读 `/proc/thread-self/stat` 的 nice 与 policy。
+    ///
+    /// **必须用 `thread-self`，不能用 `self`**（这是踩过的坑）：`/proc/self` 指向
+    /// 线程组组长，在子线程里读它拿到的是**主线程**的 nice/policy。结果是
+    /// 「降级其实成功了，读回却看到 nice=0 policy=0」，然后被误判成失败——
+    /// 一个只看代码看不出来的假阴性。`thread-self` 是 Linux 3.17+ 的「调用线程」，
+    /// 老内核回落到 `self`（此时子线程里的读数就不可信了，只能如实接受这个限制）。
+    ///
+    /// comm 字段可能含空格与括号，必须以**最后一个** `)` 为界；`)` 之后第一个
+    /// token 是 state（第 3 字段），故字段 n 的下标是 n-3。
+    pub(super) fn read_back() -> Option<ThreadPriority> {
+        let text = std::fs::read_to_string("/proc/thread-self/stat")
+            .or_else(|_| std::fs::read_to_string("/proc/self/stat"))
+            .ok()?;
+        let rest = &text[text.rfind(')')? + 1..];
+        let f: Vec<&str> = rest.split_whitespace().collect();
+        Some(ThreadPriority {
+            nice: f.get(16)?.parse().ok()?,   // 第 19 字段
+            policy: f.get(38)?.parse().ok()?, // 第 41 字段
+        })
+    }
+
+    pub(super) fn down() -> Result<IdleOutcome, String> {
+        let mut notes: Vec<String> = Vec::new();
+
+        if unsafe { setpriority(PRIO_PROCESS, 0, IDLE_NICE) } != 0 {
+            notes.push(format!("setpriority: {}", std::io::Error::last_os_error()));
+        }
+        let sp = SchedParam { sched_priority: 0 };
+        if unsafe { sched_setscheduler(0, SCHED_IDLE, &sp) } != 0 {
+            notes.push(format!("sched_setscheduler(SCHED_IDLE): {}",
+                               std::io::Error::last_os_error()));
+        }
+
+        // 判定只看读回值：两个调用「返回 0」都不构成证据。
+        let st = read_back().ok_or_else(|| "读回 /proc/self/stat 失败".to_string())?;
+        if st.policy == SCHED_IDLE {
+            return Ok(IdleOutcome::NiceAndSchedIdle);
+        }
+        if st.nice == IDLE_NICE {
+            return Ok(IdleOutcome::NiceOnly);
+        }
+        Err(format!(
+            "降级未生效（读回 nice={} policy={}）{}",
+            st.nice, st.policy,
+            if notes.is_empty() { String::new() } else { format!(": {}", notes.join("; ")) }
+        ))
+    }
+}
+
+// ---------------------------------------------------------------- Windows
+
+#[cfg(all(windows, not(feature = "darwin-check")))]
+mod imp {
+    use super::{IdleOutcome, ThreadPriority};
+
+    const THREAD_PRIORITY_IDLE: i32 = -15;
+    const THREAD_PRIORITY_ERROR_RETURN: i32 = 0x7fff_ffff;
+
+    extern "system" {
+        fn GetCurrentThread() -> *mut core::ffi::c_void;
+        fn SetThreadPriority(h: *mut core::ffi::c_void, p: i32) -> i32;
+        fn GetThreadPriority(h: *mut core::ffi::c_void) -> i32;
+    }
+
+    /// Windows 没有 `nice` 概念，`policy` 恒 0；真实值是 `GetThreadPriority`。
+    /// 为了不让「policy=0」被误读成 Linux 的 `SCHED_OTHER`，这里把 Windows 的
+    /// 线程优先级原样放进 `nice` 字段（-15 = `THREAD_PRIORITY_IDLE`），并在
+    /// `IdleOutcome` 里用 `ThreadIdle` 明确区分。
+    pub(super) fn read_back() -> Option<ThreadPriority> {
+        let p = unsafe { GetThreadPriority(GetCurrentThread()) };
+        if p == THREAD_PRIORITY_ERROR_RETURN {
+            return None;
+        }
+        Some(ThreadPriority { nice: p, policy: 0 })
+    }
+
+    pub(super) fn down() -> Result<IdleOutcome, String> {
+        let ok = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_IDLE) };
+        if ok == 0 {
+            return Err(format!("SetThreadPriority 失败: {}",
+                               std::io::Error::last_os_error()));
+        }
+        let st = read_back().ok_or_else(|| "GetThreadPriority 读回失败".to_string())?;
+        if st.nice == THREAD_PRIORITY_IDLE {
+            return Ok(IdleOutcome::ThreadIdle);
+        }
+        Err(format!("降级未生效（读回线程优先级 {}）", st.nice))
+    }
+}
+
+// ---------------------------------------------------------------- macOS
+
+/// darwin：`PRIO_DARWIN_BG`。
+///
+/// 三个必须写清的点：
+/// 1. **不是 nice**。darwin 的 `getpriority` 在 `PRIO_DARWIN_THREAD` 上返回的是背景标志位
+///    （0 或 `PRIO_DARWIN_BG`），所以 `ThreadPriority::nice` 在 darwin 恒 0（无意义），
+///    真实读数放在 `policy` 里，别拿它跟 Linux 的 `SCHED_OTHER=0` 混着看。
+/// 2. **`getpriority` 的 -1 是歧义值**（合法返回值里不会出现 -1，但它也是出错返回值）。
+///    所以先清 `errno` 再调用；拿到 -1 一律当「读不出」（`None`），**不当成功、也不当 0**。
+/// 3. **`PRIO_DARWIN_BG` 的有效性只在真机上成立**。本仓库没有 mac 机器，这段代码只经过
+///    `--features darwin-check` 的类型检查；`/health` 在 mac 上会如实报读回值，
+///    但「本仓库已实测 macOS」这句话在拿到真机证据之前不成立。
+#[cfg(any(target_os = "macos", feature = "darwin-check"))]
+mod imp {
+    use super::darwin_verdict::{from_readback, PRIO_DARWIN_BG, PRIO_DARWIN_THREAD};
+    use super::{IdleOutcome, ThreadPriority};
+
+    extern "C" {
+        fn setpriority(which: i32, who: u32, prio: i32) -> i32;
+        fn getpriority(which: i32, who: u32) -> i32;
+        /// darwin 的 `errno` 是函数 `__error()` 返回的指针，不是全局变量。
+        fn __error() -> *mut i32;
+    }
+
+    /// 读背景标志位。返回 `None` = 读不出/有歧义（`-1`），**绝不折算成 0**。
+    fn read_raw() -> Option<i32> {
+        unsafe { *__error() = 0 };
+        let v = unsafe { getpriority(PRIO_DARWIN_THREAD, 0) };
+        if v == -1 {
+            // 合法状态只有 0 与 PRIO_DARWIN_BG；-1 无法区分「出错」与「没设上」。
+            return None;
+        }
+        Some(v)
+    }
+
+    pub(super) fn read_back() -> Option<ThreadPriority> {
+        read_raw().map(|bg| ThreadPriority {
+            nice: 0,     // darwin 无 nice 语义
+            policy: bg,  // 0 = 前台类，PRIO_DARWIN_BG = 背景类
+        })
+    }
+
+    pub(super) fn down() -> Result<IdleOutcome, String> {
+        unsafe { *__error() = 0 };
+        let rc = unsafe { setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG) };
+        let err = unsafe { *__error() };
+        from_readback(rc, err, read_raw())
+    }
+}
+
+// ---------------------------------------------------------------- 其它平台
+
+/// 剩下的平台（当前是各种 BSD 等）没有实现路径。
+///
+/// **不要把这里改成 `Ok` 去「兼容」某个平台**：`Unsupported` 的语义是
+/// 「本实现不保证」，它既不算失败也不算达标，`/health` 与探针都按这个语义读。
+#[cfg(all(
+    not(any(target_os = "linux", target_os = "macos", windows)),
+    not(feature = "darwin-check")
+))]
+mod imp {
+    use super::{IdleOutcome, ThreadPriority};
+
+    pub(super) fn read_back() -> Option<ThreadPriority> {
+        // 拿不到就报 None：与 sysres 的 RSS/CPU 一致，绝不编一个 0 出来。
+        None
+    }
+
+    pub(super) fn down() -> Result<IdleOutcome, String> {
+        Ok(IdleOutcome::Unsupported)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 降级必须发生在**目标线程内**。这里在自己的线程里降，避免把测试进程的主线程
+    /// 永久拉低（Linux 上非特权进程把 nice 降下去后**升不回来**，会污染同二进制后续用例）。
+    #[test]
+    fn idle_applies_to_the_calling_thread_only() {
+        let before = current_thread_priority();
+        let h = std::thread::spawn(|| {
+            let n0 = current_thread_priority();
+            let out = set_current_thread_idle();
+            (n0, out, current_thread_priority())
+        });
+        let (n0, out, n1) = h.join().expect("线程不应 panic");
+        match out {
+            Ok(IdleOutcome::Unsupported) => {
+                // 未实现的平台：如实报 unsupported，不允许伪造成功。
+                assert!(n1.is_none() || n0 == n1, "报 unsupported 却改了优先级");
+            }
+            Ok(o) => {
+                assert!(o.is_idle(), "{o:?} 必须被视为 idle 类");
+                let a = n0.expect("降级前应能读回");
+                let b = n1.expect("降级后应能读回");
+                #[cfg(target_os = "linux")]
+                {
+                    assert!(b.nice > a.nice, "nice 未变低: {} -> {}", a.nice, b.nice);
+                    assert_eq!(b.nice, IDLE_NICE);
+                }
+                #[cfg(windows)]
+                {
+                    assert_eq!(b.nice, -15, "THREAD_PRIORITY_IDLE = -15（原 {}）", a.nice);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    assert_eq!(b.policy, darwin_verdict::PRIO_DARWIN_BG,
+                               "PRIO_DARWIN_BG 未生效（读回 {:#x}）", b.policy);
+                }
+                #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+                {
+                    let _ = (&a, &b); // 这些平台不比较数值，但读回必须成功
+                }
+            }
+            Err(e) => panic!("降级失败: {e}"),
+        }
+        // 主线程不受影响（读回为 None 的平台跳过比较）。
+        if let (Some(x), Some(y)) = (before, current_thread_priority()) {
+            assert_eq!(x, y, "子线程降级污染了调用线程");
+        }
+    }
+
+    #[test]
+    fn stats_count_each_attempt() {
+        // 计数器是**进程级**的，而测试默认并行：别的用例也在降级自己的线程。
+        // 因此这里只能断言「对应分桶增长了」与「总量守恒（不串桶）」，
+        // 不能断言「恰好 +1」——那样这条用例会因为跑了它的邻居而红灯。
+        let s0 = stats();
+        let out = std::thread::spawn(set_current_thread_idle).join().unwrap();
+        let s1 = stats();
+        let grew = |a: u64, b: u64| b > a;
+        match out {
+            Ok(IdleOutcome::Unsupported) => {
+                assert!(grew(s0.unsupported, s1.unsupported), "unsupported 桶没增长");
+            }
+            Ok(_) => assert!(grew(s0.applied, s1.applied), "applied 桶没增长"),
+            Err(_) => assert!(grew(s0.failed, s1.failed), "failed 桶没增长"),
+        }
+        // 三个桶各自单调，未失败时 failed 不得凭空增长（防止把成功记成失败）。
+        assert!(s1.applied >= s0.applied && s1.failed >= s0.failed
+                && s1.unsupported >= s0.unsupported);
+    }
+
+    /// 钉住「引擎钩子对 **worker** 线程有效」这一行为。
+    ///
+    /// 不看实现最容易搞错的一点：`on_thread_start` 在 tokio 1.54.1 里只有阻塞池调用，
+    /// 多线程 worker 之所以也能被降级，是因为它本身就是阻塞池线程（`Launch::launch`
+    /// 用 `spawn_blocking` 起 worker）。这条测试在**真正跑在 worker 上的 task 里**
+    /// 读自己的优先级，所以只要哪天 tokio 改了实现，它会立刻变红——而不是让
+    /// 「声称降级、实际没降」悄悄进证据。
+    #[test]
+    fn runtime_worker_task_runs_at_idle_priority() {
+        let before = stats();
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .thread_name(ENGINE_THREAD_NAME)
+            .on_thread_start(|| {
+                let _ = set_current_thread_idle();
+            })
+            .build()
+            .expect("运行时必须能起来");
+        // 让 task 跑在 worker 上（block_on 本身在调用线程上推进，读不到 worker）。
+        let h = rt.spawn(async { (current_thread_priority(), std::thread::current().name().map(str::to_string)) });
+        let (prio_read, name) = rt.block_on(h).expect("task 不应 panic");
+        let after = stats();
+        rt.shutdown_background();
+
+        assert!(after.applied > before.applied,
+                "钩子没有降级任何线程（applied {} -> {}）", before.applied, after.applied);
+        // 线程名必须是**我们指定的那个**：探针按它在 /proc 里认引擎线程。
+        assert_eq!(name.as_deref(), Some(ENGINE_THREAD_NAME),
+                   "引擎线程名不是约定的 {}（实际 {:?}）", ENGINE_THREAD_NAME, name);
+        match prio_read {
+            None => {
+                // 平台拿不到读数：只能依据计数器，且必须如实标注未验证。
+                assert!(after.unsupported > before.unsupported
+                        || cfg!(not(any(target_os = "linux", windows))),
+                        "读不到优先级却也没报 unsupported");
+            }
+            Some(p) => {
+                #[cfg(target_os = "linux")]
+                {
+                    assert!(p.nice == IDLE_NICE || p.policy == 5,
+                            "worker 线程没降下来: nice={} policy={}（线程名 {:?}）",
+                            p.nice, p.policy, name);
+                }
+                #[cfg(windows)]
+                {
+                    assert_eq!(p.nice, -15,
+                               "worker 线程没降下来: THREAD_PRIORITY_IDLE 期望 -15（线程名 {:?}）",
+                               name);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    assert_eq!(p.policy, darwin_verdict::PRIO_DARWIN_BG,
+                               "worker 线程没进背景类: 读回 {:#x}（线程名 {:?}）",
+                               p.policy, name);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn engine_thread_name_fits_task_comm() {
+        // 超长会被内核静默截断，而按名认人的探针同时静默失效——这类「两边都不报错」
+        // 的错最难查，所以用一条测试把它挡在编译期之后、上线之前。
+        assert!(ENGINE_THREAD_NAME.len() <= TASK_COMM_MAX,
+                "线程名 {} 有 {} 字符，超过 Linux comm 上限 {}，会被静默截断",
+                ENGINE_THREAD_NAME, ENGINE_THREAD_NAME.len(), TASK_COMM_MAX);
+        assert!(!ENGINE_THREAD_NAME.contains(char::is_whitespace),
+                "comm 里不能有空格（/proc 的 stat 解析会错位）");
+    }
+
+    #[test]
+    fn outcome_strings_are_stable() {
+        // `/health` 与归档证据都按这些字符串判读，改名等于改口径。
+        assert_eq!(IdleOutcome::NiceAndSchedIdle.as_str(), "nice19+sched_idle");
+        assert_eq!(IdleOutcome::NiceOnly.as_str(), "nice19");
+        assert_eq!(IdleOutcome::ThreadIdle.as_str(), "thread_priority_idle");
+        assert_eq!(IdleOutcome::DarwinBackground.as_str(), "darwin_bg");
+        assert_eq!(IdleOutcome::Unsupported.as_str(), "unsupported");
+        assert!(!IdleOutcome::Unsupported.is_idle());
+        // darwin 的背景类属于 idle 类：`is_idle()` 为 false 会让 lib.rs 把它误报成
+        // 「本平台无支持」，而真机上的读回明明已经成功。
+        assert!(IdleOutcome::DarwinBackground.is_idle());
+    }
+
+    /// darwin 判定：**只认读回值**。
+    ///
+    /// 这条测试与平台无关（合成值），因此能在没有 mac 机器的情况下跑——这正是把判定
+    /// 逻辑从 FFI 里拆出来的原因。三种输入对应三种必须区分的事实：
+    /// 读回标志位 = 成功；读回 0 = 调用「成功」但状态没变（必须报失败）；读不出 = 不判定。
+    #[test]
+    fn darwin_verdict_reads_back_instead_of_trusting_return_code() {
+        use darwin_verdict::{from_readback, PRIO_DARWIN_BG};
+
+        // 1) 调用返回 0 + 读回标志位 → 唯一算成功的组合。
+        assert_eq!(from_readback(0, 0, Some(PRIO_DARWIN_BG)),
+                   Ok(IdleOutcome::DarwinBackground));
+
+        // 2) 调用返回 0 但读回 0：这是最危险的一种——只看返回码就会误报达标。
+        let e = from_readback(0, 0, Some(0)).expect_err("读回 0 必须判失败");
+        assert!(e.contains("降级未生效"), "错误文案应说明未生效: {e}");
+        assert!(!e.contains("errno 0"), "setpriority 成功时不该编造 errno: {e}");
+
+        // 3) 读不出（-1 歧义 / getpriority 出错）→ 不判定，且不许当成成功。
+        let e = from_readback(0, 0, None).expect_err("读不出必须判失败");
+        assert!(e.contains("无法判定"), "错误文案应说明读不出: {e}");
+
+        // 4) 调用本身报错时要带上原因，便于真机上定位（沙箱/权限）。
+        let e = from_readback(-1, 1, Some(0)).expect_err("应判失败");
+        assert!(e.contains("errno 1"), "应带出 setpriority 的 errno: {e}");
+    }
+
+    /// darwin 的 -1 是歧义值：既可能是出错，也可能是「没设上」。两种都不能当成 0 或成功。
+    #[test]
+    fn darwin_echo_of_minus_one_is_never_a_priority() {
+        use darwin_verdict::PRIO_DARWIN_BG;
+        // 合成「读回 -1」：实际 read_raw() 会把它折成 None，这里直接验证判定层不接受 -1。
+        let r = darwin_verdict::from_readback(0, 0, Some(-1));
+        assert!(r.is_err(), "-1 不是合法状态，不能被当成优先级");
+        // 交叉确认：标志位与 0 是仅有的两个合法状态；数值必须与 Apple 头文件一致。
+        assert_eq!(PRIO_DARWIN_BG, 0x1000);
+        assert_eq!(darwin_verdict::PRIO_DARWIN_THREAD, 3);
+    }
+}
