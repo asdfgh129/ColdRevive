@@ -1,0 +1,100 @@
+{
+  "suite": "W6.6 agent supervisor (headless, no GUI, no external host)",
+  "checks": [
+    {
+      "name": "abnormal_exit_exhausts_budget",
+      "status": "pass",
+      "observed": {
+        "returncode": 3,
+        "spawns": 3,
+        "exits": 3,
+        "stderr_tail": "agent: 重启预算耗尽 restarts=2 max=2\n"
+      }
+    },
+    {
+      "name": "clean_exit_is_not_restarted",
+      "status": "pass",
+      "observed": {
+        "returncode": 0,
+        "spawns": 1
+      }
+    },
+    {
+      "name": "spawn_failure_is_error_not_silent_pass",
+      "status": "pass",
+      "observed": {
+        "returncode": 2,
+        "stderr_tail": "agent: 启动子进程失败: The system cannot find the file specified. (os error 2)\n"
+      }
+    }
+  ],
+  "counts": {
+    "pass": 3,
+    "fail": 0
+  },
+  "runs": {
+    "abnormal": {
+      "argv": [
+        "C:/Users/bemin/WorkBuddy/ColdRevive/target/debug/coldrevive-agent.exe",
+        "--child",
+        "C:\\Users\\bemin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python3.exe",
+        "--child-arg",
+        "-c",
+        "--child-arg",
+        "import sys; sys.exit(7)",
+        "--health-url",
+        "http://127.0.0.1:1/health",
+        "--poll-ms",
+        "50",
+        "--backoff-ms",
+        "20",
+        "--max-restarts",
+        "2"
+      ],
+      "returncode": 3,
+      "stdout": "agent: child spawned pid=26448 restarts=0\nagent: child exited code=7 clean=false\nagent: restart 1 after 20ms\nagent: child spawned pid=23644 restarts=1\nagent: child exited code=7 clean=false\nagent: restart 2 after 20ms\nagent: child spawned pid=24500 restarts=2\nagent: child exited code=7 clean=false\n",
+      "stderr": "agent: 重启预算耗尽 restarts=2 max=2\n"
+    },
+    "clean": {
+      "argv": [
+        "C:/Users/bemin/WorkBuddy/ColdRevive/target/debug/coldrevive-agent.exe",
+        "--child",
+        "C:\\Users\\bemin\\.workbuddy\\binaries\\python\\versions\\3.13.12\\python3.exe",
+        "--child-arg",
+        "-c",
+        "--child-arg",
+        "pass",
+        "--health-url",
+        "http://127.0.0.1:1/health",
+        "--poll-ms",
+        "50",
+        "--backoff-ms",
+        "20",
+        "--max-restarts",
+        "2"
+      ],
+      "returncode": 0,
+      "stdout": "agent: child spawned pid=2220 restarts=0\nagent: child exited code=0 clean=true\nagent: 干净退出，不重启\n",
+      "stderr": ""
+    },
+    "spawn_error": {
+      "argv": [
+        "C:/Users/bemin/WorkBuddy/ColdRevive/target/debug/coldrevive-agent.exe",
+        "--child",
+        "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\debug\\no-such-child-binary",
+        "--health-url",
+        "http://127.0.0.1:1/health",
+        "--poll-ms",
+        "50",
+        "--backoff-ms",
+        "20",
+        "--max-restarts",
+        "2"
+      ],
+      "returncode": 2,
+      "stdout": "",
+      "stderr": "agent: 启动子进程失败: The system cannot find the file specified. (os error 2)\n"
+    }
+  },
+  "scope_note": "只证明 std-only 看护内核的重启语义；托盘/浏览器捕获/UPnP 续租仍 BLOCKED。"
+}

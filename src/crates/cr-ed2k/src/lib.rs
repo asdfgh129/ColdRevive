@@ -13,7 +13,9 @@
 //! - **口径更新（v2.4.112/124，取代旧「daemon 未接线」表述）**：daemon 路径已由
 //!   `coldrevived/src/ed2k_tasks.rs` 接上本 crate，公网 daemon A/B 与真实 aMule
 //!   双向取片已有证据（`tests/e2e/w25-daemon/reports/public-daemon-ab-*.json`）。
-//!   FR-25 仍缺的是「全部共享文件双轨发布」：A 轨关键词当前只展示、未进 KAD_PUBLISH。
+//!   FR-25 双轨发布（v2.4.157）：A 轨 MD4 关键词 key 已由 `cr_kad::dual_track_frame_keys`
+//!   并入 daemon 发出的 `KAD_PUBLISH` 帧，B 轨冻结口径不变；但 ACK 仍不是公网可检索证据，
+//!   按运营速率的双轨发布量翻倍须按 R-02 在 M4 前复审（见 `docs/06-plan/M3-REMAINING-BLOCKERS-2026-11-27.md`）。
 
 // 单一事实来源：复用 S2 审计过的 SHA-1 / MD4 / KAD tag 编解码与 eD2k TCP 状态机。
 #[path = "../../../../tests/spikes/s2/kad-mini/src/sha1.rs"]

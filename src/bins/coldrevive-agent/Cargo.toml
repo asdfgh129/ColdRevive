@@ -2,6 +2,6 @@
 name = "coldrevive-agent"
 version.workspace = true
 edition.workspace = true
-description = "M3: 托盘 / 浏览器捕获 / UPnP 续租 / 看护（骨架）"
+description = "M3: 无 GUI 守护进程看护内核（托盘/浏览器捕获/UPnP 续租仍待独立决策）"
 
 [dependencies]

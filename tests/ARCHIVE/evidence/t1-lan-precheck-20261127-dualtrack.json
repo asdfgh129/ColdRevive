@@ -1,0 +1,187 @@
+{
+  "suite": "T1",
+  "schema": "coldrevive.t1.report/v1",
+  "recorded_at": "2026-11-27T04:04:46.929566+00:00",
+  "mode": "lan-precheck",
+  "gate": "G1",
+  "evidence_valid": false,
+  "reason": "单机预检（aliases 地址模式）：A/B 同一物理主机（machine_id 相同），不满足 T1 双机 + 真实 NAT 环境，不可作为 G1 证据",
+  "environment": {
+    "definition": "TEST.md §2 T1：两台物理主机、A/B 各跑一个 coldrevived 实例，处于真实 NAT 内网",
+    "two_distinct_hosts": false,
+    "real_nat": false,
+    "address_mode": "aliases",
+    "observation_source": "real",
+    "scope": "single-host/aliases"
+  },
+  "config": {
+    "hosts": {
+      "A": "127.0.0.2",
+      "B": "127.0.0.3"
+    },
+    "binds": {
+      "A": "127.0.0.2",
+      "B": "127.0.0.3"
+    },
+    "config_file": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\tests\\e2e\\t1\\.run\\t1-config.json"
+  },
+  "summary": {
+    "total": 11,
+    "passed": 1,
+    "failed": 0,
+    "blocked": 10,
+    "skipped": 0,
+    "mandatory_failed": 10
+  },
+  "cases": [
+    {
+      "id": "T1-01",
+      "title": "A/B 为不同物理主机且双侧 /health 可达",
+      "group": "environment",
+      "flow": "环境",
+      "source": "TEST.md §2 T1 / ROADMAP G1",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-02",
+      "title": "跨主机 KAD 命名空间发布与发现",
+      "group": "chain",
+      "flow": "F2",
+      "source": "PROTO §2 / ADR-001",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-03",
+      "title": "跨主机 UDP WAKEUP_REQ v1 Challenge-Response",
+      "group": "chain",
+      "flow": "F3",
+      "source": "PROTO §3.1 / §3.2",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-04",
+      "title": "跨主机唤醒时延 P95 < 3000 ms",
+      "group": "metric",
+      "flow": "NFR-04",
+      "source": "SRS NFR-04 / TEST.md §2.1",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-05",
+      "title": "受控环境复活成功率 100%",
+      "group": "metric",
+      "flow": "G1",
+      "source": "ROADMAP §3 G1 / TEST.md §3",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-06",
+      "title": "伴随种子跨主机取回与真实 InfoHash 校验",
+      "group": "chain",
+      "flow": "F3→F4",
+      "source": "PROTO §3.3 / T0 §5 接线清单第 5 条",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-07",
+      "title": "第三方 BT 客户端跨主机标准数据面下载闭环",
+      "group": "chain",
+      "flow": "F4",
+      "source": "ROADMAP M1 / S1 cross_client_round",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-08",
+      "title": "真实 NAT 特征取证（STUN / UPnP / NAT-PMP）",
+      "group": "environment",
+      "flow": "环境",
+      "source": "S6 pilot / RISK R-04",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-09",
+      "title": "PROTO v1 golden 唤醒报文契约跨主机回归",
+      "group": "contract",
+      "flow": "F3",
+      "source": "PROTO §3.2 / §3.3 / golden fixtures",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-10",
+      "title": "默认最小暴露与退出无残留",
+      "group": "safety",
+      "flow": "NFR",
+      "source": "CONFIG.md / cr-api RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK",
+      "mandatory": true,
+      "status": "BLOCKED",
+      "assertions": [],
+      "note": "BlockedError: 真实二进制未就绪：daemon_env, cli_env, downloader_env（须为实际文件，不接受占位）",
+      "observation_source": "none"
+    },
+    {
+      "id": "T1-00",
+      "title": "断言引擎自检（注入坏观测必须判 FAIL）",
+      "group": "framework",
+      "flow": "—",
+      "source": "本 harness 自检",
+      "mandatory": true,
+      "status": "PASS",
+      "assertions": [
+        {
+          "label": "正常观测被判 PASS",
+          "ok": true,
+          "actual": true
+        },
+        {
+          "label": "坏观测被判 FAIL",
+          "ok": true,
+          "actual": true
+        }
+      ],
+      "note": "框架自检，不计入 G1 用例数",
+      "observation_source": "stub"
+    }
+  ],
+  "next_actions": [
+    "在两台物理主机上分别启动 coldrevived（B 远端预启动后置 T1_REMOTE_PRESTARTED=1）",
+    "设置 T1_HOST_A / T1_HOST_B 与三个二进制环境变量，以 --mode real 重跑",
+    "确保 --mode real 下 /health 的 machine_id 与 host 均不同，并采集真实 NAT 报告",
+    "G1 已于 2026-11-14 通过（本次 real 证据 + T0 21/21），M2 门禁已解除；S6 四类 NAT 矩阵仍须 M2 真实多 NAT 环境实测"
+  ]
+}

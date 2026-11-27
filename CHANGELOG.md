@@ -1,3 +1,32 @@
+## [2.4.157] - 2026-11-27 — M3 剩余项第二批：FR-25 双轨发布入帧、agent 看护内核与卡点清单
+
+> **不改门禁、不改判据**：`g2_claim=true`、三个工具字段、EX-1 FAIL 78/80、S6 条件计入、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部不变。v2.4.156 中「agent 仍骨架 /
+> FR-25 未接 KAD_PUBLISH / NFR-04 阈值未决」三条表述由本条 supersede（历史原文不改）。
+
+- **FR-25 双轨发布（本地闭环）**：新增 `cr_kad::dual_track_frame_keys`，把 A 轨
+  `MD4(UTF-8(term))`（无前缀、32 位十六进制）并入 daemon 真正发出的 `KAD_PUBLISH` 帧；
+  B 轨 `published_keys` / `inspect kad` 口径保持冻结，避免动到 T0/T1 夹具。
+  三个发帧点（周期重发布、`publish`、本机场景）统一走该函数。ACK 仍不是公网可检索证据；
+  发布量翻倍按 R-02 在 M4 前复审。`cr-ed2k` 顶部旧表述同步更正。
+- **W6.6 无 GUI 看护内核**：`coldrevive-agent` 从只打印一行改为 std-only：spawn 子进程、
+  `try_wait` 巡检、仅异常退出按预算重启、只读 `/health` 就绪日志；不引 Tauri / tray-icon，
+  不监管 relay，不碰公网。托盘 / 浏览器捕获 / UPnP 续租仍 BLOCKED，见新卡点清单。
+- **NFR-04 口径更正**：SRS 写的是局域网 P95 < 3 s、公网 P95 < 8 s，T0/T1 的 3000 ms 只适用
+  局域网，两者**不冲突**，不需要所有者裁决（此前记「未决」是把作用域混读）。量具已支持
+  `timeout_ms`，公网采样须显式给 > 8000 ms 超时，否则超时样本会把 P95 截在 1.2 s。
+- **新卡点清单**：`docs/06-plan/M3-REMAINING-BLOCKERS-2026-11-27.md` 逐项写清剩余项缺什么、
+  需要什么资源与触发条件：公网 P95 采样、BT-over-punched-TCP 双端实测、LEDBAT 新 ADR +
+  新判据 sha、W6.6 GUI 路线、FR-25 R-02 复审。`TEST.md §2.18` 同步更正。
+- **验证**：`cr-kad` 34/34；`coldrevive-agent` 5/5 单测 +
+  `tests/e2e/w66/agent_supervisor.py` 3/3（异常退出重启到预算耗尽、干净退出不重启、
+  spawn 失败非静默通过）；P0 双进程 e2e **77/77**
+  （`tests/ARCHIVE/evidence/p0-dual-track-20261127.json`，其中 `publish` 帧 keys 计数为 9
+  （含 A 轨），`inspect kad` 仍为 B 轨 7 个 key）；全量串行回归
+  **558 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/regression-full-20261127-m3b.log`）。
+  T1 `--lan-precheck` 曾尝试复验，因本机缺 `T0_DOWNLOADER`（aria2）二进制 10 条 BLOCKED，
+  属环境缺失，不作为门禁回归结论，也不改 G1 既有证据。
+
 ## [2.4.156] - 2026-11-27 — M3 工程余项第一批：暴露面闸门、Web UI 资产、aria2 控制面与 NFR-04 量具
 
 > **不改门禁、不改判据**：`g2_claim=true`、三个工具字段、EX-1 FAIL 78/80、S6 条件计入、

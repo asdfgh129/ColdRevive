@@ -7,7 +7,7 @@
 //! 两者同进程共存，命名空间/宽度不同，禁止互相误投；T0 的 `inspect kad` 会同时暴露两者。
 
 use cr_core::{Json, NAMESPACE};
-use cr_hash::{sha1_hex, sha256_hex};
+use cr_hash::{hex, sha1_hex, sha256_hex};
 
 /// ADR-011 eMule 兼容轨的字节层原语（无前缀 MD4 Key + 0x33/0x3B 编解码，
 /// 以及 0x01/0x09/0x21/0x29 节点发现与 0xE5 zlib 解包）。
@@ -50,6 +50,30 @@ pub fn publish_keys(namespace: &str, file_hash: &str, keywords: &[String]) -> Ve
     for kw in &expanded {
         keys.push(keyword_key(namespace, kw));
     }
+    keys
+}
+
+/// ADR-011 A 轨（eMule 兼容）关键词 key：`MD4(UTF-8(term))` 无前缀，32 位十六进制。
+///
+/// 与 B 轨是两套算法，**不共用** `publish_keys` 的结果；这里只算 key，不发包，
+/// 也不碰公共 KAD。上限仍沿用 `MAX_KEYWORD_KEYS`（每文件 ≤ 8 个关键词）。
+pub fn ed2k_keyword_keys(keywords: &[String]) -> Vec<String> {
+    expand_keywords(keywords, MAX_KEYWORD_KEYS).iter()
+        .map(|kw| hex(&kad_ed2k::ed2k_keyword_key(kw)))
+        .collect()
+}
+
+/// FR-25 双轨发布帧的 `keys[]`：B 轨（已入库的 `published_keys`）+ A 轨（MD4 兼容轨）。
+///
+/// 刻意**不**改 `FileEntry.published_keys` / `inspect kad`：T0/T1 的 B 轨口径与
+/// `keyword_count` 是冻结门禁夹具，A 轨只在真正发 `KAD_PUBLISH` 帧时并进去。
+/// 收到帧的一方会把两轨 key 都记入 `remote_keys`，`KAD_FIND` 两轨都能命中。
+/// ACK 仍只表示对端收下 key，不代表公网 KAD 可检索；双轨发布量翻倍按 R-02 复审。
+pub fn dual_track_frame_keys(keywords: &[String], published_keys: &[String]) -> Vec<String> {
+    let mut keys = published_keys.to_vec();
+    keys.extend(ed2k_keyword_keys(keywords));
+    keys.sort();
+    keys.dedup();
     keys
 }
 
@@ -311,10 +335,16 @@ mod tokenizer_tests {
     fn published_keys_include_expansion_but_stay_capped() {
         let kws = vec!["movie".to_string(), "book".to_string()];
         let keys = publish_keys("ns:", "h", &kws);
-        // 1 个 target + 若干关键词 key：不超过上限即可（不该为了凑满而灌水）。
+        // B 轨：1 个 target + 若干关键词 key；不超过上限即可（不该为了凑满而灌水）。
         assert!(keys.len() <= 1 + MAX_KEYWORD_KEYS && keys.len() > 3);
         assert!(keys.contains(&keyword_key("ns:", "cinema")));
         assert!(keys.contains(&keyword_key("ns:", "novel")));
+        // A 轨只进发布帧，不污染冻结的 published_keys 口径。
+        assert!(!keys.contains(&hex(&kad_ed2k::ed2k_keyword_key("cinema"))));
+        let frame = dual_track_frame_keys(&kws, &keys);
+        assert!(frame.contains(&keyword_key("ns:", "cinema")));
+        assert!(frame.contains(&hex(&kad_ed2k::ed2k_keyword_key("cinema"))));
+        assert!(frame.contains(&hex(&kad_ed2k::ed2k_keyword_key("novel"))));
     }
 }
 
@@ -386,5 +416,18 @@ mod tests {
     fn keyword_cap_is_enforced() {
         let kws: Vec<String> = (0..20).map(|i| format!("k{}", i)).collect();
         assert_eq!(publish_keys("ColdRevive_V1:", "h", &kws).len(), 1 + MAX_KEYWORD_KEYS);
+        assert_eq!(ed2k_keyword_keys(&kws).len(), MAX_KEYWORD_KEYS);
+        assert_eq!(dual_track_frame_keys(&kws, &publish_keys("ColdRevive_V1:", "h", &kws)).len(),
+                   1 + 2 * MAX_KEYWORD_KEYS);
+    }
+
+    #[test]
+    fn a_track_key_is_unprefixed_md4_and_distinct_from_b_track() {
+        let term = "zzz-no-synonym-term".to_string();
+        let a = ed2k_keyword_keys(&[term.clone()]);
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0], hex(&cr_hash::md4(term.as_bytes())));
+        assert_eq!(a[0].len(), 32);
+        assert_ne!(a[0], keyword_key("ColdRevive_V1:", &term));
     }
 }

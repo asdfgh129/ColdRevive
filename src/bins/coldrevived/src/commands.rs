@@ -8,8 +8,8 @@ use crate::{ed2k_tasks, http_get, http_post_json, nat_path, DownloadRecord, Node
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
 use cr_engine::Engine;
 use cr_hash::sha256_hex;
-use cr_kad::{detect_language, expand_keywords, find_frame, kad_id_128, keyword_key,
-             publish_keys, socket_addr, udp_roundtrip, dht_id_160, MAX_KEYWORD_KEYS};
+use cr_kad::{detect_language, dual_track_frame_keys, expand_keywords, find_frame, kad_id_128,
+             keyword_key, publish_keys, socket_addr, udp_roundtrip, dht_id_160, MAX_KEYWORD_KEYS};
 use cr_store::FileEntry;
 use cr_wake::{ack_infohash, ack_is_ok, build_req, challenge, has_exact_fields, REQ_FIELDS};
 use std::fs;
@@ -547,6 +547,7 @@ fn ed2k_links(state: &Shared, file_hash: &str) -> Json {
 /// - 单次失败不会自我延期——`kad_expires_at` 只在成功时前推。
 ///
 /// 口径纪律：只重发 `kad_published=true` 的条目已有的 key，不新增关键词；
+/// 双轨发布只是在**发帧时**并入 A 轨 MD4 key，不改冻结的 `published_keys` 口径；
 /// 不把「发过帧 + 收到 ACK」写成「公网可检索」（后者仍需 S2/G0 证据）。
 pub(crate) fn republish_published_keys(state: &Shared) -> Json {
     let ttl = {
@@ -562,9 +563,9 @@ pub(crate) fn republish_published_keys(state: &Shared) -> Json {
             Ok(s) => s,
             Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
         };
-        let due: Vec<(String, Vec<String>)> = st.index.entries.values()
+        let due: Vec<(String, Vec<String>, Vec<String>)> = st.index.entries.values()
             .filter(|e| e.kad_due(now, ttl))
-            .map(|e| (e.file_hash.clone(), e.published_keys.clone()))
+            .map(|e| (e.file_hash.clone(), e.published_keys.clone(), e.keywords.clone()))
             .collect();
         (st.cfg.clone(), due)
     };
@@ -576,7 +577,9 @@ pub(crate) fn republish_published_keys(state: &Shared) -> Json {
             ("note", Json::s("没有进入刷新窗口的条目，未发帧")),
         ]);
     }
-    let mut keys: Vec<String> = due.iter().flat_map(|(_, k)| k.iter().cloned()).collect();
+    let mut keys: Vec<String> = due.iter()
+        .flat_map(|(_, published, keywords)| dual_track_frame_keys(keywords, published))
+        .collect();
     keys.sort();
     keys.dedup();
     let frame = Json::obj(vec![
@@ -606,7 +609,7 @@ pub(crate) fn republish_published_keys(state: &Shared) -> Json {
             Ok(s) => s,
             Err(_) => return Json::obj(vec![("sent", Json::b(false)), ("error", Json::s("状态锁中毒"))]),
         };
-        for (fh, _) in &due {
+        for (fh, _, _) in &due {
             if let Some(e) = st.index.get_mut(fh) {
                 if acked {
                     e.mark_published(now, ttl);
@@ -751,7 +754,8 @@ pub(crate) fn publish_path(state: &Shared, path: &str) -> Json {
             return Json::obj(vec![("published", Json::b(false)),
                                   ("error", Json::s("文件未入库，先执行 index"))]);
         };
-        (st.cfg.clone(), e.published_keys.clone())
+        // B 轨来自冻结的 published_keys；A 轨只在发帧时并入，不改索引字段。
+        (st.cfg.clone(), dual_track_frame_keys(&e.keywords, &e.published_keys))
     };
     let frame = Json::obj(vec![
         ("t", Json::s("KAD_PUBLISH")),
@@ -883,7 +887,9 @@ fn scenario_loopback(state: &Shared, cfg: &Config) -> Json {
             ("indexed", Json::b(false)), ("published", Json::b(false)),
         ]))]);
     }};
-    let keys = publish_keys(&cfg.namespace, &facts.file_hash, &cfg.keywords);
+    let b_keys = publish_keys(&cfg.namespace, &facts.file_hash, &cfg.keywords);
+    // A 轨只进帧；索引里的 published_keys 仍是冻结的 B 轨口径。
+    let keys = dual_track_frame_keys(&cfg.keywords, &b_keys);
     let frame = Json::obj(vec![
         ("t", Json::s("KAD_PUBLISH")),
         ("node", Json::s(&cfg.node_id)),
@@ -893,7 +899,7 @@ fn scenario_loopback(state: &Shared, cfg: &Config) -> Json {
     let mut st = state.lock().unwrap();
     let mut e = FileEntry::new(&facts.file_hash, &path, &facts.name, facts.size);
     e.torrent_path = cfg.workdir.join("download").join("downloaded.torrent");
-    e.published_keys = keys;
+    e.published_keys = b_keys;
     e.kad_published = published;
     st.index.insert(e);
     let indexed = st.index.save().is_ok() && st.index.get(&facts.file_hash).is_some();
