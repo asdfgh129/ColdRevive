@@ -1,0 +1,31 @@
+# W6.7 环境取证：119 入向到底是 NAT 没开，还是安全组没放通
+# 采集时间 2026-11-27 18:11 +08:00；119 = 119.29.150.254（腾讯云 1:1 EIP），
+# 探测源 = 192.168.1.221（家宽出口 112.5.60.4），抓包点 = 119 eth0（私网 10.1.0.2）。
+
+## 1) 客户端探测（在 221 上执行）
+$ nc -v -z -w3 119.29.150.254 22      -> succeeded   (正面对照)
+$ nc -v -z -w3 119.29.150.254 19720   -> timed out   (TCP 无 SYN 到达)
+$ printf PROBE19720 | nc -u -w2 119.29.150.254 19720
+$ printf PROBE19920 | nc -u -w2 119.29.150.254 19920
+
+## 2) 服务端抓包（在 119 上执行）
+$ tcpdump -nn -i eth0 -w /root/td.pcap "port 19720 or port 19920 or port 22"
+
+## 3) 抓包结论（见 inbound-119.decoded.txt，共 58 行）
+- TCP/22：完整往返（SYN / SYN-ACK / 数据），源端口 28920、28896 原样保留；
+- UDP/19720：112.5.60.4.19960 > 10.1.0.2.19720 UDP length 10  —— 到达
+- UDP/19920：112.5.60.4.19961 > 10.1.0.2.19920 UDP length 10  —— 到达
+- TCP/19720、TCP/19920：0 个包（SYN 在内核之前就被丢弃，没有任何 RST）
+
+## 4) 结论（不要再说「NAT 没开」）
+- 1:1 EIP 是**全端口、端口保持**的 NAT：任意 UDP 端口都能打进来，目的地址落到 10.1.0.2，
+  源端口不改写。这一层没有问题。
+- 缺的是**安全组（或网络 ACL）里的 TCP 入向规则**：UDP 有放通（5000-65000 一类），
+  TCP 只放通 22。NAT 与放通是两层，NAT 全端口 ≠ 入向全放通。
+- 119 主机自身 iptables 为 INPUT policy ACCEPT，只有 YJ-FIREWALL-INPUT 这张
+  防 SSH 爆破的黑名单（对若干源 IP REJECT dport 22），没有任何针对其他端口的 DROP。
+
+## 5) 打开方式（任选其一，均不影响 NAT）
+- 控制台：云服务器 -> 安全组 -> 入站规则 -> 新增 TCP:19720（或 TCP:5000-65000）；
+- API：tccli vpc AuthorizeSecurityGroupIngress / ModifySecurityGroupPolicies；
+- 注意 Tencent 安全组规则是**按协议分开**的，已有 UDP 规则不会自动覆盖 TCP。

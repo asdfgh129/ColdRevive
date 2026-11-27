@@ -1,0 +1,58 @@
+18:11:02.722847 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [.], ack 3330103217, win 255, length 0
+18:11:05.660794 IP 10.1.0.2.22 > 112.5.60.4.28896: Flags [P.], seq 1:101, ack 0, win 475, length 100
+18:11:05.660874 IP 10.1.0.2.22 > 112.5.60.4.28896: Flags [P.], seq 101:277, ack 0, win 475, length 176
+18:11:05.687518 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [.], ack 277, win 254, length 0
+18:11:05.688487 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [P.], seq 0:36, ack 277, win 254, length 36
+18:11:05.688487 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [P.], seq 36:96, ack 277, win 254, length 60
+18:11:05.688487 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [F.], seq 96, ack 277, win 254, length 0
+18:11:05.688583 IP 10.1.0.2.22 > 112.5.60.4.28896: Flags [.], ack 97, win 475, length 0
+18:11:05.690319 IP 10.1.0.2.22 > 112.5.60.4.28896: Flags [F.], seq 277, ack 97, win 475, length 0
+18:11:05.716512 IP 112.5.60.4.28896 > 10.1.0.2.22: Flags [.], ack 278, win 254, length 0
+18:11:09.006029 IP 112.5.60.4.28920 > 10.1.0.2.22: Flags [S], seq 1969884656, win 64240, options [mss 1424,sackOK,TS val 3416808124 ecr 0,nop,wscale 7], length 0
+18:11:09.006080 IP 10.1.0.2.22 > 112.5.60.4.28920: Flags [S.], seq 4155208203, ack 1969884657, win 65160, options [mss 1460,sackOK,TS val 499469992 ecr 3416808124,nop,wscale 7], length 0
+18:11:09.028016 IP 112.5.60.4.28920 > 10.1.0.2.22: Flags [.], ack 1, win 502, options [nop,nop,TS val 3416808146 ecr 499469992], length 0
+18:11:09.028017 IP 112.5.60.4.28920 > 10.1.0.2.22: Flags [F.], seq 1, ack 1, win 502, options [nop,nop,TS val 3416808147 ecr 499469992], length 0
+18:11:09.028389 IP 10.1.0.2.22 > 112.5.60.4.28920: Flags [.], ack 2, win 510, options [nop,nop,TS val 499470015 ecr 3416808147], length 0
+18:11:09.036257 IP 10.1.0.2.22 > 112.5.60.4.28920: Flags [P.], seq 1:44, ack 2, win 510, options [nop,nop,TS val 499470022 ecr 3416808147], length 43: SSH: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+18:11:09.036520 IP 10.1.0.2.22 > 112.5.60.4.28920: Flags [F.], seq 44, ack 2, win 510, options [nop,nop,TS val 499470023 ecr 3416808147], length 0
+18:11:09.058025 IP 112.5.60.4.28920 > 10.1.0.2.22: Flags [R], seq 1969884658, win 0, length 0
+18:11:09.058025 IP 112.5.60.4.28920 > 10.1.0.2.22: Flags [R], seq 1969884658, win 0, length 0
+18:11:09.962721 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [S], seq 140510719, win 64240, options [mss 1424,sackOK,TS val 3455019158 ecr 0,nop,wscale 7], length 0
+18:11:09.962776 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [S.], seq 596080155, ack 140510720, win 65160, options [mss 1460,sackOK,TS val 2806751418 ecr 3455019158,nop,wscale 7], length 0
+18:11:09.965614 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [.], ack 1, win 502, options [nop,nop,TS val 3455019161 ecr 2806751418], length 0
+18:11:09.976597 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [P.], seq 1:44, ack 1, win 510, options [nop,nop,TS val 2806751432 ecr 3455019161], length 43: SSH: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+18:11:09.979417 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [.], ack 44, win 502, options [nop,nop,TS val 3455019175 ecr 2806751432], length 0
+18:11:11.336433 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 1:23, ack 44, win 502, options [nop,nop,TS val 3455020532 ecr 2806751432], length 22: SSH: SSH-2.0-russh_0.45.0
+18:11:11.336473 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 23, win 510, options [nop,nop,TS val 2806752792 ecr 3455020532], length 0
+18:11:11.337550 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [P.], seq 44:1164, ack 23, win 510, options [nop,nop,TS val 2806752793 ecr 3455020532], length 1120
+18:11:11.340389 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [.], ack 1164, win 494, options [nop,nop,TS val 3455020536 ecr 2806752793], length 0
+18:11:11.351340 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 23:791, ack 1164, win 494, options [nop,nop,TS val 3455020547 ecr 2806752793], length 768
+18:11:11.391414 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 791, win 504, options [nop,nop,TS val 2806752847 ecr 3455020547], length 0
+18:11:11.394254 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 791:839, ack 1164, win 496, options [nop,nop,TS val 3455020590 ecr 2806752847], length 48
+18:11:11.394307 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 839, win 504, options [nop,nop,TS val 2806752849 ecr 3455020590], length 0
+18:11:11.398812 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [P.], seq 1164:1656, ack 839, win 504, options [nop,nop,TS val 2806752854 ecr 3455020590], length 492
+18:11:11.415127 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 839:855, ack 1656, win 493, options [nop,nop,TS val 3455020611 ecr 2806752854], length 16
+18:11:11.455398 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 855, win 504, options [nop,nop,TS val 2806752911 ecr 3455020611], length 0
+18:11:12.049221 IP 112.5.60.4.19960 > 10.1.0.2.19720: UDP, length 10
+18:11:12.086134 IP 112.5.60.4.19961 > 10.1.0.2.19920: UDP, length 10
+18:11:12.723995 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 855:899, ack 1656, win 496, options [nop,nop,TS val 3455021919 ecr 2806752911], length 44
+18:11:12.724053 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 899, win 504, options [nop,nop,TS val 2806754179 ecr 3455021919], length 0
+18:11:12.724131 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [P.], seq 1656:1700, ack 899, win 504, options [nop,nop,TS val 2806754179 ecr 3455021919], length 44
+18:11:12.740022 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 899:975, ack 1700, win 496, options [nop,nop,TS val 3455021935 ecr 2806754179], length 76
+18:11:12.780398 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 975, win 504, options [nop,nop,TS val 2806754236 ecr 3455021935], length 0
+18:11:15.731858 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [P.], seq 1700:1752, ack 975, win 504, options [nop,nop,TS val 2806757187 ecr 3455021935], length 52
+18:11:15.775086 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [.], ack 1752, win 496, options [nop,nop,TS val 3455024971 ecr 2806757187], length 0
+18:11:17.095900 IP 80.94.92.55.34820 > 10.1.0.2.22: Flags [S], seq 2769927612, win 64240, options [mss 1424,sackOK,TS val 810116359 ecr 0,nop,wscale 7], length 0
+18:11:17.095953 IP 10.1.0.2.22 > 80.94.92.55.34820: Flags [S.], seq 1537561827, ack 2769927613, win 65160, options [mss 1460,sackOK,TS val 4292079499 ecr 810116359,nop,wscale 7], length 0
+18:11:17.250616 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [P.], seq 975:1019, ack 1752, win 496, options [nop,nop,TS val 3455026446 ecr 2806757187], length 44
+18:11:17.250616 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [F.], seq 1019, ack 1752, win 496, options [nop,nop,TS val 3455026446 ecr 2806757187], length 0
+18:11:17.250678 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [.], ack 1019, win 504, options [nop,nop,TS val 2806758706 ecr 3455026446], length 0
+18:11:17.252250 IP 10.1.0.2.22 > 119.91.109.207.48782: Flags [F.], seq 1752, ack 1020, win 504, options [nop,nop,TS val 2806758707 ecr 3455026446], length 0
+18:11:17.255086 IP 119.91.109.207.48782 > 10.1.0.2.22: Flags [.], ack 1753, win 496, options [nop,nop,TS val 3455026451 ecr 2806758707], length 0
+18:11:17.323474 IP 80.94.92.55.34820 > 10.1.0.2.22: Flags [.], ack 1, win 502, options [nop,nop,TS val 810116587 ecr 4292079499], length 0
+18:11:17.331014 IP 10.1.0.2.22 > 80.94.92.55.34820: Flags [P.], seq 1:44, ack 1, win 510, options [nop,nop,TS val 4292079734 ecr 810116587], length 43: SSH: SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.18
+18:11:17.558096 IP 80.94.92.55.34820 > 10.1.0.2.22: Flags [.], ack 44, win 502, options [nop,nop,TS val 810116821 ecr 4292079734], length 0
+18:11:17.716579 IP 80.94.92.55.34820 > 10.1.0.2.22: Flags [P.], seq 1:13, ack 44, win 502, options [nop,nop,TS val 810116979 ecr 4292079734], length 12: SSH: SSH-2.0-Go
+18:11:17.716651 IP 10.1.0.2.22 > 80.94.92.55.34820: Flags [.], ack 13, win 510, options [nop,nop,TS val 4292080120 ecr 810116979], length 0
+18:11:17.717751 IP 10.1.0.2.22 > 80.94.92.55.34820: Flags [P.], seq 44:1164, ack 13, win 510, options [nop,nop,TS val 4292080121 ecr 810116979], length 1120
+18:11:17.953921 IP 80.94.92.55.34820 > 10.1.0.2.22: Flags [.], ack 1164, win 501, options [nop,nop,TS val 810117212 ecr 4292080121], length 0

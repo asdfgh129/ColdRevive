@@ -35,12 +35,16 @@
   ①**端口对称性**——同时打开要求两侧用同一对端口互发 SYN，holder 只能绑 `19720`、
   member 只能拨 `:22`，holder 出向经 1:1 EIP 保端口后对端看到 `:19720`，与 member 的
   remote `:22` 不是同一条连接，内核只能回 `R.`（`REDIRECT` 改写端口只会永久错位，不是写法问题）；
-  ②**可达性**——119/82 安全组只放通 TCP/22（其余端口 3 s 超时=过滤），而 `22` 由 `sshd`
-  占用。落地 0 B、md5 不匹配。报告中 `member_bridge_served` / `holder_splice_done` /
+  ②**可达性**——1:1 EIP 本身是全端口、端口保持的 NAT（UDP `19720`/`19920` 的包实测到达
+  `10.1.0.2`、源端口原样保留），缺的是**安全组 / 网络 ACL 的 TCP 入向规则**：UDP 段已放通、
+  TCP 只放通 22，而 Tencent 安全组按协议分开、UDP 规则不覆盖 TCP；主机 `INPUT policy ACCEPT`，
+  只有防 SSH 爆破黑名单，不是主机防火墙。抓包证据
+  `tests/ARCHIVE/evidence/w67-sg-reachability-20261127/`。
+  落地 0 B、md5 不匹配。报告中 `member_bridge_served` / `holder_splice_done` /
   `engineAttached` 属**relay 数据面**，不是 punched-direct。证据
   `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。
-  关闭条件：一台安全组放通、且该端口未被 sshd/其他服务占用的公网主机，让 punch socket
-  直接绑在「对端会拨的那个端口」上；`REDIRECT` / 静态 DNAT / 中继均不得顶替。
+  关闭条件：**只需加一条 TCP 入向规则**（如 `TCP:19720`），NAT 侧无需改动；`REDIRECT` /
+  静态 DNAT / 中继均不得顶替。
   侧记：源地址限定 `-s <家宽 IP> --dport 22` 的 REDIRECT 会同时劫持控制通道（控制台与
   被测 member 共用出口 IP），本次一度失联、经 82 跳板机 `-D` 才恢复——下次须用独立出口做控制端。
 - **验证**：`coldrevived` 定点单测（3 条 punched 数据面 + 1 条角色判定）通过；全量串行回归

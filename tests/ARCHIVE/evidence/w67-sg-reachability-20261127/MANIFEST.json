@@ -1,0 +1,49 @@
+{
+  "schema": "coldrevive.w67.sg-reachability-evidence/v1",
+  "purpose": "判定 119 入向 TCP 打洞端口不可用到底是 NAT 未开还是安全组未放通；用 tcpdump 证明包是否到达 VM。",
+  "collected_at": "2026-11-27T18:11:00+08:00",
+  "hosts": {
+    "probe_source": "192.168.1.221 (家宽出口 112.5.60.4)",
+    "target": "119.29.150.254 (腾讯云 1:1 EIP, 私网 10.1.0.2)"
+  },
+  "findings": {
+    "tcp_22": "complete SYN/SYN-ACK/data, source port preserved",
+    "tcp_19720": "0 packets captured: SYN dropped before the VM",
+    "tcp_19920": "0 packets captured: SYN dropped before the VM",
+    "udp_19720": "arrived: 112.5.60.4.19960 > 10.1.0.2.19720 UDP length 10",
+    "udp_19920": "arrived: 112.5.60.4.19961 > 10.1.0.2.19920 UDP length 10",
+    "host_firewall": "INPUT policy ACCEPT; only YJ-FIREWALL-INPUT anti-SSH-bruteforce blacklist; ufw inactive"
+  },
+  "conclusion": [
+    "1:1 EIP is a full-port, port-preserving NAT: arbitrary UDP ports reach 10.1.0.2 unchanged.",
+    "The missing piece is a TCP inbound rule in the security group / network ACL; UDP is allowed, TCP only 22.",
+    "NAT and inbound allow-listing are separate layers: full-port NAT does not mean inbound is open."
+  ],
+  "do_not_claim": [
+    "Do not say the NAT is not configured.",
+    "Do not say UDP is blocked; this capture proves the opposite on 19720/19920.",
+    "No G2/S6/NFR claim; this is environment diagnostics only."
+  ],
+  "items": [
+    {
+      "file": "host-firewall.txt",
+      "bytes": 967,
+      "sha256": "e3f4c31449e4fe65f20522fb06e213f9e72cafab8e5e1a23ec3ae6c15f3d82cf"
+    },
+    {
+      "file": "inbound-119.decoded.txt",
+      "bytes": 8253,
+      "sha256": "3ee095c574b6f324111b899e207a1b5e80999781ce29feb5c45973c5748583af"
+    },
+    {
+      "file": "inbound-119.pcap",
+      "bytes": 9015,
+      "sha256": "d3c99441d849dcfa1fc7fc3927a66a25f120fdaea4a6b4dfd2244acc76c5196b"
+    },
+    {
+      "file": "probe.txt",
+      "bytes": 2039,
+      "sha256": "d7063fd6a071256b052dfef6f781f01271475144d7cd8c338c8cf8798b60fdcd"
+    }
+  ]
+}

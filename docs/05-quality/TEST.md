@@ -975,13 +975,17 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   代码侧已补 holder `attach_punched_inbound` 与按角色的 handoff，并有 3+1 条定点单测。
   但两侧 `punch-route` 均回落 relay。根因是端口对称性：TCP 同时打开要求两侧用同一对端口
   互发 SYN，holder 只能绑 `19720`、member 只能拨 `:22`，holder 出向经 1:1 EIP 保端口后
-  对端看到 `:19720`，与 member 的 remote `:22` 不是同一条连接，内核只能回 `R.`；
-  而 119/82 安全组只放通 TCP/22（其余端口 3 s 超时=过滤），`22` 又被 `sshd` 占用
-  （`ss -lntp` 见 `0.0.0.0:22`）。把入向 22 改写成 19720 只会让端口永久错位，不是写法问题。
+  对端看到 `:19720`，与 member 的 remote `:22` 不是同一条连接，内核只能回 `R.`。
+  可达性用抓包定性（`tests/ARCHIVE/evidence/w67-sg-reachability-20261127/`）：1:1 EIP 是
+  全端口端口保持 NAT——UDP `19720`/`19920` 的包确实到达 `10.1.0.2`；而 TCP `19720`/`19920`
+  的 SYN 一个都没到 eth0，同抓包里 TCP/22 有完整往返；主机 `INPUT policy ACCEPT`，只有防
+  SSH 爆破黑名单。**缺的是安全组 / 网络 ACL 的 TCP 入向规则**（UDP 已放通、TCP 只放通 22），
+  不是 NAT 没配——安全组按协议分开，UDP 规则不覆盖 TCP。把入向 22 改写成 19720 只会让端口
+  永久错位，不是写法问题。
   报告里的 `member_bridge_served` / `holder_splice_done` / `engineAttached` 属于
   relay 数据面，不是 punched-direct；BT 落地 0 B、md5 不匹配。证据
-  `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。关闭需要一个安全组放通、且未被
-  sshd 占用的公网 TCP 端口，让 punch socket 直接绑在对端会拨的那个端口上。
+  `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。关闭只需加一条 TCP 入向规则
+  （如 `TCP:19720`），NAT 侧无需改动。
 - **门禁边界不变**：两份证据都不写 G2/S6/NFR-02 结论，不报成功率/可达率；
   `g2_claim=true` 为全局既有值，工具字段仍 `s6_status=not_run` /
   `evidence_valid_for_pass=false` / `auto_pass=false`。
