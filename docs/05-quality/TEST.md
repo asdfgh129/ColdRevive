@@ -2,10 +2,10 @@
 doc_id: DOC-12
 title: 测试计划（TEST）
 category: 质量
-version: 3.1
+version: 3.2
 status: 待评审
 owner: 测试组
-updated: 2026-11-24
+updated: 2026-11-27
 ---
 
 # 测试计划（TEST）
@@ -15,8 +15,15 @@ updated: 2026-11-24
 > **本文所有 `g2_claim=false` 字样均为成文时点的记录**（v3.0 / v3.1 时期），不代表现状；
 > `s6_status=not_run`、`evidence_valid_for_pass=false`、`auto_pass=false` 仍是现值——
 > 那三个 `false` 的含义是「工具不替人下结论」，不是「G2 没达标」。
+>
+> **2026-11-27 测试范围注**：NFR-02 的 macOS 真机复核见 §2.17。结果是
+> **5 pass / 1 not_verified**；`not_verified` 指唤醒线程逐线程优先级没有取得证据，
+> **不是 fail，也不是 pass**，不得用握手功能或进程级读数替代。
 
-> 编号 DOC-12 · 版本 3.1 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-24
+> 编号 DOC-12 · 版本 3.2 · 状态 待评审 · 责任人 测试组 · 更新 2026-11-27
+> **v3.2**：新增 §2.17 NFR-02 macOS 真机运行时复核，明确 NFR-02 两个分句、
+> macOS 只验证第二分句、以及 `not_verified` 的准确含义；不改门禁口径，
+> `g2_claim` / 三个工具字段 / `runtime_verified` / `counts_toward_nfr02` 均未改。
 > **v3.1**：§11 补 [DOC-30](../07-operations/TCP-DISCOVERY-RUNBOOK.md) 引用、9 条
 > `tcp_discovery` 定点单测与 6 项 CLI 回环冒烟；全量串行只作最终回归，不再是唯一判据。
 > **v3.0**：补 §2.12–§2.15（W62 FR-11 握手拦截 / W14 FR-14 空闲休眠 / W24+W24-pub FR-24
@@ -631,6 +638,46 @@ std-only 的贪心 LZ77 + 固定 Huffman 压缩，压不小才回退 stored DEFL
 第二 stock amuled 都落地同一 md5；9,736,192 B 文件只走 408,507 B 压缩载荷。
 原始抓包 `tests/e2e/w25-daemon/run/compressed-frames-20261124.hex` 与逐次归档在
 `tests/ARCHIVE/TEST-RUNS-2026-11-24.md`。**公网未测，门禁常量不变。**
+
+### 2.17 NFR-02 macOS 真机运行时复核（2026-11-26 新增，5 pass / 1 not_verified）
+
+**需求原文**（[SRS §2](../01-product/SRS.md)）：NFR-02 是 CPU 类非功能需求，包含两个分句——
+「空闲态平均 CPU ≤ 2%」与「造种任务仅以 Idle 优先级运行」。前半句已有独立采点（600.63 s
+空闲窗口均值 0.03%）；本节只覆盖**后半句在 macOS 上的运行时行为**，不把整条 NFR-02 记为达标。
+
+**粒度**：降级对象是引擎线程 `cr-engine-wrk`，不是整个进程。同进程的 `cr-guard` 握手、
+`cr-data-plane` UDP 数据面、HTTP API 等唤醒链路线程必须保持默认优先级，否则会用 NFR-02
+换掉 NFR-04 的唤醒时延。
+
+**Darwin API 语义**：`setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x1000)` 的
+`0x1000` 是**设置侧标志位**；`getpriority(PRIO_DARWIN_THREAD, 0)` 返回的是**读回侧布尔值**，
+`1` = 后台、`0` = 前台。两者编码不同，不能拿读回值直接和 `0x1000` 比较。依据为本机
+`man 2 setpriority`、XNU `bsd/kern/kern_resource.c` 与独立 C 探针（set 0x1000→读回 1；
+set 0→读回 0；set 0x1→读回 0）。
+
+**执行**：`dist/coldrevive-macos-nfr02-runtime-v1.4/`，`bash run_all.sh`；环境为 Mac mini
+（Macmini8,1 / Intel i5-9500）、macOS 26.5.2、Darwin 25.5.0 x86_64、rustc/cargo 1.100.0；
+全部流量仅走 `127.0.0.1`。
+
+| 检查 | 结果 | 观测 |
+| :--- | :--- | :--- |
+| `cr-engine` 单测 | pass | 13/13；含 Darwin 读回判定与钉值用例 |
+| `coldrevived` 构建 | pass | 退出码 0，二进制存在 |
+| `daemon idle_priority on` | pass | 3/3 快照 `requested=true, applied=3, failed=0` |
+| `daemon idle_priority off` | pass | 负向对照 3/3 快照 `requested=false, applied=0` |
+| 握手唤醒功能 | pass | 262144 B 落地，md5 与样本一致 |
+| 唤醒线程未降级（逐线程） | **not_verified** | 本包没有进程内逐线程读取器，未取得 `guard` / `data-plane` 线程的读回值 |
+
+**`not_verified` 的准确含义**：不是 fail（没有观察到降级），也不是 pass（没有取得逐线程证据）。
+Darwin `getpriority(PRIO_DARWIN_THREAD, 0)` 只能读**调用线程**；本包没有给唤醒线程加进程内读取器。
+握手功能通过只证明链路可用，不能替代优先级证据；进程级读数混合了已降级的引擎线程与应保持前台的
+唤醒线程，也不能替代。按 DOC-34 §10 的口径，这一项必须如实保留为 `not_verified`。
+
+**门禁影响**：run `20261126T104241Z` 汇总 **5 pass / 1 not_verified / 0 fail / 0 blocked**，
+`gate_claim=null`；`g2_claim=true`、三个工具字段、`runtime_verified=false` 与
+`counts_toward_nfr02=false` 均未改。**不得写「NFR-02 三平台达标」或「macOS 已验证」**；
+是否把 macOS 计入 NFR-02 需所有者书面决定。证据
+`tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`，详见 DOC-34 §14。
 
 ## 3. 兼容性矩阵（必须全绿）
 

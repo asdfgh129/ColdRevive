@@ -27,7 +27,7 @@ g2_claim = true
 g2_claim_decided_by = "项目所有者"
 g2_claim_decided_at = "2026-11-25T17:20:00+08:00"
 g2_claim_ref = "docs/06-plan/G2-EXIT-RECORD-2026-11-25.md"
-g2_claim_wording = "G2 达标（所有者判定，2026-11-25），带两项书面例外；签署时欠账 G-1～G-5 均已关闭（G-2 于 2026-11-25T22:31 归档、G-3 于 2026-11-26T08:32 三项实测关闭）；NAT 类别覆盖 3/4，公平性按原判据仍为 FAIL（78/80），NFR-02 两分句在 Linux/Windows 已实测（空闲 CPU 0.03% + 引擎线程 nice19/SCHED_IDLE）；macOS 的 PRIO_DARWIN_BG 分支已实现但无硬件实测（G-5 代码缺口已关，不构成第三平台达标）"
+g2_claim_wording = "G2 达标（所有者判定，2026-11-25），带两项书面例外；签署时欠账 G-1～G-5 均已关闭（G-2 于 2026-11-25T22:31 归档、G-3 于 2026-11-26T08:32 三项实测关闭）；NAT 类别覆盖 3/4，公平性按原判据仍为 FAIL（78/80），NFR-02 两分句在 Linux/Windows 已实测（空闲 CPU 0.03% + 引擎线程 nice19/SCHED_IDLE）；macOS 的 PRIO_DARWIN_BG 分支已于 2026-11-26 真机 run2 复跑，套件 5 pass / 1 not_verified（引擎线程降级与负向对照 pass；唤醒线程逐线程优先级未验证），未计入 NFR-02，是否计入由所有者决定（G-5 代码缺口已关，不构成第三平台达标）"
 g2_claim_carries_exceptions = [
   "EX-1 公平性：判定仍 FAIL（78/80，cc_on 第 7 轮 0.430/0.570、cc_paced 第 8 轮 0.433/0.567），后果 C1-C6 见 DOC-33",
   "S6 条件计入：类别 3/4（restricted-cone 按 ADR-016 §R2 排除、cgnat 未覆盖）；HighID direct 3/30 属描述性；symmetric 0/30 是 NAT 行为；punched-direct 仅 3/30 且 BT 公网属 direct-via-static-dnat",
@@ -46,10 +46,11 @@ s4_s5_evidence_archive = { gap = "G-2", status = "closed", recorded_at = "2026-1
 
 # G-5（macOS 无 Idle 降级实现）的**代码缺口**已于 2026-11-25T21:5x 关闭：darwin 分支写出来了
 # （PRIO_DARWIN_BG）、判定逻辑有单测、分支经 --features darwin-check 类型检查。
-# 下面这组措辞约束是 2026-11-25 签署时的原文，保留不改；2026-11-26 已有真机证据，
-# 但「是否据此改口径」属于所有者决定，见 DOC-34 §14 与本文件 nfr02_macos_runtime_20261126。
+# 2026-11-27 按真机 run2 更新措辞约束：已有 macOS 证据，但仍有 not_verified 项且未计入 NFR-02，
+# 所以「不可写已验证/已支持/三平台达标」的结论不变，理由改为 gate_claim=null + 逐线程未验证
+# + 所有者未决定是否计入。见 DOC-34 §14/§15 与本文件 nfr02_macos_runtime_20261126。
 g2_wording_constraints = [
-  "macOS 只可写「已实现 + 类型检查」，不可写「已验证」「已支持」「三平台达标」：本仓库没有任何一台 mac 跑过这段代码，读回谓词本身也未经真机验证（DOC-34 §10）",
+  "macOS 可写「真机 run2：5 pass / 1 not_verified；引擎线程降级与负向对照 pass，唤醒线程逐线程优先级未验证」，不可写「已验证」「已支持」「三平台达标」：gate_claim=null，且 not_verified 项未取得逐线程证据（DOC-34 §14/§15）",
 ]
 
 # 2026-11-26 真机补记（事实登记；**不改写上面任何人为判定字段**）：
@@ -72,7 +73,7 @@ g2_claim_does_not_mean = [
   "不表示 NAT 矩阵通过或 4/4 类别覆盖",
   "不表示任何可达率/成功率",
   "不表示 punched-direct 已稳定打通",
-  "不表示 NFR-02 在三平台全部达标（Linux/Windows 两分句均已实测；macOS 已实现但无硬件实测，见 g2_wording_constraints）",
+  "不表示 NFR-02 在三平台全部达标（Linux/Windows 两分句均已实测；macOS 真机 run2 为 5 pass / 1 not_verified，未计入 NFR-02，见 nfr02_macos_runtime_20261126）",
 ]
 
 # G-1（NFR-02 空闲 CPU 无采点）已于 2026-11-25T20:05 关闭，数值见下。
@@ -114,10 +115,10 @@ engine_policy = "SCHED_IDLE"
 non_engine_threads_untouched = true
 negative_control = "engine.idle_priority=false → 同一批线程 nice=0/SCHED_OTHER，verdict=fail，applied=0"
 config_key = "engine.idle_priority（默认 true；写字符串/数字不生效，按默认 true）"
-platforms = { linux = "实测", windows = "单测实测（THREAD_PRIORITY_IDLE=-15）", macos = "已实现（PRIO_DARWIN_BG）+ 类型检查，无硬件实测" }
+platforms = { linux = "实测", windows = "单测实测（THREAD_PRIORITY_IDLE=-15）", macos = "真机 run2：5 pass / 1 not_verified（引擎线程降级+负向对照 pass；唤醒逐线程未验证），未计入 NFR-02" }
 # macOS 单列：它是「实现完成 / 验证未完成」的组合，两个字段都不许省。
 # 为什么不做成 [nfr02_idle_priority.macos] 子表：本块后面还跟着 g2_note，插子表头会把它吞进去。
-macos = { implementation = "setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x10000)", readback = "getpriority(PRIO_DARWIN_THREAD)==0x10000 才算成功；-1 折成读不出，不折算成 0", outcome = "darwin_bg", compile_check = "cargo check -p cr-engine --features darwin-check", unit_tests = "prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code / darwin_echo_of_minus_one_is_never_a_priority", runtime_verified = false, counts_toward_nfr02 = false, evidence = "tests/ARCHIVE/evidence/nfr02-macos-idle-priority-20261125.json" }
+macos = { implementation = "setpriority(PRIO_DARWIN_THREAD=3, 0, PRIO_DARWIN_BG=0x1000)", readback = "getpriority(PRIO_DARWIN_THREAD,0) 返回布尔 1=后台 / 0=前台；-1 折成读不出，不折算成 0", outcome = "darwin_bg", compile_check = "cargo check -p cr-engine --features darwin-check", unit_tests = "prio::tests::darwin_verdict_reads_back_instead_of_trusting_return_code / darwin_echo_of_minus_one_is_never_a_priority", runtime_evidence = "tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/results/20261126T104241Z/summary.json", runtime_counts = "5 pass / 1 not_verified / 0 fail / 0 blocked", runtime_verified = false, counts_toward_nfr02 = false, evidence = "tests/ARCHIVE/evidence/nfr02-macos-idle-priority-20261125.json" }
 binary_sha256 = "ef34652b1419e1bf44d929e0d3673bb0e8f8b53d0e05b54ccd69290f3036d82a"
 git_commit = "9ae510a84f1ca6a8f32b8f9f6a939196d2575c97"
 closes_gap = "G-4"
@@ -159,7 +160,8 @@ g2_note_20261125 = """
 """
 # 22:31 补记（不重写上面的历史文字）：G-1/G-4/G-5 代码缺口与 G-2 均已关闭，
 # 当时开放的欠账只剩 G-3；2026-11-26T08:32 G-3 也已按 DOC-35 关闭，开放欠账现为空。
-# macOS 真机实测仍是「未测项」而非欠账，公平性 EX-1 仍是例外而非 PASS。
+# macOS 已于 2026-11-26 run2 真机跑出 5 pass / 1 not_verified；引擎线程降级与负向对照 pass，
+# 唤醒线程逐线程优先级仍是 not_verified 且未计入 NFR-02。公平性 EX-1 仍是例外而非 PASS。
 
 # ---------------------------------------------------------------------------
 # G2 公平性书面例外（DOC-33 / EX-1，2026-11-25 所有者签署）

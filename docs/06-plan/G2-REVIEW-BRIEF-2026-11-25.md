@@ -436,3 +436,10 @@ mac 真机实测仍列为「未测项」而非欠账。详见 DOC-34 §11。
 违约告警延迟 0.433 s；缺的告警进程与 5 个 UDP stats 字段已补实现。签署时的欠账至此全关。
 口径不变：**不表示公网 relay 当前健康或带宽 SLO**，`g2_claim` 与三个工具字段未动，
 EX-1 仍 FAIL 78/80，mac 真机实测仍是未测项。详见 DOC-34 §12。
+
+**补记（2026-11-27，DOC-34 §14/§15）**：mac 真机已不再是「未测项」。2026-11-26 在 Mac mini /
+macOS 26.5.2 上完成 run2：**5 pass / 1 not_verified / 0 fail / 0 blocked**，`gate_claim=null`。
+引擎线程降级与负向对照通过，握手唤醒 262144 B md5 一致；唤醒线程逐线程优先级仍
+`not_verified`（Darwin `getpriority(PRIO_DARWIN_THREAD,0)` 只能读调用线程，本包无进程内读取器）。
+因此当前可写「macOS 真机套件 5 pass / 1 not_verified」，仍**不可**写「macOS 已验证」「三平台达标」；
+`runtime_verified` / `counts_toward_nfr02` 是否改为 true 仍由所有者书面决定。

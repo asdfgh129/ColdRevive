@@ -1,3 +1,21 @@
+## [2.4.155] - 2026-11-27 — 文档同步：明确 NFR-02 范围与 macOS `not_verified` 含义（无代码/门禁变更）
+
+> 仅更新测试文档、出口记录与机读夹具的表述；不改源码、判据、阈值或任何门禁字段。
+
+- **TEST 3.2 新增 §2.17**：写清 NFR-02 是「空闲态平均 CPU ≤ 2%」+「造种任务仅以 Idle
+  优先级运行」两个分句；本次 macOS 只覆盖第二分句，且只降引擎线程 `cr-engine-wrk`，
+  唤醒链路线程保持默认优先级。
+- **`not_verified` 定性**：唤醒线程逐线程优先级项不是 fail（未观察到降级），也不是 pass
+  （未取得逐线程证据）。Darwin `getpriority(PRIO_DARWIN_THREAD,0)` 只能读调用线程，
+  测试包没有进程内逐线程读取器；握手功能通过或进程级读数都不能替代。
+- **DOC-34 v1.7 §15**：区分「2026-11-25 签署时无 mac 硬件」的历史表述与「2026-11-26 run2
+  已有真机证据」的当前事实；§0 达标声明、`g2_claim`、三个工具字段均未改。
+- **机读夹具**：`g2_claim_wording` / `g2_wording_constraints` / `platforms.macos` /
+  `macos` 字段同步为 `set 0x1000 / readback 1` 与 run2 结果；`runtime_verified=false`、
+  `counts_toward_nfr02=false` 保持，等待所有者决定是否计入。
+- **归档账本**：追加一条 INFO 更正，说明 NFR-02-MAC-RUN2 的 `result: PASS` 应读作
+  「套件执行完成」，计数是 5 pass / 1 not_verified，不是全项 PASS；原文按追加式规范保留。
+
 ## [2.4.154] - 2026-11-26 — macOS 真机复跑：套件 5 pass / 1 not_verified；修正 Darwin 读回判读
 
 > **不改门禁、不改判据**：`g2_claim` 与三个工具字段不动，`gate_claim=null`，唤醒线程逐线程
