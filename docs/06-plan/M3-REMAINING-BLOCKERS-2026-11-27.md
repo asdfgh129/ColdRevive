@@ -5,7 +5,7 @@
 > `auto_pass=false`、EX-1 公平性 FAIL 78/80、`runtime_verified=false`、
 > `counts_toward_nfr02=false` 全部保持原值；S6 仍为「条件计入」。
 
-## 1. 已关闭 / 已推进项（v2.4.157～v2.4.159）
+## 1. 已关闭 / 已推进项（v2.4.157～v2.4.160）
 
 | 项 | 落地 | 验证 | 边界 |
 | :--- | :--- | :--- | :--- |
@@ -13,6 +13,7 @@
 | W6.6 agent 看护内核 | `coldrevive-agent` 从只打印一行改为 std-only：spawn 子进程、`try_wait` 巡检、异常退出按预算重启、只读 `/health` 就绪日志 | agent 5/5 单测 + `tests/e2e/w66/agent_supervisor.py` 3/3 | **不是**托盘 / 浏览器捕获 / UPnP 续租；不监管 relay；不碰公网 |
 | NFR-04 公网唤醒 P95（追加关闭） | `tests/e2e/nfr04-public/run.py` 在 221（家庭出口 112.5.60.4）与 119（腾讯云 1:1 EIP）各跑真实 `coldrevived`，仅 relay 唤醒候选，每侧 30 条，超时 12000 ms | A→C P95 **281 ms**、C→A **230 ms**，各 30/30、0 超时；强制 relay RTT 241/187 ms；两端 `/proc/<pid>/exe` 均为修复后二进制 `8556cd8b…`。证据 `tests/ARCHIVE/evidence/nfr04-public-20261127/` | 是 `WAKEUP_REQ→ACK` 唤醒时延，不是 BT 可达性/G2/S6；ACK≠公网可检索；两份 0 ms 作废报告同目录留存 |
 | 打洞入向握手唤醒（v2.4.159，推进 2.2） | `wake_for_inbound_handshake` 把「解析 infohash → FR-15 准入 → `wake_seed` → 等 HOT ≤3 s」抽成 guard 与打洞**共用**的裁决；holder 改用 `DataPlane::attach_punched_inbound_waking`（先读 68 字节 → 唤醒 → 补回前缀再 splice） | `cargo test -p coldrevived --bin coldrevived punched` **5/5**；公网实测 BT 数据**首次**经打洞 socket 真实流动（1 MiB 落地 512 KiB） | **不是** W6.7 通过：落地 md5 不符、中途被 RST，仍 FAIL；不产出可达率 |
+| 打洞登记可重入（v2.4.160，**关闭 2.2**） | `cr_bridge` 登记槽化：`take()` 保留键当占位、已就绪未消费的连接仍拒绝覆盖；新增 `SlotState`(Armed/InUse/Awaiting/Unknown) 与 `end_session()`；`take_for_connect()` 在补装窗口（6 s）里等生产者补 socket。配套：`tcp_punch` 退避加抖动、打洞窗口可配（默认 4 s） | 单测 `cr-bridge` **15/15**、`coldrevived punched` **6/6**；公网 daemon 级 e2e **1 MiB 落地 md5 一致**，`socks5_rearmed=1` 证明占位被重新填装后仍能服务 | 一条可用路径，不报成功率；重填装须成对触发且先重发现映射；H 侧线上字节仅入向 |
 
 ## 2. 仍开放的卡点
 
@@ -42,56 +43,63 @@ P95 截在 1.2 s 而失去意义。
 **禁止**：把本机回环 / 同一局域网的结果写成公网 P95；把超时样本丢弃后只算成功样本；
 把该 P95 写成 G2/S6/NAT 可达证据。
 
-### 2.2 BT-over-punched-TCP daemon 级实测 —— 传输通道已打通，仍未通过落地判据
+### 2.2 BT-over-punched-TCP daemon 级实测 —— 已关闭（2026-11-27 22:56，单条可用路径）
 
 **2026-11-27 21:34 环境变更**：所有者按提示在 `119.29.150.254` 上放通了 `TCP:19720`。
-需要注意的是这台机器是**轻量应用服务器（Lighthouse，`lhins-cyayca13`，广州）**，不是 CVM，
-所以规则在「实例 → 防火墙」里，不在 VPC 安全组里——之前「CVM 实例列表为空」就是这个原因，
-不是权限问题。`82.157.68.159` 同样是轻量（北京 `lhins-dmotjt9m`）。放通后实测：
-从 221 发起 `TCP/19720` 得到完整握手，payload `PUNCH-PROBE-OK-19720` 到达 `10.1.0.2`。
+这台机器是**轻量应用服务器（Lighthouse，`lhins-cyayca13`，广州）**，不是 CVM，所以规则在
+「实例 → 防火墙」里，不在 VPC 安全组里——之前「CVM 实例列表为空」就是这个原因，不是权限
+问题。`82.157.68.159` 同样是轻量（北京 `lhins-dmotjt9m`）。放通后实测：从 221 发起
+`TCP/19720` 得到完整握手，payload `PUNCH-PROBE-OK-19720` 到达 `10.1.0.2`。
 
-**本轮（revision 2）做了什么**：`tests/e2e/w67-punched-bt/run.py` 删掉全部 `REDIRECT`，
-改为 holder 直接绑 `0.0.0.0:19720`、member 拨 `119.29.150.254:19720`；观测点就设在这同一个
-端点上，两次采样必须一致（`36584→…→36883`，两次相同），不做跨目的地外推。
-两个 BT 阶段的问题也在本轮定位并修掉：
+**revision 2（v2.4.159）修掉的真缺口**：`nat punch-route` 的 holder 分支只 splice，而 guard
+路径有「68 字节握手命中冷种子就唤醒」。冷种子不应答入向握手，现场是握手到达（tcpdump
+`length 68`）、引擎 10 s 不回、对端 FIN、holder 回 `R.`。裁决现抽成
+`wake_for_inbound_handshake`（infohash → FR-15 准入 → `wake_seed` → 等 HOT ≤3 s），guard 与
+打洞两条入向路径共用；holder 改用 `attach_punched_inbound_waking`（读 68 字节 → 唤醒 →
+补回前缀再 splice）。该轮数据**首次**真实经打洞 socket 流动，但只落地 512 KiB、md5 不符。
 
-1. **冷种子不响应入向握手**（真代码缺口，v2.4.159 修复）。`nat punch-route` 的 holder 分支
-   只做 splice，而 guard 路径有「握手命中冷种子就唤醒」。结果是 68 字节 BT 握手**到达了**
-   holder 的打洞 socket（tcpdump `21:42:55.525 ... length 68`），引擎 10 秒内一个字都不回，
-   member 发 FIN、holder 回 `R.`。修法是把这个裁决抽成 `wake_for_inbound_handshake`
-   （解析 infohash → FR-15 准入 → `wake_seed` → 等 HOT ≤3 s），guard 与打洞两条入向路径
-   共用；holder 改用 `DataPlane::attach_punched_inbound_waking`（先读 68 字节 → 唤醒 →
-   补回前缀再 splice）。5 条 punched 单测通过，含「前缀必须补回」与「拒绝时不得 splice」。
-2. **量具不足**：打洞失败时只写「未建立」查不动。现在把 `punch_local` / `punch_target` /
-   `punch_attempts` / `punch_errors` 一并回出来。
+**revision 3（v2.4.160）做了什么** —— 关闭的就是 rev2 剩下的第二条条件「让登记可重入」：
 
-**本轮实测结果（`tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r2/`）**：
+1. **`cr_bridge` 登记槽化**：`HashMap<addr, Upstream>` 改成 `HashMap<addr, Slot>`。
+   `take()` 只取走连接、**保留键**当占位，于是同一个目标可以重新填装；已就绪但未被消费的
+   连接仍然拒绝覆盖（不丢掉活连接）。新增 `SlotState`（`Armed` / `InUse` / `Awaiting` /
+   `Unknown`）与 `end_session()`：会话结束才转 `Awaiting`，避免把「正在用」误报成「待补装」。
+2. **CONNECT 会在补装窗口里等**：`take_for_connect()` 对登记过的目标最多等 6 s
+   （`PUNCHED_REARM_WAIT`）等生产者补一条新 socket，而不是立刻去拨一个只在打洞存活期间
+   有效的公网映射。未知目标仍然立刻直连——那不是桥的责任。
+3. **打洞重试去共振**：`tcp_punch` 的固定 60 ms 退避改成 `60 ms + 0..90 ms` 抖动。两侧跑
+   同一份实现时固定退避会锁死相位：一条 socket 收到对端 RST 后只活十几毫秒，相位一旦错开
+   就永远错开（rev2 后第一次复跑：8 s / 16 轮，两端每轮都是 `Connection refused`）。
+4. **打洞窗口可配**：`punch-route` 第五个参数（300–15000 ms，默认 4000），替代写死的 1200 ms。
+5. **量具修正**（都在 harness 里，属测量问题不是产品问题）：
+   - M 侧 SSH 建连移到 barrier **之前**。原来在线程里现连，M 比 H 晚 200–400 ms 才发包，
+     两侧 SYN 窗口根本对不上——这是「同时打开」被量具做没了。
+   - **重打洞前重新发现映射**。一次会话结束后家宽 NAT 的映射可能换源端口，继续用旧端口会让
+     holder 对着没人等的 4-tuple 发 SYN（现场：H 27 轮静默、M 每轮 `Connection refused`）。
+   - **下载目录每轮清空并断言为空**。这条最要命：上一轮留下的 `sample.bin` 会让 librqbit
+     直接校验通过、报 `complete` 且 md5 相符，但一个字节都没传（当晚两份 PASS 因此作废，
+     数字见 MANIFEST 的 `voided_runs`）。
 
-- 映射 `112.5.60.4:36883` 两次采样一致；两端 `punch-route` 均 `route=punched-direct`，
-  `tcp_punch_established=true`，`punched_socket_registered=true`，`direct` 计数 +1；
-- holder `punched_alive=1`、member `served_registered=1`，`engineAttached=true`，
-  infohash 命中；**真实 BT 数据经打洞 socket 流过**：holder 线上发出约 791 KB，
-  member 桥搬运 728 644 B；
-- 但只落地 **524 288 / 1 048 576 B**（4 片中的 2 片），`md5 6822f905…` ≠ `6209e962…`；
-- 21:59:02.5 member 侧发 `R`（其接收缓冲仍有未读数据，属「close with pending data」形态），
-  holder 之后每 20 ms 重传都被 `R` 拒；此后 member 停在 50% 直到超时。
+**revision 3 实测结果（`tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r3/`）**：
 
-**因此 W6.7 仍未通过**。原来那条 BLOCKED 理由（没有可直绑的公网 TCP 端口）**已经消除**，
-剩下的是另一件事：
+- 下载目录两端实测为空（`0` 个文件）；映射两次采样一致；
+- 首次打洞 **1 次尝试**成功，两端 `route=punched-direct`、`tcp_punch_established=true`、
+  `punched_socket_registered=true`、`direct` 计数 +1；
+- 传输中途停滞 → harness 触发 1 次「重发现 + 同时重打洞」，再次两端 `punched-direct`；
+  `socks5_rearmed=1`，**桥把占位重新填装并继续服务同一条 BT 会话**；
+- 最终 **1 048 576 / 1 048 576 B** 落地，`md5 6209e962f3b26a13c9ec1ae70fd78e10` 与源文件一致，
+  aria2 `status=complete`、`connections=0`；
+- member 侧打洞端口线上 payload **1 327 246 B / 1007 帧**（最大帧 2824 B），是真实 BT 数据，
+  不是中继：两端 `tunnels=0`、`holder punched_alive=1`、member `served_registered=1`。
 
-- 打洞连接在传输中途被对端 RST，原因未定位（不是端口可达性，也不是唤醒——数据真的流过）；
-- `cr_bridge` 的登记是**一次性**的（`take()` 取走即删），一条打洞 socket 只能服务一次
-  CONNECT；连接断掉之后，member 的 librqbit 再拨同一目标只能回落直连，必然失败。
-  也就是说传输层「断了就没有第二条」，与 BT 会重连的实际行为不匹配。
+**边界（必须一起写）**：
 
-关闭条件（二选一，都需要新证据）：
-
-1. 定位并修掉中途 RST（先从 member 侧看是谁先关的：桥→引擎方向还是引擎→桥方向）；
-2. 或让打洞登记**可重入**：socket 死亡后允许重新 punch 并覆盖同一桥键（`register` 目前
-   对重复键是拒绝覆盖），并在 e2e 里如实记录「本次共用了 N 条 punched 会话」。
-
-**不得**因为「有 512 KiB 流过去」就写成 punched-direct BT 已通过，也不得把这段字节数
-写成可达率。按 ADR-012 不报成功率/可达率。本机、回环、静态 DNAT 都不能顶替这项。
+- 这是**该类环境下有一条可用路径**，按 ADR-012 **不报成功率/可达率**；
+- 重填装**必须成对触发且先重发现映射**：单侧无法自愈，holder 也不能继续拨旧端口；
+- 一条打洞 socket 仍然只服务一次 CONNECT，这是 TCP 的物理约束，不是缺陷；可重入解决的是
+  「键还能不能再被填装」，配套的补装动作由控制面负责；
+- 本报告里 H 侧线上字节数只统计了入向（过滤器 bug，事后已修），应读 M 侧接收数；
+- 不是 G2/S6/NFR-02 证据；门禁字段一个未动。
 
 ### 2.3 LEDBAT / 公平性 EX-1 —— 缺新判据，不是缺重跑
 
@@ -126,8 +134,10 @@ EX-1 仍为 **FAIL**（80 轮中 78/80，cc_on/paced 两轮 0.430/0.570、0.433/
 
 ## 3. 下一轮建议顺序
 
-1. 2.1 已关闭。2.2 的公网端口条件已由所有者放通并复测：打洞已直连、BT 数据已真实流过，
-   但中途被 RST、只落地 50%，未过 md5 —— 下一步先定 2.2 里那两条关闭条件之一
-   （定位中途 RST，或让打洞登记可重入），不要重跑同一套指望结果变化。
-2. 2.3 属于独立课题，先 ADR 后判据，不与 2.2 混跑。
+1. 2.1（NFR-04 公网 P95）与 2.2（BT-over-punched-TCP）均已关闭，证据分别在
+   `tests/ARCHIVE/evidence/nfr04-public-20261127/` 与
+   `tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r3/`。
+   2.2 的关闭口径是「该类环境下有一条可用路径」；若后续要在更多 NAT 形态上复现，
+   必须重新预注册判据，不能把本轮结果外推成成功率。
+2. 2.3 属于独立课题，先 ADR 后判据，不与已关闭项混跑。
 3. 2.4 需要所有者选 GUI 路线；2.5 等 R-02 复审窗口。

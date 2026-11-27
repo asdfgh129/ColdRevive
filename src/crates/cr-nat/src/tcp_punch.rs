@@ -32,7 +32,33 @@ use std::net::{SocketAddr, TcpStream};
 use std::time::{Duration, Instant};
 
 /// 单轮尝试的等待窗口：窗口内没建连就换一轮（重新 bind + connect）。
+/// 重试的最小退避。真实退避是 `BACKOFF_BASE + retry_jitter()`。
 pub const RETRY_INTERVAL: Duration = Duration::from_millis(150);
+const BACKOFF_BASE: Duration = Duration::from_millis(60);
+
+/// 重试退避的抖动上限。
+///
+/// 为什么必须有：两侧跑的是同一份实现，固定退避会让它们形成**固定相位**。
+/// 一轮失败后两边同时 sleep 同样的时间、同时重发 SYN，而每条 socket 在收到
+/// 对端 RST 后只活十几毫秒——相位一旦错开就永远错开，超时也等不到重叠窗口。
+/// 2026-11-27 W6.7 现场就是这个形态：8 s 内 16 轮，两端**每一轮**都是
+/// `Connection refused`，彼此都把对方的 SYN 拒掉。抖动让相位随机游走，
+/// 几轮之内就会撞上重叠窗口，而这在真实对端（任何别的实现）上本来也是必需的。
+fn retry_jitter() -> Duration {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, Ordering::Relaxed);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos() as u64)
+        .unwrap_or(0);
+    // xorshift 混合：不引依赖，够用且不会出现固定周期。
+    let mut x = now ^ n.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    x ^= x >> 33;
+    x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+    x ^= x >> 29;
+    Duration::from_millis(x % 90)
+}
 
 /// 一次成功的打洞。
 #[derive(Debug)]
@@ -127,7 +153,7 @@ pub fn punch_tcp(local: SocketAddr, peers: &[SocketAddr], timeout: Duration) -> 
         // 若本轮连 socket 都没建起来（例如平台初始化失败），必须退让一下，
         // 否则会在超时前空转几百万轮——那不是「重试」，是把 CPU 打满。
         if pending.is_empty() {
-            std::thread::sleep(Duration::from_millis(60));
+            std::thread::sleep(BACKOFF_BASE + retry_jitter());
         }
     }
     report

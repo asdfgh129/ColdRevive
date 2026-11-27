@@ -1,3 +1,43 @@
+## [2.4.160] - 2026-11-27 — 打洞登记可重入；W6.7 punched-TCP BT 关闭（1 MiB / md5 一致）
+
+> **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 FAIL 78/80、S6 条件计入、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+
+- **`cr_bridge` 登记槽化（可重入登记）**：注册表从 `HashMap<SocketAddr, Upstream>` 改为
+  `HashMap<SocketAddr, Slot>`。`take()` 只取走连接、**保留键当占位**，于是同一个目标地址
+  可以重新填装；已就绪但未被消费的连接仍拒绝覆盖（不丢活连接，ADR-021 的坑不退让）。
+  新增 `SlotState`（`Armed` / `InUse` / `Awaiting` / `Unknown`）与 `Bridge::end_session()`：
+  会话结束才转 `Awaiting`，把「正在用」和「待补装」分开——混成一个数会让调用方在传输正常
+  时去重打洞，而那时旧 socket 还占着本地端口，重绑只会 `EADDRNOTAVAIL`（当晚实测踩到）。
+  `Bridge::take_for_connect()` 对**登记过**的目标在 6 s 补装窗口内等新 socket
+  （`PUNCHED_REARM_WAIT`），而不是立刻去拨一个只在打洞存活期间有效的公网映射；未知目标
+  仍然立刻直连。新增观测：`socks5_awaiting` / `socks5_in_use` / `socks5_rearmed` /
+  `socks5_served_after_rearm` / `socks5_rearm_wait_ms`。
+- **打洞重试去共振**：`tcp_punch` 的固定 60 ms 退避改为 `60 ms + 0–90 ms` 抖动。两侧跑同一份
+  实现时固定退避会把相位锁死：一条 socket 收到对端 RST 后只活十几毫秒，相位一旦错开就永远
+  错开（实测 8 s / 16 轮，两端每轮都 `Connection refused`，互相把对方的 SYN 拒掉）。
+- **打洞窗口可配**：`nat punch-route` 增加第五个参数（300–15000 ms，默认 4000），替代写死的
+  1200 ms；其余步骤（nonce 握手、中继裁决）仍用 1200 ms，互不影响。
+- **实测（`tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r3/`）**：H = `119.29.150.254`
+  （轻量，`TCP:19720` 已放通）、M = `192.168.1.221`（家宽出口 `112.5.60.4`），全程无
+  `REDIRECT`，holder 直接绑 `0.0.0.0:19720`。首次打洞 **1 次尝试**成功（两端
+  `route=punched-direct`）；传输中途停滞触发 1 次「重发现映射 + 同时重打洞」，
+  `socks5_rearmed=1` 后继续传完：**1 048 576 / 1 048 576 B 落地，
+  `md5 6209e962f3b26a13c9ec1ae70fd78e10` 与源一致**；member 侧打洞端口线上 payload
+  1 327 246 B / 1007 帧（最大帧 2824 B），两端 `tunnels=0`（不是中继）。
+- **量具事故（如实记录，两份 PASS 已作废）**：脚本此前不清下载目录，librqbit 会直接校验通过
+  上一轮留下的文件，报 `complete` 且 md5 相符却**一个字节都没传**（member 线上 payload 仅
+  209 B / 268 B，`downloadSpeed` 13.9 MB/s）。现在每轮 `rm -rf downloads` 并断言为空，
+  非空直接抛错。另修：M 侧 SSH 建连移到 barrier 之前（原来 M 比 H 晚 200–400 ms 发包，
+  「同时」被量具做没了）；重打洞前重新发现映射（家宽映射会换源端口，holder 拨旧端口时
+  27 轮静默、M 每轮 `Connection refused`）。
+- **测试**：`cargo test -p cr-bridge` **15/15**（新增「消费后可重新填装并服务第二次会话」
+  「已就绪连接不可被顶掉」「占位等待补装后可服务」「未知目标不等待」「InUse 与 Awaiting 分开」
+  「关窗后不阻塞」）；`cargo test -p coldrevived --bin coldrevived punched` **6/6**
+  （新增 daemon 级「同一目标第二条打洞 socket 重新填装并服务第二次会话」）。
+  全量串行回归 **570 passed / 0 failed / 3 ignored**（`regression-full-20261127-v160.log`，比 v159 多 7 条新单测），本轮未命中既存 flaky。
+
 ## [2.4.159] - 2026-11-27 — 打洞入向握手唤醒（冷种子缺口）；W6.7 通道打通、落地 50%
 
 > **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、

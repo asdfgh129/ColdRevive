@@ -31,6 +31,13 @@ use tokio::net::{TcpListener, TcpStream as TokioTcpStream};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const CHANNEL_QUEUE: usize = 64;
+/// 打洞 socket 被消费之后，等生产者补装的窗口。
+///
+/// 取值理由：一条打洞 socket 只服务一次 CONNECT，而 BT 的 peer 会话本来就是
+/// 「传一会儿、断开、再连」。窗口太短会把可恢复的重连记成网络失败；太长则
+/// 让一条真正死亡的路径长时间占用引擎的连接槽。6 s 与 BT 常见的 peer 超时同量级。
+/// 这只影响**登记过**的目标；未知目标仍然立刻直连（见 `Bridge::take_for_connect`）。
+const PUNCHED_REARM_WAIT: Duration = Duration::from_secs(6);
 
 pub struct DataPlane {
     // 持有 runtime 是为了让 SOCKS5 accept 循环活着；没有读取需求，但不是死字段。
@@ -255,6 +262,10 @@ impl DataPlane {
             a2.store(false, Ordering::Relaxed);
         });
         self.punched.lock().unwrap().insert(advertised_peer, alive);
+        // 打洞路径打开「等补装」窗口：一条打洞 socket 只服务一次 CONNECT，
+        // BT 断开重连是常态。窗口关着的话，重连会立刻去拨一个只在打洞存活期间
+        // 有效的公网映射，必然 RST —— 现场就是「传了一半再也接不上」。
+        self.bridge.set_rearm_wait(PUNCHED_REARM_WAIT);
         println!(
             "[data-plane] 打洞直连 socket 已登记: peer={advertised_peer}（is_s6_evidence=false）"
         );
@@ -382,6 +393,15 @@ impl DataPlane {
             ("udp_tunnels_alive", cr_core::Json::n(udp_alive as f64)),
             ("punched_registered", cr_core::Json::n(punched_total as f64)),
             ("punched_alive", cr_core::Json::n(punched_alive as f64)),
+            // 可重入登记口径：`socks5_awaiting` 是「登记过、会话已结束、当前没有 socket、
+            // 真的等着重新填装」的键数；`socks5_in_use` 是「正被一条 BT 会话用着」的键数。
+            // 把两者混成一个数会诱导 harness 在传输正常时去重打洞——那时旧 socket
+            // 还占着本地端口，重绑只会拿到 EADDRNOTAVAIL。三者都不参与 pass 判定。
+            ("socks5_awaiting", cr_core::Json::n(self.bridge.awaiting() as f64)),
+            ("socks5_in_use", cr_core::Json::n(self.bridge.in_use() as f64)),
+            ("socks5_rearmed", cr_core::Json::n(self.bridge.rearmed() as f64)),
+            ("socks5_served_after_rearm", cr_core::Json::n(self.bridge.wait_served() as f64)),
+            ("socks5_rearm_wait_ms", cr_core::Json::n(self.bridge.rearm_wait().as_millis() as f64)),
             // ADR-024 阶段 3：机制可观测。这里只是本进程最近一条 UDP 流的快照，
             // 不是跨公网公平性结论，也不参与任何 pass 判定。
             ("udp_cc_enabled", cr_core::Json::b(cc.enabled)),
@@ -661,6 +681,102 @@ mod tests {
         let j = dp.json();
         assert_eq!(j.get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
         peer_thread.join().unwrap();
+    }
+
+    /// 可重入登记（v2.4.160）：同一个目标地址，第二条打洞 socket 必须能重新填装，
+    /// 并且**第二条会话的字节要真的走新的 socket**。
+    ///
+    /// W6.7 的现场是：第一条连接传了 512 KiB 就被对端 RST，之后 BT 重连同一目标时
+    /// 桥里已经没有登记项（`take()` 取走即删），只能回落直连一个失效的公网映射。
+    /// 这里钉住「填装 → 消费 → 再填装 → 再消费」这条路径。
+    #[test]
+    fn punched_socket_reregistration_serves_a_second_session() {
+        use std::io::{Read as _, Write as _};
+
+        // 一个只服务一次的对端：读 3 字节，回 4 字节，然后关闭。
+        fn one_shot_peer(expect_in: &'static [u8], send_out: &'static [u8])
+            -> (SocketAddr, std::thread::JoinHandle<()>)
+        {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = l.local_addr().unwrap();
+            let h = std::thread::spawn(move || {
+                let (mut s, _) = l.accept().unwrap();
+                let mut buf = vec![0u8; expect_in.len()];
+                s.read_exact(&mut buf).unwrap();
+                assert_eq!(buf, expect_in, "第一条/第二条会话必须各自看到自己的字节");
+                s.write_all(send_out).unwrap();
+                s.flush().unwrap();
+            });
+            (addr, h)
+        }
+
+        fn socks5_connect_to(proxy: SocketAddr, target: SocketAddr) -> std::net::TcpStream {
+            let mut c = std::net::TcpStream::connect(proxy).unwrap();
+            c.write_all(&[0x05, 0x01, 0x00]).unwrap();
+            let mut neg = [0u8; 2];
+            c.read_exact(&mut neg).unwrap();
+            assert_eq!(neg, [0x05, 0x00]);
+            let mut req = vec![0x05, 0x01, 0x00, 0x01];
+            match target.ip() {
+                std::net::IpAddr::V4(v) => req.extend_from_slice(&v.octets()),
+                std::net::IpAddr::V6(_) => panic!("测试用 IPv4 文档地址"),
+            }
+            req.extend_from_slice(&target.port().to_be_bytes());
+            c.write_all(&req).unwrap();
+            let mut reply = [0u8; 10];
+            c.read_exact(&mut reply).unwrap();
+            assert_eq!(reply[1], 0x00, "已登记地址必须 CONNECT 成功");
+            c
+        }
+
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "203.0.113.11:4662".parse().unwrap();
+        let proxy: SocketAddr =
+            dp.proxy_url().trim_start_matches("socks5://").parse().unwrap();
+
+        // 第一条会话。
+        let (peer1, h1) = one_shot_peer(b"one", b"one!");
+        dp.attach_punched_socket(advertised, std::net::TcpStream::connect(peer1).unwrap())
+            .unwrap();
+        {
+            let mut c = socks5_connect_to(proxy, advertised);
+            c.write_all(b"one").unwrap();
+            let mut got = [0u8; 4];
+            c.read_exact(&mut got).unwrap();
+            assert_eq!(&got, b"one!");
+        }
+        h1.join().unwrap();
+        // 第一条被消费后必须留下占位，而不是让键消失。会话收尾在 copy 返回后
+        // 才发生，所以给一个很短的等待窗口，不假设同一瞬间完成。
+        let mut awaiting = 0i64;
+        for _ in 0..200 {
+            awaiting = dp.json().get("socks5_awaiting")
+                .and_then(cr_core::Json::as_i64).unwrap_or(0);
+            if awaiting == 1 { break; }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(awaiting, 1, "会话结束后必须留占位");
+
+        // 第二条会话：重新打洞，同一个键必须允许填装。
+        let (peer2, h2) = one_shot_peer(b"two", b"two!");
+        dp.attach_punched_socket(advertised, std::net::TcpStream::connect(peer2).unwrap())
+            .expect("同一目标地址的第二条打洞 socket 必须允许重新填装");
+        {
+            let mut c = socks5_connect_to(proxy, advertised);
+            c.write_all(b"two").unwrap();
+            let mut got = [0u8; 4];
+            c.read_exact(&mut got).unwrap();
+            assert_eq!(&got, b"two!", "第二条会话必须走新的 socket");
+        }
+        h2.join().unwrap();
+
+        let j = dp.json();
+        assert_eq!(j.get("socks5_rearmed").and_then(cr_core::Json::as_i64), Some(1));
+        assert_eq!(j.get("served_registered").and_then(cr_core::Json::as_i64), Some(2),
+                   "两次会话都必须命中桥");
+        assert_eq!(j.get("socks5_rearm_wait_ms").and_then(cr_core::Json::as_i64),
+                   Some(PUNCHED_REARM_WAIT.as_millis() as i64),
+                   "打洞路径必须打开补装窗口");
     }
 
     /// ADR-021 入向半边：holder 的打洞 socket 必须经 `engine.listen` 到达真引擎，

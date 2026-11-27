@@ -908,7 +908,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             };
             if peer_label.is_empty() {
                 return Json::obj(vec![("error", Json::s(
-                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port] [发现端口] [共享nonce-hex]"))]);
+                    "用法: nat punch-route <对端node_id> [本端connect地址ip:port] [发现端口] [共享nonce-hex] [打洞窗口ms]"))]);
             }
             let relay_addr = cfg.nat_relays.first().cloned()
                 .or_else(|| cfg.nat_relay.clone());
@@ -925,6 +925,12 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 Err(e) => return Json::obj(vec![("error", Json::s(e))]),
             };
             let timeout = Duration::from_millis(1200);
+            // 可选第五参数：打洞窗口（毫秒）。公网「同时打开」能不能成，很大程度
+            // 取决于两端处于 SYN_SENT 的时间有没有重叠；1.2 s 只够十几轮，实测
+            // 经常一轮都撞不上（每轮都是双向 RST）。默认放到 4 s，仍可显式收紧。
+            let punch_ms = p.get(4).and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(4000).clamp(300, 15_000);
+            let punch_timeout = Duration::from_millis(punch_ms);
 
             // 1) 真实 TCP 打洞：没有外部 socket 就没有可判据的对象。
             let local: SocketAddr = bind_hint
@@ -941,7 +947,7 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                 None => return Json::obj(vec![("error", Json::s("对端无公网 BT 映射，先 nat peer"))]),
             };
             let targets = PunchTargets::new(base_target, discovered_port);
-            let punched = cr_nat::tcp_punch::punch_tcp(local, &[targets.syn], timeout);
+            let punched = cr_nat::tcp_punch::punch_tcp(local, &[targets.syn], punch_timeout);
             let Some(mut stream) = punched.established.map(|p| p.stream) else {
                 state.lock().unwrap().punch_route.record(None);
                 // 只写「未建立」是查不动的：同时给出发起轮数与本轮真实系统错误。

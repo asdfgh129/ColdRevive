@@ -1,0 +1,74 @@
+{
+  "schema": "coldrevive.w67.punched-tcp-bt-evidence/v3",
+  "purpose": "W6.7 revision 3：可重入登记（cr_bridge slot 化）之后，punched-direct 路径在一次会话结束后能重新填装并继续传完整个 1 MiB，md5 一致。",
+  "packaged_at": "2026-11-27T22:54:37+08:00",
+  "git_head_at_collection": "2a2e30a",
+  "source_note": "collection HEAD plus uncommitted: cr-bridge slot/re-arm model, bridge in_use vs awaiting split, punch retry jitter, configurable punch window, harness re-discovery before re-arm, download-dir reset",
+  "binary_sha256": "ce74c2386c27bed0d76ada4d192c970314e731a55dcedc50227770115edb12aa",
+  "verdict": "PASS",
+  "measured": {
+    "punch_attempts_initial": 1,
+    "initial_routes": [
+      [
+        "punched-direct",
+        "punched-direct"
+      ]
+    ],
+    "socks5_rearmed": 1,
+    "repunch_attempts": 1,
+    "repunch_routes": [
+      {
+        "tag": "repunch-1",
+        "H_route": "punched-direct",
+        "M_route": "punched-direct",
+        "H_reason": null
+      }
+    ],
+    "download_status": "complete",
+    "completed_bytes": 1048576,
+    "total_bytes": 1048576,
+    "landed_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+    "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+    "download_dir_clean_at_start": {
+      "H": "0",
+      "M": "0"
+    },
+    "member_wire_payload_bytes": 1327246,
+    "member_wire_frames": 1007,
+    "holder_bridge_served": 2
+  },
+  "do_not_claim": [
+    "One usable punched-direct path in one specific environment, not a success rate (ADR-012).",
+    "Not G2/S6/NFR-02 evidence; gate fields unchanged.",
+    "Re-arm required re-discovery of the member mapped port; the holder cannot dial a stale port.",
+    "The H wire figure in this report is inbound-only because of a filter bug fixed after the run.",
+    "Two PASS verdicts produced earlier the same evening were VOIDED: the download directory was not cleared, so librqbit validated a leftover file and reported complete without moving a byte (downloadSpeed 13.9 MB/s, member wire payload only 209 B). Those report files were overwritten by later runs; only this note and the test-run ledger record them."
+  ],
+  "items": [
+    {
+      "file": "report.json",
+      "bytes": 186906,
+      "sha256": "8edc292841d263e4e5c8bb96cbb61c5c530d4e7ac2c99dcc68760fcad023e84a"
+    },
+    {
+      "file": "run.py",
+      "bytes": 37644,
+      "sha256": "f7a833fd3871b5ac803577fa99f1cb38cd556cfe460ee0c758744fd1fe816a7e"
+    }
+  ],
+  "voided_runs": [
+    {
+      "at": "2026-11-27T22:47:03+08:00",
+      "verdict": "PASS (voided)",
+      "why": "download dir not cleared; leftover 1 MiB file validated instantly",
+      "member_wire_payload_bytes": 209,
+      "download_speed": 13981013
+    },
+    {
+      "at": "2026-11-27T22:51:00+08:00",
+      "verdict": "PASS (voided)",
+      "why": "same leftover-file cause",
+      "member_wire_payload_bytes": 268
+    }
+  ]
+}

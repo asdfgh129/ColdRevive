@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf, copy_bidirectional};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::time::timeout;
+use tokio::time::{Instant as TokioInstant, timeout};
 
 /// 落回真实直连时的连接超时。SOCKS5 没有「等待中」状态，超时必须给出明确失败码。
 pub const DIAL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -84,18 +84,66 @@ impl AsyncWrite for Upstream {
     }
 }
 
+/// 单个目标地址的登记槽。
+///
+/// `upstream: Some` = **已就绪**：有一条还没被 CONNECT 取走的连接。
+/// `upstream: None` = **占位**：这个键登记过，连接已被取走，等着重新填装。
+///
+/// 占位是「可重入登记」的关键。旧实现 `take()` 直接把键从表里删掉，于是
+/// 一条打洞连接用完（BT 的会话本来就会不停断开重连）之后，同一个目标地址
+/// 再被拨就变成「未知目标」，桥只能回落去拨一个早就失效的公网映射，
+/// 现场表现是「第一次能传、后面永远卡住」。保留占位后，桥知道
+/// 「这里本来有一条打洞连接，只是没了」，可以等生产者补装。
+struct Slot {
+    upstream: Option<Upstream>,
+    /// 这一轮的连接**正被一条 BT 会话占用**（已取走、还没结束）。
+    ///
+    /// 必须和「已取走且已结束」分开：前者说明路径正常在用，重打洞既无必要
+    /// 也不可能成功（旧 socket 还占着本地端口，bind 会 EADDRNOTAVAIL）；
+    /// 后者才是真的需要补装。混成一个计数会诱导 harness 打出无意义的补装。
+    in_use: bool,
+    /// 该键被填装的总次数（含重新填装）。仅观测。
+    fills: u32,
+    /// 被 CONNECT 取走的次数。仅观测。
+    takes: u32,
+}
+
+/// 一个目标键的当前状态。给调用方和 e2e 判定用。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlotState {
+    /// 有连接等着被取走。
+    Armed,
+    /// 已取走且会话还没结束：路径正在用，不需要补装。
+    InUse,
+    /// 登记过、会话已结束、当前没有连接：需要重新填装。
+    Awaiting,
+    /// 从未登记过。这种情况才应该普通直连。
+    Unknown,
+}
+
 /// 注册表：目标地址 → 一条已建立的上游连接（直连 socket 或中继隧道）。
 ///
 /// 键是**引擎将要拨打的地址**（对端通告的 IP:端口），值是本进程持有的那条连接。
-/// 一项只能被取走一次：BT 的一条 TCP 连接只服务一个 peer 会话。
+/// 一条连接只能被取走一次：BT 的一条 TCP 连接只服务一个 peer 会话。但**键会留下**，
+/// 所以同一个目标可以重新填装，见 [`Slot`]。
 pub struct Bridge {
-    registry: Mutex<HashMap<SocketAddr, Upstream>>,
+    registry: Mutex<HashMap<SocketAddr, Slot>>,
     /// 命中注册表、由「已打通 socket」承载的 CONNECT 次数。
     /// 这是 e2e 判定「真的走了桥」的证据；回落直连不计入。
     served_registered: AtomicUsize,
     /// 经本桥搬运的总字节数（双向合计）。
     bytes_relayed: AtomicU64,
+    /// 占位被重新填装成功的次数（可重入登记的实证）。
+    rearmed: AtomicUsize,
+    /// 命中发生在「等待补装」窗口内的次数。
+    wait_served: AtomicUsize,
+    /// 补装等待窗口（毫秒）。0 = 不等，立刻回落直连（默认）。
+    /// 只有真的能补装的生产者（打洞路径）才应该把它打开。
+    rearm_wait_ms: AtomicU64,
 }
+
+/// 补装等待的轮询间隔。20 ms 足够细，又不至于把等待变成忙等。
+const REARM_POLL: Duration = Duration::from_millis(20);
 
 impl Default for Bridge {
     fn default() -> Self {
@@ -109,37 +157,157 @@ impl Bridge {
             registry: Mutex::new(HashMap::new()),
             served_registered: AtomicUsize::new(0),
             bytes_relayed: AtomicU64::new(0),
+            rearmed: AtomicUsize::new(0),
+            wait_served: AtomicUsize::new(0),
+            rearm_wait_ms: AtomicU64::new(0),
         }
     }
 
+    /// 打开「等生产者补装」的窗口。
+    ///
+    /// 只有真能补装的一侧才该调用：打洞路径在登记成功后打开它，这样一条连接用完
+    /// 之后，BT 重连同一目标会等一条新的打洞 socket，而不是去拨一个已知失效的
+    /// 公网映射（那只会拿到 RST，然后被引擎当网络故障）。中继/普通桥保持 0。
+    pub fn set_rearm_wait(&self, wait: Duration) {
+        self.rearm_wait_ms.store(wait.as_millis() as u64, Ordering::Relaxed);
+    }
+
+    pub fn rearm_wait(&self) -> Duration {
+        Duration::from_millis(self.rearm_wait_ms.load(Ordering::Relaxed))
+    }
+
     /// 登记一条已打通的连接。同一目标地址重复登记返回错误而不是静默覆盖——
-    /// 覆盖会丢掉前一条连接，现场表现成「第一次能传、第二次卡死」。
+    /// 覆盖会丢掉前一条**还没被消费**的连接，现场表现成「第一次能传、第二次卡死」。
+    ///
+    /// 但如果该键只剩占位（上一条已被取走），这里是**允许**的：这正是重新填装。
     pub fn register(&self, peer: SocketAddr, stream: TcpStream) -> Result<(), &'static str> {
         self.register_upstream(peer, Upstream::Direct(stream))
     }
 
-    /// 登记一条中继隧道（ADR-023）。与 `register` 共用同一张表和一次性语义。
+    /// 登记一条中继隧道（ADR-023）。与 `register` 共用同一张表和同一套可重入语义。
     pub fn register_tunnel(&self, peer: SocketAddr, stream: DuplexStream) -> Result<(), &'static str> {
         self.register_upstream(peer, Upstream::Tunnel(stream))
     }
 
     fn register_upstream(&self, peer: SocketAddr, upstream: Upstream) -> Result<(), &'static str> {
-        let mut m = self.registry.lock().unwrap();
-        if m.contains_key(&peer) {
-            return Err("该目标地址已登记，拒绝覆盖");
+        let refilled = {
+            let mut m = self.registry.lock().unwrap();
+            match m.get_mut(&peer) {
+                Some(slot) if slot.upstream.is_some() => {
+                    return Err("该目标地址已就绪且未被消费，拒绝覆盖");
+                }
+                Some(slot) => {
+                    slot.upstream = Some(upstream);
+                    slot.fills += 1;
+                    true
+                }
+                None => {
+                    m.insert(peer, Slot { upstream: Some(upstream), in_use: false, fills: 1, takes: 0 });
+                    false
+                }
+            }
+        };
+        if refilled {
+            self.rearmed.fetch_add(1, Ordering::Relaxed);
         }
-        m.insert(peer, upstream);
         Ok(())
     }
 
-    /// 取走登记项（一次性）。
+    /// 取走登记项。**键保留为占位**，所以同一个目标可以重新填装。
+    ///
+    /// 命中计数也在这里加：只有「真的拿到一条已就绪连接」才算命中，
+    /// 回落直连、等待超时都不算。
     pub fn take(&self, peer: SocketAddr) -> Option<Upstream> {
-        self.registry.lock().unwrap().remove(&peer)
+        let mut m = self.registry.lock().unwrap();
+        let slot = m.get_mut(&peer)?;
+        let up = slot.upstream.take()?;
+        slot.takes += 1;
+        drop(m);
+        self.served_registered.fetch_add(1, Ordering::Relaxed);
+        Some(up)
     }
 
-    /// 当前登记数。只用于观测，不参与判定。
+    /// 取一条已就绪的上游；若该键处于占位状态且开着补装窗口，就等生产者填装。
+    ///
+    /// 为什么等而不是立刻直连：一个**登记过**的目标说明它走的是打洞路径，
+    /// 公网映射只在打洞存活期间有效。直接拨它几乎必然 RST，而引擎会把一次
+    /// 可恢复的「连接换条 socket」记成网络失败，然后整条 peer 掉线。
+    pub async fn take_for_connect(&self, peer: SocketAddr) -> Option<Upstream> {
+        if let Some(up) = self.take_and_mark(peer) {
+            return Some(up);
+        }
+        let wait = self.rearm_wait();
+        if wait.is_zero() || self.state(peer) == SlotState::Unknown {
+            // 未知目标仍然照常直连：这不是「桥坏了」，本来就不该由桥负责。
+            return None;
+        }
+        let deadline = TokioInstant::now() + wait;
+        loop {
+            tokio::time::sleep(REARM_POLL).await;
+            if let Some(up) = self.take_and_mark(peer) {
+                self.wait_served.fetch_add(1, Ordering::Relaxed);
+                return Some(up);
+            }
+            if TokioInstant::now() >= deadline {
+                return None;
+            }
+        }
+    }
+
+    fn take_and_mark(&self, peer: SocketAddr) -> Option<Upstream> {
+        let up = self.take(peer)?;
+        if let Some(slot) = self.registry.lock().unwrap().get_mut(&peer) {
+            slot.in_use = true;
+        }
+        Some(up)
+    }
+
+    /// 一条 BT 会话结束（`copy_bidirectional` 返回）。之后这个键才真正「等补装」。
+    ///
+    /// 不打这个点的话，「正在用」和「已用完」会混成一个计数，harness 会在传输
+    /// 正常进行时去重打洞，而那时旧 socket 还占着本地端口，只会拿到 EADDRNOTAVAIL。
+    pub fn end_session(&self, peer: SocketAddr) {
+        if let Some(slot) = self.registry.lock().unwrap().get_mut(&peer) {
+            slot.in_use = false;
+        }
+    }
+
+    pub fn state(&self, peer: SocketAddr) -> SlotState {
+        match self.registry.lock().unwrap().get(&peer) {
+            Some(s) if s.upstream.is_some() => SlotState::Armed,
+            Some(s) if s.in_use => SlotState::InUse,
+            Some(_) => SlotState::Awaiting,
+            None => SlotState::Unknown,
+        }
+    }
+
+    /// 当前**已就绪**的登记数。占位不算：占位没有可交付的连接。
+    /// 只用于观测，不参与判定。
     pub fn registered(&self) -> usize {
-        self.registry.lock().unwrap().len()
+        self.registry.lock().unwrap().values().filter(|s| s.upstream.is_some()).count()
+    }
+
+    /// 正在被 BT 会话使用的键数。只用于观测。
+    pub fn in_use(&self) -> usize {
+        self.registry.lock().unwrap().values()
+            .filter(|s| s.upstream.is_none() && s.in_use).count()
+    }
+
+    /// 真正**需要补装**的键数：登记过、会话已结束、当前没有连接。只用于观测。
+    pub fn awaiting(&self) -> usize {
+        self.registry.lock().unwrap().values()
+            .filter(|s| s.upstream.is_none() && !s.in_use).count()
+    }
+
+    /// 占位被重新填装成功的次数。仅观测：证明「同一个目标换了不止一条 socket」，
+    /// 不能当成功率用（ADR-012）。
+    pub fn rearmed(&self) -> usize {
+        self.rearmed.load(Ordering::Relaxed)
+    }
+
+    /// 命中发生在补装等待窗口内的次数。仅观测。
+    pub fn wait_served(&self) -> usize {
+        self.wait_served.load(Ordering::Relaxed)
     }
 
     /// 命中注册表并由已打通 socket 承载的 CONNECT 次数。
@@ -214,11 +382,7 @@ async fn handle_conn(mut client: TcpStream, bridge: Arc<Bridge>) -> io::Result<(
         }
     };
 
-    let registered = bridge.take(target);
-    if registered.is_some() {
-        bridge.served_registered.fetch_add(1, Ordering::Relaxed);
-    }
-    let mut upstream = match registered {
+    let mut upstream = match bridge.take_for_connect(target).await {
         Some(s) => s,
         None => match timeout(DIAL_TIMEOUT, TcpStream::connect(target)).await {
             Ok(Ok(s)) => Upstream::Direct(s),
@@ -236,6 +400,9 @@ async fn handle_conn(mut client: TcpStream, bridge: Arc<Bridge>) -> io::Result<(
     reply(&mut client, REP_SUCCEEDED).await?;
     let (up, down) = copy_bidirectional(&mut client, &mut upstream).await.unwrap_or((0, 0));
     bridge.bytes_relayed.fetch_add(up + down, Ordering::Relaxed);
+    // 会话结束：这个键从「在用」转为「待补装」。漏掉这一步会让看板一直显示
+    // 「正在用」，需要补装的时候反而看不出来。
+    bridge.end_session(target);
     Ok(())
 }
 
@@ -482,5 +649,176 @@ mod tests {
 
         assert_eq!(bridge.registered(), 0);
         assert_eq!(bridge.served_registered(), 1);
+    }
+
+    /// 一个本地回显服务：既当「已打通的远端」，又用来证明字节真的走了桥。
+    async fn serve_echo() -> SocketAddr {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((s, _)) = l.accept().await else { return };
+                tokio::spawn(async move {
+                    let (mut r, mut w) = s.into_split();
+                    let _ = tokio::io::copy(&mut r, &mut w).await;
+                });
+            }
+        });
+        addr
+    }
+
+    /// 起一个桥并返回它的 SOCKS5 地址。
+    async fn serve_bridge(bridge: Arc<Bridge>) -> SocketAddr {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move { let _ = bridge.serve_listener(l).await; });
+        addr
+    }
+
+    /// 核心回归：一条打洞连接用完（被 CONNECT 取走）之后，同一个目标必须还能再服务一次。
+    ///
+    /// 旧实现 `take()` 把键从表里删掉，于是第二次连接变成「未知目标」→ 回落直连
+    /// 去拨一个已失效的公网映射 → RST。现场就是 W6.7 里「512 KiB 之后再也接不上」。
+    #[tokio::test]
+    async fn consumed_slot_can_be_refilled_for_a_second_session() {
+        let echo = serve_echo().await;
+        let bridge = Arc::new(Bridge::new());
+        let baddr = serve_bridge(bridge.clone()).await;
+        let key: SocketAddr = "203.0.113.77:6881".parse().unwrap();
+
+        bridge.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        assert_eq!(bridge.state(key), SlotState::Armed);
+
+        // 第一次会话。
+        let mut c1 = TcpStream::connect(baddr).await.unwrap();
+        assert_eq!(socks5_connect(&mut c1, key).await, REP_SUCCEEDED);
+        c1.write_all(b"one!").await.unwrap();
+        assert_eq!(read_n(&mut c1, 4).await, b"one!");
+        drop(c1);
+
+        // 关键断言：取走之后键必须**留着当占位**，而不是消失。
+        // 会话收尾（`end_session`）在 `copy_bidirectional` 返回之后才发生，
+        // 所以这里等一个很短的窗口，而不是假设它已经在同一瞬间完成。
+        let mut state = bridge.state(key);
+        for _ in 0..100 {
+            if state == SlotState::Awaiting { break; }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            state = bridge.state(key);
+        }
+        assert_eq!(state, SlotState::Awaiting, "会话结束后必须留占位");
+        assert_eq!(bridge.registered(), 0, "占位没有可交付连接，不计入已就绪");
+        assert_eq!(bridge.awaiting(), 1);
+
+        // 重新填装：这就是旧实现做不了的事（键已经没了/或拒绝覆盖）。
+        bridge
+            .register(key, TcpStream::connect(echo).await.unwrap())
+            .expect("占位状态必须允许重新填装");
+        assert_eq!(bridge.rearmed(), 1);
+        assert_eq!(bridge.state(key), SlotState::Armed);
+
+        let mut c2 = TcpStream::connect(baddr).await.unwrap();
+        assert_eq!(socks5_connect(&mut c2, key).await, REP_SUCCEEDED);
+        c2.write_all(b"two!").await.unwrap();
+        assert_eq!(read_n(&mut c2, 4).await, b"two!");
+
+        assert_eq!(bridge.served_registered(), 2, "两次会话都必须命中桥");
+    }
+
+    /// 已就绪但未被消费的连接绝不能被后来的登记顶掉——那会把一条活连接直接丢弃。
+    /// 这是 ADR-021 记过的坑，可重入不能把它一起放开。
+    #[tokio::test]
+    async fn refill_never_drops_an_armed_socket() {
+        let echo = serve_echo().await;
+        let bridge = Bridge::new();
+        let key: SocketAddr = "203.0.113.78:6881".parse().unwrap();
+
+        bridge.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        let err = bridge.register(key, TcpStream::connect(echo).await.unwrap());
+        assert!(err.is_err(), "已就绪未消费的登记项必须拒绝覆盖");
+        assert_eq!(bridge.state(key), SlotState::Armed);
+        assert_eq!(bridge.rearmed(), 0, "拒绝覆盖不算重新填装");
+    }
+
+    /// 占位期间到达的 CONNECT 要在补装窗口里等一条新 socket，而不是立刻去拨死地址。
+    #[tokio::test]
+    async fn waiting_connect_is_served_when_slot_is_refilled() {
+        let echo = serve_echo().await;
+        let bridge = Arc::new(Bridge::new());
+        bridge.set_rearm_wait(Duration::from_secs(2));
+        let baddr = serve_bridge(bridge.clone()).await;
+        let key: SocketAddr = "203.0.113.79:6881".parse().unwrap();
+
+        // 模拟「第一条连接已经被用掉」：直接取走，留下占位。
+        bridge.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        assert!(bridge.take(key).is_some());
+        assert_eq!(bridge.state(key), SlotState::Awaiting);
+
+        // 生产者稍后补装一条（打洞路径的第二次 punch 就是这个动作）。
+        let b2 = bridge.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            b2.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        });
+
+        let mut client = TcpStream::connect(baddr).await.unwrap();
+        assert_eq!(socks5_connect(&mut client, key).await, REP_SUCCEEDED,
+                   "必须等到补装而不是回落直连");
+        client.write_all(b"wait").await.unwrap();
+        assert_eq!(read_n(&mut client, 4).await, b"wait");
+        assert_eq!(bridge.wait_served(), 1, "命中必须记在等待窗口上");
+        assert_eq!(bridge.served_registered(), 2);
+    }
+
+    /// 「正在用」和「待补装」必须分开报。
+    ///
+    /// 混成一个数会让调用方在传输正常进行时去重打洞，而那时旧 socket 还占着
+    /// 本地端口，重绑只会拿到 `EADDRNOTAVAIL`（2026-11-27 W6.7 现场）。
+    #[tokio::test]
+    async fn slot_reports_in_use_until_the_session_ends() {
+        let echo = serve_echo().await;
+        let bridge = Bridge::new();
+        let key: SocketAddr = "203.0.113.82:6881".parse().unwrap();
+        bridge.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        assert_eq!(bridge.state(key), SlotState::Armed);
+
+        let up = bridge.take_for_connect(key).await;
+        assert!(up.is_some());
+        assert_eq!(bridge.state(key), SlotState::InUse);
+        assert_eq!(bridge.in_use(), 1);
+        assert_eq!(bridge.awaiting(), 0, "会话进行中不得算作待补装");
+        drop(up);
+
+        bridge.end_session(key);
+        assert_eq!(bridge.state(key), SlotState::Awaiting);
+        assert_eq!(bridge.in_use(), 0);
+        assert_eq!(bridge.awaiting(), 1, "会话结束后才算待补装");
+    }
+
+    /// 从未登记过的目标不该进入补装等待：那不是桥的责任，必须立刻放行去直连。
+    #[tokio::test]
+    async fn unknown_target_never_waits() {
+        let bridge = Bridge::new();
+        bridge.set_rearm_wait(Duration::from_secs(5));
+        let key: SocketAddr = "203.0.113.80:6881".parse().unwrap();
+        assert_eq!(bridge.state(key), SlotState::Unknown);
+
+        let t0 = TokioInstant::now();
+        assert!(bridge.take_for_connect(key).await.is_none());
+        assert!(t0.elapsed() < Duration::from_millis(200),
+                "未知目标不得进入补装等待，耗时 {:?}", t0.elapsed());
+    }
+
+    /// 没打开补装窗口时（中继/普通桥），占位也不得拖慢 CONNECT。
+    #[tokio::test]
+    async fn awaiting_slot_does_not_block_when_rearm_is_off() {
+        let echo = serve_echo().await;
+        let bridge = Bridge::new();
+        let key: SocketAddr = "203.0.113.81:6881".parse().unwrap();
+        bridge.register(key, TcpStream::connect(echo).await.unwrap()).unwrap();
+        assert!(bridge.take(key).is_some());
+
+        let t0 = TokioInstant::now();
+        assert!(bridge.take_for_connect(key).await.is_none());
+        assert!(t0.elapsed() < Duration::from_millis(200), "窗口关闭时不得等待");
     }
 }

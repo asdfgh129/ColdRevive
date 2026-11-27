@@ -1,0 +1,1816 @@
+{
+  "schema": "coldrevive.w67.punched-tcp-bt/v1",
+  "generated_at": "2026-11-27T22:54:37+08:00",
+  "scope": "daemon-level punched-direct TCP carrying real BT payload; component evidence, not G2/S6",
+  "topology": {
+    "H": "119.29.150.254 public EIP, holder, engine.listen=127.0.0.1:19730, punch bind 0.0.0.0:19720",
+    "M": "192.168.1.221 home EIM NAT, member, punch bind 192.168.1.221:19710",
+    "observer": "119.29.150.254:19720",
+    "observer_note": "observer sits on the exact endpoint the punch targets; the mapping is sampled twice at that endpoint and must agree, so no cross-destination port extrapolation is performed",
+    "public_port_provisioning": "TCP/19720 opened in the Lighthouse firewall by the owner",
+    "redirect_used": false,
+    "relay_control_only": "82.157.68.159:7100"
+  },
+  "file_hash": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "gate_snapshot": {
+    "g2_claim": true,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "claim_scope": {
+    "g2_claim_from_this_evidence": false,
+    "is_s6_evidence": false,
+    "is_relay_data_plane_evidence": false,
+    "success_rate_reported": false
+  },
+  "steps": {
+    "binaries": {
+      "coldrevived_sha256": "ce74c2386c27bed0d76ada4d192c970314e731a55dcedc50227770115edb12aa",
+      "coldrevive_nat_sha256": "840267a455efad4788349fbf21972ad13180021c0c8a218c63da4fca0e759b72"
+    },
+    "sample": {
+      "bytes": 1048576,
+      "sha256": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019"
+    },
+    "download_dir_clean": {
+      "H": "0",
+      "M": "0"
+    },
+    "daemon_start": {
+      "H": {
+        "unit": "cr-w67-h",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-h 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-h --property=WorkingDirectory=/root/cr-w67/holder /root/cr-w67/holder/coldrevived --config /root/cr-w67/holder/config.json --node-id H --bind 0.0.0.0",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-h.service; invocation ID: ce17d6f28eb84cd59594cfdc611a8c80\n"
+        }
+      },
+      "M": {
+        "unit": "cr-w67-m",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-m 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-m --property=WorkingDirectory=/root/cr-w67/member /root/cr-w67/member/coldrevived --config /root/cr-w67/member/config.json --node-id M --bind 0.0.0.0",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-m.service\n"
+        }
+      },
+      "health_H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3984955,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:33249",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 0,
+          "punched_alive": 0,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 0,
+          "socks5_rearmed": 0,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 4,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "health_M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 711696,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:38423",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 0,
+          "punched_alive": 0,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 0,
+          "socks5_rearmed": 0,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 2,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 0,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "peer_load": {
+      "H": {
+        "ok": true,
+        "node_id": "M",
+        "endpoints": 1,
+        "bt_external": true
+      },
+      "M": {
+        "ok": true,
+        "node_id": "H",
+        "endpoints": 1,
+        "bt_external": true
+      }
+    },
+    "capture_start": {
+      "H": {
+        "unit": "cr-w67-cap-h",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-cap-h 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-cap-h --property=WorkingDirectory=/root/cr-w67 /bin/bash -lc \"timeout 240 tcpdump -nn -i any -l 'host 112.5.60.4 or tcp port 19720' > /root/cr-w67/tcpdump-h.log 2>&1\"",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-cap-h.service; invocation ID: 5b0090c5d68d4739915e2e44e5e64552\n"
+        }
+      },
+      "M": {
+        "unit": "cr-w67-cap-m",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-cap-m 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-cap-m --property=WorkingDirectory=/root/cr-w67 /bin/bash -lc \"timeout 240 tcpdump -nn -i any -l 'host 119.29.150.254 or tcp port 19710' > /root/cr-w67/tcpdump-m.log 2>&1\"",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-cap-m.service\n"
+        }
+      }
+    },
+    "torrent_fetch_on_holder": {
+      "cmd": "curl -sS --max-time 10 -o /root/cr-w67/holder/sample.torrent http://127.0.0.1:19711/torrent/0578052874711515fb81250e1179be468e92f014 && wc -c /root/cr-w67/holder/sample.torrent",
+      "rc": 0,
+      "stdout": "209 /root/cr-w67/holder/sample.torrent\n",
+      "stderr": ""
+    },
+    "torrent_http": {
+      "start": {
+        "unit": "cr-w67-http",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-http 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-http --property=WorkingDirectory=/root/cr-w67/member python3 -m http.server 19880 --bind 127.0.0.1",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-http.service\n"
+        }
+      },
+      "bytes": 209
+    },
+    "discovery": {
+      "tag": "initial",
+      "samples": [
+        {
+          "rc": 0,
+          "parsed": {
+            "mode": "discover-tcp-port",
+            "local": "192.168.1.221:19710",
+            "observations": [
+              {
+                "observer": "119.29.150.254:19720",
+                "mapped_endpoint": "112.5.60.4:38841",
+                "error": null
+              }
+            ],
+            "eim": null,
+            "discovered_endpoint": "112.5.60.4:38841",
+            "discovered_port": 38841,
+            "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+            "s6_status": "not_run",
+            "g2_claim": false,
+            "auto_pass": false
+          }
+        },
+        {
+          "rc": 0,
+          "parsed": {
+            "mode": "discover-tcp-port",
+            "local": "192.168.1.221:19710",
+            "observations": [
+              {
+                "observer": "119.29.150.254:19720",
+                "mapped_endpoint": "112.5.60.4:38841",
+                "error": null
+              }
+            ],
+            "eim": null,
+            "discovered_endpoint": "112.5.60.4:38841",
+            "discovered_port": 38841,
+            "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+            "s6_status": "not_run",
+            "g2_claim": false,
+            "auto_pass": false
+          }
+        }
+      ],
+      "ports": [
+        38841,
+        38841
+      ],
+      "stable": true,
+      "eim_flags": [
+        null,
+        null
+      ]
+    },
+    "punch": {
+      "H": {
+        "result": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "M",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 38841,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        }
+      },
+      "M": {
+        "result": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "H",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 19720,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        }
+      }
+    },
+    "punch_attempts": [
+      {
+        "tag": "initial",
+        "attempt": 1,
+        "nonce": "dac714d7c03a9afa88401b06b0889dd4",
+        "H": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "M",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 38841,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "M": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "H",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 19720,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        }
+      }
+    ],
+    "tcpdump_after_punch": {
+      "H": "length 0\n22:55:34.799938 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [S], seq 4201804249, win 64240, options [mss 1460,sackOK,TS val 516535786 ecr 0,nop,wscale 7], length 0\n22:55:34.825773 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [R.], seq 3643989914, ack 23956432, win 0, length 0\n22:55:34.871777 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [S], seq 676060416, win 64240, options [mss 1424,sackOK,TS val 3433873992 ecr 0,nop,wscale 7], length 0\n22:55:34.871825 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [R.], seq 117119478, ack 25083035, win 0, length 0\n22:55:34.926880 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [S], seq 4203787709, win 64240, options [mss 1460,sackOK,TS val 516535913 ecr 0,nop,wscale 7], length 0\n22:55:34.952782 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [R.], seq 3643989914, ack 25939892, win 0, length 0\n22:55:35.015271 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [S], seq 678305347, win 64240, options [mss 1424,sackOK,TS val 3433874136 ecr 0,nop,wscale 7], length 0\n22:55:35.015317 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [R.], seq 117119478, ack 27327966, win 0, length 0\n22:55:35.103785 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [S], seq 4206551832, win 64240, options [mss 1460,sackOK,TS val 516536090 ecr 0,nop,wscale 7], length 0\n22:55:35.105791 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [S], seq 679719642, win 64240, options [mss 1424,sackOK,TS val 3433874227 ecr 0,nop,wscale 7], length 0\n22:55:35.105833 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [S.], seq 4206551832, ack 679719643, win 64240, options [mss 1460,sackOK,TS val 516536092 ecr 3433874227,nop,wscale 7], length 0\n22:55:35.129786 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [S.], seq 679719642, ack 4206551833, win 64240, options [mss 1424,sackOK,TS val 3433874250 ecr 516536090,nop,wscale 7], length 0\n22:55:35.129842 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [.], ack 1, win 502, options [nop,nop,TS val 516536116 ecr 3433874250,nop,nop,sack 1 {0:1}], length 0\n22:55:35.131290 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [.], ack 1, win 502, options [nop,nop,TS val 3433874252 ecr 516536090], length 0\n22:55:35.131570 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 516536118 ecr 3433874252], length 32\n22:55:35.156277 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 3433874277 ecr 516536116], length 32\n22:55:35.156318 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38841: Flags [.], ack 33, win 502, options [nop,nop,TS val 516536142 ecr 3433874277], length 0\n22:55:35.157289 eth0  In  IP 112.5.60.4.38841 > 10.1.0.2.19720: Flags [.], ack 33, win 502, options [nop,nop,TS val 3433874278 ecr 516536118], length 0\n22:55:35.373425 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 5345:5713, ack 3488, win 9471, length 368\n22:55:35.374232 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 5713:5889, ack 3488, win 9471, length 176\n22:55:35.398689 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [.], ack 5889, win 251, length 0\n22:55:35.399718 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 3488:3536, ack 5889, win 251, length 48\n22:55:35.440405 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 3536, win 9471, length 0\n22:55:35.465185 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 3536:3584, ack 5889, win 251, length 48\n22:55:35.465251 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 3584, win 9471, length 0\n22:55:36.400703 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 3584:3664, ack 5889, win 251, length 80\n22:55:36.400760 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 3664, win 9471, length 0\n22:55:36.400851 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 5889:5953, ack 3664, win 9471, length 64\n",
+      "M": "4.553737 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 671273260, win 64240, options [mss 1460,sackOK,TS val 3433873686 ecr 0,nop,wscale 7], length 0\n14:55:34.579523 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [R.], seq 117119478, ack 20295879, win 0, length 0\n14:55:34.640325 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4199086398, win 64240, options [mss 1424,sackOK,TS val 516535612 ecr 0,nop,wscale 7], length 0\n14:55:34.640354 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [R.], seq 3643989914, ack 21238581, win 0, length 0\n14:55:34.702400 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 673596097, win 64240, options [mss 1460,sackOK,TS val 3433873835 ecr 0,nop,wscale 7], length 0\n14:55:34.728166 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [R.], seq 117119478, ack 22618716, win 0, length 0\n14:55:34.814172 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4201804249, win 64240, options [mss 1424,sackOK,TS val 516535786 ecr 0,nop,wscale 7], length 0\n14:55:34.814201 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [R.], seq 3643989914, ack 23956432, win 0, length 0\n14:55:34.860115 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 676060416, win 64240, options [mss 1460,sackOK,TS val 3433873992 ecr 0,nop,wscale 7], length 0\n14:55:34.886047 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [R.], seq 117119478, ack 25083035, win 0, length 0\n14:55:34.941146 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4203787709, win 64240, options [mss 1424,sackOK,TS val 516535913 ecr 0,nop,wscale 7], length 0\n14:55:34.941176 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [R.], seq 3643989914, ack 25939892, win 0, length 0\n14:55:35.003792 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 678305347, win 64240, options [mss 1460,sackOK,TS val 3433874136 ecr 0,nop,wscale 7], length 0\n14:55:35.029517 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [R.], seq 117119478, ack 27327966, win 0, length 0\n14:55:35.094305 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 679719642, win 64240, options [mss 1460,sackOK,TS val 3433874227 ecr 0,nop,wscale 7], length 0\n14:55:35.118174 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4206551832, win 64240, options [mss 1424,sackOK,TS val 516536090 ecr 0,nop,wscale 7], length 0\n14:55:35.118199 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S.], seq 679719642, ack 4206551833, win 64240, options [mss 1460,sackOK,TS val 3433874250 ecr 516536090,nop,wscale 7], length 0\n14:55:35.120049 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S.], seq 4206551832, ack 679719643, win 64240, options [mss 1424,sackOK,TS val 516536092 ecr 3433874227,nop,wscale 7], length 0\n14:55:35.120067 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 1, win 502, options [nop,nop,TS val 3433874252 ecr 516536090], length 0\n14:55:35.144067 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 1, win 502, options [nop,nop,TS val 516536116 ecr 3433874250,nop,nop,sack 1 {0:1}], length 0\n14:55:35.144761 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 3433874277 ecr 516536116], length 32\n14:55:35.145769 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 516536118 ecr 3433874252], length 32\n14:55:35.145788 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 33, win 502, options [nop,nop,TS val 3433874278 ecr 516536118], length 0\n14:55:35.170635 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 33, win 502, options [nop,nop,TS val 516536142 ecr 3433874277], length 0\n"
+    },
+    "health_after_punch": {
+      "H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3984955,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:33249",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 1,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 0,
+          "socks5_rearmed": 0,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 18,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 711696,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:38423",
+          "socks5_registered": 1,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 1,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 0,
+          "socks5_rearmed": 0,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 6000,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 16,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 0,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "holder_log_after_punch": "11月 27 22:55:18 VM-0-2-ubuntu coldrevived[3984955]: [H] 做种引擎就绪: 请求监听 127.0.0.1:19730 / 实际 Some(127.0.0.1:19730), 任务 1 个, utp_requested=true, utp_udp_port_occupied=true\n11月 27 22:55:18 VM-0-2-ubuntu coldrevived[3984955]: [H] 公网入向配置（未经外部实测）: {\"bt_external\":\"119.29.150.254:19720\",\"http_external\":null,\"engine_listen\":\"127.0.0.1:19730\",\"announce\":[\"http://119.29.150.254:19711/announce\"],\"utp_requested\":true,\"utp_note\":\"µTP 与 BT 端口同号（UDP）；是否真的绑上要看系统连接表（netstat -ano -p UDP）的 PID\",\"inbound_verified\":false,\"inbound_evidence\":\"未由外部主机实测；本机绑定/配置正确不代表入向可达（需端口映射 + 外部验证）\",\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}\n11月 27 22:55:18 VM-0-2-ubuntu coldrevived[3984955]: [H] UDP 监听 0.0.0.0:19712\n11月 27 22:55:18 VM-0-2-ubuntu coldrevived[3984955]: [H] HTTP 监听 0.0.0.0:19711\n11月 27 22:55:18 VM-0-2-ubuntu coldrevived[3984955]: [relay-sub] 已订阅中继 82.157.68.159:7100（可达性声明: unknown）\n11月 27 22:55:35 VM-0-2-ubuntu coldrevived[3984955]: [data-plane] 打洞直连接入引擎监听口（先唤醒再 splice）: peer=112.5.60.4:19910 engine=127.0.0.1:19730（is_s6_evidence=false）\n",
+    "add_uri": {
+      "cmd": "curl -sS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"aria2.addUri\", \"params\": [\"token:283d113d99ec876a4de5ace310edcebdbbffa8a1d6694bf428246e92796ed1a7\", [\"http://127.0.0.1:19880/sample.torrent\"]]}' http://127.0.0.1:19721/jsonrpc",
+      "rc": 0,
+      "stdout": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"1a21d8135500000\"}",
+      "stderr": "",
+      "json": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "1a21d8135500000"
+      }
+    },
+    "download": {
+      "final": {
+        "gid": "1a21d8135500000",
+        "status": "complete",
+        "totalLength": "1048576",
+        "completedLength": "1048576",
+        "uploadLength": "0",
+        "downloadSpeed": "608222",
+        "uploadSpeed": "0",
+        "connections": "0",
+        "files": [
+          {
+            "index": "1",
+            "path": "/root/cr-w67/member/downloads/sample.bin",
+            "length": "1048576",
+            "completedLength": "1048576",
+            "selected": true,
+            "uris": [
+              {
+                "uri": "http://127.0.0.1:19880/sample.torrent",
+                "status": "used"
+              }
+            ]
+          }
+        ],
+        "coldrevive.torrentParsed": true,
+        "coldrevive.pieceCount": "4",
+        "coldrevive.engineAttached": true,
+        "coldrevive.engineTask": "1",
+        "coldrevive.note": "已接入 BT 引擎（librqbit），下载目录 /root/cr-w67/member/downloads",
+        "bittorrent": {
+          "infoHash": "0578052874711515fb81250e1179be468e92f014"
+        }
+      },
+      "samples_tail": [
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": true
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": true,
+          "awaiting": 0,
+          "in_use": 1,
+          "rearmed": 1,
+          "served_after_rearm": 0
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": true
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": true
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "1",
+          "stalled": true
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false,
+          "awaiting": 0,
+          "in_use": 1,
+          "rearmed": 1,
+          "served_after_rearm": 0
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false,
+          "awaiting": 0,
+          "in_use": 1,
+          "rearmed": 1,
+          "served_after_rearm": 0
+        },
+        {
+          "status": "active",
+          "completed": "786432",
+          "connections": "1",
+          "stalled": false
+        },
+        {
+          "status": "complete",
+          "completed": "1048576",
+          "connections": "0",
+          "stalled": false
+        }
+      ]
+    },
+    "repunch": [
+      {
+        "tag": "repunch-1",
+        "H": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "M",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 38883,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "M": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "H",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 19720,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "attempts": 1,
+        "discovered_port": 38883,
+        "discovery": {
+          "tag": "repunch-1",
+          "samples": [
+            {
+              "rc": 0,
+              "parsed": {
+                "mode": "discover-tcp-port",
+                "local": "192.168.1.221:19710",
+                "observations": [
+                  {
+                    "observer": "119.29.150.254:19720",
+                    "mapped_endpoint": "112.5.60.4:38883",
+                    "error": null
+                  }
+                ],
+                "eim": null,
+                "discovered_endpoint": "112.5.60.4:38883",
+                "discovered_port": 38883,
+                "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+                "s6_status": "not_run",
+                "g2_claim": false,
+                "auto_pass": false
+              }
+            },
+            {
+              "rc": 0,
+              "parsed": {
+                "mode": "discover-tcp-port",
+                "local": "192.168.1.221:19710",
+                "observations": [
+                  {
+                    "observer": "119.29.150.254:19720",
+                    "mapped_endpoint": "112.5.60.4:38883",
+                    "error": null
+                  }
+                ],
+                "eim": null,
+                "discovered_endpoint": "112.5.60.4:38883",
+                "discovered_port": 38883,
+                "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+                "s6_status": "not_run",
+                "g2_claim": false,
+                "auto_pass": false
+              }
+            }
+          ],
+          "ports": [
+            38883,
+            38883
+          ],
+          "stable": true,
+          "eim_flags": [
+            null,
+            null
+          ]
+        },
+        "at_completed_bytes": "524288",
+        "trigger_awaiting": 1,
+        "trigger_stalled_s": 20.3
+      }
+    ],
+    "landed_files": [
+      {
+        "path": "/root/cr-w67/member/downloads/sample.bin",
+        "bytes": 1048576,
+        "md5": "6209e962f3b26a13c9ec1ae70fd78e10"
+      }
+    ],
+    "health_after": {
+      "H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3984955,
+        "seed_tasks": 1,
+        "seed_active": 1,
+        "served_bytes": 1572864,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 1,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 1,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 2,
+          "direct": 2,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:33249",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 1,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 0,
+          "socks5_rearmed": 0,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 1572864,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 2,
+          "woken": 2,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 9,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 28,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 1572864,
+          "allowed_bytes": 49152,
+          "denied_bytes": 1523712,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 711696,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 2,
+          "direct": 2,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:38423",
+          "socks5_registered": 0,
+          "served_registered": 2,
+          "bytes_relayed": 751236,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 0,
+          "socks5_awaiting": 0,
+          "socks5_in_use": 1,
+          "socks5_rearmed": 1,
+          "socks5_served_after_rearm": 0,
+          "socks5_rearm_wait_ms": 6000,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 751236,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 58,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 9,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "tcpdump": {
+      "H": "TS val 3433911790 ecr 516572737], length 0\n22:56:12.671257 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 250134:251546, ack 759, win 498, options [nop,nop,TS val 516573657 ecr 3433911790], length 1412\n22:56:12.671260 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 251546:252958, ack 759, win 498, options [nop,nop,TS val 516573657 ecr 3433911790], length 1412\n22:56:12.721167 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 197890, win 2148, options [nop,nop,TS val 3433911840 ecr 516572787], length 0\n22:56:12.721239 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 252958:254370, ack 759, win 498, options [nop,nop,TS val 516573707 ecr 3433911840], length 1412\n22:56:12.721244 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 254370:255782, ack 759, win 498, options [nop,nop,TS val 516573707 ecr 3433911840], length 1412\n22:56:12.761154 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 200714, win 2148, options [nop,nop,TS val 3433911880 ecr 516572827], length 0\n22:56:12.761210 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 255782:257194, ack 759, win 498, options [nop,nop,TS val 516573747 ecr 3433911880], length 1412\n22:56:12.761214 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 257194:258606, ack 759, win 498, options [nop,nop,TS val 516573747 ecr 3433911880], length 1412\n22:56:12.811166 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 203538, win 2148, options [nop,nop,TS val 3433911930 ecr 516572927], length 0\n22:56:12.811223 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 258606:260018, ack 759, win 498, options [nop,nop,TS val 516573797 ecr 3433911930], length 1412\n22:56:12.811227 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 260018:261430, ack 759, win 498, options [nop,nop,TS val 516573797 ecr 3433911930], length 1412\n22:56:12.861151 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 206362, win 2148, options [nop,nop,TS val 3433911980 ecr 516572927], length 0\n22:56:12.861200 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 261430:262842, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n22:56:12.861219 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 262842:264254, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n22:56:12.861221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 264254:265666, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n22:56:12.901158 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 209186, win 2148, options [nop,nop,TS val 3433912020 ecr 516572967], length 0\n22:56:12.901219 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 265666:267078, ack 759, win 498, options [nop,nop,TS val 516573887 ecr 3433912020], length 1412\n22:56:12.901223 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 267078:268490, ack 759, win 498, options [nop,nop,TS val 516573887 ecr 3433912020], length 1412\n22:56:12.951157 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 212010, win 2148, options [nop,nop,TS val 3433912070 ecr 516573018], length 0\n22:56:12.951213 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 268490:269902, ack 759, win 498, options [nop,nop,TS val 516573937 ecr 3433912070], length 1412\n22:56:12.951217 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 269902:271314, ack 759, win 498, options [nop,nop,TS val 516573937 ecr 3433912070], length 1412\n22:56:12.991164 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 214834, win 2148, options [nop,nop,TS val 3433912110 ecr 516573057], length 0\n22:56:12.991225 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 271314:272726, ack 759, win 498, options [nop,nop,TS val 516573977 ecr 3433912110], length 1412\n22:56:12.991229 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 272726:274138, ack 759, win 498, options [nop,nop,TS val 516573977 ecr 3433912110], length 1412\n22:56:13.041164 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 217658, win 2148, options [nop,nop,TS val 3433912160 ecr 516573107], length 0\n22:56:13.041226 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 274138:275550, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n22:56:13.041230 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 275550:276962, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n22:56:13.041250 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 276962:278374, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n22:56:13.091155 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 220482, win 2148, options [nop,nop,TS val 3433912210 ecr 516573157], length 0\n22:56:13.091212 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 278374:279786, ack 759, win 498, options [nop,nop,TS val 516574077 ecr 3433912210], length 1412\n22:56:13.091216 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 279786:281198, ack 759, win 498, options [nop,nop,TS val 516574077 ecr 3433912210], length 1412\n22:56:13.131163 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 223306, win 2148, options [nop,nop,TS val 3433912250 ecr 516573197], length 0\n22:56:13.131241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 281198:282610, ack 759, win 498, options [nop,nop,TS val 516574117 ecr 3433912250], length 1412\n22:56:13.131245 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 282610:284022, ack 759, win 498, options [nop,nop,TS val 516574117 ecr 3433912250], length 1412\n22:56:13.181158 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 226130, win 2148, options [nop,nop,TS val 3433912300 ecr 516573247], length 0\n22:56:13.181214 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 284022:285434, ack 759, win 498, options [nop,nop,TS val 516574167 ecr 3433912300], length 1412\n22:56:13.181217 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 285434:286846, ack 759, win 498, options [nop,nop,TS val 516574167 ecr 3433912300], length 1412\n22:56:13.221174 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 228954, win 2148, options [nop,nop,TS val 3433912340 ecr 516573287], length 0\n22:56:13.221241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 286846:288258, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n22:56:13.221245 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 288258:289670, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n22:56:13.221263 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 289670:291082, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n22:56:13.271172 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 231778, win 2148, options [nop,nop,TS val 3433912390 ecr 516573337], length 0\n22:56:13.271231 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 291082:292494, ack 759, win 498, options [nop,nop,TS val 516574257 ecr 3433912390], length 1412\n22:56:13.271235 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 292494:293906, ack 759, win 498, options [nop,nop,TS val 516574257 ecr 3433912390], length 1412\n22:56:13.321174 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 234602, win 2148, options [nop,nop,TS val 3433912440 ecr 516573387], length 0\n22:56:13.321237 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 293906:295318, ack 759, win 498, options [nop,nop,TS val 516574307 ecr 3433912440], length 1412\n22:56:13.321241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 295318:296730, ack 759, win 498, options [nop,nop,TS val 516574307 ecr 3433912440], length 1412\n22:56:13.361167 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 237426, win 2148, options [nop,nop,TS val 3433912480 ecr 516573427], length 0\n22:56:13.361223 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 296730:298142, ack 759, win 498, options [nop,nop,TS val 516574347 ecr 3433912480], length 1412\n22:56:13.361227 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 298142:299554, ack 759, win 498, options [nop,nop,TS val 516574347 ecr 3433912480], length 1412\n22:56:13.411160 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 240250, win 2148, options [nop,nop,TS val 3433912530 ecr 516573427], length 0\n22:56:13.411221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 299554:300966, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n22:56:13.411224 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 300966:302378, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n22:56:13.411243 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 302378:303790, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n22:56:13.451177 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912570 ecr 516573477], length 0\n22:56:13.451238 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 303790:305202, ack 759, win 498, options [nop,nop,TS val 516574437 ecr 3433912570], length 1412\n22:56:13.451241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 305202:306614, ack 759, win 498, options [nop,nop,TS val 516574437 ecr 3433912570], length 1412\n22:56:13.481177 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912600 ecr 516573477,nop,nop,sack 1 {245898:247310}], length 0\n22:56:13.481237 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 243074:244486, ack 759, win 498, options [nop,nop,TS val 516574467 ecr 3433912600], length 1412\n22:56:13.487411 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 244486:245898, ack 759, win 498, options [nop,nop,TS val 516574474 ecr 3433912600], length 1412\n22:56:13.501157 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912620 ecr 516573477,nop,nop,sack 1 {245898:248722}], length 0\n22:56:13.521156 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912640 ecr 516573477,nop,nop,sack 1 {245898:250134}], length 0\n22:56:13.521214 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 306614:308026, ack 759, win 498, options [nop,nop,TS val 516574507 ecr 3433912640], length 1412\n22:56:13.552665 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912670 ecr 516573477,nop,nop,sack 1 {245898:251546}], length 0\n22:56:13.572678 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912690 ecr 516573477,nop,nop,sack 1 {245898:252958}], length 0\n22:56:13.572736 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 308026:309438, ack 759, win 498, options [nop,nop,TS val 516574559 ecr 3433912690], length 1412\n22:56:13.592666 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912710 ecr 516573477,nop,nop,sack 1 {245898:254370}], length 0\n22:56:13.592721 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 309438:310850, ack 759, win 498, options [nop,nop,TS val 516574579 ecr 3433912710], length 1412\n22:56:13.622659 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912740 ecr 516573477,nop,nop,sack 1 {245898:255782}], length 0\n22:56:13.642155 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912760 ecr 516573477,nop,nop,sack 1 {245898:257194}], length 0\n22:56:13.642221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 310850:312262, ack 759, win 498, options [nop,nop,TS val 516574628 ecr 3433912760], length 1412\n22:56:13.662159 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912780 ecr 516573477,nop,nop,sack 1 {245898:258606}], length 0\n22:56:13.662201 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 312262:313674, ack 759, win 498, options [nop,nop,TS val 516574648 ecr 3433912780], length 1412\n22:56:13.682143 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912800 ecr 516573477,nop,nop,sack 1 {245898:260018}], length 0\n22:56:13.712679 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912830 ecr 516573477,nop,nop,sack 1 {245898:261430}], length 0\n22:56:13.712736 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 313674:315086, ack 759, win 498, options [nop,nop,TS val 516574699 ecr 3433912830], length 1412\n22:56:13.732659 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912850 ecr 516573477,nop,nop,sack 1 {245898:262842}], length 0\n22:56:13.732717 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 315086:316498, ack 759, win 498, options [nop,nop,TS val 516574719 ecr 3433912850], length 1412\n22:56:13.752646 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912870 ecr 516573477,nop,nop,sack 1 {245898:264254}], length 0\n22:56:13.782147 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912900 ecr 516573477,nop,nop,sack 1 {245898:265666}], length 0\n22:56:13.782208 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 316498:317910, ack 759, win 498, options [nop,nop,TS val 516574768 ecr 3433912900], length 1412\n22:56:13.802659 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912920 ecr 516573477,nop,nop,sack 1 {245898:267078}], length 0\n22:56:13.802720 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 317910:319322, ack 759, win 498, options [nop,nop,TS val 516574789 ecr 3433912920], length 1412\n22:56:13.822671 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912940 ecr 516573477,nop,nop,sack 1 {245898:268490}], length 0\n22:56:13.822722 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 319322:320734, ack 759, win 498, options [nop,nop,TS val 516574809 ecr 3433912940], length 1412\n22:56:13.852154 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912970 ecr 516573477,nop,nop,sack 1 {245898:269902}], length 0\n22:56:13.872152 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912990 ecr 516573477,nop,nop,sack 1 {245898:271314}], length 0\n22:56:13.872206 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 320734:322146, ack 759, win 498, options [nop,nop,TS val 516574858 ecr 3433912990], length 1412\n22:56:13.892185 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913010 ecr 516573477,nop,nop,sack 1 {245898:272726}], length 0\n22:56:13.892229 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 322146:323558, ack 759, win 498, options [nop,nop,TS val 516574878 ecr 3433913010], length 1412\n22:56:13.912152 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913030 ecr 516573477,nop,nop,sack 1 {245898:274138}], length 0\n22:56:13.942661 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913060 ecr 516573477,nop,nop,sack 1 {245898:275550}], length 0\n22:56:13.942716 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 323558:324970, ack 759, win 498, options [nop,nop,TS val 516574929 ecr 3433913060], length 1412\n22:56:13.962152 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913080 ecr 516573477,nop,nop,sack 1 {245898:276962}], length 0\n22:56:13.962210 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 324970:326382, ack 759, win 498, options [nop,nop,TS val 516574948 ecr 3433913080], length 1412\n22:56:13.982663 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913100 ecr 516573477,nop,nop,sack 1 {245898:278374}], length 0\n22:56:14.012171 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913130 ecr 516573477,nop,nop,sack 1 {245898:279786}], length 0\n22:56:14.012226 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 326382:327794, ack 759, win 498, options [nop,nop,TS val 516574998 ecr 3433913130], length 1412\n22:56:14.032200 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913150 ecr 516573477,nop,nop,sack 1 {245898:281198}], length 0\n22:56:14.032258 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 327794:329206, ack 759, win 498, options [nop,nop,TS val 516575018 ecr 3433913150], length 1412\n22:56:14.052669 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913170 ecr 516573477,nop,nop,sack 1 {245898:282610}], length 0\n22:56:14.082667 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913200 ecr 516573477,nop,nop,sack 1 {245898:284022}], length 0\n22:56:14.082720 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 329206:330618, ack 759, win 498, options [nop,nop,TS val 516575069 ecr 3433913200], length 1412\n22:56:14.102650 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913220 ecr 516573477,nop,nop,sack 1 {245898:285434}], length 0\n22:56:14.102704 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 330618:332030, ack 759, win 498, options [nop,nop,TS val 516575089 ecr 3433913220], length 1412\n22:56:14.122181 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913240 ecr 516573477,nop,nop,sack 1 {245898:286846}], length 0\n22:56:14.142189 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913260 ecr 516573477,nop,nop,sack 1 {245898:288258}], length 0\n22:56:14.142237 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 332030:333442, ack 759, win 498, options [nop,nop,TS val 516575128 ecr 3433913260], length 1412\n22:56:14.172671 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913290 ecr 516573477,nop,nop,sack 1 {245898:289670}], length 0\n22:56:14.172731 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 333442:334854, ack 759, win 498, options [nop,nop,TS val 516575159 ecr 3433913290], length 1412\n22:56:14.192175 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913310 ecr 516573477,nop,nop,sack 1 {245898:291082}], length 0\n22:56:14.192219 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 334854:336266, ack 759, win 498, options [nop,nop,TS val 516575178 ecr 3433913310], length 1412\n22:56:14.212665 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913330 ecr 516573477,nop,nop,sack 1 {245898:292494}], length 0\n22:56:14.242669 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913360 ecr 516573477,nop,nop,sack 1 {245898:293906}], length 0\n22:56:14.242729 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 336266:337678, ack 759, win 498, options [nop,nop,TS val 516575229 ecr 3433913360], length 1412\n22:56:14.262158 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913380 ecr 516573477,nop,nop,sack 1 {245898:295318}], length 0\n22:56:14.262211 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 337678:339090, ack 759, win 498, options [nop,nop,TS val 516575248 ecr 3433913380], length 1412\n22:56:14.282653 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913400 ecr 516573477,nop,nop,sack 1 {245898:296730}], length 0\n22:56:14.312150 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913430 ecr 516573477,nop,nop,sack 1 {245898:298142}], length 0\n22:56:14.332154 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913450 ecr 516573477,nop,nop,sack 1 {245898:299554}], length 0\n22:56:14.332207 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 339090:340502, ack 759, win 498, options [nop,nop,TS val 516575318 ecr 3433913450], length 1412\n22:56:14.352663 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913470 ecr 516573477,nop,nop,sack 1 {245898:300966}], length 0\n22:56:14.352726 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 340502:341914, ack 759, win 498, options [nop,nop,TS val 516575339 ecr 3433913470], length 1412\n22:56:14.372655 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913490 ecr 516573477,nop,nop,sack 1 {245898:302378}], length 0\n22:56:14.372681 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 341914:343326, ack 759, win 498, options [nop,nop,TS val 516575359 ecr 3433913490], length 1412\n22:56:14.402203 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913520 ecr 516573477,nop,nop,sack 1 {245898:303790}], length 0\n22:56:14.402261 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 343326:344738, ack 759, win 498, options [nop,nop,TS val 516575388 ecr 3433913520], length 1412\n22:56:14.422193 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913540 ecr 516573477,nop,nop,sack 1 {245898:305202}], length 0\n22:56:14.422263 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 344738:346150, ack 759, win 498, options [nop,nop,TS val 516575408 ecr 3433913540], length 1412\n22:56:14.442171 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913560 ecr 516573477,nop,nop,sack 1 {245898:306614}], length 0\n22:56:14.442227 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 346150:347562, ack 759, win 498, options [nop,nop,TS val 516575428 ecr 3433913560], length 1412\n22:56:14.471154 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 244486, win 2137, options [nop,nop,TS val 3433913590 ecr 516574467,nop,nop,sack 1 {245898:306614}], length 0\n22:56:14.471212 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 347562:348974, ack 759, win 498, options [nop,nop,TS val 516575457 ecr 3433913590], length 1412\n22:56:14.491167 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 306614, win 1823, options [nop,nop,TS val 3433913610 ecr 516574474], length 0\n22:56:14.491231 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 348974:350386, ack 759, win 498, options [nop,nop,TS val 516575477 ecr 3433913610], length 1412\n22:56:14.541148 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 309438, win 2148, options [nop,nop,TS val 3433913660 ecr 516574507], length 0\n22:56:14.541204 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 350386:351798, ack 759, win 498, options [nop,nop,TS val 516575527 ecr 3433913660], length 1412\n22:56:14.541207 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 351798:353210, ack 759, win 498, options [nop,nop,TS val 516575527 ecr 3433913660], length 1412\n22:56:14.581158 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 312262, win 2148, options [nop,nop,TS val 3433913700 ecr 516574579], length 0\n22:56:14.581213 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 353210:354622, ack 759, win 498, options [nop,nop,TS val 516575567 ecr 3433913700], length 1412\n22:56:14.581216 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 354622:356034, ack 759, win 498, options [nop,nop,TS val 516575567 ecr 3433913700], length 1412\n22:56:14.631159 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 315086, win 2148, options [nop,nop,TS val 3433913750 ecr 516574648], length 0\n22:56:14.631216 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 356034:357446, ack 759, win 498, options [nop,nop,TS val 516575617 ecr 3433913750], length 1412\n22:56:14.631220 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 357446:358858, ack 759, win 498, options [nop,nop,TS val 516575617 ecr 3433913750], length 1412\n22:56:14.671216 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 317910, win 2148, options [nop,nop,TS val 3433913790 ecr 516574719], length 0\n22:56:14.671268 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 358858:360270, ack 759, win 498, options [nop,nop,TS val 516575657 ecr 3433913790], length 1412\n22:56:14.671272 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 360270:361682, ack 759, win 498, options [nop,nop,TS val 516575657 ecr 3433913790], length 1412\n22:56:14.721173 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 320734, win 2148, options [nop,nop,TS val 3433913840 ecr 516574789], length 0\n22:56:14.721238 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 361682:363094, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n22:56:14.721242 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 363094:364506, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n22:56:14.721263 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 364506:365918, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n22:56:14.771151 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 323558, win 2148, options [nop,nop,TS val 3433913890 ecr 516574858], length 0\n22:56:14.771215 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 365918:367330, ack 759, win 498, options [nop,nop,TS val 516575757 ecr 3433913890], length 1412\n22:56:14.771218 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 367330:368742, ack 759, win 498, options [nop,nop,TS val 516575757 ecr 3433913890], length 1412\n22:56:14.811150 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 326382, win 2148, options [nop,nop,TS val 3433913930 ecr 516574929], length 0\n22:56:14.811216 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 368742:370154, ack 759, win 498, options [nop,nop,TS val 516575797 ecr 3433913930], length 1412\n22:56:14.811220 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 370154:371566, ack 759, win 498, options [nop,nop,TS val 516575797 ecr 3433913930], length 1412\n22:56:14.861167 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 329206, win 2148, options [nop,nop,TS val 3433913980 ecr 516574998], length 0\n22:56:14.861224 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 371566:372978, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n22:56:14.861228 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 372978:374390, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n22:56:14.861248 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 374390:375802, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n22:56:14.901158 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 332030, win 2148, options [nop,nop,TS val 3433914020 ecr 516575069], length 0\n22:56:14.901208 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 375802:377214, ack 759, win 498, options [nop,nop,TS val 516575887 ecr 3433914020], length 1412\n22:56:14.901211 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 377214:378626, ack 759, win 498, options [nop,nop,TS val 516575887 ecr 3433914020], length 1412\n22:56:14.951155 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 334854, win 2148, options [nop,nop,TS val 3433914070 ecr 516575128], length 0\n22:56:14.951214 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 378626:380038, ack 759, win 498, options [nop,nop,TS val 516575937 ecr 3433914070], length 1412\n22:56:14.951219 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 380038:381450, ack 759, win 498, options [nop,nop,TS val 516575937 ecr 3433914070], length 1412\n22:56:15.001166 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 337678, win 2148, options [nop,nop,TS val 3433914120 ecr 516575178], length 0\n22:56:15.001223 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 381450:382862, ack 759, win 498, options [nop,nop,TS val 516575987 ecr 3433914120], length 1412\n22:56:15.001228 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 382862:384274, ack 759, win 498, options [nop,nop,TS val 516575987 ecr 3433914120], length 1412\n22:56:15.041145 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 340502, win 2148, options [nop,nop,TS val 3433914160 ecr 516575248], length 0\n22:56:15.041208 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 384274:385686, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n22:56:15.041212 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 385686:387098, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n22:56:15.041226 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 387098:388510, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n22:56:15.091163 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 343326, win 2148, options [nop,nop,TS val 3433914210 ecr 516575339], length 0\n22:56:15.091219 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 388510:389922, ack 759, win 498, options [nop,nop,TS val 516576077 ecr 3433914210], length 1412\n22:56:15.091222 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 389922:391334, ack 759, win 498, options [nop,nop,TS val 516576077 ecr 3433914210], length 1412\n22:56:15.131171 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 346150, win 2148, options [nop,nop,TS val 3433914250 ecr 516575388], length 0\n22:56:15.131228 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 391334:392746, ack 759, win 498, options [nop,nop,TS val 516576117 ecr 3433914250], length 1412\n22:56:15.131238 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 392746:394158, ack 759, win 498, options [nop,nop,TS val 516576117 ecr 3433914250], length 1412\n22:56:15.181154 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 348974, win 2148, options [nop,nop,TS val 3433914300 ecr 516575428], length 0\n22:56:15.181221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 394158:395570, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n22:56:15.181225 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 395570:396982, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n22:56:15.181241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 396982:398394, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n22:56:15.231168 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 351798, win 2148, options [nop,nop,TS val 3433914350 ecr 516575477], length 0\n22:56:15.231232 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 398394:399806, ack 759, win 498, options [nop,nop,TS val 516576217 ecr 3433914350], length 1412\n22:56:15.231235 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 399806:401218, ack 759, win 498, options [nop,nop,TS val 516576217 ecr 3433914350], length 1412\n22:56:15.271167 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 354622, win 2202, options [nop,nop,TS val 3433914390 ecr 516575527], length 0\n22:56:15.271224 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 401218:402630, ack 759, win 498, options [nop,nop,TS val 516576257 ecr 3433914390], length 1412\n22:56:15.271229 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 402630:404042, ack 759, win 498, options [nop,nop,TS val 516576257 ecr 3433914390], length 1412\n22:56:15.321166 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 357446, win 2247, options [nop,nop,TS val 3433914440 ecr 516575567], length 0\n22:56:15.321221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 404042:405454, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n22:56:15.321224 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 405454:406866, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n22:56:15.321241 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 406866:408278, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n22:56:15.361152 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 360270, win 2293, options [nop,nop,TS val 3433914480 ecr 516575617], length 0\n22:56:15.361214 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 408278:409690, ack 759, win 498, options [nop,nop,TS val 516576347 ecr 3433914480], length 1412\n22:56:15.361217 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 409690:411102, ack 759, win 498, options [nop,nop,TS val 516576347 ecr 3433914480], length 1412\n22:56:15.411163 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 363094, win 2338, options [nop,nop,TS val 3433914530 ecr 516575657], length 0\n22:56:15.411222 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 411102:412514, ack 759, win 498, options [nop,nop,TS val 516576397 ecr 3433914530], length 1412\n22:56:15.411226 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 412514:413926, ack 759, win 498, options [nop,nop,TS val 516576397 ecr 3433914530], length 1412\n22:56:15.461160 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 365918, win 2383, options [nop,nop,TS val 3433914580 ecr 516575707], length 0\n22:56:15.461221 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 413926:415338, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n22:56:15.461225 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 415338:416750, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n22:56:15.461240 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 416750:418162, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n22:56:15.501160 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 368742, win 2428, options [nop,nop,TS val 3433914620 ecr 516575757], length 0\n22:56:15.501225 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 418162:419574, ack 759, win 498, options [nop,nop,TS val 516576487 ecr 3433914620], length 1412\n22:56:15.501229 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 419574:420986, ack 759, win 498, options [nop,nop,TS val 516576487 ecr 3433914620], length 1412\n22:56:15.551186 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 371566, win 2474, options [nop,nop,TS val 3433914670 ecr 516575797], length 0\n22:56:15.551249 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 420986:422398, ack 759, win 498, options [nop,nop,TS val 516576537 ecr 3433914670], length 1412\n22:56:15.551253 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 422398:423810, ack 759, win 498, options [nop,nop,TS val 516576537 ecr 3433914670], length 1412\n22:56:15.591165 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 374390, win 2519, options [nop,nop,TS val 3433914710 ecr 516575847], length 0\n22:56:15.591223 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 423810:425222, ack 759, win 498, options [nop,nop,TS val 516576577 ecr 3433914710], length 1412\n22:56:15.591226 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 425222:426634, ack 759, win 498, options [nop,nop,TS val 516576577 ecr 3433914710], length 1412\n22:56:15.641303 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 377214, win 2564, options [nop,nop,TS val 3433914760 ecr 516575847], length 0\n22:56:15.641360 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 426634:428046, ack 759, win 498, options [nop,nop,TS val 516576627 ecr 3433914760], length 1412\n22:56:15.641363 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 428046:429458, ack 759, win 498, options [nop,nop,TS val 516576627 ecr 3433914760], length 1412\n22:56:15.641386 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 429458:430870, ack 759, win 498, options [nop,nop,TS val 516576628 ecr 3433914760], length 1412\n22:56:15.691282 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 380038, win 2609, options [nop,nop,TS val 3433914810 ecr 516575887], length 0\n22:56:15.691340 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 430870:432282, ack 759, win 498, options [nop,nop,TS val 516576677 ecr 3433914810], length 1412\n22:56:15.691344 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 432282:433694, ack 759, win 498, options [nop,nop,TS val 516576677 ecr 3433914810], length 1412\n22:56:15.731280 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 382862, win 2655, options [nop,nop,TS val 3433914850 ecr 516575937], length 0\n22:56:15.731354 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 433694:435106, ack 759, win 498, options [nop,nop,TS val 516576717 ecr 3433914850], length 1412\n22:56:15.731358 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 435106:436518, ack 759, win 498, options [nop,nop,TS val 516576717 ecr 3433914850], length 1412\n22:56:15.781286 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 385686, win 2700, options [nop,nop,TS val 3433914900 ecr 516575987], length 0\n22:56:15.781348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 436518:437930, ack 759, win 498, options [nop,nop,TS val 516576767 ecr 3433914900], length 1412\n22:56:15.781352 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 437930:439342, ack 759, win 498, options [nop,nop,TS val 516576767 ecr 3433914900], length 1412\n22:56:15.781368 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 439342:440754, ack 759, win 498, options [nop,nop,TS val 516576768 ecr 3433914900], length 1412\n22:56:15.821285 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 388510, win 2745, options [nop,nop,TS val 3433914940 ecr 516576027], length 0\n22:56:15.821348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 440754:442166, ack 759, win 498, options [nop,nop,TS val 516576807 ecr 3433914940], length 1412\n22:56:15.821352 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 442166:443578, ack 759, win 498, options [nop,nop,TS val 516576807 ecr 3433914940], length 1412\n22:56:15.871288 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 391334, win 2790, options [nop,nop,TS val 3433914990 ecr 516576077], length 0\n22:56:15.871351 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 443578:444990, ack 759, win 498, options [nop,nop,TS val 516576857 ecr 3433914990], length 1412\n22:56:15.871355 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 444990:446402, ack 759, win 498, options [nop,nop,TS val 516576857 ecr 3433914990], length 1412\n22:56:15.921288 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 394158, win 2836, options [nop,nop,TS val 3433915040 ecr 516576117], length 0\n22:56:15.921346 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 446402:447814, ack 759, win 498, options [nop,nop,TS val 516576907 ecr 3433915040], length 1412\n22:56:15.921350 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 447814:449226, ack 759, win 498, options [nop,nop,TS val 516576907 ecr 3433915040], length 1412\n22:56:15.961285 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 396982, win 2881, options [nop,nop,TS val 3433915080 ecr 516576167], length 0\n22:56:15.961342 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 449226:450638, ack 759, win 498, options [nop,nop,TS val 516576947 ecr 3433915080], length 1412\n22:56:15.961345 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 450638:452050, ack 759, win 498, options [nop,nop,TS val 516576947 ecr 3433915080], length 1412\n22:56:16.011296 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 399806, win 2926, options [nop,nop,TS val 3433915130 ecr 516576167], length 0\n22:56:16.011350 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 452050:453462, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n22:56:16.011353 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 453462:454874, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n22:56:16.011370 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 454874:456286, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n22:56:16.051289 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 402630, win 2971, options [nop,nop,TS val 3433915170 ecr 516576217], length 0\n22:56:16.051345 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 456286:457698, ack 759, win 498, options [nop,nop,TS val 516577037 ecr 3433915170], length 1412\n22:56:16.051348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 457698:459110, ack 759, win 498, options [nop,nop,TS val 516577037 ecr 3433915170], length 1412\n22:56:16.101280 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 405454, win 3017, options [nop,nop,TS val 3433915220 ecr 516576257], length 0\n22:56:16.101331 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 459110:460522, ack 759, win 498, options [nop,nop,TS val 516577087 ecr 3433915220], length 1412\n22:56:16.101335 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 460522:461934, ack 759, win 498, options [nop,nop,TS val 516577087 ecr 3433915220], length 1412\n22:56:16.151283 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 408278, win 3062, options [nop,nop,TS val 3433915270 ecr 516576307], length 0\n22:56:16.151336 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 461934:463346, ack 759, win 498, options [nop,nop,TS val 516577137 ecr 3433915270], length 1412\n22:56:16.151339 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 463346:464758, ack 759, win 498, options [nop,nop,TS val 516577137 ecr 3433915270], length 1412\n22:56:16.191281 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 411102, win 3107, options [nop,nop,TS val 3433915310 ecr 516576347], length 0\n22:56:16.191331 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 464758:466170, ack 759, win 498, options [nop,nop,TS val 516577177 ecr 3433915310], length 1412\n22:56:16.191334 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 466170:467582, ack 759, win 498, options [nop,nop,TS val 516577177 ecr 3433915310], length 1412\n22:56:16.241289 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 413926, win 3152, options [nop,nop,TS val 3433915360 ecr 516576397], length 0\n22:56:16.241372 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 467582:468994, ack 759, win 498, options [nop,nop,TS val 516577227 ecr 3433915360], length 1412\n22:56:16.241376 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 468994:470406, ack 759, win 498, options [nop,nop,TS val 516577227 ecr 3433915360], length 1412\n22:56:16.241395 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 470406:471818, ack 759, win 498, options [nop,nop,TS val 516577228 ecr 3433915360], length 1412\n22:56:16.281275 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 416750, win 3198, options [nop,nop,TS val 3433915400 ecr 516576447], length 0\n22:56:16.281308 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 471818:473230, ack 759, win 498, options [nop,nop,TS val 516577267 ecr 3433915400], length 1412\n22:56:16.281311 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 473230:474642, ack 759, win 498, options [nop,nop,TS val 516577267 ecr 3433915400], length 1412\n22:56:16.331332 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 419574, win 3243, options [nop,nop,TS val 3433915450 ecr 516576447], length 0\n22:56:16.331388 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 474642:476054, ack 759, win 498, options [nop,nop,TS val 516577318 ecr 3433915450], length 1412\n22:56:16.331392 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 476054:477466, ack 759, win 498, options [nop,nop,TS val 516577318 ecr 3433915450], length 1412\n22:56:16.381275 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 422398, win 3288, options [nop,nop,TS val 3433915500 ecr 516576487], length 0\n22:56:16.381303 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 477466:478878, ack 759, win 498, options [nop,nop,TS val 516577367 ecr 3433915500], length 1412\n22:56:16.381305 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 478878:480290, ack 759, win 498, options [nop,nop,TS val 516577367 ecr 3433915500], length 1412\n22:56:16.421286 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 425222, win 3333, options [nop,nop,TS val 3433915540 ecr 516576537], length 0\n22:56:16.421339 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 480290:481702, ack 759, win 498, options [nop,nop,TS val 516577407 ecr 3433915540], length 1412\n22:56:16.421343 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 481702:483114, ack 759, win 498, options [nop,nop,TS val 516577407 ecr 3433915540], length 1412\n22:56:16.471292 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 428046, win 3379, options [nop,nop,TS val 3433915590 ecr 516576577], length 0\n22:56:16.471348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 483114:484526, ack 759, win 498, options [nop,nop,TS val 516577457 ecr 3433915590], length 1412\n22:56:16.471352 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 484526:485938, ack 759, win 498, options [nop,nop,TS val 516577457 ecr 3433915590], length 1412\n22:56:16.471377 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 485938:487350, ack 759, win 498, options [nop,nop,TS val 516577458 ecr 3433915590], length 1412\n22:56:16.511287 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 430870, win 3424, options [nop,nop,TS val 3433915630 ecr 516576627], length 0\n22:56:16.511348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 487350:488762, ack 759, win 498, options [nop,nop,TS val 516577497 ecr 3433915630], length 1412\n22:56:16.511356 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 488762:490174, ack 759, win 498, options [nop,nop,TS val 516577497 ecr 3433915630], length 1412\n22:56:16.561280 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 433694, win 3469, options [nop,nop,TS val 3433915680 ecr 516576677], length 0\n22:56:16.561332 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 490174:491586, ack 759, win 498, options [nop,nop,TS val 516577547 ecr 3433915680], length 1412\n22:56:16.561336 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 491586:492998, ack 759, win 498, options [nop,nop,TS val 516577547 ecr 3433915680], length 1412\n22:56:16.611275 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 436518, win 3514, options [nop,nop,TS val 3433915730 ecr 516576717], length 0\n22:56:16.611333 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 492998:494410, ack 759, win 498, options [nop,nop,TS val 516577597 ecr 3433915730], length 1412\n22:56:16.611336 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 494410:495822, ack 759, win 498, options [nop,nop,TS val 516577597 ecr 3433915730], length 1412\n22:56:16.651282 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 439342, win 3560, options [nop,nop,TS val 3433915770 ecr 516576767], length 0\n22:56:16.651337 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 495822:497234, ack 759, win 498, options [nop,nop,TS val 516577637 ecr 3433915770], length 1412\n22:56:16.651340 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 497234:498646, ack 759, win 498, options [nop,nop,TS val 516577637 ecr 3433915770], length 1412\n22:56:16.701285 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 442166, win 3605, options [nop,nop,TS val 3433915820 ecr 516576768], length 0\n22:56:16.701348 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 498646:500058, ack 759, win 498, options [nop,nop,TS val 516577687 ecr 3433915820], length 1412\n22:56:16.701351 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 500058:501470, ack 759, win 498, options [nop,nop,TS val 516577687 ecr 3433915820], length 1412\n22:56:16.741290 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 444990, win 3650, options [nop,nop,TS val 3433915860 ecr 516576807], length 0\n22:56:16.741362 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 501470:502882, ack 759, win 498, options [nop,nop,TS val 516577727 ecr 3433915860], length 1412\n22:56:16.741366 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 502882:504294, ack 759, win 498, options [nop,nop,TS val 516577727 ecr 3433915860], length 1412\n22:56:16.791280 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 447814, win 3695, options [nop,nop,TS val 3433915910 ecr 516576857], length 0\n22:56:16.791334 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 504294:505706, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n22:56:16.791337 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 505706:507118, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n22:56:16.791356 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 507118:508530, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n22:56:16.841300 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 450638, win 3741, options [nop,nop,TS val 3433915960 ecr 516576907], length 0\n22:56:16.841356 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 508530:509942, ack 759, win 498, options [nop,nop,TS val 516577827 ecr 3433915960], length 1412\n22:56:16.841359 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 509942:511354, ack 759, win 498, options [nop,nop,TS val 516577827 ecr 3433915960], length 1412\n22:56:16.881282 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 453462, win 3786, options [nop,nop,TS val 3433916000 ecr 516576947], length 0\n22:56:16.881337 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 511354:512766, ack 759, win 498, options [nop,nop,TS val 516577867 ecr 3433916000], length 1412\n22:56:16.881340 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 512766:514178, ack 759, win 498, options [nop,nop,TS val 516577867 ecr 3433916000], length 1412\n22:56:16.931269 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 456286, win 3831, options [nop,nop,TS val 3433916050 ecr 516576997], length 0\n22:56:16.931311 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 514178:515590, ack 759, win 498, options [nop,nop,TS val 516577917 ecr 3433916050], length 1412\n22:56:16.931313 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 515590:517002, ack 759, win 498, options [nop,nop,TS val 516577917 ecr 3433916050], length 1412\n22:56:16.971296 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 459110, win 3876, options [nop,nop,TS val 3433916090 ecr 516577037], length 0\n22:56:16.971354 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 517002:518414, ack 759, win 498, options [nop,nop,TS val 516577957 ecr 3433916090], length 1412\n22:56:16.971358 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 518414:519826, ack 759, win 498, options [nop,nop,TS val 516577957 ecr 3433916090], length 1412\n22:56:17.021424 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 461934, win 3922, options [nop,nop,TS val 3433916140 ecr 516577087], length 0\n22:56:17.021499 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 519826:521238, ack 759, win 498, options [nop,nop,TS val 516578008 ecr 3433916140], length 1412\n22:56:17.021504 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 521238:522650, ack 759, win 498, options [nop,nop,TS val 516578008 ecr 3433916140], length 1412\n22:56:17.071293 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 464758, win 3967, options [nop,nop,TS val 3433916190 ecr 516577137], length 0\n22:56:17.071355 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [.], seq 522650:524062, ack 759, win 498, options [nop,nop,TS val 516578057 ecr 3433916190], length 1412\n22:56:17.071358 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.38883: Flags [P.], seq 524062:524914, ack 759, win 498, options [nop,nop,TS val 516578057 ecr 3433916190], length 852\n22:56:17.111279 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 467582, win 4012, options [nop,nop,TS val 3433916230 ecr 516577177], length 0\n22:56:17.161283 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 470406, win 4057, options [nop,nop,TS val 3433916280 ecr 516577227], length 0\n22:56:17.201290 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 473230, win 4103, options [nop,nop,TS val 3433916320 ecr 516577228], length 0\n22:56:17.251329 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 476054, win 4148, options [nop,nop,TS val 3433916370 ecr 516577267], length 0\n22:56:17.301282 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 478878, win 4193, options [nop,nop,TS val 3433916420 ecr 516577318], length 0\n22:56:17.341289 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 481702, win 4238, options [nop,nop,TS val 3433916460 ecr 516577367], length 0\n22:56:17.391276 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 484526, win 4284, options [nop,nop,TS val 3433916510 ecr 516577407], length 0\n22:56:17.431286 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 487350, win 4329, options [nop,nop,TS val 3433916550 ecr 516577457], length 0\n22:56:17.481273 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 490174, win 4374, options [nop,nop,TS val 3433916600 ecr 516577497], length 0\n22:56:17.531278 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 492998, win 4419, options [nop,nop,TS val 3433916650 ecr 516577547], length 0\n22:56:17.571293 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 495822, win 4465, options [nop,nop,TS val 3433916690 ecr 516577597], length 0\n22:56:17.621292 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 498646, win 4510, options [nop,nop,TS val 3433916740 ecr 516577637], length 0\n22:56:17.661294 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 501470, win 4555, options [nop,nop,TS val 3433916780 ecr 516577687], length 0\n22:56:17.711291 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 504294, win 4600, options [nop,nop,TS val 3433916830 ecr 516577727], length 0\n22:56:17.761274 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 507118, win 4646, options [nop,nop,TS val 3433916880 ecr 516577777], length 0\n22:56:17.801311 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 509942, win 4691, options [nop,nop,TS val 3433916920 ecr 516577777], length 0\n22:56:17.851279 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 512766, win 4736, options [nop,nop,TS val 3433916970 ecr 516577827], length 0\n22:56:17.891296 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 515590, win 4781, options [nop,nop,TS val 3433917010 ecr 516577867], length 0\n22:56:17.940808 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 518414, win 4827, options [nop,nop,TS val 3433917060 ecr 516577917], length 0\n22:56:17.991311 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 521238, win 4872, options [nop,nop,TS val 3433917110 ecr 516577957], length 0\n22:56:18.031282 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 524062, win 4917, options [nop,nop,TS val 3433917150 ecr 516578008], length 0\n22:56:18.092796 eth0  In  IP 112.5.60.4.38883 > 10.1.0.2.19720: Flags [.], ack 524914, win 4939, options [nop,nop,TS val 3433917212 ecr 516578057], length 0\n22:56:18.480925 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 6192:6272, ack 35217, win 253, length 80\n22:56:18.480974 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 6272, win 9471, length 0\n22:56:18.481045 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 35217:35281, ack 6272, win 9471, length 64\n22:56:18.505937 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 6272:6384, ack 35281, win 252, length 112\n22:56:18.506576 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 35281:35393, ack 6384, win 9471, length 112\n22:56:18.514593 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], seq 35393:36817, ack 6384, win 9471, length 1424\n22:56:18.514600 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 36817:38241, ack 6384, win 9471, length 1424\n22:56:18.514625 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 38241:39073, ack 6384, win 9471, length 832\n22:56:18.515134 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 39073:39249, ack 6384, win 9471, length 176\n22:56:18.539420 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [.], ack 36817, win 255, length 0\n22:56:18.539421 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [.], ack 39073, win 255, length 0\n22:56:18.540906 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 6384:6432, ack 39249, win 255, length 48\n22:56:18.582391 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 6432, win 9471, length 0\n22:56:18.607426 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 6432:6560, ack 39249, win 255, length 128\n22:56:18.607476 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [.], ack 6560, win 9470, length 0\n22:56:18.607572 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 39249:39313, ack 6560, win 9471, length 64\n22:56:18.634432 eth0  In  IP 112.5.60.4.38772 > 10.1.0.2.22: Flags [P.], seq 6560:6672, ack 39313, win 255, length 112\n22:56:18.634977 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.38772: Flags [P.], seq 39313:39425, ack 6672, win 9471, length 112\n",
+      "M": "2.168.1.221.19710: Flags [.], seq 237426:238838, ack 759, win 498, options [nop,nop,TS val 516573427 ecr 3433911560], length 1412\n14:56:13.397442 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 238838:240250, ack 759, win 498, options [nop,nop,TS val 516573477 ecr 3433911610], length 1412\n14:56:13.397490 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 240250, win 2148, options [nop,nop,TS val 3433912530 ecr 516573427], length 0\n14:56:13.417393 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 240250:241662, ack 759, win 498, options [nop,nop,TS val 516573477 ecr 3433911610], length 1412\n14:56:13.437317 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 241662:243074, ack 759, win 498, options [nop,nop,TS val 516573517 ecr 3433911650], length 1412\n14:56:13.437367 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912570 ecr 516573477], length 0\n14:56:13.467321 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 245898:247310, ack 759, win 498, options [nop,nop,TS val 516573567 ecr 3433911700], length 1412\n14:56:13.467343 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912600 ecr 516573477,nop,nop,sack 1 {245898:247310}], length 0\n14:56:13.487386 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 247310:248722, ack 759, win 498, options [nop,nop,TS val 516573617 ecr 3433911750], length 1412\n14:56:13.487411 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912620 ecr 516573477,nop,nop,sack 1 {245898:248722}], length 0\n14:56:13.507369 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 248722:250134, ack 759, win 498, options [nop,nop,TS val 516573617 ecr 3433911750], length 1412\n14:56:13.507387 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912640 ecr 516573477,nop,nop,sack 1 {245898:250134}], length 0\n14:56:13.537515 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 250134:251546, ack 759, win 498, options [nop,nop,TS val 516573657 ecr 3433911790], length 1412\n14:56:13.538712 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912670 ecr 516573477,nop,nop,sack 1 {245898:251546}], length 0\n14:56:13.557493 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 251546:252958, ack 759, win 498, options [nop,nop,TS val 516573657 ecr 3433911790], length 1412\n14:56:13.558688 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912690 ecr 516573477,nop,nop,sack 1 {245898:252958}], length 0\n14:56:13.577465 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 252958:254370, ack 759, win 498, options [nop,nop,TS val 516573707 ecr 3433911840], length 1412\n14:56:13.578657 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912710 ecr 516573477,nop,nop,sack 1 {245898:254370}], length 0\n14:56:13.607390 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 254370:255782, ack 759, win 498, options [nop,nop,TS val 516573707 ecr 3433911840], length 1412\n14:56:13.608584 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912740 ecr 516573477,nop,nop,sack 1 {245898:255782}], length 0\n14:56:13.627297 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 255782:257194, ack 759, win 498, options [nop,nop,TS val 516573747 ecr 3433911880], length 1412\n14:56:13.628490 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912760 ecr 516573477,nop,nop,sack 1 {245898:257194}], length 0\n14:56:13.647311 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 257194:258606, ack 759, win 498, options [nop,nop,TS val 516573747 ecr 3433911880], length 1412\n14:56:13.648506 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912780 ecr 516573477,nop,nop,sack 1 {245898:258606}], length 0\n14:56:13.667267 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 258606:260018, ack 759, win 498, options [nop,nop,TS val 516573797 ecr 3433911930], length 1412\n14:56:13.668441 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912800 ecr 516573477,nop,nop,sack 1 {245898:260018}], length 0\n14:56:13.697502 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 260018:261430, ack 759, win 498, options [nop,nop,TS val 516573797 ecr 3433911930], length 1412\n14:56:13.698696 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912830 ecr 516573477,nop,nop,sack 1 {245898:261430}], length 0\n14:56:13.717497 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 261430:262842, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n14:56:13.718694 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912850 ecr 516573477,nop,nop,sack 1 {245898:262842}], length 0\n14:56:13.737522 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 262842:264254, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n14:56:13.738717 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912870 ecr 516573477,nop,nop,sack 1 {245898:264254}], length 0\n14:56:13.767303 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 264254:265666, ack 759, win 498, options [nop,nop,TS val 516573847 ecr 3433911980], length 1412\n14:56:13.768468 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912900 ecr 516573477,nop,nop,sack 1 {245898:265666}], length 0\n14:56:13.787355 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 265666:267078, ack 759, win 498, options [nop,nop,TS val 516573887 ecr 3433912020], length 1412\n14:56:13.788525 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912920 ecr 516573477,nop,nop,sack 1 {245898:267078}], length 0\n14:56:13.807318 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 267078:268490, ack 759, win 498, options [nop,nop,TS val 516573887 ecr 3433912020], length 1412\n14:56:13.808491 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912940 ecr 516573477,nop,nop,sack 1 {245898:268490}], length 0\n14:56:13.837394 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 268490:269902, ack 759, win 498, options [nop,nop,TS val 516573937 ecr 3433912070], length 1412\n14:56:13.838565 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912970 ecr 516573477,nop,nop,sack 1 {245898:269902}], length 0\n14:56:13.857359 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 269902:271314, ack 759, win 498, options [nop,nop,TS val 516573937 ecr 3433912070], length 1412\n14:56:13.858517 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433912990 ecr 516573477,nop,nop,sack 1 {245898:271314}], length 0\n14:56:13.877411 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 271314:272726, ack 759, win 498, options [nop,nop,TS val 516573977 ecr 3433912110], length 1412\n14:56:13.878543 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913010 ecr 516573477,nop,nop,sack 1 {245898:272726}], length 0\n14:56:13.897384 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 272726:274138, ack 759, win 498, options [nop,nop,TS val 516573977 ecr 3433912110], length 1412\n14:56:13.898574 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913030 ecr 516573477,nop,nop,sack 1 {245898:274138}], length 0\n14:56:13.927339 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 274138:275550, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n14:56:13.928535 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913060 ecr 516573477,nop,nop,sack 1 {245898:275550}], length 0\n14:56:13.947375 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 275550:276962, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n14:56:13.948572 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913080 ecr 516573477,nop,nop,sack 1 {245898:276962}], length 0\n14:56:13.967448 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 276962:278374, ack 759, win 498, options [nop,nop,TS val 516574027 ecr 3433912160], length 1412\n14:56:13.968647 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913100 ecr 516573477,nop,nop,sack 1 {245898:278374}], length 0\n14:56:13.997384 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 278374:279786, ack 759, win 498, options [nop,nop,TS val 516574077 ecr 3433912210], length 1412\n14:56:13.998577 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913130 ecr 516573477,nop,nop,sack 1 {245898:279786}], length 0\n14:56:14.017397 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 279786:281198, ack 759, win 498, options [nop,nop,TS val 516574077 ecr 3433912210], length 1412\n14:56:14.018596 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913150 ecr 516573477,nop,nop,sack 1 {245898:281198}], length 0\n14:56:14.037554 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 281198:282610, ack 759, win 498, options [nop,nop,TS val 516574117 ecr 3433912250], length 1412\n14:56:14.038752 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913170 ecr 516573477,nop,nop,sack 1 {245898:282610}], length 0\n14:56:14.067354 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 282610:284022, ack 759, win 498, options [nop,nop,TS val 516574117 ecr 3433912250], length 1412\n14:56:14.068549 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913200 ecr 516573477,nop,nop,sack 1 {245898:284022}], length 0\n14:56:14.087302 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 284022:285434, ack 759, win 498, options [nop,nop,TS val 516574167 ecr 3433912300], length 1412\n14:56:14.088507 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913220 ecr 516573477,nop,nop,sack 1 {245898:285434}], length 0\n14:56:14.107320 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 285434:286846, ack 759, win 498, options [nop,nop,TS val 516574167 ecr 3433912300], length 1412\n14:56:14.108510 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913240 ecr 516573477,nop,nop,sack 1 {245898:286846}], length 0\n14:56:14.127359 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 286846:288258, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n14:56:14.128579 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913260 ecr 516573477,nop,nop,sack 1 {245898:288258}], length 0\n14:56:14.157403 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 288258:289670, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n14:56:14.158597 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913290 ecr 516573477,nop,nop,sack 1 {245898:289670}], length 0\n14:56:14.177494 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 289670:291082, ack 759, win 498, options [nop,nop,TS val 516574207 ecr 3433912340], length 1412\n14:56:14.178663 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913310 ecr 516573477,nop,nop,sack 1 {245898:291082}], length 0\n14:56:14.197490 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 291082:292494, ack 759, win 498, options [nop,nop,TS val 516574257 ecr 3433912390], length 1412\n14:56:14.198682 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913330 ecr 516573477,nop,nop,sack 1 {245898:292494}], length 0\n14:56:14.227327 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 292494:293906, ack 759, win 498, options [nop,nop,TS val 516574257 ecr 3433912390], length 1412\n14:56:14.228494 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913360 ecr 516573477,nop,nop,sack 1 {245898:293906}], length 0\n14:56:14.247316 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 293906:295318, ack 759, win 498, options [nop,nop,TS val 516574307 ecr 3433912440], length 1412\n14:56:14.248511 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913380 ecr 516573477,nop,nop,sack 1 {245898:295318}], length 0\n14:56:14.267351 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 295318:296730, ack 759, win 498, options [nop,nop,TS val 516574307 ecr 3433912440], length 1412\n14:56:14.268569 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913400 ecr 516573477,nop,nop,sack 1 {245898:296730}], length 0\n14:56:14.297279 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 296730:298142, ack 759, win 498, options [nop,nop,TS val 516574347 ecr 3433912480], length 1412\n14:56:14.298445 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913430 ecr 516573477,nop,nop,sack 1 {245898:298142}], length 0\n14:56:14.317453 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 298142:299554, ack 759, win 498, options [nop,nop,TS val 516574347 ecr 3433912480], length 1412\n14:56:14.318581 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913450 ecr 516573477,nop,nop,sack 1 {245898:299554}], length 0\n14:56:14.337475 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 299554:300966, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n14:56:14.338669 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913470 ecr 516573477,nop,nop,sack 1 {245898:300966}], length 0\n14:56:14.357425 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 300966:302378, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n14:56:14.358624 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913490 ecr 516573477,nop,nop,sack 1 {245898:302378}], length 0\n14:56:14.387370 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 302378:303790, ack 759, win 498, options [nop,nop,TS val 516574397 ecr 3433912530], length 1412\n14:56:14.388582 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913520 ecr 516573477,nop,nop,sack 1 {245898:303790}], length 0\n14:56:14.407342 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 303790:305202, ack 759, win 498, options [nop,nop,TS val 516574437 ecr 3433912570], length 1412\n14:56:14.408558 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913540 ecr 516573477,nop,nop,sack 1 {245898:305202}], length 0\n14:56:14.427369 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 305202:306614, ack 759, win 498, options [nop,nop,TS val 516574437 ecr 3433912570], length 1412\n14:56:14.428570 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 243074, win 2148, options [nop,nop,TS val 3433913560 ecr 516573477,nop,nop,sack 1 {245898:306614}], length 0\n14:56:14.457468 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 243074:244486, ack 759, win 498, options [nop,nop,TS val 516574467 ecr 3433912600], length 1412\n14:56:14.457504 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 244486, win 2137, options [nop,nop,TS val 3433913590 ecr 516574467,nop,nop,sack 1 {245898:306614}], length 0\n14:56:14.477436 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 244486:245898, ack 759, win 498, options [nop,nop,TS val 516574474 ecr 3433912600], length 1412\n14:56:14.477466 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 306614, win 1823, options [nop,nop,TS val 3433913610 ecr 516574474], length 0\n14:56:14.497421 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 306614:308026, ack 759, win 498, options [nop,nop,TS val 516574507 ecr 3433912640], length 1412\n14:56:14.527306 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 308026:309438, ack 759, win 498, options [nop,nop,TS val 516574559 ecr 3433912690], length 1412\n14:56:14.527339 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 309438, win 2148, options [nop,nop,TS val 3433913660 ecr 516574507], length 0\n14:56:14.547306 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 309438:310850, ack 759, win 498, options [nop,nop,TS val 516574579 ecr 3433912710], length 1412\n14:56:14.567336 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 310850:312262, ack 759, win 498, options [nop,nop,TS val 516574628 ecr 3433912760], length 1412\n14:56:14.567371 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 312262, win 2148, options [nop,nop,TS val 3433913700 ecr 516574579], length 0\n14:56:14.587295 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 312262:313674, ack 759, win 498, options [nop,nop,TS val 516574648 ecr 3433912780], length 1412\n14:56:14.617528 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 313674:315086, ack 759, win 498, options [nop,nop,TS val 516574699 ecr 3433912830], length 1412\n14:56:14.617561 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 315086, win 2148, options [nop,nop,TS val 3433913750 ecr 516574648], length 0\n14:56:14.637381 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 315086:316498, ack 759, win 498, options [nop,nop,TS val 516574719 ecr 3433912850], length 1412\n14:56:14.657515 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 316498:317910, ack 759, win 498, options [nop,nop,TS val 516574768 ecr 3433912900], length 1412\n14:56:14.657547 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 317910, win 2148, options [nop,nop,TS val 3433913790 ecr 516574719], length 0\n14:56:14.687276 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 317910:319322, ack 759, win 498, options [nop,nop,TS val 516574789 ecr 3433912920], length 1412\n14:56:14.707305 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 319322:320734, ack 759, win 498, options [nop,nop,TS val 516574809 ecr 3433912940], length 1412\n14:56:14.707336 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 320734, win 2148, options [nop,nop,TS val 3433913840 ecr 516574789], length 0\n14:56:14.727284 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 320734:322146, ack 759, win 498, options [nop,nop,TS val 516574858 ecr 3433912990], length 1412\n14:56:14.757366 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 322146:323558, ack 759, win 498, options [nop,nop,TS val 516574878 ecr 3433913010], length 1412\n14:56:14.757394 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 323558, win 2148, options [nop,nop,TS val 3433913890 ecr 516574858], length 0\n14:56:14.777468 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 323558:324970, ack 759, win 498, options [nop,nop,TS val 516574929 ecr 3433913060], length 1412\n14:56:14.797281 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 324970:326382, ack 759, win 498, options [nop,nop,TS val 516574948 ecr 3433913080], length 1412\n14:56:14.797310 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 326382, win 2148, options [nop,nop,TS val 3433913930 ecr 516574929], length 0\n14:56:14.817502 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 326382:327794, ack 759, win 498, options [nop,nop,TS val 516574998 ecr 3433913130], length 1412\n14:56:14.847309 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 327794:329206, ack 759, win 498, options [nop,nop,TS val 516575018 ecr 3433913150], length 1412\n14:56:14.847341 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 329206, win 2148, options [nop,nop,TS val 3433913980 ecr 516574998], length 0\n14:56:14.867288 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 329206:330618, ack 759, win 498, options [nop,nop,TS val 516575069 ecr 3433913200], length 1412\n14:56:14.887300 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 330618:332030, ack 759, win 498, options [nop,nop,TS val 516575089 ecr 3433913220], length 1412\n14:56:14.887333 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 332030, win 2148, options [nop,nop,TS val 3433914020 ecr 516575069], length 0\n14:56:14.917362 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 332030:333442, ack 759, win 498, options [nop,nop,TS val 516575128 ecr 3433913260], length 1412\n14:56:14.937361 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 333442:334854, ack 759, win 498, options [nop,nop,TS val 516575159 ecr 3433913290], length 1412\n14:56:14.937394 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 334854, win 2148, options [nop,nop,TS val 3433914070 ecr 516575128], length 0\n14:56:14.957433 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 334854:336266, ack 759, win 498, options [nop,nop,TS val 516575178 ecr 3433913310], length 1412\n14:56:14.987334 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 336266:337678, ack 759, win 498, options [nop,nop,TS val 516575229 ecr 3433913360], length 1412\n14:56:14.987368 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 337678, win 2148, options [nop,nop,TS val 3433914120 ecr 516575178], length 0\n14:56:15.007277 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 337678:339090, ack 759, win 498, options [nop,nop,TS val 516575248 ecr 3433913380], length 1412\n14:56:15.027305 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 339090:340502, ack 759, win 498, options [nop,nop,TS val 516575318 ecr 3433913450], length 1412\n14:56:15.027337 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 340502, win 2148, options [nop,nop,TS val 3433914160 ecr 516575248], length 0\n14:56:15.047285 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 340502:341914, ack 759, win 498, options [nop,nop,TS val 516575339 ecr 3433913470], length 1412\n14:56:15.077371 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 341914:343326, ack 759, win 498, options [nop,nop,TS val 516575359 ecr 3433913490], length 1412\n14:56:15.077416 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 343326, win 2148, options [nop,nop,TS val 3433914210 ecr 516575339], length 0\n14:56:15.097226 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 343326:344738, ack 759, win 498, options [nop,nop,TS val 516575388 ecr 3433913520], length 1412\n14:56:15.117262 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 344738:346150, ack 759, win 498, options [nop,nop,TS val 516575408 ecr 3433913540], length 1412\n14:56:15.117296 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 346150, win 2148, options [nop,nop,TS val 3433914250 ecr 516575388], length 0\n14:56:15.147277 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 346150:347562, ack 759, win 498, options [nop,nop,TS val 516575428 ecr 3433913560], length 1412\n14:56:15.167267 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 347562:348974, ack 759, win 498, options [nop,nop,TS val 516575457 ecr 3433913590], length 1412\n14:56:15.167295 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 348974, win 2148, options [nop,nop,TS val 3433914300 ecr 516575428], length 0\n14:56:15.187269 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 348974:350386, ack 759, win 498, options [nop,nop,TS val 516575477 ecr 3433913610], length 1412\n14:56:15.217486 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 350386:351798, ack 759, win 498, options [nop,nop,TS val 516575527 ecr 3433913660], length 1412\n14:56:15.217521 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 351798, win 2148, options [nop,nop,TS val 3433914350 ecr 516575477], length 0\n14:56:15.237455 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 351798:353210, ack 759, win 498, options [nop,nop,TS val 516575527 ecr 3433913660], length 1412\n14:56:15.257422 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 353210:354622, ack 759, win 498, options [nop,nop,TS val 516575567 ecr 3433913700], length 1412\n14:56:15.257449 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 354622, win 2202, options [nop,nop,TS val 3433914390 ecr 516575527], length 0\n14:56:15.277331 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 354622:356034, ack 759, win 498, options [nop,nop,TS val 516575567 ecr 3433913700], length 1412\n14:56:15.307398 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 356034:357446, ack 759, win 498, options [nop,nop,TS val 516575617 ecr 3433913750], length 1412\n14:56:15.307426 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 357446, win 2247, options [nop,nop,TS val 3433914440 ecr 516575567], length 0\n14:56:15.327370 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 357446:358858, ack 759, win 498, options [nop,nop,TS val 516575617 ecr 3433913750], length 1412\n14:56:15.347355 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 358858:360270, ack 759, win 498, options [nop,nop,TS val 516575657 ecr 3433913790], length 1412\n14:56:15.347389 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 360270, win 2293, options [nop,nop,TS val 3433914480 ecr 516575617], length 0\n14:56:15.377414 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 360270:361682, ack 759, win 498, options [nop,nop,TS val 516575657 ecr 3433913790], length 1412\n14:56:15.397419 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 361682:363094, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n14:56:15.397453 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 363094, win 2338, options [nop,nop,TS val 3433914530 ecr 516575657], length 0\n14:56:15.417514 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 363094:364506, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n14:56:15.447395 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 364506:365918, ack 759, win 498, options [nop,nop,TS val 516575707 ecr 3433913840], length 1412\n14:56:15.447428 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 365918, win 2383, options [nop,nop,TS val 3433914580 ecr 516575707], length 0\n14:56:15.467335 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 365918:367330, ack 759, win 498, options [nop,nop,TS val 516575757 ecr 3433913890], length 1412\n14:56:15.487389 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 367330:368742, ack 759, win 498, options [nop,nop,TS val 516575757 ecr 3433913890], length 1412\n14:56:15.487420 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 368742, win 2428, options [nop,nop,TS val 3433914620 ecr 516575757], length 0\n14:56:15.507335 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 368742:370154, ack 759, win 498, options [nop,nop,TS val 516575797 ecr 3433913930], length 1412\n14:56:15.537511 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 370154:371566, ack 759, win 498, options [nop,nop,TS val 516575797 ecr 3433913930], length 1412\n14:56:15.537545 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 371566, win 2474, options [nop,nop,TS val 3433914670 ecr 516575797], length 0\n14:56:15.557402 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 371566:372978, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n14:56:15.577328 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 372978:374390, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n14:56:15.577360 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 374390, win 2519, options [nop,nop,TS val 3433914710 ecr 516575847], length 0\n14:56:15.607382 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 374390:375802, ack 759, win 498, options [nop,nop,TS val 516575847 ecr 3433913980], length 1412\n14:56:15.627338 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 375802:377214, ack 759, win 498, options [nop,nop,TS val 516575887 ecr 3433914020], length 1412\n14:56:15.627370 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 377214, win 2564, options [nop,nop,TS val 3433914760 ecr 516575847], length 0\n14:56:15.647397 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 377214:378626, ack 759, win 498, options [nop,nop,TS val 516575887 ecr 3433914020], length 1412\n14:56:15.677439 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 378626:380038, ack 759, win 498, options [nop,nop,TS val 516575937 ecr 3433914070], length 1412\n14:56:15.677469 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 380038, win 2609, options [nop,nop,TS val 3433914810 ecr 516575887], length 0\n14:56:15.697497 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 380038:381450, ack 759, win 498, options [nop,nop,TS val 516575937 ecr 3433914070], length 1412\n14:56:15.717436 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 381450:382862, ack 759, win 498, options [nop,nop,TS val 516575987 ecr 3433914120], length 1412\n14:56:15.717471 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 382862, win 2655, options [nop,nop,TS val 3433914850 ecr 516575937], length 0\n14:56:15.737496 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 382862:384274, ack 759, win 498, options [nop,nop,TS val 516575987 ecr 3433914120], length 1412\n14:56:15.767340 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 384274:385686, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n14:56:15.767373 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 385686, win 2700, options [nop,nop,TS val 3433914900 ecr 516575987], length 0\n14:56:15.787379 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 385686:387098, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n14:56:15.807320 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 387098:388510, ack 759, win 498, options [nop,nop,TS val 516576027 ecr 3433914160], length 1412\n14:56:15.807352 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 388510, win 2745, options [nop,nop,TS val 3433914940 ecr 516576027], length 0\n14:56:15.837411 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 388510:389922, ack 759, win 498, options [nop,nop,TS val 516576077 ecr 3433914210], length 1412\n14:56:15.857455 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 389922:391334, ack 759, win 498, options [nop,nop,TS val 516576077 ecr 3433914210], length 1412\n14:56:15.857490 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 391334, win 2790, options [nop,nop,TS val 3433914990 ecr 516576077], length 0\n14:56:15.877422 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 391334:392746, ack 759, win 498, options [nop,nop,TS val 516576117 ecr 3433914250], length 1412\n14:56:15.907318 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 392746:394158, ack 759, win 498, options [nop,nop,TS val 516576117 ecr 3433914250], length 1412\n14:56:15.907407 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 394158, win 2836, options [nop,nop,TS val 3433915040 ecr 516576117], length 0\n14:56:15.927291 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 394158:395570, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n14:56:15.947427 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 395570:396982, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n14:56:15.947461 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 396982, win 2881, options [nop,nop,TS val 3433915080 ecr 516576167], length 0\n14:56:15.967426 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 396982:398394, ack 759, win 498, options [nop,nop,TS val 516576167 ecr 3433914300], length 1412\n14:56:15.997486 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 398394:399806, ack 759, win 498, options [nop,nop,TS val 516576217 ecr 3433914350], length 1412\n14:56:15.997515 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 399806, win 2926, options [nop,nop,TS val 3433915130 ecr 516576167], length 0\n14:56:16.017560 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 399806:401218, ack 759, win 498, options [nop,nop,TS val 516576217 ecr 3433914350], length 1412\n14:56:16.037586 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 401218:402630, ack 759, win 498, options [nop,nop,TS val 516576257 ecr 3433914390], length 1412\n14:56:16.037620 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 402630, win 2971, options [nop,nop,TS val 3433915170 ecr 516576217], length 0\n14:56:16.067355 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 402630:404042, ack 759, win 498, options [nop,nop,TS val 516576257 ecr 3433914390], length 1412\n14:56:16.087364 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 404042:405454, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n14:56:16.087389 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 405454, win 3017, options [nop,nop,TS val 3433915220 ecr 516576257], length 0\n14:56:16.107346 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 405454:406866, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n14:56:16.137504 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 406866:408278, ack 759, win 498, options [nop,nop,TS val 516576307 ecr 3433914440], length 1412\n14:56:16.137533 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 408278, win 3062, options [nop,nop,TS val 3433915270 ecr 516576307], length 0\n14:56:16.157518 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 408278:409690, ack 759, win 498, options [nop,nop,TS val 516576347 ecr 3433914480], length 1412\n14:56:16.177508 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 409690:411102, ack 759, win 498, options [nop,nop,TS val 516576347 ecr 3433914480], length 1412\n14:56:16.177530 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 411102, win 3107, options [nop,nop,TS val 3433915310 ecr 516576347], length 0\n14:56:16.197499 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 411102:412514, ack 759, win 498, options [nop,nop,TS val 516576397 ecr 3433914530], length 1412\n14:56:16.227367 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 412514:413926, ack 759, win 498, options [nop,nop,TS val 516576397 ecr 3433914530], length 1412\n14:56:16.227402 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 413926, win 3152, options [nop,nop,TS val 3433915360 ecr 516576397], length 0\n14:56:16.247353 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 413926:415338, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n14:56:16.267364 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 415338:416750, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n14:56:16.267396 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 416750, win 3198, options [nop,nop,TS val 3433915400 ecr 516576447], length 0\n14:56:16.297381 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 416750:418162, ack 759, win 498, options [nop,nop,TS val 516576447 ecr 3433914580], length 1412\n14:56:16.317466 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 418162:419574, ack 759, win 498, options [nop,nop,TS val 516576487 ecr 3433914620], length 1412\n14:56:16.317494 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 419574, win 3243, options [nop,nop,TS val 3433915450 ecr 516576447], length 0\n14:56:16.337475 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 419574:420986, ack 759, win 498, options [nop,nop,TS val 516576487 ecr 3433914620], length 1412\n14:56:16.367361 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 420986:422398, ack 759, win 498, options [nop,nop,TS val 516576537 ecr 3433914670], length 1412\n14:56:16.367396 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 422398, win 3288, options [nop,nop,TS val 3433915500 ecr 516576487], length 0\n14:56:16.387340 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 422398:423810, ack 759, win 498, options [nop,nop,TS val 516576537 ecr 3433914670], length 1412\n14:56:16.407352 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 423810:425222, ack 759, win 498, options [nop,nop,TS val 516576577 ecr 3433914710], length 1412\n14:56:16.407386 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 425222, win 3333, options [nop,nop,TS val 3433915540 ecr 516576537], length 0\n14:56:16.427307 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 425222:426634, ack 759, win 498, options [nop,nop,TS val 516576577 ecr 3433914710], length 1412\n14:56:16.457553 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 426634:428046, ack 759, win 498, options [nop,nop,TS val 516576627 ecr 3433914760], length 1412\n14:56:16.457588 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 428046, win 3379, options [nop,nop,TS val 3433915590 ecr 516576577], length 0\n14:56:16.477521 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 428046:429458, ack 759, win 498, options [nop,nop,TS val 516576627 ecr 3433914760], length 1412\n14:56:16.497425 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 429458:430870, ack 759, win 498, options [nop,nop,TS val 516576628 ecr 3433914760], length 1412\n14:56:16.497458 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 430870, win 3424, options [nop,nop,TS val 3433915630 ecr 516576627], length 0\n14:56:16.527287 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 430870:432282, ack 759, win 498, options [nop,nop,TS val 516576677 ecr 3433914810], length 1412\n14:56:16.547325 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 432282:433694, ack 759, win 498, options [nop,nop,TS val 516576677 ecr 3433914810], length 1412\n14:56:16.547354 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 433694, win 3469, options [nop,nop,TS val 3433915680 ecr 516576677], length 0\n14:56:16.567324 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 433694:435106, ack 759, win 498, options [nop,nop,TS val 516576717 ecr 3433914850], length 1412\n14:56:16.597464 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 435106:436518, ack 759, win 498, options [nop,nop,TS val 516576717 ecr 3433914850], length 1412\n14:56:16.597499 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 436518, win 3514, options [nop,nop,TS val 3433915730 ecr 516576717], length 0\n14:56:16.617509 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 436518:437930, ack 759, win 498, options [nop,nop,TS val 516576767 ecr 3433914900], length 1412\n14:56:16.637391 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 437930:439342, ack 759, win 498, options [nop,nop,TS val 516576767 ecr 3433914900], length 1412\n14:56:16.637438 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 439342, win 3560, options [nop,nop,TS val 3433915770 ecr 516576767], length 0\n14:56:16.657481 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 439342:440754, ack 759, win 498, options [nop,nop,TS val 516576768 ecr 3433914900], length 1412\n14:56:16.687354 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 440754:442166, ack 759, win 498, options [nop,nop,TS val 516576807 ecr 3433914940], length 1412\n14:56:16.687386 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 442166, win 3605, options [nop,nop,TS val 3433915820 ecr 516576768], length 0\n14:56:16.707356 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 442166:443578, ack 759, win 498, options [nop,nop,TS val 516576807 ecr 3433914940], length 1412\n14:56:16.727338 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 443578:444990, ack 759, win 498, options [nop,nop,TS val 516576857 ecr 3433914990], length 1412\n14:56:16.727372 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 444990, win 3650, options [nop,nop,TS val 3433915860 ecr 516576807], length 0\n14:56:16.757543 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 444990:446402, ack 759, win 498, options [nop,nop,TS val 516576857 ecr 3433914990], length 1412\n14:56:16.777510 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 446402:447814, ack 759, win 498, options [nop,nop,TS val 516576907 ecr 3433915040], length 1412\n14:56:16.777544 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 447814, win 3695, options [nop,nop,TS val 3433915910 ecr 516576857], length 0\n14:56:16.797336 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 447814:449226, ack 759, win 498, options [nop,nop,TS val 516576907 ecr 3433915040], length 1412\n14:56:16.827317 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 449226:450638, ack 759, win 498, options [nop,nop,TS val 516576947 ecr 3433915080], length 1412\n14:56:16.827350 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 450638, win 3741, options [nop,nop,TS val 3433915960 ecr 516576907], length 0\n14:56:16.847370 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 450638:452050, ack 759, win 498, options [nop,nop,TS val 516576947 ecr 3433915080], length 1412\n14:56:16.867322 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 452050:453462, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n14:56:16.867356 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 453462, win 3786, options [nop,nop,TS val 3433916000 ecr 516576947], length 0\n14:56:16.887323 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 453462:454874, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n14:56:16.917637 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 454874:456286, ack 759, win 498, options [nop,nop,TS val 516576997 ecr 3433915130], length 1412\n14:56:16.917671 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 456286, win 3831, options [nop,nop,TS val 3433916050 ecr 516576997], length 0\n14:56:16.937438 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 456286:457698, ack 759, win 498, options [nop,nop,TS val 516577037 ecr 3433915170], length 1412\n14:56:16.957410 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 457698:459110, ack 759, win 498, options [nop,nop,TS val 516577037 ecr 3433915170], length 1412\n14:56:16.957443 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 459110, win 3876, options [nop,nop,TS val 3433916090 ecr 516577037], length 0\n14:56:16.987269 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 459110:460522, ack 759, win 498, options [nop,nop,TS val 516577087 ecr 3433915220], length 1412\n14:56:17.007327 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 460522:461934, ack 759, win 498, options [nop,nop,TS val 516577087 ecr 3433915220], length 1412\n14:56:17.007354 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 461934, win 3922, options [nop,nop,TS val 3433916140 ecr 516577087], length 0\n14:56:17.027378 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 461934:463346, ack 759, win 498, options [nop,nop,TS val 516577137 ecr 3433915270], length 1412\n14:56:17.057520 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 463346:464758, ack 759, win 498, options [nop,nop,TS val 516577137 ecr 3433915270], length 1412\n14:56:17.057549 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 464758, win 3967, options [nop,nop,TS val 3433916190 ecr 516577137], length 0\n14:56:17.077400 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 464758:466170, ack 759, win 498, options [nop,nop,TS val 516577177 ecr 3433915310], length 1412\n14:56:17.097519 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 466170:467582, ack 759, win 498, options [nop,nop,TS val 516577177 ecr 3433915310], length 1412\n14:56:17.097549 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 467582, win 4012, options [nop,nop,TS val 3433916230 ecr 516577177], length 0\n14:56:17.117539 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 467582:468994, ack 759, win 498, options [nop,nop,TS val 516577227 ecr 3433915360], length 1412\n14:56:17.147335 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 468994:470406, ack 759, win 498, options [nop,nop,TS val 516577227 ecr 3433915360], length 1412\n14:56:17.147358 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 470406, win 4057, options [nop,nop,TS val 3433916280 ecr 516577227], length 0\n14:56:17.167304 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 470406:471818, ack 759, win 498, options [nop,nop,TS val 516577228 ecr 3433915360], length 1412\n14:56:17.187354 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 471818:473230, ack 759, win 498, options [nop,nop,TS val 516577267 ecr 3433915400], length 1412\n14:56:17.187382 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 473230, win 4103, options [nop,nop,TS val 3433916320 ecr 516577228], length 0\n14:56:17.217551 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 473230:474642, ack 759, win 498, options [nop,nop,TS val 516577267 ecr 3433915400], length 1412\n14:56:17.237476 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 474642:476054, ack 759, win 498, options [nop,nop,TS val 516577318 ecr 3433915450], length 1412\n14:56:17.237504 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 476054, win 4148, options [nop,nop,TS val 3433916370 ecr 516577267], length 0\n14:56:17.257560 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 476054:477466, ack 759, win 498, options [nop,nop,TS val 516577318 ecr 3433915450], length 1412\n14:56:17.287409 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 477466:478878, ack 759, win 498, options [nop,nop,TS val 516577367 ecr 3433915500], length 1412\n14:56:17.287437 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 478878, win 4193, options [nop,nop,TS val 3433916420 ecr 516577318], length 0\n14:56:17.307352 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 478878:480290, ack 759, win 498, options [nop,nop,TS val 516577367 ecr 3433915500], length 1412\n14:56:17.327346 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 480290:481702, ack 759, win 498, options [nop,nop,TS val 516577407 ecr 3433915540], length 1412\n14:56:17.327374 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 481702, win 4238, options [nop,nop,TS val 3433916460 ecr 516577367], length 0\n14:56:17.347374 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 481702:483114, ack 759, win 498, options [nop,nop,TS val 516577407 ecr 3433915540], length 1412\n14:56:17.377416 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 483114:484526, ack 759, win 498, options [nop,nop,TS val 516577457 ecr 3433915590], length 1412\n14:56:17.377444 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 484526, win 4284, options [nop,nop,TS val 3433916510 ecr 516577407], length 0\n14:56:17.397478 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 484526:485938, ack 759, win 498, options [nop,nop,TS val 516577457 ecr 3433915590], length 1412\n14:56:17.417374 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 485938:487350, ack 759, win 498, options [nop,nop,TS val 516577458 ecr 3433915590], length 1412\n14:56:17.417397 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 487350, win 4329, options [nop,nop,TS val 3433916550 ecr 516577457], length 0\n14:56:17.447372 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 487350:488762, ack 759, win 498, options [nop,nop,TS val 516577497 ecr 3433915630], length 1412\n14:56:17.467317 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 488762:490174, ack 759, win 498, options [nop,nop,TS val 516577497 ecr 3433915630], length 1412\n14:56:17.467370 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 490174, win 4374, options [nop,nop,TS val 3433916600 ecr 516577497], length 0\n14:56:17.487312 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 490174:491586, ack 759, win 498, options [nop,nop,TS val 516577547 ecr 3433915680], length 1412\n14:56:17.517545 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 491586:492998, ack 759, win 498, options [nop,nop,TS val 516577547 ecr 3433915680], length 1412\n14:56:17.517574 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 492998, win 4419, options [nop,nop,TS val 3433916650 ecr 516577547], length 0\n14:56:17.537385 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 492998:494410, ack 759, win 498, options [nop,nop,TS val 516577597 ecr 3433915730], length 1412\n14:56:17.557305 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 494410:495822, ack 759, win 498, options [nop,nop,TS val 516577597 ecr 3433915730], length 1412\n14:56:17.557328 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 495822, win 4465, options [nop,nop,TS val 3433916690 ecr 516577597], length 0\n14:56:17.577477 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 495822:497234, ack 759, win 498, options [nop,nop,TS val 516577637 ecr 3433915770], length 1412\n14:56:17.607302 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 497234:498646, ack 759, win 498, options [nop,nop,TS val 516577637 ecr 3433915770], length 1412\n14:56:17.607332 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 498646, win 4510, options [nop,nop,TS val 3433916740 ecr 516577637], length 0\n14:56:17.627390 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 498646:500058, ack 759, win 498, options [nop,nop,TS val 516577687 ecr 3433915820], length 1412\n14:56:17.647391 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 500058:501470, ack 759, win 498, options [nop,nop,TS val 516577687 ecr 3433915820], length 1412\n14:56:17.647418 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 501470, win 4555, options [nop,nop,TS val 3433916780 ecr 516577687], length 0\n14:56:17.677517 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 501470:502882, ack 759, win 498, options [nop,nop,TS val 516577727 ecr 3433915860], length 1412\n14:56:17.697478 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 502882:504294, ack 759, win 498, options [nop,nop,TS val 516577727 ecr 3433915860], length 1412\n14:56:17.697503 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 504294, win 4600, options [nop,nop,TS val 3433916830 ecr 516577727], length 0\n14:56:17.717529 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 504294:505706, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n14:56:17.747376 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 505706:507118, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n14:56:17.747403 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 507118, win 4646, options [nop,nop,TS val 3433916880 ecr 516577777], length 0\n14:56:17.767388 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 507118:508530, ack 759, win 498, options [nop,nop,TS val 516577777 ecr 3433915910], length 1412\n14:56:17.787348 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 508530:509942, ack 759, win 498, options [nop,nop,TS val 516577827 ecr 3433915960], length 1412\n14:56:17.787377 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 509942, win 4691, options [nop,nop,TS val 3433916920 ecr 516577777], length 0\n14:56:17.807378 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 509942:511354, ack 759, win 498, options [nop,nop,TS val 516577827 ecr 3433915960], length 1412\n14:56:17.837497 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 511354:512766, ack 759, win 498, options [nop,nop,TS val 516577867 ecr 3433916000], length 1412\n14:56:17.837524 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 512766, win 4736, options [nop,nop,TS val 3433916970 ecr 516577827], length 0\n14:56:17.857485 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 512766:514178, ack 759, win 498, options [nop,nop,TS val 516577867 ecr 3433916000], length 1412\n14:56:17.877445 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 514178:515590, ack 759, win 498, options [nop,nop,TS val 516577917 ecr 3433916050], length 1412\n14:56:17.877473 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 515590, win 4781, options [nop,nop,TS val 3433917010 ecr 516577867], length 0\n14:56:17.907445 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 515590:517002, ack 759, win 498, options [nop,nop,TS val 516577917 ecr 3433916050], length 1412\n14:56:17.927310 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 517002:518414, ack 759, win 498, options [nop,nop,TS val 516577957 ecr 3433916090], length 1412\n14:56:17.927333 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 518414, win 4827, options [nop,nop,TS val 3433917060 ecr 516577917], length 0\n14:56:17.947375 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 518414:519826, ack 759, win 498, options [nop,nop,TS val 516577957 ecr 3433916090], length 1412\n14:56:17.977533 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 519826:521238, ack 759, win 498, options [nop,nop,TS val 516578008 ecr 3433916140], length 1412\n14:56:17.977563 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 521238, win 4872, options [nop,nop,TS val 3433917110 ecr 516577957], length 0\n14:56:17.997502 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 521238:522650, ack 759, win 498, options [nop,nop,TS val 516578008 ecr 3433916140], length 1412\n14:56:18.017536 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], seq 522650:524062, ack 759, win 498, options [nop,nop,TS val 516578057 ecr 3433916190], length 1412\n14:56:18.017566 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 524062, win 4917, options [nop,nop,TS val 3433917150 ecr 516578008], length 0\n14:56:18.037561 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 524062:524914, ack 759, win 498, options [nop,nop,TS val 516578057 ecr 3433916190], length 852\n14:56:18.079233 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 524914, win 4939, options [nop,nop,TS val 3433917212 ecr 516578057], length 0\n"
+    },
+    "cleanup": {
+      "cr-w67-h": {
+        "cmd": "systemctl stop cr-w67-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-m": {
+        "cmd": "systemctl stop cr-w67-m 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-obs-h": {
+        "cmd": "systemctl stop cr-w67-obs-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-http": {
+        "cmd": "systemctl stop cr-w67-http 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-cap-h": {
+        "cmd": "systemctl stop cr-w67-cap-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-cap-m": {
+        "cmd": "systemctl stop cr-w67-cap-m 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "mapping_observed_at_punch_endpoint",
+      "ok": true
+    },
+    {
+      "name": "mapping_stable_two_samples",
+      "ok": true
+    },
+    {
+      "name": "H_punch_established",
+      "ok": true
+    },
+    {
+      "name": "M_punch_established",
+      "ok": true
+    },
+    {
+      "name": "M_punched_socket_registered",
+      "ok": true
+    },
+    {
+      "name": "H_punched_socket_registered",
+      "ok": true
+    },
+    {
+      "name": "member_bridge_served",
+      "ok": true
+    },
+    {
+      "name": "holder_socket_alive_after_punch",
+      "ok": true
+    },
+    {
+      "name": "member_socket_alive_after_punch",
+      "ok": true
+    },
+    {
+      "name": "direct_counters",
+      "ok": true
+    },
+    {
+      "name": "bt_engine_attached",
+      "ok": true
+    },
+    {
+      "name": "bt_download_complete",
+      "ok": true
+    },
+    {
+      "name": "bt_infohash_match",
+      "ok": true
+    },
+    {
+      "name": "bt_md5_match",
+      "ok": true
+    },
+    {
+      "name": "public_simultaneous_open_reachable",
+      "ok": true
+    }
+  ],
+  "runtime_infohash": "0578052874711515fb81250e1179be468e92f014",
+  "wire": {
+    "H_punch_port": {
+      "port": 19720,
+      "frames": 767,
+      "payload_bytes": 2123,
+      "largest_frame": 1098
+    },
+    "M_punch_port": {
+      "port": 19710,
+      "frames": 1007,
+      "payload_bytes": 1327246,
+      "largest_frame": 2824
+    },
+    "note": "computed at collection time from the full tcpdump output. The filter matched only `src.port:` lines, so the H entry covers the inbound direction only and understates the holder's outbound data; the M entry is the member receiving the payload and is the figure to read. The script's filter was fixed after this run, so a rerun would report both directions.",
+    "filter_fixed_after_run": true,
+    "stored_tcpdump_truncated": true
+  },
+  "reentrancy": {
+    "socks5_awaiting": 0,
+    "socks5_in_use": 1,
+    "socks5_rearmed": 1,
+    "socks5_served_after_rearm": 0,
+    "socks5_rearm_wait_ms": 6000,
+    "repunch_attempts": 1,
+    "repunch_routes": [
+      {
+        "tag": "repunch-1",
+        "H_route": "punched-direct",
+        "M_route": "punched-direct",
+        "H_reason": null
+      }
+    ]
+  },
+  "verdict": "PASS",
+  "reason": "one usable punched-direct TCP path carried a real 1 MiB BT transfer with md5 match in this environment"
+}

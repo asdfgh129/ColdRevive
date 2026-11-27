@@ -959,7 +959,7 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   **525 passed / 0 failed / 3 ignored**。默认并行下 2 次既存计时型 flaky 失败
   （`per_session_cap` / `amule_block_accounting`）已归档，隔离与串行均通过。
 
-## 12. v2.4.158～v2.4.159 新增证据（NFR-04 公网 P95 关闭；W6.7 punched-TCP 通道打通、落地 50%）
+## 12. v2.4.158～v2.4.160 新增证据（NFR-04 公网 P95 关闭；W6.7 punched-TCP 关闭）
 
 - **NFR-04 公网 P95（PASS，真实双网）**：`python3 tests/e2e/nfr04-public/run.py`。
   221（家庭出口 `112.5.60.4`）与 119（腾讯云 1:1 EIP `119.29.150.254`）各跑真实
@@ -970,27 +970,31 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   同目录留存：前者是 relay 分支硬编码 RTT，后者是旧 workdir 二进制未替换
   （`cp` 报 `Text file busy`）。修复后脚本先停旧进程、换二进制、校验安装与运行哈希，
   全零样本判 `INVALID`，不得当 PASS。
-- **W6.7 daemon 级 punched-TCP BT（未通过：通道已打通、落地 50%）**：
-  `python3 tests/e2e/w67-punched-bt/run.py`。owner 于 2026-11-27 21:34 在 119 上放通
-  `TCP:19720`（该机是**轻量应用服务器** `lhins-cyayca13`，规则在「实例 → 防火墙」，
-  不在 VPC 安全组，所以 CVM 实例列表是空的）；脚本随即删掉全部 `REDIRECT`，
-  holder 直接绑 `0.0.0.0:19720`、member 拨 `119.29.150.254:19720`，观测点即目标端点，
-  两次采样一致（`36883`）。
-  本轮修掉一个真缺口：**冷种子不响应入向握手**。`nat punch-route` 的 holder 分支只做
-  splice，而 guard 路径有「握手命中冷种子就唤醒」；结果 68 字节 BT 握手确实到达
-  （tcpdump `length 68`），引擎 10 s 内一字不回，对端 FIN、holder 回 `R.`。现抽出
-  `wake_for_inbound_handshake`（infohash → FR-15 准入 → `wake_seed` → 等 HOT ≤3 s）
-  供 guard 与打洞两条入向路径共用，holder 改用 `attach_punched_inbound_waking`
-  （先读 68 字节 → 唤醒 → 补回前缀再 splice）。`punched` 定点单测 **5/5**。
-  实测：两端 `route=punched-direct`、`tcp_punch_established=true`、
-  `holder punched_alive=1`、`member served_registered=1`，BT 数据真的经打洞 socket 流动
-  （holder 线上约 791 KB、member 桥搬运 728 644 B），但**只落地 524 288 / 1 048 576 B**，
-  `md5 6822f905…` ≠ `6209e962…`；21:59:02.5 member 侧发 `R`，之后停在 50%。
-  证据 `tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r2/`。
-  剩下两条关闭条件：定位中途 RST；或让打洞登记可重入（`cr_bridge` 用 `take()`，
-  一条 socket 只服务一次 CONNECT，断了没有第二条）。**不得**把 512 KiB 写成
-  punched-direct BT 已通过。
-- **门禁边界不变**：两份证据都不写 G2/S6/NFR-02 结论，不报成功率/可达率；
+- **W6.7 daemon 级 punched-TCP BT（已关闭：1 MiB 落地、md5 一致）**：
+  `python3 tests/e2e/w67-punched-bt/run.py`。环境：H = `119.29.150.254`（轻量应用服务器
+  `lhins-cyayca13`，规则在「实例 → 防火墙」而非 VPC 安全组，所以 CVM 实例列表是空的），
+  `TCP:19720` 已由 owner 放通；M = `192.168.1.221`（家宽，出口 `112.5.60.4`）。
+  全程无 `REDIRECT`：holder 直接绑 `0.0.0.0:19720`，member 拨 `119.29.150.254:19720`，
+  观测点即打洞目标端点，两次采样必须一致。
+  **本轮（v2.4.160）关闭的是「登记可重入」**：`cr_bridge` 从 `HashMap<addr, Upstream>`
+  改成 `HashMap<addr, Slot>`，`take()` 只取走连接、把键留成占位，于是同一目标能重新填装；
+  已就绪但未被消费的连接仍拒绝覆盖；新增 `SlotState`（`Armed`/`InUse`/`Awaiting`/`Unknown`）
+  与 `end_session()`，把「正在用」和「待补装」分开；`take_for_connect()` 对登记过的目标在
+  6 s 补装窗口里等新 socket，而不是立刻去拨一个已失效的公网映射。
+  配套修的两处：`tcp_punch` 的固定退避加 0–90 ms 抖动（两侧同实现固定退避会锁死相位，
+  实测 8 s / 16 轮每轮都 `Connection refused`）；`punch-route` 打洞窗口可配（默认 4 s）。
+  实测：首次打洞 1 次尝试成功；传输中途停滞触发 1 次「重发现映射 + 同时重打洞」，
+  `socks5_rearmed=1` 后继续传输；最终 **1 048 576 / 1 048 576 B 落地，
+  `md5 6209e962f3b26a13c9ec1ae70fd78e10` 与源一致**；member 侧打洞端口线上 payload
+  1 327 246 B / 1007 帧；两端 `tunnels=0`（不是中继），`holder punched_alive=1`，
+  member `served_registered=1`。单测：`cr-bridge` **15/15**、`coldrevived punched` **6/6**。
+  证据 `tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r3/`。
+  口径：**该类环境下有一条可用路径**，按 ADR-012 不报成功率/可达率；重填装必须成对触发
+  且先重发现映射；一条打洞 socket 仍只服务一次 CONNECT（TCP 物理约束）。
+  记录在案的量具事故：本轮之前两份 PASS 作废——下载目录未清空，librqbit 直接校验通过了
+  上一轮留下的文件（member 线上 payload 仅 209 B / 268 B，`downloadSpeed` 13.9 MB/s）。
+  现在脚本每轮清空并断言下载目录为空，非空直接抛错。
+- **门禁边界不变**：本节证据（NFR-04、W6.7、全量回归）都不写 G2/S6/NFR-02 结论，不报成功率/可达率；
   `g2_claim=true` 为全局既有值，工具字段仍 `s6_status=not_run` /
   `evidence_valid_for_pass=false` / `auto_pass=false`。
 
