@@ -7,6 +7,26 @@
 
 use cr_core::Json;
 
+use super::RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK;
+
+/// 启动前的暴露面校验：非回环绑定必须配置非空 `api.rpc_secret`。
+///
+/// 此前 `RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK=true` 只出现在 `/health` 里，
+/// 守护进程仍可按 `0.0.0.0`/LAN 地址裸启，`/jsonrpc` 的 mutating 调用等于无鉴权。
+/// 这里是纯判定，不读环境变量；调用方在绑定任何 socket 之前执行它。
+pub fn validate_exposure(bind: &str, secret: Option<&str>) -> Result<(), &'static str> {
+    if !RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK {
+        return Ok(());
+    }
+    let loopback = matches!(bind, "127.0.0.1" | "::1" | "localhost")
+        || bind.starts_with("127.");
+    if loopback || secret.is_some_and(|s| !s.is_empty()) {
+        Ok(())
+    } else {
+        Err("非回环绑定必须配置 api.rpc_secret 才能启动")
+    }
+}
+
 /// 会改变守护进程状态的 JSON-RPC 方法（aria2 兼容子集 + 本项目扩展）。
 ///
 /// 判定依据是**方法语义**，不是字符串包含关系：`tell*` / `get*` / `coldrevive.ed2kStatus`
@@ -98,6 +118,20 @@ pub fn health_api_json(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exposure_requires_secret_only_outside_loopback() {
+        assert!(validate_exposure("127.0.0.1", None).is_ok());
+        assert!(validate_exposure("127.0.0.2", None).is_ok());
+        assert!(validate_exposure("::1", None).is_ok());
+        assert!(validate_exposure("localhost", None).is_ok());
+        assert_eq!(validate_exposure("0.0.0.0", None),
+                   Err("非回环绑定必须配置 api.rpc_secret 才能启动"));
+        assert_eq!(validate_exposure("192.168.1.210", Some("")),
+                   Err("非回环绑定必须配置 api.rpc_secret 才能启动"));
+        assert!(validate_exposure("0.0.0.0", Some("k")).is_ok());
+        assert!(validate_exposure("192.168.1.210", Some("k")).is_ok());
+    }
 
     #[test]
     fn no_secret_keeps_legacy_behavior() {

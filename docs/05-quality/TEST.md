@@ -679,6 +679,22 @@ Darwin `getpriority(PRIO_DARWIN_THREAD, 0)` 只能读**调用线程**；本包�
 是否把 macOS 计入 NFR-02 需所有者书面决定。证据
 `tests/ARCHIVE/evidence/nfr02-macos-run2-20261126/`，详见 DOC-34 §14。
 
+### 2.18 M3 工程余项第一批（2026-11-27，本地回环）
+
+**范围**：只补工程能力与量具，不改任何门禁字段或公平性判据。证据
+`tests/ARCHIVE/evidence/p1-loopback-20261127-v2.json`（6/6）。
+
+| 工程项 | 本轮落地 | 边界 |
+| :--- | :--- | :--- |
+| W6.2 暴露面 | 非回环绑定无 `api.rpc_secret` 时启动即拒绝（退出码 2），先于任何 socket 绑定 | 回环行为不变；secret 不进响应 |
+| W6.1/W6.4 Web UI | `GET /` + 同源 `/ui/style.css` + `/ui/app.js`；任务列表/addUri/pause/resume/remove | 只覆盖 aria2 兼容任务，不是第三方客户端矩阵 |
+| W6.2 JSON-RPC | 新增 pause/pauseAll/resume/resumeAll/remove/forceRemove/removeDownloadResult；gid 跳过 `token:` 参数 | 其余 aria2 方法仍不支持；`shutdown` 未实现 |
+| REST | `/api/v1/status` 与 `/api/v1/openapi` 是同实现别名 | 不是新状态源 |
+| NFR-04 量具 | `metrics ... [timeout_ms]` 可选超时，缺省 1200 ms | 公网 P95 阈值口径未决；无公网采样，不出 P95 结论 |
+
+**仍未完成**：`coldrevive-agent`（托盘/监管/IPC/打包）、FR-25 双轨发布、BT-over-punched-TCP
+公网双端 daemon 实测、NFR-04 公网 P95、LEDBAT（需新 ADR，EX-1 仍 FAIL）。不得写成「M3 全部完成」。
+
 ## 3. 兼容性矩阵（必须全绿）
 
 | 对端 | 场景 | 预期 |

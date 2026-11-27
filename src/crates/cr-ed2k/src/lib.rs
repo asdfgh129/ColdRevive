@@ -8,11 +8,12 @@
 //! **边界（照写，不许放宽）**：
 //! - 不做 eD2k server(LoginServer) 连接、source exchange、压缩/混淆、credit 体系、
 //!   AICH、>4 GiB I64 包、NAT 穿透——ADR-011/ADR-004 明确排除。
-//! - 公网 eD2k 传输仍 **BLOCKED**：现有真实证据只有回环与 RFC1918 LAN
-//!   （`tests/spikes/s2/ed2k-mini/`），没有公网 server/peer TCP 证据。
+//! - 不承担 eD2k server 登录 / source exchange / credit / AICH——ADR-011 L2 明确排除。
 //! - `fileID` 必须是真实内容导出的 `ed2k_hash`（MD4 over 9.28 MB 分块），不可伪造。
-//! - 这是「栈可用」的组件级证据，不是 FR-25「标准 eD2k 下载/上传 + 双轨发布
-//!   在守护进程生产路径全量可用」——后者仍需 daemon 接线与公网证据。
+//! - **口径更新（v2.4.112/124，取代旧「daemon 未接线」表述）**：daemon 路径已由
+//!   `coldrevived/src/ed2k_tasks.rs` 接上本 crate，公网 daemon A/B 与真实 aMule
+//!   双向取片已有证据（`tests/e2e/w25-daemon/reports/public-daemon-ab-*.json`）。
+//!   FR-25 仍缺的是「全部共享文件双轨发布」：A 轨关键词当前只展示、未进 KAD_PUBLISH。
 
 // 单一事实来源：复用 S2 审计过的 SHA-1 / MD4 / KAD tag 编解码与 eD2k TCP 状态机。
 #[path = "../../../../tests/spikes/s2/kad-mini/src/sha1.rs"]

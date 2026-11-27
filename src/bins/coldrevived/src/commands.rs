@@ -65,7 +65,7 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "find" => find(state, &cfg, &arg(&args, 0)),
         "wake" => wake(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "scenario" => scenario(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
-        "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1)),
+        "metrics" => metrics(state, &cfg, &arg(&args, 0), &arg(&args, 1), &arg(&args, 2)),
         "seed" => seed_stats(state),
         "ed2k" => ed2k_links(state, &arg(&args, 0)),
         // FR-05/07：KAD 关键词去重健康度 + 刷新状态（只读）。
@@ -366,8 +366,16 @@ fn wake(state: &Shared, cfg: &Config, sub: &str, file_hash: &str, infohash: &str
 // metrics / golden / env
 // ---------------------------------------------------------------------------
 
-fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
+/// `metrics wake-latency <n> [timeout_ms]` 的超时参数。缺省 1200 ms 保持 T0/T1 逐字节不变；
+/// 公网 P95 采集需要更长窗口（SRS 的公网阈值与 T0 的 3 s 不同，需所有者确认后用），
+/// 上限 60 s 防止误配成无限等待。非法值回落缺省，不静默当成无限。
+fn metrics_timeout_ms(raw: &str) -> u64 {
+    raw.parse::<u64>().unwrap_or(1200).clamp(1, 60_000)
+}
+
+fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str, timeout_arg: &str) -> Json {
     let n: usize = count.parse().unwrap_or(0);
+    let timeout_ms = metrics_timeout_ms(timeout_arg);
     // 使用真实链路里已唤醒过的文件指纹，避免用占位 hash 触发 REJECT_NOT_FOUND
     let file_hash = state.lock().unwrap().last_file_hash.clone().unwrap_or_default();
     match sub {
@@ -375,7 +383,7 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
             let mut samples = Vec::new();
             for _ in 0..n {
                 let req = build_req(NODE_SECRET, &file_hash, "infohash");
-                match send_wake(state, cfg, &req, 1200) {
+                match send_wake(state, cfg, &req, timeout_ms) {
                     Ok((_, ms)) => samples.push(Json::n(ms as f64)),
                     Err(_) => samples.push(Json::n(99999.0)), // 真实超时，不做美化
                 }
@@ -386,7 +394,7 @@ fn metrics(state: &Shared, cfg: &Config, sub: &str, count: &str) -> Json {
             let mut success = 0;
             for _ in 0..n {
                 let req = build_req(NODE_SECRET, &file_hash, "infohash");
-                if let Ok((ack, _)) = send_wake(state, cfg, &req, 1200) {
+                if let Ok((ack, _)) = send_wake(state, cfg, &req, timeout_ms) {
                     if ack_is_ok(&ack) { success += 1; }
                 }
             }
@@ -1131,4 +1139,18 @@ fn run_with_timeout(mut cmd: Command, secs: u64) -> (bool, String) {
         return (out.status.success(), log);
     }
     (false, log)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_timeout_keeps_legacy_default_and_bounds_public_window() {
+        assert_eq!(metrics_timeout_ms(""), 1200);
+        assert_eq!(metrics_timeout_ms("not-a-number"), 1200);
+        assert_eq!(metrics_timeout_ms("5000"), 5000);
+        assert_eq!(metrics_timeout_ms("0"), 1);
+        assert_eq!(metrics_timeout_ms("999999"), 60_000);
+    }
 }

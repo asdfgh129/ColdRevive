@@ -19,11 +19,13 @@
 //!   对没有监听的端口也报「成功」），拿它当判据会稳定产出假阳性。poll 可写 + SO_ERROR=0
 //!   才是「三次握手真的完成」的系统口径。
 //!
-//! 边界（写清楚，避免被读成「BT 已经能走 TCP 打洞」）：
-//! 本模块只提供**可验证的传输原语**（打出一个真 TCP 洞并能在上面收发字节）。
-//! 把它接进 BT 数据面还需要引擎接受「外部已建连的 socket」，而 librqbit 9.1.0
-//! 不提供这个入口（ADR-015）。因此 BT-over-punched-TCP 仍是缺口，
-//! ROADMAP 里按「原语完成、接线未完成」记录，不写成已完成。
+//! 边界（写清楚，避免被读成「BT 已经能走公网 TCP 打洞」）：
+//! 本模块提供**可验证的传输原语**（真 TCP 洞 + 双向字节）。数据面接线已在
+//! `coldrevived/src/data_plane.rs::attach_punched_socket` 与 `nat_path.rs` 的
+//! `punch-route` 之后完成（v2.4.116）：验证过的 socket 会注册进 SOCKS5 桥，
+//! 并有真实 librqbit 取片单测（W54）。仍缺的是**公网双端 daemon 级实测**：
+//! 现有 T2/W56 只证明原语与回环/公开 TCP 回声，不能推出 BT 数据面成功率，
+//! 也不产出任何可达率数字（ADR-012）。
 
 use std::io;
 use std::net::{SocketAddr, TcpStream};

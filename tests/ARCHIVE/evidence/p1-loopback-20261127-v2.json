@@ -1,0 +1,76 @@
+{
+  "kind": "p1-local-loopback",
+  "scope": "no full p0 e2e, no external network probes",
+  "binary": "C:\\Users\\bemin\\WorkBuddy\\ColdRevive\\target\\debug\\coldrevived.exe",
+  "checks": {
+    "health_exposes_flags_not_secret": {
+      "ok": true,
+      "detail": {
+        "node": "A",
+        "cap_bps": 250000
+      }
+    },
+    "openapi_lists_endpoints": {
+      "ok": true,
+      "detail": {
+        "paths": [
+          "/",
+          "/announce",
+          "/api/v1/status",
+          "/cli",
+          "/health",
+          "/inject",
+          "/jsonrpc",
+          "/nat/advertise",
+          "/nat/public",
+          "/openapi.json",
+          "/scrape",
+          "/torrent/{key}",
+          "/ui/app.js",
+          "/ui/style.css",
+          "/ws"
+        ]
+      }
+    },
+    "webui_assets_and_api_v1_do_not_shadow_health": {
+      "ok": true,
+      "detail": {
+        "root_html": true,
+        "assets": true,
+        "api_v1": true,
+        "health_not_shadowed": true
+      }
+    },
+    "rpc_secret_gates_mutating_calls": {
+      "ok": true,
+      "detail": {
+        "mutating_denied": true,
+        "mutating_allowed": true,
+        "readonly_free": true,
+        "control_methods": true
+      }
+    },
+    "non_loopback_without_secret_refused": {
+      "ok": true,
+      "detail": {
+        "exit": 2,
+        "refused_before_bind": true
+      }
+    },
+    "websocket_handshake_and_frame": {
+      "ok": true,
+      "detail": {
+        "opcode": 129,
+        "frame_keys": [
+          "node",
+          "seed_tasks",
+          "served_bytes",
+          "ts_ms"
+        ]
+      }
+    }
+  },
+  "passed": 6,
+  "total": 6,
+  "gate_constants_untouched": true
+}

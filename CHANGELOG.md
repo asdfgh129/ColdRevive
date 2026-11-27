@@ -1,3 +1,36 @@
+## [2.4.156] - 2026-11-27 — M3 工程余项第一批：暴露面闸门、Web UI 资产、aria2 控制面与 NFR-04 量具
+
+> **不改门禁、不改判据**：`g2_claim=true`、三个工具字段、EX-1 FAIL 78/80、S6 条件计入、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部不变。本条只补工程实现与量具能力。
+
+- **W6.2 安全缺口（真实缺陷）**：此前 `cr_api::RPC_SECRET_REQUIRED_OUTSIDE_LOOPBACK=true` 只在
+  `/health` 里报告，守护进程仍可按 `0.0.0.0`/LAN 裸启，`/jsonrpc` 的 mutating 调用等于无鉴权。
+  新增 `cr_api::rpc::validate_exposure(bind, secret)`，在 `coldrevived` 绑定任何 socket 之前拒绝
+  「非回环 + 无/空 secret」并以退出码 2 结束；回环绑定行为逐字节不变。
+- **W6.1/W6.4 Web UI**：从单个只读状态页升级为编译期嵌入的 `GET /` + `GET /ui/style.css` +
+  `GET /ui/app.js`。页面能列真实 `tellActive/tellWaiting/tellStopped` 任务、addUri、pause/resume/
+  remove，状态仍只读 `/health`；无 CDN、无磁盘写入、不遮蔽既有端点。
+  `/api/v1/status` 与 `/api/v1/openapi` 作为同实现别名（ADR-003）。
+- **W6.2 aria2 控制面**：补 `aria2.pause` / `pauseAll` / `resume` / `resumeAll` / `remove` /
+  `forceRemove` / `removeDownloadResult`，全部走真实 `cr-engine` 的暂停/恢复/移除，成功后才回写
+  `RpcTask`；取 gid 时跳过 `token:<secret>` 参数，避免把凭据当任务号。所有方法仍按方法语义鉴权，
+  secret 不会进任何响应。
+- **NFR-04 量具**：`metrics wake-latency <n> [timeout_ms]` / `metrics revival <n> [timeout_ms]`
+  增加可选超时参数，缺省 1200 ms 保持 T0/T1 逐字节不变，上限 60 s。公网 P95 仍需所有者先确认
+  SRS 的 8 s 与 T0 夹具 3 s 的口径差异，未确认前不新增公网阈值夹具、不出任何 P95 结论。
+- **口径修正（不重写历史，只标 supersession）**：`cr-ed2k/src/lib.rs` 的「daemon 未接线」与
+  `tcp_punch.rs` 的「数据面未接线」已按 v2.4.112/116 现状更正；`config/coldrevive.example.toml`
+  改成 `api.rpc_secret` 并标注 `engine.max_active_seeds`。多任务逐出与 daemon 接线本来就已落地，
+  11-20 的状态清单属于历史快照，不在本条里改写。
+- **验证**：`cargo check -p cr-api -p coldrevived` 通过；定向单测 cr-api **17/17**、coldrevived
+  **84/84**；P1 本地回环 e2e **6/6**（含「非回环无 secret 拒绝启动」负向对照），报告
+  `tests/ARCHIVE/evidence/p1-loopback-20261127-v2.json`。全量串行回归
+  **552 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/regression-full-20261127-m3a.log`）。
+- **M3 仍未完成（明确留下，不冒充已闭环）**：`coldrevive-agent` 仍是骨架（需要托盘/进程监管/
+  IPC 与打包，属 GUI 依赖）；FR-25 双轨发布未接 KAD_PUBLISH；BT-over-punched-TCP 缺公网双端
+  daemon 级实测；NFR-04 公网 P95 缺双公网主机与阈值决定；可靠层无 LEDBAT（需新 ADR，公平性
+  EX-1 仍是 FAIL，禁止调 β/重采样）。以上均不是「代码小修即可宣布完成」的项。
+
 ## [2.4.155] - 2026-11-27 — 文档同步：明确 NFR-02 范围与 macOS `not_verified` 含义（无代码/门禁变更）
 
 > 仅更新测试文档、出口记录与机读夹具的表述；不改源码、判据、阈值或任何门禁字段。

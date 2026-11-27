@@ -21,6 +21,13 @@ fn path(ops: Vec<(&'static str, Json)>) -> Json { Json::obj(ops) }
 pub fn document_json() -> Json {
     let rpc_methods: Vec<Json> = vec![
         ("aria2.addUri", true, "登记/下载一个 .torrent（mutating）"),
+        ("aria2.pause", true, "暂停一个已接入引擎的任务"),
+        ("aria2.pauseAll", true, "暂停全部已接入引擎的任务"),
+        ("aria2.resume", true, "恢复一个已暂停的任务"),
+        ("aria2.resumeAll", true, "恢复全部已暂停的任务"),
+        ("aria2.remove", true, "停止并移除任务（保留文件）"),
+        ("aria2.forceRemove", true, "强制停止并移除任务（保留文件）"),
+        ("aria2.removeDownloadResult", true, "停止任务并删除已下载文件"),
         ("aria2.tellStatus", false, "按 gid 查真实任务状态"),
         ("aria2.tellActive", false, "活动任务列表"),
         ("aria2.tellWaiting", false, "等待任务列表"),
@@ -50,11 +57,20 @@ pub fn document_json() -> Json {
             ("/health", path(vec![
                 ("get", op("节点真实运行状态；secret 值不会出现在响应中", "status")),
             ])),
+            ("/api/v1/status", path(vec![
+                ("get", op("/health 的稳定别名（同一实现，不复制状态）", "status")),
+            ])),
             ("/openapi.json", path(vec![
                 ("get", op("本描述符", "meta")),
             ])),
             ("/", path(vec![
-                ("get", op("内嵌 Web UI（api.web_ui 开启时；默认关闭）", "ui")),
+                ("get", op("内嵌 Web UI 首页（api.web_ui 开启时；默认关闭）", "ui")),
+            ])),
+            ("/ui/app.js", path(vec![
+                ("get", op("编译期嵌入的 Web UI 脚本（同源，无外部依赖）", "ui")),
+            ])),
+            ("/ui/style.css", path(vec![
+                ("get", op("编译期嵌入的 Web UI 样式（同源，无外部依赖）", "ui")),
             ])),
             ("/ws", path(vec![
                 ("get", op("RFC6455 状态推送（api.websocket 开启时；默认关闭）", "ui")),
@@ -99,8 +115,9 @@ mod tests {
         let parsed = Json::parse(&dump).expect("OpenAPI 必须是合法 JSON");
         assert_eq!(parsed.get("openapi").and_then(Json::as_str), Some("3.0.3"));
         let paths = parsed.get("paths").and_then(Json::as_obj).expect("paths");
-        for key in ["/health", "/cli", "/jsonrpc", "/announce", "/torrent/{key}",
-                    "/openapi.json", "/ws", "/"] {
+        for key in ["/health", "/api/v1/status", "/cli", "/jsonrpc", "/announce",
+                    "/torrent/{key}", "/openapi.json", "/ws", "/", "/ui/app.js",
+                    "/ui/style.css"] {
             assert!(paths.iter().any(|(k, _)| k == key), "缺少端点 {key}");
         }
         let methods = parsed.get("x-jsonrpc-methods").and_then(Json::as_arr).expect("rpc methods");

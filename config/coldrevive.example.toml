@@ -27,7 +27,8 @@ wake_udp_port = 16801
 bt_port = 16802
 enable_upnp = true
 enable_ipv6 = true
-# 远程管理需显式改为 "0.0.0.0" 并配置 security.rpc_secret
+# 远程管理需显式改为 "0.0.0.0" 并配置 api.rpc_secret（JSON 配置段；守护进程
+# 现在会在绑定任何 socket 前拒绝「非回环 + 无 secret」的启动）。
 bind = "127.0.0.1"
 
 [kad]
@@ -38,6 +39,7 @@ publish_ttl_sec = 1800
 publish_rate = 20
 
 [scheduler]
+# 实际加载器字段名是 engine.max_active_seeds（JSON 配置）；本 TOML 仅作讨论样例。
 max_active_seeds = 50
 # FR-14 空闲自动休眠：**opt-in，0 = 关闭（默认）**。HOT 做种任务空闲满阈值后
 # 由唯一入口 `idle::sleep_hot_seeds` 暂停并切回 COLD；影子索引与 KAD 发布 Key 保留，

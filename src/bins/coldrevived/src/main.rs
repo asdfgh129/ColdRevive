@@ -192,6 +192,12 @@ fn main() {
     let p1 = p1_config::P1Config::load(Path::new(&cfg_path));
     cfg.node_id = node_id.clone();
     if let Some(b) = opt("--bind") { cfg.bind = b; }
+    // M3/W6.2：非回环绑定若没有 rpc_secret，mutating JSON-RPC 等于裸奔。
+    // 必须在任何 socket/工作目录副作用之前拒绝启动；/health 里的布尔提示只是提示，不是闸门。
+    if let Err(e) = cr_api::rpc::validate_exposure(&cfg.bind, p1.rpc_secret.as_deref()) {
+        eprintln!("[{node_id}] 配置拒绝启动: {e}");
+        std::process::exit(2);
+    }
     // T1 双机：本进程所在主机的对外地址覆盖 nodes.<self>.host；
     // 两端可共用同一份配置，仅 --bind / --self-host 不同。
     if let Some(h) = opt("--self-host") {
@@ -921,6 +927,13 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         Err(_) => return,
     };
     let (method, path, raw_headers, body) = req;
+    // ADR-003：/api/v1/* 是同一组端点的稳定别名，不复制第二份实现；
+    // 旧路径逐字节保留，既有 e2e 无需改。
+    let path = match path.as_str() {
+        "/api/v1/status" => "/health",
+        "/api/v1/openapi" => "/openapi.json",
+        other => other,
+    };
     // P1：布尔开关先取一次，避免下面在同一条 `Json::obj(vec![...])` 里重复 lock 死锁。
     let (web_ui_enabled, ws_enabled) = {
         let st = state.lock().unwrap();
@@ -1282,7 +1295,10 @@ fn handle_conn(mut stream: TcpStream, cfg: Config, state: Arc<Mutex<NodeState>>)
         // RFC6455：握手后转为帧连接，绕过普通 HTTP 响应写回。
         handle_ws(&mut stream, &raw_headers, &state);
         return;
-    } else if cr_api::webui::is_web_ui_path(&path, web_ui_enabled) && method == "GET" {
+    } else if method == "GET" && cr_api::webui::asset(path, web_ui_enabled).is_some() {
+        let (ct, asset) = cr_api::webui::asset(path, web_ui_enabled).unwrap();
+        ("200 OK".into(), asset.as_bytes().to_vec(), ct)
+    } else if cr_api::webui::is_web_ui_path(path, web_ui_enabled) && method == "GET" {
         ("200 OK".into(), cr_api::webui::INDEX_HTML.as_bytes().to_vec(),
          cr_api::webui::CONTENT_TYPE)
     } else if path == "/openapi.json" && method == "GET" {
@@ -1447,6 +1463,71 @@ fn first_uri_param(params: &[Json]) -> String {
 
 /// aria2 兼容 JSON-RPC 子集（M3/W6.1 + M2/W5.1）。
 ///
+/// aria2 允许 mutating 调用把 `token:<secret>` 放在 params[0]；
+/// 取 gid 时必须跳过凭据，否则会把 token 当成任务号。
+fn rpc_gid_param(params: &[Json]) -> Option<String> {
+    params.iter().filter_map(Json::as_str)
+        .find(|s| !s.starts_with("token:"))
+        .map(str::to_string)
+}
+
+/// 从 `RpcTask` 表解析 pause/resume/remove 的目标。gid 非空时只认这一条；省略时取全部。
+/// 只返回**真正接入引擎**的任务：纯 URI 登记的 waiting 项没有数据面，不能假装暂停成功。
+fn rpc_task_targets(
+    state: &Arc<Mutex<NodeState>>,
+    gid: Option<&str>,
+) -> Result<Vec<(String, u64)>, String> {
+    let st = state.lock().unwrap();
+    let selected: Vec<RpcTask> = match gid.filter(|g| !g.is_empty()) {
+        Some(g) => st.rpc_tasks.iter().filter(|t| t.gid == g).cloned().collect(),
+        None => st.rpc_tasks.clone(),
+    };
+    if let Some(g) = gid.filter(|g| !g.is_empty()) {
+        if selected.is_empty() { return Err(format!("任务不存在: {g}")); }
+    }
+    Ok(selected.into_iter()
+        .filter_map(|t| t.engine_task.map(|tid| (t.gid, tid)))
+        .collect())
+}
+
+/// 对真实引擎执行 pause/resume/remove，成功后才回写 RpcTask 状态。
+/// 锁顺序固定为「先读目标 → 再锁引擎 → 最后回写」，避免与 /health 争用 NodeState 时死锁。
+fn rpc_control_tasks(
+    state: &Arc<Mutex<NodeState>>,
+    action: &str,
+    gid: Option<&str>,
+    delete_files: bool,
+) -> Result<Vec<String>, String> {
+    let targets = rpc_task_targets(state, gid)?;
+    if targets.is_empty() { return Ok(Vec::new()); }
+    let slot = { state.lock().unwrap().engine.clone() };
+    let mut gids = Vec::new();
+    {
+        let mut guard = slot.lock().unwrap();
+        let engine = guard.as_mut().ok_or_else(|| "引擎未启动，任务没有数据面".to_string())?;
+        for (g, tid) in &targets {
+            let result = match action {
+                "pause" => engine.pause(*tid),
+                "resume" => engine.resume(*tid),
+                "remove" => engine.remove(*tid, delete_files),
+                other => return Err(format!("未知控制动作 {other}")),
+            };
+            result.map_err(|e| format!("任务 {g}: {e}"))?;
+            gids.push(g.clone());
+        }
+    }
+    let mut st = state.lock().unwrap();
+    for t in st.rpc_tasks.iter_mut().filter(|t| gids.contains(&t.gid)) {
+        match action {
+            "pause" => t.status = "paused".into(),
+            "resume" => t.status = "active".into(),
+            "remove" => { t.status = "removed".into(); t.engine_task = None; }
+            _ => unreachable!(),
+        }
+    }
+    Ok(gids)
+}
+
 /// `addUri` 收到可解析的 `.torrent` 时会把任务**真的**交给 `cr-engine`（librqbit）下载；
 /// 引擎创建失败、任务接入失败都如实写进 `coldrevive.note` / `coldrevive.error`，任务状态回到
 /// `waiting`（不假装在传）。`tellStatus` / `tellActive` / `tellWaiting` / `tellStopped` 每次都会
@@ -1649,6 +1730,28 @@ fn handle_jsonrpc(state: &Arc<Mutex<NodeState>>, body: &[u8]) -> Json {
                 ed2k_tasks::status_cmd(&tasks, &[gid])
             };
             ok(&id, out)
+        }
+        "aria2.pause" | "aria2.forcePause" | "aria2.pauseAll" => {
+            let gid = if method == "aria2.pauseAll" { None } else { rpc_gid_param(params) };
+            match rpc_control_tasks(state, "pause", gid.as_deref(), false) {
+                Ok(v) => ok(&id, Json::arr(v.into_iter().map(Json::s).collect())),
+                Err(e) => rpc_err(id, -32002, &e),
+            }
+        }
+        "aria2.resume" | "aria2.resumeAll" => {
+            let gid = if method == "aria2.resumeAll" { None } else { rpc_gid_param(params) };
+            match rpc_control_tasks(state, "resume", gid.as_deref(), false) {
+                Ok(v) => ok(&id, Json::arr(v.into_iter().map(Json::s).collect())),
+                Err(e) => rpc_err(id, -32002, &e),
+            }
+        }
+        "aria2.remove" | "aria2.forceRemove" | "aria2.removeDownloadResult" => {
+            let gid = rpc_gid_param(params);
+            let delete = method == "aria2.removeDownloadResult";
+            match rpc_control_tasks(state, "remove", gid.as_deref(), delete) {
+                Ok(v) => ok(&id, Json::arr(v.into_iter().map(Json::s).collect())),
+                Err(e) => rpc_err(id, -32002, &e),
+            }
         }
         _ => rpc_err(id, -32601, &format!("不支持的方法 {method}")),
     }
@@ -2464,7 +2567,14 @@ mod p1_http_tests {
         let cli = post(addr, "/cli", r#"{"command":"unknown"}"#);
         assert!(cli.contains("\"error\"") && !cli.contains("<!doctype html>"), "{cli}");
         let root = request(addr, b"GET / HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
-        assert!(root.contains("<!doctype html>") && root.contains("ColdRevive status"), "{root}");
+        assert!(root.contains("<!doctype html>") && root.contains("ColdRevive console"), "{root}");
+        assert!(root.contains("/ui/app.js") && root.contains("/ui/style.css"), "{root}");
+        let js = request(addr, b"GET /ui/app.js HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(js.contains("200 OK") && js.contains("aria2.tellActive"), "{js}");
+        let css = request(addr, b"GET /ui/style.css HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(css.contains("200 OK") && css.contains("text/css"), "{css}");
+        let v1 = request(addr, b"GET /api/v1/status HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
+        assert!(v1.contains("\"status\":\"ok\"") && !v1.contains("<!doctype html>"), "{v1}");
         let options = request(addr, b"OPTIONS /jsonrpc HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n");
         assert!(options.contains("204 No Content"), "{options}");
         let _ = fs::remove_dir_all(&dir);
@@ -2487,6 +2597,23 @@ mod p1_http_tests {
         let readonly = post(addr, "/jsonrpc",
             r#"{"jsonrpc":"2.0","id":3,"method":"aria2.getVersion","params":[]}"#);
         assert!(readonly.contains("\"result\""), "只读调用不该要求 token: {readonly}");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn jsonrpc_control_methods_are_dispatched_not_unsupported() {
+        let (state, cfg, dir) = state_with(p1_config::P1Config::default());
+        let addr = serve(state, cfg);
+        for method in ["aria2.pauseAll", "aria2.resumeAll", "aria2.removeDownloadResult"] {
+            let body = format!(
+                r#"{{"jsonrpc":"2.0","id":1,"method":"{method}","params":[]}}"#);
+            let out = post(addr, "/jsonrpc", &body);
+            assert!(out.contains("\"result\":[]"), "{method} 未被正确分派: {out}");
+            assert!(!out.contains("-32601"), "{method} 仍报不支持: {out}");
+        }
+        let unknown = post(addr, "/jsonrpc",
+            r#"{"jsonrpc":"2.0","id":2,"method":"aria2.pause","params":["nope"]}"#);
+        assert!(unknown.contains("-32002") && unknown.contains("任务不存在"), "{unknown}");
         let _ = fs::remove_dir_all(&dir);
     }
 

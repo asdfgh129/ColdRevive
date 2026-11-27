@@ -215,12 +215,19 @@ def main():
 
         def webui_check():
             root = raw_http(http_port, b"GET / HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n")
-            assert b"200 OK" in root and b"ColdRevive status" in root, root[:200]
+            assert b"200 OK" in root and b"ColdRevive console" in root, root[:200]
+            assert b"/ui/app.js" in root and b"/ui/style.css" in root, root[:300]
             health = raw_http(http_port, b"GET /health HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n")
             assert b'"status":"ok"' in health and b"<!doctype html>" not in health
-            return {"root_html": True, "health_not_shadowed": True}
+            js = raw_http(http_port, b"GET /ui/app.js HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n")
+            assert b"200 OK" in js and b"aria2.tellActive" in js, js[:200]
+            css = raw_http(http_port, b"GET /ui/style.css HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n")
+            assert b"200 OK" in css and b"text/css" in css, css[:200]
+            v1 = raw_http(http_port, b"GET /api/v1/status HTTP/1.1\r\nHost: h\r\nConnection: close\r\n\r\n")
+            assert b'"status":"ok"' in v1 and b"<!doctype html>" not in v1, v1[:200]
+            return {"root_html": True, "assets": True, "api_v1": True, "health_not_shadowed": True}
 
-        check("webui_does_not_shadow_health", webui_check)
+        check("webui_assets_and_api_v1_do_not_shadow_health", webui_check)
 
         def rpc_check():
             _, denied = post_json(base + "/jsonrpc", {
@@ -237,9 +244,38 @@ def main():
                 "jsonrpc": "2.0", "id": 3, "method": "aria2.getVersion", "params": [],
             })
             assert '"result"' in readonly, readonly
-            return {"mutating_denied": True, "mutating_allowed": True, "readonly_free": True}
+            for method in ("aria2.pauseAll", "aria2.resumeAll", "aria2.removeDownloadResult"):
+                _, ctl = post_json(base + "/jsonrpc", {
+                    "jsonrpc": "2.0", "id": 9, "method": method,
+                    "params": [f"token:{secret}", []],
+                })
+                assert '"result":[]' in ctl and "-32601" not in ctl, (method, ctl)
+            return {"mutating_denied": True, "mutating_allowed": True,
+                    "readonly_free": True, "control_methods": True}
 
         check("rpc_secret_gates_mutating_calls", rpc_check)
+
+        def exposure_check():
+            bad = dict(cfg)
+            bad["bind"] = "0.0.0.0"
+            bad["api"] = {"rpc_secret": "", "web_ui": False, "websocket": False}
+            bad["nodes"] = {"A": {
+                "http_port": free_port(), "wake_udp_port": free_port(), "bt_port": free_port(),
+            }}
+            bad_path = os.path.join(work, "config-no-secret.json")
+            with open(bad_path, "w", encoding="utf-8") as f:
+                json.dump(bad, f)
+            p = subprocess.run(
+                [binary, "--config", bad_path, "--node-id", "A",
+                 "--workdir", work, "--sample", sample],
+                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, timeout=5,
+            )
+            assert p.returncode == 2, f"应拒绝启动，实得 {p.returncode}: {p.stdout}"
+            assert "api.rpc_secret" in p.stdout and "非回环" in p.stdout, p.stdout
+            return {"exit": p.returncode, "refused_before_bind": True}
+
+        check("non_loopback_without_secret_refused", exposure_check)
 
         def ws_check():
             w = websocket_status(http_port)
