@@ -53,16 +53,28 @@ holder splice / member SOCKS5 注册，并有角色与安全回退单测；调�
 
 - 两观测点一致：221 从 `192.168.1.221:19710` 映射为 `112.5.60.4:23982`，`eim=true`；
 - 两侧 `punch-route` 均因 `TCP 打洞未建立（poll+SO_ERROR 判据）` 回落 relay；
-- 根因是环境而非代码：119 仅放通 TCP/22（sshd 占用），源地址受限的
-  `REDIRECT 22→19720` 对普通监听可用，但对 TCP 同时打开的内向 SYN 被 RST/refused；
-  tcpdump 显示 H→M 的 SYN 进入 `112.5.60.4:23982`，M→H 的 SYN 打在 `119.29.150.254:22` 后被 `R.`；
+- 根因是环境而非代码，两级：
+  1. **端口对称性**（决定性）：TCP 同时打开要求两侧用**同一对端口**互发 SYN——A 从
+     `pa` 发往 `pb`，B 必须从 `pb` 发往 `pa`。本环境 holder 只能绑 `19720`、member 只能拨
+     `119.29.150.254:22`，holder 出向经 1:1 EIP 保端口后对端看到的是 `:19720`，
+     与 member socket 的 remote `:22` **不是同一条连接**，内核只能回 `R.`。
+     这不是 `REDIRECT` 写法问题——把入向 `22` 改写成 `19720` 只会让 member 拨的端口
+     和 holder 的公开源端口永久错位；
+  2. **可达性**：119 / 82 的安全组只放通 TCP/22（实测其余端口 3 s 超时=过滤，
+     不是 refused），而 `22` 由 `sshd` 占着（`ss -lntp` 见 `0.0.0.0:22` sshd pid 1049），
+     punch socket 无法绑到「对端唯一能拨到」的那个端口。
+- tcpdump 实录：H→M 的 SYN 进入 `112.5.60.4:23982`，M→H 的 SYN 打在 `119.29.150.254:22` 后被 `R.`；
+- 侧记（操作风险）：源地址限定 `-s 112.5.60.4 --dport 22` 的 REDIRECT 会**同时劫持
+  本机控制通道**，因为控制台与被测 member 共用一个家宽出口 IP，无法用源 IP 区分；
+  本次一度失联，靠 82 跳板机 `-D` 撤销规则才恢复。下次这类实验必须用独立出口做控制端。
 - 报告中 `member_bridge_served` / `holder_splice_done` / `engineAttached` / infohash 命中
   是**回落 relay 数据面**的计数，不是 punched-direct，不可写成通过；
 - 文件落地为 0 B、`md5` 不一致，未通过 BT 落地判据。
 
-关闭条件：第二台公网主机需要一个**未被 sshd/其他服务占用、安全组放通、可由
-punch socket 直接绑定**的 TCP 端口，或用持有者书面认可的等效真实公网 TCP 路径；
-不得用 `REDIRECT` 冒充直绑，不得用静态 DNAT/中继顶替 punched-direct。
+关闭条件：需要一台**安全组放通、且该 TCP 端口未被 sshd/其他服务占用**的公网主机，
+让 punch socket 直接绑到「对端会拨的那个端口」上；或用持有者书面认可的等效真实公网
+TCP 路径。不得用 `REDIRECT` 冒充直绑（端口对称性无法靠改写绕过），不得用静态
+DNAT／中继顶替 punched-direct。
 
 按 ADR-012 **不报成功率/可达率**，只写「该类环境有一条可用路径」与失败原因。
 本机、回环、静态 DNAT（`punched-direct` 历史 3/30）都不能顶替这项。

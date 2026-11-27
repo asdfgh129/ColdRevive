@@ -31,13 +31,18 @@
   钉成单测（显式 `role` 优先、未知 role 不算 holder）。
 - **W6.7 daemon 级实测：BLOCKED（环境，不是代码）**：`tests/e2e/w67-punched-bt/run.py`，
   119 为 holder、221 为 member。两观测点一致得到 `112.5.60.4:23982`（`eim=true`）；
-  但两侧 `punch-route` 均因 `TCP 打洞未建立（poll+SO_ERROR 判据）` 回落 relay。根因：119 仅
-  放通 TCP/22（sshd 占用），源地址受限的 `REDIRECT 22→19720` 对普通监听可用，对 TCP 同时
-  打开的内向 SYN 被 `R.`（tcpdump 实录）。落地 0 B、md5 不匹配。报告中
-  `member_bridge_served` / `holder_splice_done` / `engineAttached` 属**relay 数据面**，
-  不是 punched-direct。证据 `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。
-  关闭条件：第二台公网主机需要一个未被占用、安全组放通、可由 punch socket 直接绑定的
-  TCP 端口；`REDIRECT` / 静态 DNAT / 中继均不得顶替。
+  但两侧 `punch-route` 均因 `TCP 打洞未建立（poll+SO_ERROR 判据）` 回落 relay。根因两级：
+  ①**端口对称性**——同时打开要求两侧用同一对端口互发 SYN，holder 只能绑 `19720`、
+  member 只能拨 `:22`，holder 出向经 1:1 EIP 保端口后对端看到 `:19720`，与 member 的
+  remote `:22` 不是同一条连接，内核只能回 `R.`（`REDIRECT` 改写端口只会永久错位，不是写法问题）；
+  ②**可达性**——119/82 安全组只放通 TCP/22（其余端口 3 s 超时=过滤），而 `22` 由 `sshd`
+  占用。落地 0 B、md5 不匹配。报告中 `member_bridge_served` / `holder_splice_done` /
+  `engineAttached` 属**relay 数据面**，不是 punched-direct。证据
+  `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。
+  关闭条件：一台安全组放通、且该端口未被 sshd/其他服务占用的公网主机，让 punch socket
+  直接绑在「对端会拨的那个端口」上；`REDIRECT` / 静态 DNAT / 中继均不得顶替。
+  侧记：源地址限定 `-s <家宽 IP> --dport 22` 的 REDIRECT 会同时劫持控制通道（控制台与
+  被测 member 共用出口 IP），本次一度失联、经 82 跳板机 `-D` 才恢复——下次须用独立出口做控制端。
 - **验证**：`coldrevived` 定点单测（3 条 punched 数据面 + 1 条角色判定）通过；全量串行回归
   **561 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/regression-full-20261127-v158.log`）。
   首次全量命中历史 flaky `cr-ed2k::server_satisfies_amule_style_sliding_window`
