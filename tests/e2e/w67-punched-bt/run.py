@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """W6.7 daemon-level BT over punched TCP (public, cross-network).
 
-Topology (2026-11-27):
-- H = 119.29.150.254, public 1:1 EIP, role=holder, engine.listen=127.0.0.1:19730.
-      Punch socket binds 0.0.0.0:19720; public TCP/22 is temporarily REDIRECTed
-      from the home egress to 19720 for the punch window only.
-- M = 192.168.1.221, home NAT (EIM proven by two observers), role=member.
-      Punch socket binds 192.168.1.221:19710; discovered public port is signalled
-      to H and used immediately as the SYN target.
-- Observers = two ports on 82.157.68.159 (22 and 7100), temporarily REDIRECTed
-      from the home egress to local coldrevive-nat observers during discovery.
-      Cross-IP EIM for 221 is additionally supported by the archived two-IP
-      tcpdump evidence; this run re-proves port-independence immediately.
+Topology (2026-11-27, revision 2 — a real public TCP port is available):
+- H = 119.29.150.254, Lighthouse instance, public 1:1 EIP, role=holder,
+      engine.listen=127.0.0.1:19730. The owner opened TCP/19720 in the Lighthouse
+      firewall, so the punch socket binds 0.0.0.0:19720 and the peer dials
+      119.29.150.254:19720 directly. No REDIRECT anywhere: an earlier revision tried
+      to rewrite inbound 22 -> 19720 and could never satisfy TCP simultaneous open
+      because the two sides then used different port pairs.
+- M = 192.168.1.221, home NAT (EIM), role=member.
+      Punch socket binds 192.168.1.221:19710; its mapped public port is discovered
+      at the same endpoint the punch will use, then consumed immediately.
+- Observer = one coldrevive-nat observer on 119.29.150.254:19720, i.e. exactly the
+      endpoint the punch targets, so no cross-destination port extrapolation happens.
+      The mapping is sampled twice and both samples must agree before punching.
 - Relay 82.157.68.159:7100 is used only for ADR-022 two-phase verdict control,
       never as the BT data plane.
 
-PASS needs all of: two-observer EIM, both sides poll+SO_ERROR punch established,
-both sides route=punched-direct, real SOCKS5 bridge registration, real BT
-handshake/piece transfer, 1 MiB landed with md5, and holder splice counters > 0.
+PASS needs all of: mapping observed twice and identical at the punch endpoint, both
+sides poll+SO_ERROR punch established, both sides route=punched-direct, real SOCKS5
+bridge registration, real BT handshake/piece transfer, 1 MiB landed with md5, and
+holder splice counters > 0.
 No success rate. No S6/G2 claim. No relay data-plane substitution.
 """
 
@@ -50,14 +53,15 @@ RELAY = "82.157.68.159:7100"
 OBS82, OBS119 = "82.157.68.159", "119.29.150.254"
 
 HOSTS = {
+    # bt_public is now the real, firewall-opened public port on H. It is both the
+    # bind port of the holder's punch socket and the port the member dials.
     "H": {"ssh": OBS119, "node": "H", "http": 19711, "wake": 19712,
-          "bt_public": 22, "workdir": "/root/cr-w67/holder"},
+          "bt_public": 19720, "workdir": "/root/cr-w67/holder"},
     "M": {"ssh": "192.168.1.221", "node": "M", "http": 19721, "wake": 19722,
           "bt_public": 19910, "workdir": "/root/cr-w67/member"},
 }
 UNITS = {
-    "H": "cr-w67-h", "M": "cr-w67-m",
-    "obs82a": "cr-w67-obs82a", "obs82b": "cr-w67-obs82b",
+    "H": "cr-w67-h", "M": "cr-w67-m", "obsH": "cr-w67-obs-h",
     "http": "cr-w67-http", "capH": "cr-w67-cap-h", "capM": "cr-w67-cap-m",
 }
 
@@ -224,10 +228,12 @@ def install_binary(c: paramiko.SSHClient, data: bytes, path: str, expected_sha: 
     return r
 
 
-def iptables_redirect(c: paramiko.SSHClient, action: str, dport: int, to_port: int) -> dict:
-    rule = (f"-t nat -{action} PREROUTING -p tcp -s {HOME_EGRESS} --dport {dport} "
-            f"-m state --state NEW -j REDIRECT --to-ports {to_port}")
-    return run(c, "iptables " + rule)
+def discover(c: paramiko.SSHClient, local: str, observer: str) -> dict:
+    """Ask the observer what public port `local` is mapped to."""
+    r = run(c, f"/root/cr-w67/coldrevive-nat --discover-tcp-port {local} {observer} "
+               f"--timeout 3000 --json", 40)
+    r["parsed"] = parse_json_line(r["stdout"])
+    return r
 
 
 def punch(c: paramiko.SSHClient, node: str, peer: str, bind_hint: str,
@@ -272,10 +278,14 @@ def main() -> int:
         "generated_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "scope": "daemon-level punched-direct TCP carrying real BT payload; component evidence, not G2/S6",
         "topology": {
-            "H": "119.29.150.254 public EIP, holder, engine.listen=127.0.0.1:19730, punch bind 19720",
+            "H": "119.29.150.254 public EIP, holder, engine.listen=127.0.0.1:19730, punch bind 0.0.0.0:19720",
             "M": "192.168.1.221 home EIM NAT, member, punch bind 192.168.1.221:19710",
-            "observers": [OBS82 + ":22", OBS82 + ":7100"],
-            "observer_note": "two observer ports on one public host; cross-IP EIM corroborated by archived tcpdump evidence",
+            "observer": OBS119 + ":19720",
+            "observer_note": ("observer sits on the exact endpoint the punch targets; "
+                              "the mapping is sampled twice at that endpoint and must agree, "
+                              "so no cross-destination port extrapolation is performed"),
+            "public_port_provisioning": "TCP/19720 opened in the Lighthouse firewall by the owner",
+            "redirect_used": False,
             "relay_control_only": RELAY,
         },
         "file_hash": FILE_HASH, "infohash": INFOHASH, "expected_md5": EXPECTED_MD5,
@@ -292,11 +302,9 @@ def main() -> int:
         "steps": {}, "checks": [],
     }
 
-    cH, cM, c82 = client(HOSTS["H"]["ssh"]), client(HOSTS["M"]["ssh"]), client(OBS82)
-    for c in (cH, cM, c82):
+    cH, cM = client(HOSTS["H"]["ssh"]), client(HOSTS["M"]["ssh"])
+    for c in (cH, cM):
         run(c, "mkdir -p /root/cr-w67 /root/cr-w67/holder /root/cr-w67/member")
-    obs_rules_added = {"82": False, "119": False}
-    punch_rule_added = False
     try:
         # 0) binaries and sample.
         bin_data = get(cM, BIN_SRC)
@@ -309,7 +317,6 @@ def main() -> int:
         install_binary(cH, bin_data, "/root/cr-w67/holder/coldrevived", bin_sha)
         install_binary(cM, nat_data, "/root/cr-w67/coldrevive-nat", nat_sha)
         install_binary(cH, nat_data, "/root/cr-w67/coldrevive-nat", nat_sha)
-        install_binary(c82, nat_data, "/root/cr-w67/coldrevive-nat", nat_sha)
 
         sample = get(cM, "/opt/g3-clients/amule-config/Incoming/ed2k-sample.bin")
         if len(sample) != SAMPLE_BYTES:
@@ -330,26 +337,17 @@ def main() -> int:
             put(c, wd + "/req.json", "{}\n")
             put(c, wd + "/ack.json", "{}\n")
 
-        # 1) two observer ports on 82 + public-22-to-punch-socket on 119.
-        #    119:22 is NEVER an observer here, so its REDIRECT stays stable while
-        #    the NAT mapping is discovered and consumed. This removes the earlier
-        #    failure where the H-side mapping changed during rule swap.
-        obs_start = {}
-        for unit, port in ((UNITS["obs82a"], 19110), (UNITS["obs82b"], 19111)):
-            obs_start[unit] = start_unit(
-                c82, unit, "/root/cr-w67",
-                f"/root/cr-w67/coldrevive-nat --serve-observer 0.0.0.0:{port} "
-                f"--observer-secs 180 --json")
-        report["steps"]["observers"] = obs_start
-        add22 = iptables_redirect(c82, "A", 22, 19110)
-        add7100 = iptables_redirect(c82, "A", 7100, 19111)
-        pr = iptables_redirect(cH, "A", 22, 19720)
-        punch_rule_added = pr["rc"] == 0
-        obs_rules_added = {"22": add22["rc"] == 0, "7100": add7100["rc"] == 0}
-        report["steps"]["redirect_add"] = {"82_22": add22, "82_7100": add7100,
-                                            "119_22_to_19720": pr}
-        if not punch_rule_added or not all(obs_rules_added.values()):
-            raise RuntimeError("observer/punch REDIRECT 添加失败")
+        # 1) observation endpoint = the punch endpoint itself. No iptables, no REDIRECT:
+        #    TCP/19720 is a real firewall-opened port on H, and a rewrite rule could
+        #    never have worked here because the two sides must use one port pair.
+        report["steps"]["observer"] = start_unit(
+            cH, UNITS["obsH"], "/root/cr-w67",
+            f"/root/cr-w67/coldrevive-nat --serve-observer 0.0.0.0:{HOSTS['H']['bt_public']} "
+            f"--observer-secs 180 --json")
+        listen = run(cH, f"ss -lntp | grep -c ':{HOSTS['H']['bt_public']}'")
+        report["steps"]["observer_listening"] = listen
+        if listen["stdout"].strip() in ("", "0"):
+            raise RuntimeError("observer 未在 19720 监听")
 
         # 2) daemons, peer ads, capture — all before the time-critical discovery.
         startH = start_unit(cH, UNITS["H"], HOSTS["H"]["workdir"],
@@ -371,30 +369,66 @@ def main() -> int:
             raise RuntimeError("nat peer load failed")
 
         capH = capture(cH, UNITS["capH"], "/root/cr-w67/tcpdump-h.log",
-                       "host 112.5.60.4 or tcp port 22 or tcp port 19720")
+                       "host 112.5.60.4 or tcp port 19720")
         capM = capture(cM, UNITS["capM"], "/root/cr-w67/tcpdump-m.log",
-                       "host 119.29.150.254 or tcp port 22 or tcp port 19710")
+                       "host 119.29.150.254 or tcp port 19710")
         report["steps"]["capture_start"] = {"H": capH, "M": capM}
 
-        # 3) discover and consume the mapping immediately; no daemon restart or
-        #    peer load between discovery and punch.
-        disc = run(cM, f"/root/cr-w67/coldrevive-nat --discover-tcp-port "
-                       f"192.168.1.221:19710 {OBS82}:22,{OBS82}:7100 "
-                       f"--timeout 3000 --json", 40)
-        discovery = parse_json_line(disc["stdout"])
-        report["steps"]["discovery"] = {"raw": disc, "parsed": discovery}
-        discovered_port = int(discovery["discovered_port"]) if discovery and discovery.get("discovered_port") else 0
-        if not discovery or discovery.get("eim") is not True or not discovered_port:
-            raise RuntimeError(f"two-observer EIM unavailable: {discovery}")
-        # Restore relay 7100 before the two-phase verdict. 119:22 is untouched.
-        del7100 = iptables_redirect(c82, "D", 7100, 19111)
-        del22 = iptables_redirect(c82, "D", 22, 19110)
-        report["steps"]["observer_redirect_del"] = {"82_22": del22, "82_7100": del7100}
-        obs_rules_added = {"22": False, "7100": False}
-        stop_unit(c82, UNITS["obs82a"])
-        stop_unit(c82, UNITS["obs82b"])
+        # 3) BT metadata prep. Everything that can be slow happens BEFORE the punch,
+        #    because the previous revision let `wake ack` block for its full 90 s CLI
+        #    timeout and the downloader engine was only created 94 s after the punch —
+        #    by then librqbit had already closed the holder's idle splice and the
+        #    member's 68-byte BT handshake went into a dead socket.
+        #    `wake ack` is dropped here: it is a metadata handshake that demonstrably
+        #    timed out in the previous run, while the torrent is fetched directly from
+        #    the holder's HTTP endpoint and its infohash is checked against the seed
+        #    index, so the data-plane test does not depend on it.
+        #    The runtime infohash comes from the holder's real seed index; the fixed
+        #    INFOHASH is historical and changes with keywords/namespace.
+        state_raw = get(cH, HOSTS["H"]["workdir"] + "/state-H.json")
+        state = json.loads(state_raw.decode("utf-8"))
+        entry = next((e for e in state.get("entries", [])
+                      if e.get("file_hash") == FILE_HASH), None)
+        runtime_infohash = (entry or {}).get("infohash", "")
+        report["runtime_infohash"] = runtime_infohash
+        if not runtime_infohash:
+            raise RuntimeError("holder seed index has no runtime infohash")
+        torrent_path = "/root/cr-w67/holder/sample.torrent"
+        tf = run(cH, f"curl -sS --max-time 10 -o {torrent_path} "
+                     f"http://127.0.0.1:{HOSTS['H']['http']}/torrent/{runtime_infohash} && "
+                     f"wc -c {torrent_path}")
+        report["steps"]["torrent_fetch_on_holder"] = tf
+        torrent = get(cH, torrent_path)
+        if tf["rc"] != 0 or len(torrent) < 100 or b"4:info" not in torrent:
+            raise RuntimeError(f"holder torrent invalid: rc={tf['rc']} bytes={len(torrent)}")
+        put(cM, "/root/cr-w67/member/sample.torrent", torrent, 0o644)
+        report["steps"]["torrent_http"] = {
+            "start": start_unit(cM, UNITS["http"], "/root/cr-w67/member",
+                                "python3 -m http.server 19880 --bind 127.0.0.1"),
+            "bytes": len(torrent)}
+        time.sleep(1.0)
 
-        # 4) simultaneous punch with shared nonce.
+        # 4) discover twice at the punch endpoint, require both samples to agree,
+        #    then stop the observer so the punch socket can bind the same port.
+        samples = [discover(cM, "192.168.1.221:19710",
+                            f"{OBS119}:{HOSTS['H']['bt_public']}") for _ in range(2)]
+        ports = [int(s["parsed"]["discovered_port"]) for s in samples
+                 if s["parsed"] and s["parsed"].get("discovered_port")]
+        discovered_port = ports[0] if ports else 0
+        mapping_stable = len(ports) == 2 and ports[0] == ports[1]
+        report["steps"]["discovery"] = {
+            "samples": [{"rc": s["rc"], "parsed": s["parsed"]} for s in samples],
+            "ports": ports, "stable": mapping_stable,
+            "eim_flags": [s["parsed"].get("eim") for s in samples if s["parsed"]],
+        }
+        stop_unit(cH, UNITS["obsH"])
+        time.sleep(0.5)
+        if not discovered_port:
+            raise RuntimeError(f"发现端口为空，无法打洞: {report['steps']['discovery']}")
+        if not mapping_stable:
+            raise RuntimeError(f"同一端点两次采样不一致，拒绝外推: {ports}")
+
+        # 5) simultaneous punch with shared nonce.
         nonce = secrets.token_hex(16)
         barrier = threading.Barrier(2)
         result_h: dict = {}
@@ -403,8 +437,8 @@ def main() -> int:
             cm = client(HOSTS["M"]["ssh"])
             try:
                 barrier.wait()
-                result_h["M"] = punch(cm, "M", "H",
-                                      "192.168.1.221:19710", 22, nonce)
+                result_h["M"] = punch(cm, "M", "H", "192.168.1.221:19710",
+                                      HOSTS["H"]["bt_public"], nonce)
             finally:
                 cm.close()
 
@@ -423,41 +457,20 @@ def main() -> int:
         report["steps"]["tcpdump"] = {"H": tcpdump_h["stdout"][-6000:],
                                        "M": tcpdump_m["stdout"][-6000:]}
 
-        # 5) real BT payload over the punched socket.
-        #    The runtime infohash is derived from the holder's real seed index:
-        #    fixed INFOHASH is historical and changes with keywords/namespace.
-        state_raw = get(cH, HOSTS["H"]["workdir"] + "/state-H.json")
-        state = json.loads(state_raw.decode("utf-8"))
-        entry = next((e for e in state.get("entries", [])
-                      if e.get("file_hash") == FILE_HASH), None)
-        runtime_infohash = (entry or {}).get("infohash", "")
-        report["runtime_infohash"] = runtime_infohash
-        if not runtime_infohash:
-            raise RuntimeError("holder seed index has no runtime infohash")
-        # `wake ack` here only confirms the metadata handshake; the data plane
-        # remains the already-registered punched socket, not a relay tunnel.
-        ack = cli(cM, HOSTS["M"]["http"], "wake", ["ack", FILE_HASH, runtime_infohash])
-        report["steps"]["wake_ack_for_torrent_metadata"] = ack.get("json")
-        torrent_path = "/root/cr-w67/holder/sample.torrent"
-        tf = run(cH, f"curl -sS --max-time 10 -o {torrent_path} "
-                     f"http://127.0.0.1:{HOSTS['H']['http']}/torrent/{runtime_infohash} && "
-                     f"wc -c {torrent_path}")
-        report["steps"]["torrent_fetch_on_holder"] = tf
-        torrent = get(cH, torrent_path)
-        if tf["rc"] != 0 or len(torrent) < 100 or b"4:info" not in torrent:
-            raise RuntimeError(f"holder torrent invalid: rc={tf['rc']} bytes={len(torrent)}")
-        put(cM, "/root/cr-w67/member/sample.torrent", torrent, 0o644)
-        http_start = start_unit(cM, UNITS["http"], "/root/cr-w67/member",
-                                "python3 -m http.server 19880 --bind 127.0.0.1")
-        report["steps"]["torrent_http"] = {"start": http_start, "bytes": len(torrent)}
-        time.sleep(1.0)
+        # 6) real BT payload over the punched socket. The downloader engine is created
+        #    here, seconds after the socket was registered, so its first BT handshake
+        #    finds a live splice instead of an idle timeout.
+        hltH_p, hltM_p = health(cH, HOSTS["H"]["http"]), health(cM, HOSTS["M"]["http"])
+        report["steps"]["health_after_punch"] = {"H": hltH_p, "M": hltM_p}
+        report["steps"]["holder_log_after_punch"] = run(
+            cH, "journalctl -u cr-w67-h --no-pager -n 20 2>/dev/null | tail -6")["stdout"]
         add = rpc(cM, HOSTS["M"]["http"], secret, "aria2.addUri",
                   [["http://127.0.0.1:19880/sample.torrent"]])
         gid = ((add.get("json") or {}).get("result") or "")
         report["steps"]["add_uri"] = add
         if not gid:
             raise RuntimeError("aria2.addUri no gid")
-        dl = wait_download(cM, secret, gid)
+        dl = wait_download(cM, secret, gid, seconds=150)
         report["steps"]["download"] = dl
 
         find = run(cM, f"find {HOSTS['M']['workdir']}/downloads -type f -printf '%p %s\\n'")
@@ -475,13 +488,15 @@ def main() -> int:
         punch_h = (result_h["H"].get("result") or {})
         punch_m = (result_h["M"].get("result") or {})
         dpM = (hltM2.get("data_plane") or {})
-        hdH = (hltH2.get("holder_data") or {})
+        dpM_p = (hltM_p.get("data_plane") or {})
+        dpH_p = (hltH_p.get("data_plane") or {})
         prM = (hltM2.get("punch_route") or {})
         prH = (hltH2.get("punch_route") or {})
         final = dl.get("final") or {}
         landed = [f for f in files if f["bytes"] == SAMPLE_BYTES and f["md5"] == EXPECTED_MD5]
         checks = {
-            "two_observer_eim": discovery.get("eim") is True,
+            "mapping_observed_at_punch_endpoint": bool(discovered_port),
+            "mapping_stable_two_samples": mapping_stable,
             "H_punch_established": punch_h.get("tcp_punch_established") is True
                                    and punch_h.get("route") == "punched-direct",
             "M_punch_established": punch_m.get("tcp_punch_established") is True
@@ -489,8 +504,8 @@ def main() -> int:
             "M_punched_socket_registered": punch_m.get("punched_socket_registered") is True,
             "H_punched_socket_registered": punch_h.get("punched_socket_registered") is True,
             "member_bridge_served": int(dpM.get("served_registered") or 0) > 0,
-            "member_punched_alive": int(dpM.get("punched_alive") or 0) > 0,
-            "holder_splice_done": int(hdH.get("splices_done") or 0) > 0,
+            "holder_socket_alive_after_punch": int(dpH_p.get("punched_alive") or 0) > 0,
+            "member_socket_alive_after_punch": int(dpM_p.get("punched_alive") or 0) > 0,
             "direct_counters": int(prH.get("direct") or 0) > 0 and int(prM.get("direct") or 0) > 0,
             "bt_engine_attached": final.get("coldrevive.engineAttached") is True,
             "bt_download_complete": final.get("status") == "complete"
@@ -511,20 +526,25 @@ def main() -> int:
             report["verdict"] = "PASS"
             report["reason"] = ("one usable punched-direct TCP path carried a real 1 MiB BT "
                                 "transfer with md5 match in this environment")
-        elif checks["two_observer_eim"] is False:
+        elif not checks["mapping_observed_at_punch_endpoint"]:
             report["verdict"] = "BLOCKED"
-            report["reason"] = "two-observer EIM port unavailable; no port extrapolated"
+            report["reason"] = (f"公网映射端口未能观测到：192.168.1.221:19710 在 "
+                                f"{OBS119}:{HOSTS['H']['bt_public']} 上看不到发现端口")
+        elif not checks["mapping_stable_two_samples"]:
+            report["verdict"] = "BLOCKED"
+            report["reason"] = f"同一端点两次采样不一致，拒绝外推: {ports}"
         elif punch_blocked:
             report["verdict"] = "BLOCKED"
             report["reason"] = (
-                "public side only exposes TCP/22; source-scoped REDIRECT 22->19720 "
-                "cannot complete TCP simultaneous open (RST/refused observed). "
-                "Need a free public TCP port directly bound by the punch socket.")
+                "TCP simultaneous open did not complete even though the public port is "
+                "directly bindable (RST/refused in tcpdump); see tcpdump for which side "
+                "answered R.")
         else:
             report["verdict"] = "FAIL"
             report["reason"] = "; ".join(k for k, v in checks.items() if not v)
     except Exception as e:  # noqa: BLE001 - keep raw evidence for every failure
-        report["verdict"] = "BLOCKED" if report.get("steps", {}).get("discovery", {}).get("parsed", {}).get("eim") is not True else "FAIL"
+        disc = report.get("steps", {}).get("discovery", {}) or {}
+        report["verdict"] = "BLOCKED" if disc.get("stable") is not True else "FAIL"
         report["error"] = f"{type(e).__name__}: {e}"
     finally:
         cleanup: dict = {}
@@ -537,17 +557,11 @@ def main() -> int:
 
         for node, c in (("H", cH), ("M", cM)):
             safe(UNITS[node], lambda c=c, node=node: stop_unit(c, UNITS[node]))
-        for unit, c in ((UNITS["obs82a"], c82), (UNITS["obs82b"], c82),
-                        (UNITS["http"], cM), (UNITS["capH"], cH), (UNITS["capM"], cM)):
+        for unit, c in ((UNITS["obsH"], cH), (UNITS["http"], cM),
+                        (UNITS["capH"], cH), (UNITS["capM"], cM)):
             safe(unit, lambda c=c, unit=unit: stop_unit(c, unit))
-        if punch_rule_added:
-            safe("punch_redirect_del", lambda: iptables_redirect(cH, "D", 22, 19720))
-        if obs_rules_added.get("22"):
-            safe("observer_redirect_del_22", lambda: iptables_redirect(c82, "D", 22, 19110))
-        if obs_rules_added.get("7100"):
-            safe("observer_redirect_del_7100", lambda: iptables_redirect(c82, "D", 7100, 19111))
         report["steps"]["cleanup"] = cleanup
-        for c in (cH, cM, c82):
+        for c in (cH, cM):
             c.close()
 
     out = pathlib.Path(args.report_out)

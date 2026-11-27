@@ -298,6 +298,54 @@ impl DataPlane {
         Ok(())
     }
 
+    /// 打洞入向：先看 68 字节 BT 握手，再决定唤醒与 splice。
+    ///
+    /// 与 `attach_punched_inbound` 的区别只有一点：这条路径**必须**先读握手。
+    /// 冷种子不会响应入向握手（引擎里的任务还处于 paused），直接把 socket 拼过去
+    /// 会得到「握手到了、引擎不回、10 s 后 FIN」——2026-11-27 W6.7 的现场。
+    /// `wake` 返回 false 表示拒绝（FR-15 上限/非标准握手），此时按零信任关连接。
+    pub fn attach_punched_inbound_waking<F>(
+        &self,
+        advertised_peer: SocketAddr,
+        mut stream: std::net::TcpStream,
+        engine_listen: SocketAddr,
+        wake: F,
+    ) -> Result<(), String>
+    where
+        F: FnOnce(&[u8]) -> bool + Send + 'static,
+    {
+        let _ = stream.set_nonblocking(false);
+        let _ = stream.set_write_timeout(Some(std::time::Duration::from_secs(30)));
+        let alive = Arc::new(AtomicBool::new(true));
+        let a = alive.clone();
+        std::thread::spawn(move || {
+            // 5 s 读超时：裸 connect 与慢速客户端不能长期挂线程。
+            match cr_guard::read_handshake(&mut stream, std::time::Duration::from_secs(5)) {
+                Ok(prefix) => {
+                    if wake(&prefix) {
+                        if let Err(e) = cr_guard::splice_prefaced(stream, engine_listen, &prefix) {
+                            eprintln!("[data-plane] 打洞入向 splice 失败: {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    // 读不到握手就按原样拼：由引擎自己按真实字节回答，不替它下结论。
+                    eprintln!("[data-plane] 打洞入向读握手失败（按原样 splice）: {e}");
+                    if let Err(e) = cr_guard::splice_prefaced(stream, engine_listen, &[]) {
+                        eprintln!("[data-plane] 打洞入向 splice 失败: {e}");
+                    }
+                }
+            }
+            a.store(false, Ordering::Relaxed);
+        });
+        self.punched.lock().unwrap().insert(advertised_peer, alive);
+        println!(
+            "[data-plane] 打洞直连接入引擎监听口（先唤醒再 splice）: peer={advertised_peer} \
+             engine={engine_listen}（is_s6_evidence=false）"
+        );
+        Ok(())
+    }
+
     pub fn json(&self) -> cr_core::Json {
         let t = self.tunnels.lock().unwrap();
         // v2.4.93：`tunnels` 只是**登记条数**，不保证泵还活着。旧口径下泵线程静默死亡时
@@ -652,6 +700,88 @@ mod tests {
         engine_thread.join().unwrap();
         let dp = join.join().unwrap();
         assert_eq!(dp.json().get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
+    }
+
+    /// 冷种子唤醒的入向半边：打洞 socket 上的 68 字节握手必须先被读到、交给唤醒
+    /// 裁决，然后**原样补回**引擎。丢前缀的形态与 ADR-021 记的坑一致——唤醒看起来
+    /// 成功，引擎收到截断握手，取片 0 B。
+    #[test]
+    fn punched_inbound_waking_restores_handshake_prefix() {
+        use std::io::{Read as _, Write as _};
+        use std::time::Duration as StdDuration;
+
+        let hs = cr_guard::handshake_bytes(&[0x11; 20], &[0x22; 20]);
+        let engine = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let engine_addr = engine.local_addr().unwrap();
+        let engine_thread = std::thread::spawn(move || {
+            let (mut s, _) = engine.accept().unwrap();
+            let mut buf = [0u8; cr_guard::HANDSHAKE_LEN];
+            s.read_exact(&mut buf).unwrap();
+            assert_eq!(buf, hs, "唤醒后必须把已读的 68 字节补回引擎");
+            s.write_all(&[0xAB; cr_guard::HANDSHAKE_LEN]).unwrap();
+        });
+
+        let peer_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer_addr = peer_listener.local_addr().unwrap();
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let join = std::thread::spawn(move || {
+            let (stream, _) = peer_listener.accept().unwrap();
+            dp.attach_punched_inbound_waking(advertised, stream, engine_addr, move |prefix| {
+                assert_eq!(prefix, &hs[..], "唤醒裁决必须拿到完整握手");
+                true
+            })
+            .unwrap();
+            dp
+        });
+
+        let mut client = std::net::TcpStream::connect(peer_addr).unwrap();
+        client.write_all(&hs).unwrap();
+        client.set_read_timeout(Some(StdDuration::from_secs(5))).unwrap();
+        let mut reply = [0u8; cr_guard::HANDSHAKE_LEN];
+        client.read_exact(&mut reply).unwrap();
+        assert_eq!(reply, [0xAB; cr_guard::HANDSHAKE_LEN], "引擎的回应必须原路回到打洞对端");
+        engine_thread.join().unwrap();
+        let dp = join.join().unwrap();
+        assert_eq!(dp.json().get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
+    }
+
+    /// 负向对照：唤醒裁决拒绝（FR-15 上限/非标准握手）时不得 splice 到引擎。
+    /// 否则「阈值拒绝」只是日志里一句话，连接照样被喂进引擎。
+    #[test]
+    fn punched_inbound_waking_refusal_does_not_splice() {
+        use std::io::{Read as _, Write as _};
+        use std::time::Duration as StdDuration;
+
+        let engine = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        engine.set_nonblocking(true).unwrap();
+        let engine_addr = engine.local_addr().unwrap();
+        let hs = cr_guard::handshake_bytes(&[0x33; 20], &[0x44; 20]);
+
+        let peer_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer_addr = peer_listener.local_addr().unwrap();
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let join = std::thread::spawn(move || {
+            let (stream, _) = peer_listener.accept().unwrap();
+            dp.attach_punched_inbound_waking(advertised, stream, engine_addr, |_| false).unwrap();
+            dp
+        });
+
+        let mut client = std::net::TcpStream::connect(peer_addr).unwrap();
+        client.write_all(&hs).unwrap();
+        client.set_read_timeout(Some(StdDuration::from_secs(3))).unwrap();
+        let mut buf = [0u8; 8];
+        // 被拒绝时本端只会看到连接结束，不会收到任何伪造的成功回应。
+        match client.read(&mut buf) {
+            Ok(0) => {}
+            Ok(n) => panic!("拒绝路径不应回任何字节，实际收到 {n} 字节"),
+            Err(_) => {}
+        }
+        std::thread::sleep(StdDuration::from_millis(300));
+        assert!(engine.accept().is_err(), "拒绝路径不能把连接喂进引擎");
+        let dp = join.join().unwrap();
+        let _ = dp;
     }
 
     /// 负向对照：engine.listen 指错时不得凭空回出 world。

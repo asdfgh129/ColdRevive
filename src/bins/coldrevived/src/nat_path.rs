@@ -944,10 +944,18 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
             let punched = cr_nat::tcp_punch::punch_tcp(local, &[targets.syn], timeout);
             let Some(mut stream) = punched.established.map(|p| p.stream) else {
                 state.lock().unwrap().punch_route.record(None);
+                // 只写「未建立」是查不动的：同时给出发起轮数与本轮真实系统错误。
+                // 抓包与报告对不上时（例如 pcap 里明明有 SYN+ACK），这两项才能定位
+                // 是 bind 失败、被拒、还是内核从没报完成。
                 return Json::obj(vec![
                     ("ok", Json::b(false)),
                     ("route", Json::s("relay-fallback")),
                     ("reason", Json::s("TCP 打洞未建立（poll+SO_ERROR 判据）")),
+                    ("punch_local", Json::s(format!("{local}"))),
+                    ("punch_target", Json::s(format!("{}", targets.syn))),
+                    ("punch_attempts", Json::n(punched.attempts as f64)),
+                    ("punch_errors", Json::arr(
+                        punched.errors.iter().cloned().map(Json::s).collect())),
                     ("s6_status", Json::s("not_run")),
                 ]);
             };
@@ -1023,7 +1031,19 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                                     ("s6_status", Json::s("not_run")),
                                 ]);
                             };
-                            dp.attach_punched_inbound(targets.bridge, stream, engine_listen)
+                            // holder 必须走「先唤醒再 splice」的变体：入向握手撞到冷种子时，
+                            // 引擎里的任务还是 paused，直接拼过去一个字节都不回。
+                            let cfg_wake = cfg.clone();
+                            let state_wake = state.clone();
+                            dp.attach_punched_inbound_waking(
+                                targets.bridge, stream, engine_listen,
+                                move |prefix: &[u8]| {
+                                    !matches!(
+                                        crate::wake_for_inbound_handshake(
+                                            &cfg_wake, &state_wake, prefix),
+                                        crate::InboundHandshake::NonBt
+                                            | crate::InboundHandshake::Refused)
+                                })
                         } else {
                             dp.attach_punched_socket(targets.bridge, stream)
                         };

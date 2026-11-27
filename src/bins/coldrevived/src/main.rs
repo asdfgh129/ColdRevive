@@ -789,54 +789,70 @@ fn hot_admission(cfg: &Config, st: &NodeState, file_hash: &str) -> Option<Refusa
     None
 }
 
-fn handle_guard_connection(
-    mut client: TcpStream,
-    cfg: Config,
-    state: Arc<Mutex<NodeState>>,
-    internal: SocketAddr,
-) {
-    // 裸 connect（T0-07）与慢速客户端不能长期挂线程：5 s 读超时后直接关连接。
-    let Ok(prefix) = cr_guard::read_handshake(&mut client, Duration::from_secs(5)) else {
-        return;
+/// 入向握手撞到本节点种子的裁决结果。
+///
+/// 为什么要有这个枚举：入向到引擎的入口有**两条**——guard（占 `bt_port` 的裸握手
+/// 监听）与打洞（`nat punch-route` 在 holder 侧把已建立的 socket 拼到引擎监听口）。
+/// 它们面对的是同一个冷种子，行为必须一致。2026-11-27 的 W6.7 现场就是不一致的
+/// 结果：guard 路径会唤醒，打洞路径只做 splice，于是 68 字节握手喂给一个仍处于
+/// paused 的任务 —— 引擎一个字都不回，10 s 后对端 FIN，报告里表现为
+/// 「打洞成功、route=punched-direct、取片 0 B」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InboundHandshake {
+    /// 不是标准 BT 握手：不猜 infohash，直接关连接。
+    NonBt,
+    /// FR-15 阈值拒绝：不唤醒，也不 splice。
+    Refused,
+    /// 可以继续 splice（可能刚唤醒；未命中时交给引擎自己拒）。
+    Ready,
+}
+
+/// 入向握手的统一裁决：解析 infohash → FR-15 准入 → wake_seed → 等引擎报 HOT。
+///
+/// 唯一合法的 activate 入口是 `sched::wake_seed`，这里不另开路径。
+pub(crate) fn wake_for_inbound_handshake(
+    cfg: &Config,
+    state: &Arc<Mutex<NodeState>>,
+    prefix: &[u8],
+) -> InboundHandshake {
+    let Ok(ih) = cr_guard::handshake_infohash_hex(prefix) else {
+        return InboundHandshake::NonBt;
     };
-    let Ok(ih) = cr_guard::handshake_infohash_hex(&prefix) else {
-        // 非标准 BT 握手：不唤醒，直接关。这是零信任，不猜 infohash。
-        return;
-    };
-    let mut woken: Option<(cr_engine::TaskId, SharedEngine)> = None;
-    let hit = {
+    let woken: Option<(cr_engine::TaskId, SharedEngine)> = {
         let mut st = state.lock().unwrap();
         st.guard_stats.lock().unwrap().0 += 1;
         // FR-15：阈值同样约束「被动唤醒」。只拦 UDP 唤醒的话，任何客户端裸连
-        // bt_port 就能绕过阈值把热任务数顶上去，那条阈值就成了摆设。
+        // 或打洞进来就能绕过阈值把热任务数顶上去，那条阈值就成了摆设。
         let over = st.index.entries.values()
             .find(|e| e.infohash == ih)
-            .and_then(|e| hot_admission(&cfg, &st, &e.file_hash));
+            .and_then(|e| hot_admission(cfg, &st, &e.file_hash));
         if let Some(over) = over {
             eprintln!("[{}] FR-15 拒绝握手唤醒: {} {} 已达上限 {}（infohash={}）",
                       cfg.node_id, over.name, over.current, over.limit, ih);
             st.guard_stats.lock().unwrap().2 += 1;
-            return;
+            return InboundHandshake::Refused;
         }
-        if let Some(task) = seed_task_for(&st, &ih) {
-            // 与 UDP 唤醒同一套状态跃迁与记账：唯一合法 activate 入口是 wake_seed。
-            let engine_slot = st.engine.clone();
-            let mut eg = engine_slot.lock().unwrap();
-            let outcome = match eg.as_mut() {
-                Some(eng) => Some(sched::wake_seed(&mut st.sched, eng, task)),
-                None => None,
-            };
-            drop(eg);
-            if let Some(o) = outcome.as_ref() {
-                if let Some(ev) = o.evicted {
-                    println!("[{}] FR-11 活跃池逐出任务 #{} 以服务握手唤醒", cfg.node_id, ev);
+        match seed_task_for(&st, &ih) {
+            Some(task) => {
+                let engine_slot = st.engine.clone();
+                let mut eg = engine_slot.lock().unwrap();
+                let outcome = match eg.as_mut() {
+                    Some(eng) => Some(sched::wake_seed(&mut st.sched, eng, task)),
+                    None => None,
+                };
+                drop(eg);
+                if let Some(o) = outcome.as_ref() {
+                    if let Some(ev) = o.evicted {
+                        println!("[{}] FR-11 活跃池逐出任务 #{} 以服务握手唤醒", cfg.node_id, ev);
+                    }
+                    for e in &o.errors {
+                        eprintln!("[{}] FR-11 活跃池: {}", cfg.node_id, e);
+                    }
                 }
-                for e in &o.errors {
-                    eprintln!("[{}] FR-11 活跃池: {}", cfg.node_id, e);
+                let serving = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
+                if !serving {
+                    return InboundHandshake::Ready;
                 }
-            }
-            let serving = outcome.as_ref().map(|o| o.serving).unwrap_or(false);
-            if serving {
                 st.last_activity = Instant::now();
                 st.guard_stats.lock().unwrap().1 += 1;
                 // 找到该 infohash 对应的索引项做 COLD→HOT；绝不用别的样本顶上。
@@ -854,43 +870,63 @@ fn handle_guard_connection(
                 }
                 st.bt_seeding = true;
                 let _ = st.index.save();
-                woken = Some((task, engine_slot.clone()));
+                Some((task, engine_slot))
             }
-            serving
-        } else {
-            st.guard_stats.lock().unwrap().2 += 1;
-            eprintln!("[{}] FR-11 握手 infohash={} 未命中本节点做种任务", cfg.node_id, ih);
-            false
+            None => {
+                st.guard_stats.lock().unwrap().2 += 1;
+                eprintln!("[{}] FR-11 握手 infohash={} 未命中本节点做种任务", cfg.node_id, ih);
+                None
+            }
         }
     };
-    let _ = hit; // 命中与否都继续 splice：让标准 BT 流程走完（未知 infohash 由引擎自己拒）。
-
-    // 等引擎真的报 HOT 再补握手。`activate` 返回 Ok 只代表 librqbit 接受了指令，
-    // 不代表它已经能处理这个 infohash 的入站握手；立刻 splice 会把 68 字节喂给一个
-    // 仍在暂停的任务，引擎回 FIN —— 现场看起来和「没唤醒」一模一样。
-    // 有界等待：超时也照样 splice，由引擎按真实状态回答，而不是我们提前关连接。
+    // 等引擎真的报 HOT 再 splice。`wake_seed` 返回 Ok 只代表 librqbit 接受了指令，
+    // 不代表它已经能处理这个 infohash 的入站握手。有界等待：超时也照样 splice，
+    // 由引擎按真实状态回答，而不是我们提前关连接。
     if let Some((task, slot)) = woken {
-        let deadline = Instant::now() + Duration::from_millis(3000);
-        loop {
-            let hot = {
-                let mut eg = slot.lock().unwrap();
-                match eg.as_mut() {
-                    Some(eng) => Engine::state(eng, task) == EngineState::Hot,
-                    None => false,
-                }
-            };
-            if hot { break; }
-            if Instant::now() >= deadline {
-                eprintln!(
-                    "[{}] FR-11 握手唤醒后 3s 内引擎未报 HOT（任务 #{}），按真实状态 splice",
-                    cfg.node_id, task
-                );
-                break;
-            }
-            thread::sleep(Duration::from_millis(25));
-        }
+        wait_engine_hot(cfg, &slot, task);
     }
+    InboundHandshake::Ready
+}
 
+fn wait_engine_hot(cfg: &Config, slot: &SharedEngine, task: cr_engine::TaskId) {
+    let deadline = Instant::now() + Duration::from_millis(3000);
+    loop {
+        let hot = {
+            let mut eg = slot.lock().unwrap();
+            match eg.as_mut() {
+                Some(eng) => Engine::state(eng, task) == EngineState::Hot,
+                None => false,
+            }
+        };
+        if hot {
+            return;
+        }
+        if Instant::now() >= deadline {
+            eprintln!(
+                "[{}] FR-11 握手唤醒后 3s 内引擎未报 HOT（任务 #{}），按真实状态 splice",
+                cfg.node_id, task
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+fn handle_guard_connection(
+    mut client: TcpStream,
+    cfg: Config,
+    state: Arc<Mutex<NodeState>>,
+    internal: SocketAddr,
+) {
+    // 裸 connect（T0-07）与慢速客户端不能长期挂线程：5 s 读超时后直接关连接。
+    let Ok(prefix) = cr_guard::read_handshake(&mut client, Duration::from_secs(5)) else {
+        return;
+    };
+    match wake_for_inbound_handshake(&cfg, &state, &prefix) {
+        InboundHandshake::Ready => {}
+        // 非标准 BT 握手不猜 infohash；FR-15 拒绝不绕过阈值。两者都直接关。
+        InboundHandshake::NonBt | InboundHandshake::Refused => return,
+    }
     // 补回已读的 68 字节再双向搬运。丢前缀是 ADR-021 记过的典型坑：
     // 唤醒看起来成功，但引擎收到截断握手 → 0 字节数据面。
     if let Err(e) = cr_guard::splice_prefaced(client, internal, &prefix) {

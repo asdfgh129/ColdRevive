@@ -1,0 +1,1652 @@
+{
+  "schema": "coldrevive.w67.punched-tcp-bt/v1",
+  "generated_at": "2026-11-27T21:57:57+08:00",
+  "scope": "daemon-level punched-direct TCP carrying real BT payload; component evidence, not G2/S6",
+  "topology": {
+    "H": "119.29.150.254 public EIP, holder, engine.listen=127.0.0.1:19730, punch bind 0.0.0.0:19720",
+    "M": "192.168.1.221 home EIM NAT, member, punch bind 192.168.1.221:19710",
+    "observer": "119.29.150.254:19720",
+    "observer_note": "observer sits on the exact endpoint the punch targets; the mapping is sampled twice at that endpoint and must agree, so no cross-destination port extrapolation is performed",
+    "public_port_provisioning": "TCP/19720 opened in the Lighthouse firewall by the owner",
+    "redirect_used": false,
+    "relay_control_only": "82.157.68.159:7100"
+  },
+  "file_hash": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+  "gate_snapshot": {
+    "g2_claim": true,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "claim_scope": {
+    "g2_claim_from_this_evidence": false,
+    "is_s6_evidence": false,
+    "is_relay_data_plane_evidence": false,
+    "success_rate_reported": false
+  },
+  "steps": {
+    "binaries": {
+      "coldrevived_sha256": "862a0072daeefb8e90a27f7dd82212c5cf8f8ef7cffe867117fabb569a34f1ee",
+      "coldrevive_nat_sha256": "840267a455efad4788349fbf21972ad13180021c0c8a218c63da4fca0e759b72"
+    },
+    "sample": {
+      "bytes": 1048576,
+      "sha256": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019"
+    },
+    "observer": {
+      "unit": "cr-w67-obs-h",
+      "stopped": {
+        "cmd": "systemctl stop cr-w67-obs-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "start": {
+        "cmd": "systemd-run --collect --unit=cr-w67-obs-h --property=WorkingDirectory=/root/cr-w67 /root/cr-w67/coldrevive-nat --serve-observer 0.0.0.0:19720 --observer-secs 180 --json",
+        "rc": 0,
+        "stdout": "",
+        "stderr": "Running as unit: cr-w67-obs-h.service; invocation ID: e8cf9f0e737146ff9f65a35589a5aa92\n"
+      }
+    },
+    "observer_listening": {
+      "cmd": "ss -lntp | grep -c ':19720'",
+      "rc": 0,
+      "stdout": "1\n",
+      "stderr": ""
+    },
+    "daemon_start": {
+      "H": {
+        "unit": "cr-w67-h",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-h 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-h --property=WorkingDirectory=/root/cr-w67/holder /root/cr-w67/holder/coldrevived --config /root/cr-w67/holder/config.json --node-id H --bind 0.0.0.0",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-h.service; invocation ID: 1e5773821d7f464b81555ff9050cfa42\n"
+        }
+      },
+      "M": {
+        "unit": "cr-w67-m",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-m 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-m --property=WorkingDirectory=/root/cr-w67/member /root/cr-w67/member/coldrevived --config /root/cr-w67/member/config.json --node-id M --bind 0.0.0.0",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-m.service\n"
+        }
+      },
+      "health_H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3967568,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:34051",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 0,
+          "punched_alive": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 4,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "health_M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 705516,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:43815",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 0,
+          "punched_alive": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 2,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 0,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "peer_load": {
+      "H": {
+        "ok": true,
+        "node_id": "M",
+        "endpoints": 1,
+        "bt_external": true
+      },
+      "M": {
+        "ok": true,
+        "node_id": "H",
+        "endpoints": 1,
+        "bt_external": true
+      }
+    },
+    "capture_start": {
+      "H": {
+        "unit": "cr-w67-cap-h",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-cap-h 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-cap-h --property=WorkingDirectory=/root/cr-w67 /bin/bash -lc \"timeout 25 tcpdump -nn -i any -l 'host 112.5.60.4 or tcp port 19720' > /root/cr-w67/tcpdump-h.log 2>&1\"",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-cap-h.service; invocation ID: 7620523ce0a844b7aa335e4f8496b129\n"
+        }
+      },
+      "M": {
+        "unit": "cr-w67-cap-m",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-cap-m 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-cap-m --property=WorkingDirectory=/root/cr-w67 /bin/bash -lc \"timeout 25 tcpdump -nn -i any -l 'host 119.29.150.254 or tcp port 19710' > /root/cr-w67/tcpdump-m.log 2>&1\"",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-cap-m.service\n"
+        }
+      }
+    },
+    "torrent_fetch_on_holder": {
+      "cmd": "curl -sS --max-time 10 -o /root/cr-w67/holder/sample.torrent http://127.0.0.1:19711/torrent/0578052874711515fb81250e1179be468e92f014 && wc -c /root/cr-w67/holder/sample.torrent",
+      "rc": 0,
+      "stdout": "209 /root/cr-w67/holder/sample.torrent\n",
+      "stderr": ""
+    },
+    "torrent_http": {
+      "start": {
+        "unit": "cr-w67-http",
+        "stopped": {
+          "cmd": "systemctl stop cr-w67-http 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "start": {
+          "cmd": "systemd-run --collect --unit=cr-w67-http --property=WorkingDirectory=/root/cr-w67/member python3 -m http.server 19880 --bind 127.0.0.1",
+          "rc": 0,
+          "stdout": "",
+          "stderr": "Running as unit: cr-w67-http.service\n"
+        }
+      },
+      "bytes": 209
+    },
+    "discovery": {
+      "samples": [
+        {
+          "rc": 0,
+          "parsed": {
+            "mode": "discover-tcp-port",
+            "local": "192.168.1.221:19710",
+            "observations": [
+              {
+                "observer": "119.29.150.254:19720",
+                "mapped_endpoint": "112.5.60.4:36883",
+                "error": null
+              }
+            ],
+            "eim": null,
+            "discovered_endpoint": "112.5.60.4:36883",
+            "discovered_port": 36883,
+            "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+            "s6_status": "not_run",
+            "g2_claim": false,
+            "auto_pass": false
+          }
+        },
+        {
+          "rc": 0,
+          "parsed": {
+            "mode": "discover-tcp-port",
+            "local": "192.168.1.221:19710",
+            "observations": [
+              {
+                "observer": "119.29.150.254:19720",
+                "mapped_endpoint": "112.5.60.4:36883",
+                "error": null
+              }
+            ],
+            "eim": null,
+            "discovered_endpoint": "112.5.60.4:36883",
+            "discovered_port": 36883,
+            "reason": "仅 1 个 observer 回写：可得到映射端口，但未证 EIM（需 >=2 个独立观测点）",
+            "s6_status": "not_run",
+            "g2_claim": false,
+            "auto_pass": false
+          }
+        }
+      ],
+      "ports": [
+        36883,
+        36883
+      ],
+      "stable": true,
+      "eim_flags": [
+        null,
+        null
+      ]
+    },
+    "punch": {
+      "M": {
+        "node": "M",
+        "peer": "H",
+        "bind_hint": "192.168.1.221:19710",
+        "discovered_port_argument": 19720,
+        "args": [
+          "punch-route",
+          "H",
+          "192.168.1.221:19710",
+          "19720",
+          "73565613b91af992d862051ac3b3eb00"
+        ],
+        "result": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "H",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 19720,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "raw": {
+          "cmd": "curl -sS --max-time 90 -H 'Content-Type: application/json' -X POST -d '{\"command\": \"nat\", \"args\": [\"punch-route\", \"H\", \"192.168.1.221:19710\", \"19720\", \"73565613b91af992d862051ac3b3eb00\"]}' http://127.0.0.1:19721/cli",
+          "rc": 0,
+          "stdout": "{\"ok\":true,\"route\":\"punched-direct\",\"peer\":\"H\",\"punched_socket_registered\":true,\"tcp_punch_established\":true,\"discovered_port_used\":19720,\"relay_data_plane\":\"tcp-carrier-implemented\",\"relay_data_plane_udp\":\"udp-carrier-implemented-rst-path-verified\",\"is_s6_evidence\":false,\"g2_claim\":false,\"s6_status\":\"not_run\"}",
+          "stderr": "",
+          "json": {
+            "ok": true,
+            "route": "punched-direct",
+            "peer": "H",
+            "punched_socket_registered": true,
+            "tcp_punch_established": true,
+            "discovered_port_used": 19720,
+            "relay_data_plane": "tcp-carrier-implemented",
+            "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+            "is_s6_evidence": false,
+            "g2_claim": false,
+            "s6_status": "not_run"
+          }
+        }
+      },
+      "H": {
+        "node": "H",
+        "peer": "M",
+        "bind_hint": "0.0.0.0:19720",
+        "discovered_port_argument": 36883,
+        "args": [
+          "punch-route",
+          "M",
+          "0.0.0.0:19720",
+          "36883",
+          "73565613b91af992d862051ac3b3eb00"
+        ],
+        "result": {
+          "ok": true,
+          "route": "punched-direct",
+          "peer": "M",
+          "punched_socket_registered": true,
+          "tcp_punch_established": true,
+          "discovered_port_used": 36883,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "raw": {
+          "cmd": "curl -sS --max-time 90 -H 'Content-Type: application/json' -X POST -d '{\"command\": \"nat\", \"args\": [\"punch-route\", \"M\", \"0.0.0.0:19720\", \"36883\", \"73565613b91af992d862051ac3b3eb00\"]}' http://127.0.0.1:19711/cli",
+          "rc": 0,
+          "stdout": "{\"ok\":true,\"route\":\"punched-direct\",\"peer\":\"M\",\"punched_socket_registered\":true,\"tcp_punch_established\":true,\"discovered_port_used\":36883,\"relay_data_plane\":\"tcp-carrier-implemented\",\"relay_data_plane_udp\":\"udp-carrier-implemented-rst-path-verified\",\"is_s6_evidence\":false,\"g2_claim\":false,\"s6_status\":\"not_run\"}",
+          "stderr": "",
+          "json": {
+            "ok": true,
+            "route": "punched-direct",
+            "peer": "M",
+            "punched_socket_registered": true,
+            "tcp_punch_established": true,
+            "discovered_port_used": 36883,
+            "relay_data_plane": "tcp-carrier-implemented",
+            "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+            "is_s6_evidence": false,
+            "g2_claim": false,
+            "s6_status": "not_run"
+          }
+        }
+      }
+    },
+    "tcpdump": {
+      "H": "3 > 10.1.0.2.19720: Flags [.], ack 1, win 510, options [nop,nop,TS val 3430467367 ecr 513129208], length 0\n21:58:48.291660 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [P.], seq 1:28, ack 1, win 510, options [nop,nop,TS val 513129278 ecr 3430467367], length 27\n21:58:48.291685 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [F.], seq 28, ack 1, win 510, options [nop,nop,TS val 513129278 ecr 3430467367], length 0\n21:58:48.314782 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [.], ack 28, win 510, options [nop,nop,TS val 3430467436 ecr 513129278], length 0\n21:58:48.314782 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [F.], seq 1, ack 29, win 510, options [nop,nop,TS val 3430467437 ecr 513129278], length 0\n21:58:48.314823 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [.], ack 2, win 510, options [nop,nop,TS val 513129301 ecr 3430467437], length 0\n21:58:48.317705 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 1856:1936, ack 3553, win 254, length 80\n21:58:48.317762 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 1936, win 10303, length 0\n21:58:48.317842 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 3553:3617, ack 1936, win 10303, length 64\n21:58:48.341217 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 1936:2048, ack 3617, win 254, length 112\n21:58:48.341981 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 3617:3729, ack 2048, win 10303, length 112\n21:58:48.353492 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 3729:3905, ack 2048, win 10303, length 176\n21:58:48.375209 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [.], ack 3905, win 253, length 0\n21:58:48.375704 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2048:2096, ack 3905, win 253, length 48\n21:58:48.416403 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 2096, win 10303, length 0\n21:58:48.438735 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2096:2144, ack 3905, win 253, length 48\n21:58:48.438806 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 2144, win 10303, length 0\n21:58:48.990732 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2144:2224, ack 3905, win 253, length 80\n21:58:48.990804 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 2224, win 10303, length 0\n21:58:48.990911 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 3905:3969, ack 2224, win 10303, length 64\n21:58:49.014243 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2224:2496, ack 3969, win 252, length 272\n21:58:49.014938 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 3969:4081, ack 2496, win 10303, length 112\n21:58:49.021685 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [S], seq 4190830296, win 65160, options [mss 1460,sackOK,TS val 513130008 ecr 3430467437,nop,wscale 7], length 0\n21:58:49.044793 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [R.], seq 1015388960, ack 65567, win 0, length 0\n21:58:49.085217 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [.], ack 4081, win 252, length 0\n21:58:49.106723 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [S], seq 4204590000, win 64240, options [mss 1460,sackOK,TS val 513130093 ecr 0,nop,wscale 7], length 0\n21:58:49.129776 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [R.], seq 1015388960, ack 13825271, win 0, length 0\n21:58:49.191752 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [S], seq 4205918549, win 64240, options [mss 1460,sackOK,TS val 513130178 ecr 0,nop,wscale 7], length 0\n21:58:49.201281 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [S], seq 3297053293, win 64240, options [mss 1424,sackOK,TS val 3430468323 ecr 0,nop,wscale 7], length 0\n21:58:49.201325 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [S.], seq 4205918549, ack 3297053294, win 64240, options [mss 1460,sackOK,TS val 513130187 ecr 3430468323,nop,wscale 7], length 0\n21:58:49.214782 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [S.], seq 3297053293, ack 4205918550, win 64240, options [mss 1424,sackOK,TS val 3430468337 ecr 513130178,nop,wscale 7], length 0\n21:58:49.214827 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [.], ack 1, win 502, options [nop,nop,TS val 513130201 ecr 3430468337,nop,nop,sack 1 {0:1}], length 0\n21:58:49.216527 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 513130203 ecr 3430468337], length 32\n21:58:49.224260 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [.], ack 1, win 502, options [nop,nop,TS val 3430468346 ecr 513130178], length 0\n21:58:49.238781 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 3430468361 ecr 513130201], length 32\n21:58:49.238815 eth0  Out IP 10.1.0.2.19720 > 112.5.60.4.36883: Flags [.], ack 33, win 502, options [nop,nop,TS val 513130225 ecr 3430468361], length 0\n21:58:49.239256 eth0  In  IP 112.5.60.4.36883 > 10.1.0.2.19720: Flags [.], ack 33, win 502, options [nop,nop,TS val 3430468361 ecr 513130203], length 0\n21:58:49.451382 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 4081:4449, ack 2496, win 10303, length 368\n21:58:49.452132 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 4449:4497, ack 2496, win 10303, length 48\n21:58:49.452176 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [P.], seq 4497:4625, ack 2496, win 10303, length 128\n21:58:49.473706 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [.], ack 4625, win 255, length 0\n21:58:49.476201 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2496:2544, ack 4625, win 255, length 48\n21:58:49.516398 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 2544, win 10303, length 0\n21:58:49.538736 eth0  In  IP 112.5.60.4.36866 > 10.1.0.2.22: Flags [P.], seq 2544:2592, ack 4625, win 255, length 48\n21:58:49.538817 eth0  Out IP 10.1.0.2.22 > 112.5.60.4.36866: Flags [.], ack 2592, win 10303, length 0\n",
+      "M": "tcpdump: data link type LINUX_SLL2\ntcpdump: verbose output suppressed, use -v[v]... for full protocol decode\nlistening on any, link-type LINUX_SLL2 (Linux cooked v2), snapshot length 262144 bytes\n13:58:48.068263 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 3279512797, win 64240, options [mss 1460,sackOK,TS val 3430467201 ecr 0,nop,wscale 7], length 0\n13:58:48.091315 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S.], seq 4188529461, ack 3279512798, win 65160, options [mss 1424,sackOK,TS val 513129065 ecr 3430467201,nop,wscale 7], length 0\n13:58:48.091371 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 1, win 502, options [nop,nop,TS val 3430467224 ecr 513129065], length 0\n13:58:48.153655 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 1:28, ack 1, win 510, options [nop,nop,TS val 513129127 ecr 3430467224], length 27\n13:58:48.153686 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 28, win 502, options [nop,nop,TS val 3430467286 ecr 513129127], length 0\n13:58:48.153726 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [F.], seq 1, ack 28, win 502, options [nop,nop,TS val 3430467286 ecr 513129127], length 0\n13:58:48.153767 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [F.], seq 28, ack 1, win 510, options [nop,nop,TS val 513129127 ecr 3430467224], length 0\n13:58:48.153783 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 29, win 502, options [nop,nop,TS val 3430467286 ecr 513129127], length 0\n13:58:48.176718 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 2, win 510, options [nop,nop,TS val 513129150 ecr 3430467286], length 0\n13:58:48.211574 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 3279578336, win 65160, options [mss 1460,sackOK,TS val 3430467344 ecr 513129150,nop,wscale 7], length 0\n13:58:48.234334 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S.], seq 4190764730, ack 3279578337, win 65160, options [mss 1424,sackOK,TS val 513129208 ecr 3430467344,nop,wscale 7], length 0\n13:58:48.234377 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 1, win 510, options [nop,nop,TS val 3430467367 ecr 513129208], length 0\n13:58:48.304187 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 1:28, ack 1, win 510, options [nop,nop,TS val 513129278 ecr 3430467367], length 27\n13:58:48.304187 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [F.], seq 28, ack 1, win 510, options [nop,nop,TS val 513129278 ecr 3430467367], length 0\n13:58:48.304221 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 28, win 510, options [nop,nop,TS val 3430467436 ecr 513129278], length 0\n13:58:48.304289 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [F.], seq 1, ack 29, win 510, options [nop,nop,TS val 3430467437 ecr 513129278], length 0\n13:58:48.327268 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 2, win 510, options [nop,nop,TS val 513129301 ecr 3430467437], length 0\n13:58:49.034156 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4190830296, win 65160, options [mss 1424,sackOK,TS val 513130008 ecr 3430467437,nop,wscale 7], length 0\n13:58:49.034192 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [R.], seq 1015388960, ack 65567, win 0, length 0\n13:58:49.119060 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4204590000, win 64240, options [mss 1424,sackOK,TS val 513130093 ecr 0,nop,wscale 7], length 0\n13:58:49.119087 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [R.], seq 1015388960, ack 13825271, win 0, length 0\n13:58:49.190888 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S], seq 3297053293, win 64240, options [mss 1460,sackOK,TS val 3430468323 ecr 0,nop,wscale 7], length 0\n13:58:49.204187 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S], seq 4205918549, win 64240, options [mss 1424,sackOK,TS val 513130178 ecr 0,nop,wscale 7], length 0\n13:58:49.204211 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [S.], seq 3297053293, ack 4205918550, win 64240, options [mss 1460,sackOK,TS val 3430468337 ecr 513130178,nop,wscale 7], length 0\n13:58:49.213775 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [S.], seq 4205918549, ack 3297053294, win 64240, options [mss 1424,sackOK,TS val 513130187 ecr 3430468323,nop,wscale 7], length 0\n13:58:49.213798 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 1, win 502, options [nop,nop,TS val 3430468346 ecr 513130178], length 0\n13:58:49.227197 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 1, win 502, options [nop,nop,TS val 513130201 ecr 3430468337,nop,nop,sack 1 {0:1}], length 0\n13:58:49.228356 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 3430468361 ecr 513130201], length 32\n13:58:49.228982 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [P.], seq 1:33, ack 1, win 502, options [nop,nop,TS val 513130203 ecr 3430468337], length 32\n13:58:49.229039 ens160 Out IP 192.168.1.221.19710 > 119.29.150.254.19720: Flags [.], ack 33, win 502, options [nop,nop,TS val 3430468361 ecr 513130203], length 0\n13:58:49.251151 ens160 In  IP 119.29.150.254.19720 > 192.168.1.221.19710: Flags [.], ack 33, win 502, options [nop,nop,TS val 513130225 ecr 3430468361], length 0\n"
+    },
+    "health_after_punch": {
+      "H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3967568,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:34051",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 1,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 14,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 705516,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:43815",
+          "socks5_registered": 1,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 1,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 12,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 0,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "holder_log_after_punch": "11月 27 21:58:35 VM-0-2-ubuntu coldrevived[3967568]: [H] 做种引擎就绪: 请求监听 127.0.0.1:19730 / 实际 Some(127.0.0.1:19730), 任务 1 个, utp_requested=true, utp_udp_port_occupied=true\n11月 27 21:58:35 VM-0-2-ubuntu coldrevived[3967568]: [H] 公网入向配置（未经外部实测）: {\"bt_external\":\"119.29.150.254:19720\",\"http_external\":null,\"engine_listen\":\"127.0.0.1:19730\",\"announce\":[\"http://119.29.150.254:19711/announce\"],\"utp_requested\":true,\"utp_note\":\"µTP 与 BT 端口同号（UDP）；是否真的绑上要看系统连接表（netstat -ano -p UDP）的 PID\",\"inbound_verified\":false,\"inbound_evidence\":\"未由外部主机实测；本机绑定/配置正确不代表入向可达（需端口映射 + 外部验证）\",\"s6_status\":\"not_run\",\"evidence_valid_for_pass\":false}\n11月 27 21:58:35 VM-0-2-ubuntu coldrevived[3967568]: [H] UDP 监听 0.0.0.0:19712\n11月 27 21:58:35 VM-0-2-ubuntu coldrevived[3967568]: [H] HTTP 监听 0.0.0.0:19711\n11月 27 21:58:35 VM-0-2-ubuntu coldrevived[3967568]: [relay-sub] 已订阅中继 82.157.68.159:7100（可达性声明: unknown）\n11月 27 21:58:49 VM-0-2-ubuntu coldrevived[3967568]: [data-plane] 打洞直连接入引擎监听口（先唤醒再 splice）: peer=112.5.60.4:19910 engine=127.0.0.1:19730（is_s6_evidence=false）\n",
+    "add_uri": {
+      "cmd": "curl -sS --max-time 30 -H 'Content-Type: application/json' -X POST -d '{\"jsonrpc\": \"2.0\", \"id\": 1, \"method\": \"aria2.addUri\", \"params\": [\"token:1e8a098e32fdfc5a8a58a084375bc2f74e1a3c2088f2496f7bb21a416a93d2ef\", [\"http://127.0.0.1:19880/sample.torrent\"]]}' http://127.0.0.1:19721/jsonrpc",
+      "rc": 0,
+      "stdout": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"1a21d4d3cd60000\"}",
+      "stderr": "",
+      "json": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": "1a21d4d3cd60000"
+      }
+    },
+    "download": {
+      "final": {
+        "gid": "1a21d4d3cd60000",
+        "status": "active",
+        "totalLength": "1048576",
+        "completedLength": "524288",
+        "uploadLength": "0",
+        "downloadSpeed": "0",
+        "uploadSpeed": "0",
+        "connections": "0",
+        "files": [
+          {
+            "index": "1",
+            "path": "/root/cr-w67/member/downloads/sample.bin",
+            "length": "1048576",
+            "completedLength": "524288",
+            "selected": true,
+            "uris": [
+              {
+                "uri": "http://127.0.0.1:19880/sample.torrent",
+                "status": "used"
+              }
+            ]
+          }
+        ],
+        "coldrevive.torrentParsed": true,
+        "coldrevive.pieceCount": "4",
+        "coldrevive.engineAttached": true,
+        "coldrevive.engineTask": "1",
+        "coldrevive.note": "已接入 BT 引擎（librqbit），下载目录 /root/cr-w67/member/downloads",
+        "bittorrent": {
+          "infoHash": "0578052874711515fb81250e1179be468e92f014"
+        }
+      },
+      "samples_tail": [
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        },
+        {
+          "status": "active",
+          "completed": "524288",
+          "connections": "0"
+        }
+      ]
+    },
+    "landed_files": [
+      {
+        "path": "/root/cr-w67/member/downloads/sample.bin",
+        "bytes": 1048576,
+        "md5": "6822f905eb610a2a265d7a3f18f72188"
+      }
+    ],
+    "health_after": {
+      "H": {
+        "status": "ok",
+        "node": "H",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3967568,
+        "seed_tasks": 1,
+        "seed_active": 1,
+        "served_bytes": 1048576,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 1,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 1,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:34051",
+          "socks5_registered": 0,
+          "served_registered": 0,
+          "bytes_relayed": 0,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": true,
+          "carrier": "relay-sub-tcp",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 1048576,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 1,
+          "woken": 1,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 150,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 12,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 1048576,
+          "allowed_bytes": 0,
+          "denied_bytes": 1048576,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "M": {
+        "status": "ok",
+        "node": "M",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 705516,
+        "seed_tasks": 0,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": true,
+          "attempts": 1,
+          "direct": 1,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": true,
+          "proxy": "socks5://127.0.0.1:43815",
+          "socks5_registered": 0,
+          "served_registered": 1,
+          "bytes_relayed": 728644,
+          "bytes_relayed_scope": "local_tunnel_writes_not_peer_receipt",
+          "tunnels": 0,
+          "tunnels_alive": 0,
+          "carrier": "relay-tcp",
+          "udp_tunnels": 0,
+          "udp_tunnels_alive": 0,
+          "punched_registered": 1,
+          "punched_alive": 0,
+          "udp_cc_enabled": false,
+          "udp_cc_cwnd_x100": 0,
+          "udp_cc_srtt_ms": 0,
+          "udp_cc_loss_events": 0,
+          "udp_cc_rtt_samples": 0,
+          "udp_cc_paced_new": 0,
+          "udp_cc_backpressure": 0
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 728644,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 163,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 6,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      }
+    },
+    "cleanup": {
+      "cr-w67-h": {
+        "cmd": "systemctl stop cr-w67-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-m": {
+        "cmd": "systemctl stop cr-w67-m 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-obs-h": {
+        "cmd": "systemctl stop cr-w67-obs-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-http": {
+        "cmd": "systemctl stop cr-w67-http 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-cap-h": {
+        "cmd": "systemctl stop cr-w67-cap-h 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "cr-w67-cap-m": {
+        "cmd": "systemctl stop cr-w67-cap-m 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    }
+  },
+  "checks": [
+    {
+      "name": "mapping_observed_at_punch_endpoint",
+      "ok": true
+    },
+    {
+      "name": "mapping_stable_two_samples",
+      "ok": true
+    },
+    {
+      "name": "H_punch_established",
+      "ok": true
+    },
+    {
+      "name": "M_punch_established",
+      "ok": true
+    },
+    {
+      "name": "M_punched_socket_registered",
+      "ok": true
+    },
+    {
+      "name": "H_punched_socket_registered",
+      "ok": true
+    },
+    {
+      "name": "member_bridge_served",
+      "ok": true
+    },
+    {
+      "name": "holder_socket_alive_after_punch",
+      "ok": true
+    },
+    {
+      "name": "member_socket_alive_after_punch",
+      "ok": true
+    },
+    {
+      "name": "direct_counters",
+      "ok": true
+    },
+    {
+      "name": "bt_engine_attached",
+      "ok": true
+    },
+    {
+      "name": "bt_download_complete",
+      "ok": false
+    },
+    {
+      "name": "bt_infohash_match",
+      "ok": true
+    },
+    {
+      "name": "bt_md5_match",
+      "ok": false
+    },
+    {
+      "name": "public_simultaneous_open_reachable",
+      "ok": true
+    }
+  ],
+  "runtime_infohash": "0578052874711515fb81250e1179be468e92f014",
+  "verdict": "FAIL",
+  "reason": "bt_download_complete; bt_md5_match"
+}

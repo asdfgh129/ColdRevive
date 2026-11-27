@@ -1,0 +1,40 @@
+{
+  "schema": "coldrevive.w67.punched-tcp-bt-evidence/v2",
+  "purpose": "W6.7 revision 2：119 的 TCP/19720 已由所有者在 Lighthouse 防火墙放通，打洞 socket 直接绑定，全程无 REDIRECT；本轮证明 punched-direct 能跑真实 BT 数据，但在 512 KiB 处被对端 RST，未达 md5。",
+  "packaged_at": "2026-11-27T21:57:57+08:00",
+  "git_head_at_collection": "4f0d443",
+  "source_note": "collection HEAD plus uncommitted wake-on-punched-inbound fix and punch diagnostics",
+  "binary_sha256": "862a0072daeefb8e90a27f7dd82212c5cf8f8ef7cffe867117fabb569a34f1ee",
+  "verdict": "FAIL",
+  "measured": {
+    "mapping_ports_two_samples": [
+      36883,
+      36883
+    ],
+    "H_route": "punched-direct",
+    "M_route": "punched-direct",
+    "completed_bytes": 524288,
+    "total_bytes": 1048576,
+    "landed_md5": "6822f905eb610a2a265d7a3f18f72188",
+    "expected_md5": "6209e962f3b26a13c9ec1ae70fd78e10",
+    "member_bridge_bytes": 728644
+  },
+  "do_not_claim": [
+    "Not a pass: 1 MiB md5 did not match, so punched-direct BT carriage is NOT validated end to end.",
+    "Not G2/S6/NFR-02 evidence; no success rate is reported.",
+    "The 512 KiB that did land came over the punched socket, not over the relay: H punched_alive=1 and M served_registered=1 at the time of the transfer.",
+    "Earlier BLOCKED reason (no public TCP port) is cleared by this run; the remaining gap is different."
+  ],
+  "items": [
+    {
+      "file": "report.json",
+      "bytes": 65636,
+      "sha256": "b28ac07a0b86d396b06d5bb2626c9d0cd478f04659f725175929c0e447a86436"
+    },
+    {
+      "file": "run.py",
+      "bytes": 28027,
+      "sha256": "f2f9d08d965a1271463dcfb64e49466264cc51829089ad3d7254237b6c5ee39d"
+    }
+  ]
+}

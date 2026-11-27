@@ -1,3 +1,41 @@
+## [2.4.159] - 2026-11-27 — 打洞入向握手唤醒（冷种子缺口）；W6.7 通道打通、落地 50%
+
+> **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 FAIL 78/80、S6 条件计入、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+> 本条**不是** W6.7 通过：落地 md5 不符，仍 FAIL。
+
+- **环境变更**：owner 在 `119.29.150.254` 放通 `TCP:19720`。顺带纠正一处误判——这台机器是
+  **轻量应用服务器（Lighthouse，`lhins-cyayca13`，广州）**，规则在「实例 → 防火墙」，
+  不在 VPC 安全组，所以 CVM 实例列表为空不是权限问题；`82.157.68.159` 同为轻量
+  （北京 `lhins-dmotjt9m`）。放通后从 221 实测 `TCP/19720` 完整握手、payload 到达 `10.1.0.2`。
+- **修掉一个真缺口：冷种子不响应打洞入向握手**。`nat punch-route` 的 holder 分支原来只做
+  splice，而本机 guard 路径有「68 字节握手命中冷种子就唤醒」。现场是：握手指令**确实到达**
+  holder 的打洞 socket（tcpdump `21:42:55.525 ... length 68`），但引擎 10 s 内一个字节都没回，
+  member 发 FIN、holder 回 `R.`，报告表现为「打洞成功、route=punched-direct、取片 0 B」。
+  修法：把裁决抽成 `wake_for_inbound_handshake`（解析 infohash → FR-15 准入 → `wake_seed`
+  → 等引擎报 HOT ≤3 s），**guard 与打洞两条入向路径共用**；holder 改用
+  `DataPlane::attach_punched_inbound_waking`（先读 68 字节 → 唤醒 → 把前缀补回再 splice，
+  丢前缀是 ADR-021 记过的坑）。
+- **量具补齐**：`punch-route` 失败时原来只回「TCP 打洞未建立」，与抓包对不上时查不动。
+  现在同时回 `punch_local` / `punch_target` / `punch_attempts` / `punch_errors`。
+- **实测（`tests/ARCHIVE/evidence/w67-punched-tcp-20261127-r2/`）**：脚本删掉全部 `REDIRECT`，
+  holder 直接绑 `0.0.0.0:19720`，观测点即打洞目标端点、两次采样一致（`36883`）。
+  两端 `route=punched-direct`、`tcp_punch_established=true`、`punched_socket_registered=true`、
+  `direct` 计数 +1；holder `punched_alive=1`、member `served_registered=1`、`engineAttached=true`；
+  BT 数据**首次**真实经打洞 socket 流动（holder 线上约 791 KB、member 桥搬运 728 644 B）。
+  但只落地 **524 288 / 1 048 576 B**，`md5 6822f905…` ≠ `6209e962…`；
+  21:59:02.5 member 侧发 `R`（接收缓冲仍有未读数据），此后停在 50% 直到超时。
+- **剩余关闭条件**（二选一，都要新证据）：① 定位这次中途 RST（先分清是桥→引擎方向还是
+  引擎→桥方向先断）；② 让打洞登记可重入——`cr_bridge` 用 `take()` 取走即删，一条 socket
+  只服务一次 CONNECT，断了没有第二条，与 BT 会重连的实际行为不匹配。
+- **测试**：`cargo test -p coldrevived --bin coldrevived punched` **5/5**（新增
+  `punched_inbound_waking_restores_handshake_prefix`、`punched_inbound_waking_refusal_does_not_splice`）；
+  全量串行回归 **563 passed / 0 failed / 3 ignored**（`regression-full-20261127-v159.log`，
+  比 v158 多 2 条新单测）。`cr-ed2k` 的 `loopback_transfer` 两条（`amule_block_accounting` /
+  `amule_style_sliding_window`）在机器被并发任务压住时会出现 Windows 回环 `os error 10060`，
+  隔离单跑 4/4 通过——按既有 flaky 处理，不隐藏也不宣称已修。
+
 ## [2.4.158] - 2026-11-27 — NFR-04 公网 P95 双机实测关闭；W6.7 punched-TCP BT 落到 BLOCKED（环境）
 
 > **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、
