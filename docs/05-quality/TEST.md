@@ -959,6 +959,29 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   **525 passed / 0 failed / 3 ignored**。默认并行下 2 次既存计时型 flaky 失败
   （`per_session_cap` / `amule_block_accounting`）已归档，隔离与串行均通过。
 
+## 12. v2.4.158 新增证据（NFR-04 公网 P95 关闭；W6.7 daemon 级 punched-TCP BT 仍 BLOCKED）
+
+- **NFR-04 公网 P95（PASS，真实双网）**：`python3 tests/e2e/nfr04-public/run.py`。
+  221（家庭出口 `112.5.60.4`）与 119（腾讯云 1:1 EIP `119.29.150.254`）各跑真实
+  `coldrevived`，仅 relay 唤醒候选，`metrics wake-latency 30 12000`。A→C P95 **281 ms**、
+  C→A **230 ms**，各 30/30、0 超时；强制 relay 锚点 RTT 241/187 ms；两端 `/proc/<pid>/exe`
+  哈希均为 `8556cd8b…`。归档 `tests/ARCHIVE/evidence/nfr04-public-20261127/`。
+  两份 0 ms 作废报告（`report-zero-rtt-invalid.json` / `report-stale-binary-invalid.json`）
+  同目录留存：前者是 relay 分支硬编码 RTT，后者是旧 workdir 二进制未替换
+  （`cp` 报 `Text file busy`）。修复后脚本先停旧进程、换二进制、校验安装与运行哈希，
+  全零样本判 `INVALID`，不得当 PASS。
+- **W6.7 daemon 级 punched-TCP BT（BLOCKED）**：`python3 tests/e2e/w67-punched-bt/run.py`。
+  119 为 holder、221 为 member，两观测点一致得到 `112.5.60.4:23982`（`eim=true`）；
+  代码侧已补 holder `attach_punched_inbound` 与按角色的 handoff，并有 3+1 条定点单测。
+  但两侧 `punch-route` 均回落 relay：119 仅放通 TCP/22，源地址受限的
+  `REDIRECT 22→19720` 对普通监听可用，对 TCP 同时打开的内向 SYN 被 RST/refused。
+  报告里的 `member_bridge_served` / `holder_splice_done` / `engineAttached` 属于
+  relay 数据面，不是 punched-direct；BT 落地 0 B、md5 不匹配。证据
+  `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。关闭需要第二个可直绑的公网 TCP 端口。
+- **门禁边界不变**：两份证据都不写 G2/S6/NFR-02 结论，不报成功率/可达率；
+  `g2_claim=true` 为全局既有值，工具字段仍 `s6_status=not_run` /
+  `evidence_valid_for_pass=false` / `auto_pass=false`。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

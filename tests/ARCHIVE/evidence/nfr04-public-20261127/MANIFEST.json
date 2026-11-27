@@ -1,0 +1,47 @@
+{
+  "schema": "coldrevive.nfr04.public-p95-evidence/v1",
+  "purpose": "NFR-04 公网双机真实 WAKEUP_REQ→ACK P95；含两份作废报告以证明 0 ms 量具 bug 与陈旧二进制均被识别。",
+  "packaged_at": "2026-11-27T15:00:16+08:00",
+  "git_head_at_collection": "365c3b2f2161d587c49a7b09b6fd9eed38192ab6",
+  "source_note": "collection HEAD plus uncommitted relay RTT timing fix; final commit hash recorded in docs/CHANGELOG",
+  "binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+  "verdicts": {
+    "A_to_C": "PASS",
+    "C_to_A": "PASS"
+  },
+  "acceptance": {
+    "nfr04_public_p95": "PASS",
+    "rule": "两侧都必须是真实非零样本且 P95 < 8000 ms；INVALID 不得当 FAIL 之外的任何通过"
+  },
+  "p95_ms": {
+    "A_to_C": 281.0,
+    "C_to_A": 230.0
+  },
+  "do_not_claim": [
+    "Not G2/S6/NAT reachability evidence.",
+    "Relay-only wake path; ACK is not public discoverability.",
+    "Loopback and LAN results are not used."
+  ],
+  "items": [
+    {
+      "file": "report-stale-binary-invalid.json",
+      "bytes": 20770,
+      "sha256": "4802b4d2a36ddc26bc5d4191ac95c58ed6c6c2d165d1925311693c3a93277827"
+    },
+    {
+      "file": "report-zero-rtt-invalid.json",
+      "bytes": 20612,
+      "sha256": "54093c45041b7b3968311519fb5befc9a189812ea4e9ead1f9872eefacf3a8de"
+    },
+    {
+      "file": "report.json",
+      "bytes": 23381,
+      "sha256": "028dd05c4e7db88ee33bfae938a150d7786f7e26ec67e1e345c0f5cb041b5cb7"
+    },
+    {
+      "file": "run.py",
+      "bytes": 14571,
+      "sha256": "a54eb1b9e1bd3b1b939d3e2244910fef357dab12d415a6a250f9a2e58643749e"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ use cr_nat::{
 use std::fs;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub type Shared = Arc<Mutex<NodeState>>;
 
@@ -609,18 +609,25 @@ pub fn wake_with_plan(
 
     for ep in candidates.iter().copied() {
         if ep.kind == EndpointKind::Relay {
-            match holepunch::relay_wake_any(&relays, &self_id, &peer_id, &wake, timeout) {
+            // NFR-04 公网 P95 必须量到真实中继往返。旧实现把 rtt 写死 0，
+            // metrics 采样因此恒为 0 ms——那是量具假值，不是「公网零延迟」。
+            let relay_started = Instant::now();
+            let relay = holepunch::relay_wake_any(&relays, &self_id, &peer_id, &wake, timeout);
+            let relay_rtt_ms = relay_started.elapsed().as_millis() as u64;
+            match relay {
                 Ok((used, payload)) => match Json::parse(&String::from_utf8_lossy(&payload)) {
                     Ok(reply) => {
                         out.attempts.push(attempt_json("relay", &used, true,
-                                                       "真实 DELIVERED 帧", 0));
-                        out = finish(out, state, req, reply, 0, ep.kind.label());
+                                                       "真实 DELIVERED 帧", relay_rtt_ms));
+                        out = finish(out, state, req, reply, relay_rtt_ms, ep.kind.label());
                         return out;
                     }
-                    Err(e) => out.attempts.push(attempt_json("relay", &used, false,
-                                                             &format!("中继应答非法 JSON: {}", e), 0)),
+                    Err(e) => out.attempts.push(attempt_json(
+                        "relay", &used, false,
+                        &format!("中继应答非法 JSON: {}", e), relay_rtt_ms)),
                 },
-                Err(e) => out.attempts.push(attempt_json("relay", &ep.addr(), false, &e, 0)),
+                Err(e) => out.attempts.push(attempt_json(
+                    "relay", &ep.addr(), false, &e, relay_rtt_ms)),
             }
             if out.result.is_ok() { return out; }
             continue;
@@ -659,19 +666,23 @@ pub fn wake_with_plan(
     {
         // v2.4.86：TCP 承载全失败（或本就没配 TCP 中继）时，走中继的 UDP 承载再试一次。
         // 判据不变：只有真的收到对端应用应答才算成功，与 TCP 路径同一把尺子。
-        match holepunch::relay_wake_udp_any(&relays_udp, &self_id, &peer_id, &wake, timeout) {
+        let relay_started = Instant::now();
+        let relay_udp =
+            holepunch::relay_wake_udp_any(&relays_udp, &self_id, &peer_id, &wake, timeout);
+        let relay_udp_rtt_ms = relay_started.elapsed().as_millis() as u64;
+        match relay_udp {
             Ok((used, payload)) => match Json::parse(&String::from_utf8_lossy(&payload)) {
                 Ok(reply) => {
                     out.attempts.push(attempt_json("relay-udp", &used, true,
-                                                   "真实 DELIVER 帧（UDP 承载）", 0));
-                    return finish(out, state, req, reply, 0, "relay-udp");
+                                                   "真实 DELIVER 帧（UDP 承载）", relay_udp_rtt_ms));
+                    return finish(out, state, req, reply, relay_udp_rtt_ms, "relay-udp");
                 }
                 Err(e) => out.attempts.push(attempt_json(
                     "relay-udp", &used, false,
-                    &format!("中继应答非法 JSON: {}", e), 0)),
+                    &format!("中继应答非法 JSON: {}", e), relay_udp_rtt_ms)),
             },
             Err(e) => out.attempts.push(attempt_json(
-                "relay-udp", &relays_udp.join(","), false, &e, 0)),
+                "relay-udp", &relays_udp.join(","), false, &e, relay_udp_rtt_ms)),
         }
     }
     if out.result.is_err() {
@@ -743,6 +754,12 @@ fn finish(mut out: WakeOutcome, state: &Shared, req: &Json, reply: Json,
 // ---------------------------------------------------------------------------
 // `nat` CLI 子命令分发
 // ---------------------------------------------------------------------------
+
+/// 与 `relay_sub`/`main` 同一口径：显式 role 优先，缺省退回 node_id 字面量。
+/// 抽出来是为了把「member 绝不能把打洞 socket 拼到引擎监听口」钉成单测。
+fn is_holder_role(node_id: &str, role: Option<&str>) -> bool {
+    role.map(|r| r == "holder").unwrap_or(node_id == "A")
+}
 
 pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
     let sub = args.first().map(String::as_str).unwrap_or("status");
@@ -985,23 +1002,44 @@ pub fn dispatch(state: &Shared, cfg: &Config, args: &[String]) -> Json {
                     ]);
                 }
             };
-            // 4) 真正 handoff：Route::Direct 时把已验证 socket 登记进桥，
+            // 4) 真正 handoff：Route::Direct 时把已验证 socket 接进数据面，
             //    否则它会在本函数返回时 drop——旧实现只有判据没有数据面。
+            //    两端角色不同：member 把 socket 登记进 SOCKS5 桥（引擎会主动拨
+            //    targets.bridge）；holder 必须把 socket 拼到自己引擎的监听口，
+            //    否则 inbound BT 握手无人接收，是「握手成功、取片 0 B」的来源。
             let dp = state.lock().unwrap().data_plane.clone();
+            let is_holder = is_holder_role(&cfg.node_id, cfg.role.as_deref());
             let punched_registered = if route == cr_nat::Route::Direct {
                 match dp {
-                    Some(dp) => match dp.attach_punched_socket(targets.bridge, stream) {
-                        Ok(()) => true,
-                        Err(e) => {
-                            state.lock().unwrap().punch_route.record(None);
-                            return Json::obj(vec![
-                                ("ok", Json::b(false)),
-                                ("route", Json::s("relay-fallback")),
-                                ("reason", Json::s(format!("打洞成功但登记数据面失败: {e}"))),
-                                ("s6_status", Json::s("not_run")),
-                            ]);
+                    Some(dp) => {
+                        let handoff = if is_holder {
+                            let Some(engine_listen) = cfg.engine_listen else {
+                                state.lock().unwrap().punch_route.record(None);
+                                return Json::obj(vec![
+                                    ("ok", Json::b(false)),
+                                    ("route", Json::s("relay-fallback")),
+                                    ("reason", Json::s(
+                                        "holder 侧缺 engine.listen，不能猜 bt_port 做 splice")),
+                                    ("s6_status", Json::s("not_run")),
+                                ]);
+                            };
+                            dp.attach_punched_inbound(targets.bridge, stream, engine_listen)
+                        } else {
+                            dp.attach_punched_socket(targets.bridge, stream)
+                        };
+                        match handoff {
+                            Ok(()) => true,
+                            Err(e) => {
+                                state.lock().unwrap().punch_route.record(None);
+                                return Json::obj(vec![
+                                    ("ok", Json::b(false)),
+                                    ("route", Json::s("relay-fallback")),
+                                    ("reason", Json::s(format!("打洞成功但登记数据面失败: {e}"))),
+                                    ("s6_status", Json::s("not_run")),
+                                ]);
+                            }
                         }
-                    },
+                    }
                     None => {
                         state.lock().unwrap().punch_route.record(None);
                         return Json::obj(vec![
@@ -1320,6 +1358,19 @@ mod tests {
         assert!(parse_shared_nonce(n("0011").as_ref()).is_err());
         assert!(parse_shared_nonce(n("00112233445566778899aabbccddeefg").as_ref()).is_err());
         assert!(parse_shared_nonce(n("00112233445566778899aabbccddeeff00").as_ref()).is_err());
+    }
+
+    #[test]
+    fn holder_handoff_role_is_explicit_and_fail_closed() {
+        // 老配置的缺省语义：A 是 holder。
+        assert!(is_holder_role("A", None));
+        assert!(!is_holder_role("B", None));
+        // 显式 role 优先：节点名叫 A 也可以是 member，不能误拼到引擎口。
+        assert!(is_holder_role("X", Some("holder")));
+        assert!(!is_holder_role("A", Some("member")));
+        assert!(!is_holder_role("B", Some("member")));
+        // 拼错角色会让 member 的 socket 从引擎入向进来，形成无人拨号/0 B 的假成功。
+        assert!(!is_holder_role("X", Some("unknown")));
     }
 
     #[test]

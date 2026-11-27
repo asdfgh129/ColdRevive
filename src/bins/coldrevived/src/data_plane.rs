@@ -11,7 +11,7 @@
 //!
 //! **默认关闭**：未启用时本模块不创建任何对象，`proxy_url` 保持 `None`，既有行为不变。
 
-use cr_bridge::Bridge;
+use cr_bridge::{splice_to_listener, Bridge};
 use cr_nat::relay::{RelayClient, NODE_ID_LEN};
 use cr_nat::relay_tunnel::{derive_session_id, RelayTunnel, RelayTunnelSet, OPEN_TIMEOUT};
 use cr_nat::relay_udp::UdpRelayClient;
@@ -257,6 +257,43 @@ impl DataPlane {
         self.punched.lock().unwrap().insert(advertised_peer, alive);
         println!(
             "[data-plane] 打洞直连 socket 已登记: peer={advertised_peer}（is_s6_evidence=false）"
+        );
+        Ok(())
+    }
+
+    /// ADR-021 入向半边：`punch-route` 在**持有者侧**已建立并验明身份的 socket
+    /// 必须拼到 `engine.listen`，否则引擎不知道它存在——发起方 SOCKS5 桥命中后
+    /// 只能连到对端公网映射，BT 握手会落到无人监听的端口。
+    ///
+    /// 与 `attach_punched_socket` 的完整区别：
+    /// - member（发起方）登记到 SOCKS5 桥，键是引擎会拨的对端静态地址；
+    /// - holder（接收方）把 socket 当作普通入站连接交给本地引擎监听口。
+    ///
+    /// `engine_listen` 必须是**实测**的引擎回环地址；配置缺省时调用方应报错，
+    /// 不能猜 `bt_port`（打洞 socket 自己就占着它）。
+    pub fn attach_punched_inbound(
+        &self,
+        advertised_peer: SocketAddr,
+        stream: std::net::TcpStream,
+        engine_listen: SocketAddr,
+    ) -> Result<(), String> {
+        stream.set_nonblocking(true)
+            .map_err(|e| format!("punched 入向 socket 设非阻塞失败: {e}"))?;
+        let socket = {
+            let _guard = self.runtime.enter();
+            TokioTcpStream::from_std(stream)
+                .map_err(|e| format!("punched 入向 socket 接入 runtime 失败: {e}"))?
+        };
+        let alive = Arc::new(AtomicBool::new(true));
+        let a = alive.clone();
+        self.runtime.spawn(async move {
+            let _ = splice_to_listener(socket, engine_listen).await;
+            a.store(false, Ordering::Relaxed);
+        });
+        self.punched.lock().unwrap().insert(advertised_peer, alive);
+        println!(
+            "[data-plane] 打洞直连接入引擎监听口: peer={advertised_peer} \
+             engine={engine_listen}（is_s6_evidence=false）"
         );
         Ok(())
     }
@@ -576,5 +613,83 @@ mod tests {
         let j = dp.json();
         assert_eq!(j.get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
         peer_thread.join().unwrap();
+    }
+
+    /// ADR-021 入向半边：holder 的打洞 socket 必须经 `engine.listen` 到达真引擎，
+    /// 不能只登记 SOCKS5 桥（那样对端拨静态地址时本端没人接）。
+    #[test]
+    fn punched_inbound_splice_reaches_engine_listener() {
+        use std::io::{Read as _, Write as _};
+        use std::time::Duration as StdDuration;
+
+        // 假引擎：回环监听，读到 hello 后回 world。
+        let engine = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let engine_addr = engine.local_addr().unwrap();
+        let engine_thread = std::thread::spawn(move || {
+            let (mut s, _) = engine.accept().unwrap();
+            let mut buf = [0u8; 5];
+            s.read_exact(&mut buf).unwrap();
+            assert_eq!(&buf, b"hello");
+            s.write_all(b"world").unwrap();
+        });
+
+        // 假对端：已建立的 socket 交给入向 splice。
+        let peer_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer_addr = peer_listener.local_addr().unwrap();
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let join = std::thread::spawn(move || {
+            let (stream, _) = peer_listener.accept().unwrap();
+            dp.attach_punched_inbound(advertised, stream, engine_addr).unwrap();
+            dp
+        });
+        let mut client = std::net::TcpStream::connect(peer_addr).unwrap();
+        client.write_all(b"hello").unwrap();
+        client.set_read_timeout(Some(StdDuration::from_secs(3))).unwrap();
+        let mut echo = [0u8; 5];
+        client.read_exact(&mut echo).unwrap();
+        assert_eq!(&echo, b"world", "打洞入向必须真的到达引擎监听口");
+        engine_thread.join().unwrap();
+        let dp = join.join().unwrap();
+        assert_eq!(dp.json().get("punched_registered").and_then(cr_core::Json::as_i64), Some(1));
+    }
+
+    /// 负向对照：engine.listen 指错时不得凭空回出 world。
+    /// 防止未来有人把 splice 退化成「在打洞 socket 上自己 echo 一个成功」。
+    #[test]
+    fn punched_inbound_wrong_engine_listen_does_not_fabricate_success() {
+        use std::io::{Read as _, Write as _};
+        use std::time::Duration as StdDuration;
+
+        let wrong = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let wrong_addr = wrong.local_addr().unwrap();
+        drop(wrong); // 故意让它不可连接
+
+        let peer_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer_addr = peer_listener.local_addr().unwrap();
+        let dp = DataPlane::new().unwrap();
+        let advertised: SocketAddr = "112.5.60.4:19910".parse().unwrap();
+        let join = std::thread::spawn(move || {
+            let (stream, _) = peer_listener.accept().unwrap();
+            // 注册本身是异步 handoff，所以这里返回 Ok；存活标志会随后归零。
+            dp.attach_punched_inbound(advertised, stream, wrong_addr).unwrap();
+            dp
+        });
+        let mut client = std::net::TcpStream::connect(peer_addr).unwrap();
+        client.write_all(b"hello").unwrap();
+        client.set_read_timeout(Some(StdDuration::from_secs(3))).unwrap();
+        let mut buf = [0u8; 5];
+        let got = client.read(&mut buf).unwrap_or(0);
+        assert_ne!(&buf[..got], b"world", "错误的 engine.listen 不得伪造成功字节");
+        let dp = join.join().unwrap();
+        // 泵失败后 alive 必须掉下来，不能长期显示「打洞活着」。
+        let deadline = std::time::Instant::now() + StdDuration::from_secs(2);
+        while std::time::Instant::now() < deadline {
+            if dp.json().get("punched_alive").and_then(cr_core::Json::as_i64) == Some(0) {
+                return;
+            }
+            std::thread::sleep(StdDuration::from_millis(20));
+        }
+        panic!("错误 engine.listen 的 splice 泵应在 2 s 内标记死亡");
     }
 }

@@ -1,0 +1,761 @@
+{
+  "schema": "coldrevive.nfr04.public-p95/v2",
+  "generated_at": "2026-11-27T15:00:16+08:00",
+  "scope": "真实双机跨公网 WAKEUP_REQ→ACK 时延；仅 relay 唤醒候选；不是 G2/S6/NAT 可达证据",
+  "binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+  "file_hash": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "infohash": "8b02ea8fdc9fd44275a829668aace7290b8b8df1",
+  "sample_sha256": "49a667d142127224ef1b5343f64e6c66f7707894549d1c871609643db66f1019",
+  "networks": {
+    "A": "家庭宽带出口 112.5.60.4（221）",
+    "C": "腾讯云 1:1 EIP 119.29.150.254",
+    "relay": "82.157.68.159:7100"
+  },
+  "preparation": {
+    "A": {
+      "setup": [
+        {
+          "cmd": "systemctl stop cr-p95-p95a 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "mkdir -p /root/cr-nfr04/A/downloader /root/cr-nfr04/A/meta /root/cr-nfr04",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "ls -l /root/relay.key",
+          "rc": 0,
+          "stdout": "-rw------- 1 root root 64 Nov 18 04:04 /root/relay.key\n",
+          "stderr": ""
+        },
+        {
+          "cmd": "cp /opt/g3-clients/amule-config/Incoming/ed2k-sample.bin /root/cr-nfr04/sample.bin",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "install -m 0755 /root/cr-nfr04/coldrevived /root/cr-nfr04/A/coldrevived.new && mv -f /root/cr-nfr04/A/coldrevived.new /root/cr-nfr04/A/coldrevived",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "sha256sum /root/cr-nfr04/A/coldrevived",
+          "rc": 0,
+          "stdout": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b  /root/cr-nfr04/A/coldrevived\n",
+          "stderr": ""
+        }
+      ],
+      "installed_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+      "expected_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+      "config_sha256": "088cd511683ba444a85a8b2c000b2ff5697942dedfb6af0cd92c556681008ea7"
+    },
+    "C": {
+      "setup": [
+        {
+          "cmd": "systemctl stop cr-p95-p95c 2>/dev/null || true",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "mkdir -p /root/cr-nfr04/C/downloader /root/cr-nfr04/C/meta /root/cr-nfr04",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "ls -l /root/relay.key",
+          "rc": 0,
+          "stdout": "-rw------- 1 root root 64 11月 18 12:01 /root/relay.key\n",
+          "stderr": ""
+        },
+        {
+          "cmd": "install -m 0755 /root/cr-nfr04/coldrevived /root/cr-nfr04/C/coldrevived.new && mv -f /root/cr-nfr04/C/coldrevived.new /root/cr-nfr04/C/coldrevived",
+          "rc": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        {
+          "cmd": "sha256sum /root/cr-nfr04/C/coldrevived",
+          "rc": 0,
+          "stdout": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b  /root/cr-nfr04/C/coldrevived\n",
+          "stderr": ""
+        }
+      ],
+      "installed_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+      "expected_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+      "config_sha256": "35bd302aa6caf0008668d26d34c65f00a57dfa09670e0f0c7f23dbf33ad969c5"
+    }
+  },
+  "started": {
+    "A": {
+      "unit": "cr-p95-p95a",
+      "stop": {
+        "cmd": "systemctl stop cr-p95-p95a 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "start": {
+        "cmd": "systemd-run --collect --unit=cr-p95-p95a --property=WorkingDirectory=/root/cr-nfr04/A /root/cr-nfr04/A/coldrevived --config /root/cr-nfr04/A/config.json --node-id P95A --bind 0.0.0.0",
+        "rc": 0,
+        "stdout": "",
+        "stderr": "Running as unit: cr-p95-p95a.service\n"
+      },
+      "health": {
+        "status": "ok",
+        "node": "P95A",
+        "host": "192.168.1.221",
+        "machine_id": "unknown",
+        "pid": 697130,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": false,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": false,
+          "carrier": "none"
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 2,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "running_exe": {
+        "cmd": "readlink -f /proc/697130/exe && sha256sum /proc/697130/exe",
+        "rc": 0,
+        "stdout": "/root/cr-nfr04/A/coldrevived\n8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b  /proc/697130/exe\n",
+        "stderr": ""
+      },
+      "running_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b"
+    },
+    "C": {
+      "unit": "cr-p95-p95c",
+      "stop": {
+        "cmd": "systemctl stop cr-p95-p95c 2>/dev/null || true",
+        "rc": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "start": {
+        "cmd": "systemd-run --collect --unit=cr-p95-p95c --property=WorkingDirectory=/root/cr-nfr04/C /root/cr-nfr04/C/coldrevived --config /root/cr-nfr04/C/config.json --node-id P95C --bind 0.0.0.0",
+        "rc": 0,
+        "stdout": "",
+        "stderr": "Running as unit: cr-p95-p95c.service; invocation ID: fbc71fbce73d428081e32c162ef9999f\n"
+      },
+      "health": {
+        "status": "ok",
+        "node": "P95C",
+        "host": "119.29.150.254",
+        "machine_id": "unknown",
+        "pid": 3843407,
+        "seed_tasks": 1,
+        "seed_active": 0,
+        "served_bytes": 0,
+        "seeding": {
+          "cap": 8,
+          "scheduled": 0,
+          "evictions": 0
+        },
+        "limits": {
+          "max_hot_seeds": null,
+          "hot": 0,
+          "max_peers": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "peers"
+          },
+          "max_upload_bytes_per_sec": {
+            "enabled": false,
+            "limit": null,
+            "current": 0,
+            "unit": "B/s"
+          },
+          "max_rss_mb": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "MiB"
+          },
+          "max_seeding_cpu_millipct": {
+            "enabled": false,
+            "limit": null,
+            "current": null,
+            "unit": "milli-percent",
+            "current_percent": null
+          },
+          "sample_at_secs": 0
+        },
+        "punch_route": {
+          "enabled": false,
+          "attempts": 0,
+          "direct": 0,
+          "relay": 0,
+          "failed": 0,
+          "relay_data_plane": "tcp-carrier-implemented",
+          "relay_data_plane_udp": "udp-carrier-implemented-rst-path-verified",
+          "is_s6_evidence": false,
+          "g2_claim": false,
+          "s6_status": "not_run"
+        },
+        "data_plane": {
+          "enabled": false,
+          "carrier": "none"
+        },
+        "holder_data": {
+          "enabled": false,
+          "carrier": "none",
+          "opens": 0,
+          "accepted": 0,
+          "rejected": 0,
+          "duplicate_open": 0,
+          "peer_mismatch": 0,
+          "unknown_channel": 0,
+          "data_frames": 0,
+          "bytes_to_engine": 0,
+          "bytes_from_engine": 0,
+          "bytes_scope": "local_socket_writes_not_peer_receipt",
+          "splices_done": 0
+        },
+        "byte_accounting": {
+          "engine_reported_uploaded": 0,
+          "tunnel_written": 0,
+          "splice_written": 0,
+          "peer_received_bytes": null,
+          "peer_received_status": "not_observable_from_this_process",
+          "note": "engine_reported_uploaded=引擎自报 BT 上传；tunnel_written=写入本地 SOCKS5/隧道；splice_written=写入本地 socket。三者都不是对端确认字节。对端实际落地只在 e2e 读对端文件 md5 时证明，本进程无法观测。"
+        },
+        "guard": {
+          "enabled": false,
+          "handshakes": 0,
+          "woken": 0,
+          "missed": 0
+        },
+        "idle": {
+          "enabled": false,
+          "threshold_secs": 0,
+          "idle_secs": 2,
+          "sleeps": 0,
+          "last_slept": []
+        },
+        "idle_priority": {
+          "requested": true,
+          "applied": 3,
+          "failed": 0,
+          "unsupported": 0
+        },
+        "api": {
+          "rpc_secret": {
+            "enabled": true,
+            "note": "token 值不会出现在 /health 或任何响应中"
+          },
+          "web_ui": {
+            "enabled": false
+          },
+          "websocket": {
+            "enabled": false
+          }
+        },
+        "nat": {
+          "enabled": false,
+          "status": "disabled",
+          "attempts": [],
+          "note": "映射仅来自路由器真实应答；不改变 s6_status"
+        },
+        "qos": {
+          "enabled": true,
+          "background_upload_ratio": 0.02,
+          "reference_link_bps": 12500000,
+          "cap_bps": 250000,
+          "observed_bytes": 0,
+          "allowed_bytes": 0,
+          "denied_bytes": 0,
+          "note": "字节预算 + 引擎硬上限；不是 LEDBAT，S5 仍 not_run"
+        },
+        "dht": {
+          "enabled": false,
+          "status": "disabled",
+          "last_cycle_status": "",
+          "local_addr": null,
+          "bootstrap": [],
+          "seeds": 0,
+          "attempts": 0,
+          "verified": 0,
+          "no_token": 0,
+          "failed": 0,
+          "cycles": 0,
+          "requests": 0,
+          "discovered": 0,
+          "resource_skipped": 0,
+          "last_cycle_at_ms": 0,
+          "last_error": "",
+          "note": "本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据"
+        },
+        "cross_protocol": {
+          "enabled": false,
+          "status": "not_implemented",
+          "bt_to_ed2k": "invalid_input",
+          "ed2k_to_bt": "invalid_input",
+          "note": "跨协议补源未实现；不生成来源、不伪造成功"
+        },
+        "reputation": {
+          "enabled": false,
+          "status": "not_implemented",
+          "score": null,
+          "note": "只记账不评分；信誉/激励尚未实现"
+        },
+        "kad_publish": {
+          "cycles": 0,
+          "last": null,
+          "note": "尚未到第一个周期"
+        }
+      },
+      "running_exe": {
+        "cmd": "readlink -f /proc/3843407/exe && sha256sum /proc/3843407/exe",
+        "rc": 0,
+        "stdout": "/root/cr-nfr04/C/coldrevived\n8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b  /proc/3843407/exe\n",
+        "stderr": ""
+      },
+      "running_binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b"
+    }
+  },
+  "directions": {
+    "A_to_C": {
+      "node": "P95A",
+      "host": "192.168.1.221",
+      "http_port": 18800,
+      "plan": {
+        "error": "无活动 NAT 计划（nat.enabled=false 或未取得对端通告）",
+        "s6_status": "not_run"
+      },
+      "peer": {
+        "ok": true,
+        "node_id": "P95C",
+        "endpoints": 1,
+        "bt_external": false
+      },
+      "warm_wake": {
+        "ack": {
+          "v": 1,
+          "type": "WAKEUP_ACK",
+          "trace_id": "87c2d554-7062-62ae-5f8f-a6b3a6bd5448",
+          "status": "OK",
+          "magnet": "magnet:?xt=urn:btih:0578052874711515fb81250e1179be468e92f014&xs=http%3A%2F%2F119.29.150.254%3A18900%2Ftorrent%2F0578052874711515fb81250e1179be468e92f014",
+          "torrent_url": "http://119.29.150.254:18900/torrent/0578052874711515fb81250e1179be468e92f014",
+          "file_size": 1048576,
+          "piece_size": 262144,
+          "ttl": 7200,
+          "bt_port": 18902
+        }
+      },
+      "forced_relay_wake": {
+        "ok": true,
+        "path": "relay",
+        "strategy": "none",
+        "rtt_ms": 241,
+        "attempts": [
+          {
+            "kind": "relay",
+            "addr": "82.157.68.159:7100",
+            "ok": true,
+            "detail": "真实 DELIVERED 帧",
+            "rtt_ms": 241
+          }
+        ],
+        "notes": [
+          "强制候选路径：跳过可达性决策（仅验收量具用）"
+        ],
+        "reach_lookup": null,
+        "ack_status": "OK",
+        "s6_status": "not_run",
+        "evidence_valid_for_pass": false,
+        "error": null
+      },
+      "samples_ms": [
+        226.0,
+        225.0,
+        224.0,
+        282.0,
+        269.0,
+        218.0,
+        245.0,
+        232.0,
+        231.0,
+        240.0,
+        248.0,
+        216.0,
+        242.0,
+        238.0,
+        213.0,
+        227.0,
+        217.0,
+        250.0,
+        254.0,
+        243.0,
+        211.0,
+        210.0,
+        227.0,
+        249.0,
+        234.0,
+        248.0,
+        263.0,
+        232.0,
+        281.0,
+        202.0
+      ],
+      "sample_count": 30,
+      "timeouts": 0,
+      "p95_ms": 281.0,
+      "threshold_public_ms": 8000,
+      "threshold_lan_ms_for_reference_only": 3000,
+      "requested_timeout_ms": 12000,
+      "implementation_cap_ms": 10000,
+      "measurement_valid": true,
+      "invalid_reasons": [],
+      "metrics_raw": {
+        "cmd": "curl -sS --max-time 120 -H 'Content-Type: application/json' -X POST -d '{\"command\": \"metrics\", \"args\": [\"wake-latency\", \"30\", \"12000\"]}' http://127.0.0.1:18800/cli",
+        "rc": 0,
+        "stdout": "{\"samples_ms\":[226,225,224,282,269,218,245,232,231,240,248,216,242,238,213,227,217,250,254,243,211,210,227,249,234,248,263,232,281,202]}",
+        "stderr": "",
+        "json": {
+          "samples_ms": [
+            226,
+            225,
+            224,
+            282,
+            269,
+            218,
+            245,
+            232,
+            231,
+            240,
+            248,
+            216,
+            242,
+            238,
+            213,
+            227,
+            217,
+            250,
+            254,
+            243,
+            211,
+            210,
+            227,
+            249,
+            234,
+            248,
+            263,
+            232,
+            281,
+            202
+          ]
+        }
+      }
+    },
+    "C_to_A": {
+      "node": "P95C",
+      "host": "119.29.150.254",
+      "http_port": 18900,
+      "plan": {
+        "error": "无活动 NAT 计划（nat.enabled=false 或未取得对端通告）",
+        "s6_status": "not_run"
+      },
+      "peer": {
+        "ok": true,
+        "node_id": "P95A",
+        "endpoints": 1,
+        "bt_external": false
+      },
+      "warm_wake": {
+        "ack": {
+          "v": 1,
+          "type": "WAKEUP_ACK",
+          "trace_id": "78e4cd62-403c-7edc-f97c-7880c1728e93",
+          "status": "OK",
+          "magnet": "magnet:?xt=urn:btih:0578052874711515fb81250e1179be468e92f014&xs=http%3A%2F%2F192.168.1.221%3A18800%2Ftorrent%2F0578052874711515fb81250e1179be468e92f014",
+          "torrent_url": "http://192.168.1.221:18800/torrent/0578052874711515fb81250e1179be468e92f014",
+          "file_size": 1048576,
+          "piece_size": 262144,
+          "ttl": 7200,
+          "bt_port": 18802
+        }
+      },
+      "forced_relay_wake": {
+        "ok": true,
+        "path": "relay",
+        "strategy": "none",
+        "rtt_ms": 187,
+        "attempts": [
+          {
+            "kind": "relay",
+            "addr": "82.157.68.159:7100",
+            "ok": true,
+            "detail": "真实 DELIVERED 帧",
+            "rtt_ms": 187
+          }
+        ],
+        "notes": [
+          "强制候选路径：跳过可达性决策（仅验收量具用）"
+        ],
+        "reach_lookup": null,
+        "ack_status": "OK",
+        "s6_status": "not_run",
+        "evidence_valid_for_pass": false,
+        "error": null
+      },
+      "samples_ms": [
+        204.0,
+        191.0,
+        204.0,
+        205.0,
+        210.0,
+        206.0,
+        187.0,
+        227.0,
+        203.0,
+        214.0,
+        220.0,
+        197.0,
+        223.0,
+        207.0,
+        226.0,
+        211.0,
+        209.0,
+        235.0,
+        216.0,
+        225.0,
+        216.0,
+        186.0,
+        207.0,
+        224.0,
+        230.0,
+        218.0,
+        215.0,
+        213.0,
+        212.0,
+        212.0
+      ],
+      "sample_count": 30,
+      "timeouts": 0,
+      "p95_ms": 230.0,
+      "threshold_public_ms": 8000,
+      "threshold_lan_ms_for_reference_only": 3000,
+      "requested_timeout_ms": 12000,
+      "implementation_cap_ms": 10000,
+      "measurement_valid": true,
+      "invalid_reasons": [],
+      "metrics_raw": {
+        "cmd": "curl -sS --max-time 120 -H 'Content-Type: application/json' -X POST -d '{\"command\": \"metrics\", \"args\": [\"wake-latency\", \"30\", \"12000\"]}' http://127.0.0.1:18900/cli",
+        "rc": 0,
+        "stdout": "{\"samples_ms\":[204,191,204,205,210,206,187,227,203,214,220,197,223,207,226,211,209,235,216,225,216,186,207,224,230,218,215,213,212,212]}",
+        "stderr": "",
+        "json": {
+          "samples_ms": [
+            204,
+            191,
+            204,
+            205,
+            210,
+            206,
+            187,
+            227,
+            203,
+            214,
+            220,
+            197,
+            223,
+            207,
+            226,
+            211,
+            209,
+            235,
+            216,
+            225,
+            216,
+            186,
+            207,
+            224,
+            230,
+            218,
+            215,
+            213,
+            212,
+            212
+          ]
+        }
+      }
+    }
+  },
+  "verdicts": {
+    "A_to_C": "PASS",
+    "C_to_A": "PASS"
+  },
+  "acceptance": {
+    "nfr04_public_p95": "PASS",
+    "rule": "两侧都必须是真实非零样本且 P95 < 8000 ms；INVALID 不得当 FAIL 之外的任何通过"
+  },
+  "gate_snapshot": {
+    "g2_claim": true,
+    "s6_status": "not_run",
+    "evidence_valid_for_pass": false,
+    "auto_pass": false
+  },
+  "is_s6_evidence": false
+}

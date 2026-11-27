@@ -115,3 +115,8 @@ __pycache__/
 
 # 家宽 kit 回传的原始 results（含本机地址/主机名，绝不入库；只留脱敏结论）
 dist/results*.zip
+
+# NFR-04 公网 P95 / W6.7 punched-TCP BT 的本地运行产物（含主机地址与逐条样本，
+# 只把脱敏后的定稿与作废报告逐字节归档到 tests/ARCHIVE/evidence/）
+tests/e2e/nfr04-public/report*.json
+tests/e2e/w67-punched-bt/report*.json

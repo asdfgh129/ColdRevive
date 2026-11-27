@@ -5,16 +5,17 @@
 > `auto_pass=false`、EX-1 公平性 FAIL 78/80、`runtime_verified=false`、
 > `counts_toward_nfr02=false` 全部保持原值；S6 仍为「条件计入」。
 
-## 1. 本轮（v2.4.157）关闭的两项
+## 1. 本轮（v2.4.157）关闭的两项 + 追加关闭的 NFR-04
 
 | 项 | 落地 | 验证 | 边界 |
 | :--- | :--- | :--- | :--- |
 | FR-25 双轨发布 | `cr_kad::dual_track_frame_keys` 把 A 轨 `MD4(UTF-8(term))` 并入 daemon 发出的 `KAD_PUBLISH` 帧；B 轨冻结的 `published_keys` / `inspect kad` 口径不变 | `cr-kad` 34/34；P0 双进程 e2e **77/77**（`tests/ARCHIVE/evidence/p0-dual-track-20261127.json`） | ACK ≠ 公网可检索；发布量翻倍按 R-02 在 M4 前复审 |
 | W6.6 agent 看护内核 | `coldrevive-agent` 从只打印一行改为 std-only：spawn 子进程、`try_wait` 巡检、异常退出按预算重启、只读 `/health` 就绪日志 | agent 5/5 单测 + `tests/e2e/w66/agent_supervisor.py` 3/3 | **不是**托盘 / 浏览器捕获 / UPnP 续租；不监管 relay；不碰公网 |
+| NFR-04 公网唤醒 P95（追加关闭） | `tests/e2e/nfr04-public/run.py` 在 221（家庭出口 112.5.60.4）与 119（腾讯云 1:1 EIP）各跑真实 `coldrevived`，仅 relay 唤醒候选，每侧 30 条，超时 12000 ms | A→C P95 **281 ms**、C→A **230 ms**，各 30/30、0 超时；强制 relay RTT 241/187 ms；两端 `/proc/<pid>/exe` 均为修复后二进制 `8556cd8b…`。证据 `tests/ARCHIVE/evidence/nfr04-public-20261127/` | 是 `WAKEUP_REQ→ACK` 唤醒时延，不是 BT 可达性/G2/S6；ACK≠公网可检索；两份 0 ms 作废报告同目录留存 |
 
 ## 2. 仍开放的卡点
 
-### 2.1 NFR-04 公网 P95 —— 缺环境，不缺裁决
+### 2.1 NFR-04 公网 P95 —— 已关闭（2026-11-27）
 
 **先纠正一处此前的误判**：SRS 第 70 行写的是「唤醒 P95 < 3 s（**局域网**），公网 P95 < 8 s」，
 T1 夹具的 `wake_p95_ms=3000` 只适用局域网，**与公网 8 s 不冲突**，不需要所有者裁决阈值。
@@ -24,24 +25,46 @@ T1 夹具的 `wake_p95_ms=3000` 只适用局域网，**与公网 8 s 不冲突**
 （缺省 1200 ms 不变，上限 60 s），公网采样应显式给 `>8000` 的超时，否则超时样本会把
 P95 截在 1.2 s 而失去意义。
 
-**仍缺**（必须真实采集，不能用回环外推）：
+**已实测**：`tests/e2e/nfr04-public/run.py` 用 221（家庭宽带出口 `112.5.60.4`）与
+119（腾讯云 1:1 EIP `119.29.150.254`）两台不同公网网络的真实 `coldrevived`，
+只给对端通告 relay 候选，先 `wake raw` 预热，再每侧 30 条
+`metrics wake-latency 30 12000`。A→C P95 **281 ms**、C→A **230 ms**，
+各 30/30、0 超时，强制 relay 锚点 RTT 241/187 ms；两端运行二进制 SHA-256
+与阶段二进制一致（`8556cd8b…`）。归档 `tests/ARCHIVE/evidence/nfr04-public-20261127/`
+（含 `MANIFEST.json` 与两份作废报告）。
 
-1. 两台**位于不同公网网络**的主机，各自跑真实 `coldrevived`，其中一台能被另一台唤醒；
-2. 每侧 ≥ 30 条真实 `WAKEUP_REQ → ACK` 往返样本，落原始逐条时延与超时计数；
-3. 按 SRS 公网阈值 8000 ms 算 P95，并与局域网 3000 ms 分开报告；
-4. 归档到 `tests/ARCHIVE/evidence/`，写清主机、网络归属、时间与版本。
+**作废报告必须同读**：早先 `0 ms` 不是「公网零延迟」，先后是 relay 分支硬编码 RTT、
+以及 systemd 仍运行旧 workdir 二进制（`cp` 报 `Text file busy` 未被脚本拦截）。
+两版均已归档为 `report-zero-rtt-invalid.json` / `report-stale-binary-invalid.json`；
+修复含真实 `Instant` 计时、先停旧进程再换二进制、校验安装/运行哈希、零样本判 INVALID。
 
-**禁止**：把本机回环 / 同一局域网的结果写成公网 P95；把超时样本丢弃后只算成功样本。
+**禁止**：把本机回环 / 同一局域网的结果写成公网 P95；把超时样本丢弃后只算成功样本；
+把该 P95 写成 G2/S6/NAT 可达证据。
 
-### 2.2 BT-over-punched-TCP daemon 级实测 —— 缺公网主机与 CPE 配置
+### 2.2 BT-over-punched-TCP daemon 级实测 —— 仍 BLOCKED（缺可直绑的公网 TCP 端口）
 
-代码 handoff 已完成（`cr-nat::tcp_punch` → 数据面），但缺端到端证据：
+2026-11-27 用 119（公网 1:1 EIP，holder）与 221（家庭 EIM NAT，member）重跑
+`tests/e2e/w67-punched-bt/run.py`。代码 handoff 已补齐：holder 侧新增
+`DataPlane::attach_punched_inbound`，`nat punch-route` 按 `role` 分别走
+holder splice / member SOCKS5 注册，并有角色与安全回退单测；调用方
+`/proc` 哈希、peer 通告、真实 BT 任务与 md5 全部取证。
 
-- 两台可公网直达的主机（历史上用 `112.5.60.4` / `112.5.32.34` 一侧，需先确认当前 SSH 与端口可达）；
-- CPE 侧 TCP DNAT 与预留端口，两侧 `listen` 不能占用 `bt_port`；
-- 真实 BT 握手 + 完整文件落地 md5 一致，且对端不是静态 DNAT 注入的假直连；
-- 按 ADR-012 **不报成功率/可达率**，只写「该类环境有一条可用路径」与失败原因。
+本次结果 **BLOCKED**（`tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`）：
 
+- 两观测点一致：221 从 `192.168.1.221:19710` 映射为 `112.5.60.4:23982`，`eim=true`；
+- 两侧 `punch-route` 均因 `TCP 打洞未建立（poll+SO_ERROR 判据）` 回落 relay；
+- 根因是环境而非代码：119 仅放通 TCP/22（sshd 占用），源地址受限的
+  `REDIRECT 22→19720` 对普通监听可用，但对 TCP 同时打开的内向 SYN 被 RST/refused；
+  tcpdump 显示 H→M 的 SYN 进入 `112.5.60.4:23982`，M→H 的 SYN 打在 `119.29.150.254:22` 后被 `R.`；
+- 报告中 `member_bridge_served` / `holder_splice_done` / `engineAttached` / infohash 命中
+  是**回落 relay 数据面**的计数，不是 punched-direct，不可写成通过；
+- 文件落地为 0 B、`md5` 不一致，未通过 BT 落地判据。
+
+关闭条件：第二台公网主机需要一个**未被 sshd/其他服务占用、安全组放通、可由
+punch socket 直接绑定**的 TCP 端口，或用持有者书面认可的等效真实公网 TCP 路径；
+不得用 `REDIRECT` 冒充直绑，不得用静态 DNAT/中继顶替 punched-direct。
+
+按 ADR-012 **不报成功率/可达率**，只写「该类环境有一条可用路径」与失败原因。
 本机、回环、静态 DNAT（`punched-direct` 历史 3/30）都不能顶替这项。
 
 ### 2.3 LEDBAT / 公平性 EX-1 —— 缺新判据，不是缺重跑
@@ -77,6 +100,6 @@ EX-1 仍为 **FAIL**（80 轮中 78/80，cc_on/paced 两轮 0.430/0.570、0.433/
 
 ## 3. 下一轮建议顺序
 
-1. 能本地闭环的已做完；下一步优先安排 2.1 / 2.2 的公网环境（同一批主机可复用）。
-2. 2.3 属于独立课题，先 ADR 后判据，不与 2.1/2.2 混跑。
+1. 2.1 已关闭；2.2 需在第二台公网机上提供真实可直绑 TCP 端口后重跑，不再用 22 端口 REDIRECT。
+2. 2.3 属于独立课题，先 ADR 后判据，不与 2.2 混跑。
 3. 2.4 需要所有者选 GUI 路线；2.5 等 R-02 复审窗口。

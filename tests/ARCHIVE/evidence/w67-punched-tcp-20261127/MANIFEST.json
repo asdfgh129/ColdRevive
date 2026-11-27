@@ -1,0 +1,86 @@
+{
+  "schema": "coldrevive.w67.punched-tcp-bt-evidence/v1",
+  "purpose": "W6.7 daemon-level punched-TCP BT attempt; honest BLOCKED with full host/config/tcpdump evidence.",
+  "packaged_at": "2026-11-27T15:27:04+08:00",
+  "git_head_at_collection": "365c3b2f2161d587c49a7b09b6fd9eed38192ab6",
+  "source_note": "collection HEAD plus uncommitted holder-inbound splice, role-safe handoff and RTT timing fixes",
+  "binary_sha256": "8556cd8b6c56661f1a289514b32d3a8600ad4b136324286ea3daea11484e314b",
+  "verdict": "BLOCKED",
+  "reason": "public side only exposes TCP/22; source-scoped REDIRECT 22->19720 cannot complete TCP simultaneous open (RST/refused observed). Need a free public TCP port directly bound by the punch socket.",
+  "checks": [
+    {
+      "name": "two_observer_eim",
+      "ok": true
+    },
+    {
+      "name": "H_punch_established",
+      "ok": false
+    },
+    {
+      "name": "M_punch_established",
+      "ok": false
+    },
+    {
+      "name": "M_punched_socket_registered",
+      "ok": false
+    },
+    {
+      "name": "H_punched_socket_registered",
+      "ok": false
+    },
+    {
+      "name": "member_bridge_served",
+      "ok": true
+    },
+    {
+      "name": "member_punched_alive",
+      "ok": false
+    },
+    {
+      "name": "holder_splice_done",
+      "ok": true
+    },
+    {
+      "name": "direct_counters",
+      "ok": false
+    },
+    {
+      "name": "bt_engine_attached",
+      "ok": true
+    },
+    {
+      "name": "bt_download_complete",
+      "ok": false
+    },
+    {
+      "name": "bt_infohash_match",
+      "ok": true
+    },
+    {
+      "name": "bt_md5_match",
+      "ok": false
+    },
+    {
+      "name": "public_simultaneous_open_reachable",
+      "ok": false
+    }
+  ],
+  "do_not_claim": [
+    "No punched-direct success; both punch-route calls fell back to relay.",
+    "member_bridge_served/holder_splice_done came from the relay data plane, not punched-direct.",
+    "No G2/S6/NFR-02 claim; no success rate.",
+    "Static DNAT and relay BT evidence from prior runs are not substituted here."
+  ],
+  "items": [
+    {
+      "file": "report.json",
+      "bytes": 53199,
+      "sha256": "c282aa5c76985793777b6590227f8ab8d73f6949dae97ee4d59c4ec7e62ca3d5"
+    },
+    {
+      "file": "run.py",
+      "bytes": 27095,
+      "sha256": "9fd34b565f587f349742f2d5cd65c3e1895eff7dcfc11f598d3abffadffd4f3c"
+    }
+  ]
+}

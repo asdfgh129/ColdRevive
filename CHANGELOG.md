@@ -1,3 +1,49 @@
+## [2.4.158] - 2026-11-27 — NFR-04 公网 P95 双机实测关闭；W6.7 punched-TCP BT 落到 BLOCKED（环境）
+
+> **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 FAIL 78/80、S6 条件计入、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+> 本条只新增两项真实环境取证，以及为取证暴露的两个量具缺陷与一个数据面缺口。
+
+- **NFR-04 公网唤醒 P95 关闭（真实双网，非回环外推）**：新增
+  `tests/e2e/nfr04-public/run.py`。A = `192.168.1.221`（家庭宽带出口 `112.5.60.4`），
+  C = `119.29.150.254`（腾讯云 1:1 EIP），两侧各跑真实 `coldrevived`，对端通告**只给 relay
+  候选**，先 `wake raw` 预热，再 `metrics wake-latency 30 12000`。结果：A→C P95 **281 ms**、
+  C→A **230 ms**，各 30/30、0 超时；强制 relay 锚点 RTT 241 / 187 ms；两端
+  `sha256sum /proc/<pid>/exe` 均等于阶段二进制 `8556cd8b…`。证据
+  `tests/ARCHIVE/evidence/nfr04-public-20261127/`（`MANIFEST.json` + 两份作废报告）。
+  **边界**：这是 `WAKEUP_REQ→ACK` 唤醒时延，不是 BT 可达性、不是 G2/S6、ACK ≠ 公网可检索。
+- **量具缺陷 1（真实缺陷，已修）**：`nat_path::wake_with_plan` 的 relay 分支把 `rtt_ms`
+  **硬编码为 0**，`metrics wake-latency` 因此恒采到 `0.0 ms`。这不是「公网零延迟」，
+  而是量具假值。现 TCP / UDP 两条 relay 承载都用 `Instant` 实测往返。首份 0 ms 报告留档为
+  `report-zero-rtt-invalid.json`，不当作通过。
+- **量具缺陷 2（流程缺陷，已修）**：修复后仍读到 0 ms，根因是 systemd 仍跑旧 workdir 二进制
+  （`cp` 报 `Text file busy`，脚本未拦截）。脚本改为「先停 unit → `install` 到 `.new` 再
+  `mv` → 校验安装哈希 → 重启 → 校验 `/proc/<pid>/exe` 哈希」，运行哈希不符直接抛错；
+  全零样本判 `INVALID`，与 PASS/FAIL 分开。第二份作废报告留档为
+  `report-stale-binary-invalid.json`。
+- **W6.7 数据面缺口（真实缺口，已修）**：`nat punch-route` 此前只对发起方（member）调用
+  `attach_punched_socket`，**持有者侧的打洞 socket 建立后无处可去**，入向 BT 握手会落到
+  无人监听的端口。新增 `DataPlane::attach_punched_inbound`（把已验身份的 socket
+  `splice_to_listener` 拼到本机 `engine.listen`，并按存活标志登记），`punch-route` 改为按
+  `role` 分流：holder → inbound splice，member → SOCKS5 桥注册；holder 缺 `engine.listen`
+  时**拒绝猜 `bt_port`** 并回落 relay。新增 `is_holder_role` 把「member 绝不能拼到引擎口」
+  钉成单测（显式 `role` 优先、未知 role 不算 holder）。
+- **W6.7 daemon 级实测：BLOCKED（环境，不是代码）**：`tests/e2e/w67-punched-bt/run.py`，
+  119 为 holder、221 为 member。两观测点一致得到 `112.5.60.4:23982`（`eim=true`）；
+  但两侧 `punch-route` 均因 `TCP 打洞未建立（poll+SO_ERROR 判据）` 回落 relay。根因：119 仅
+  放通 TCP/22（sshd 占用），源地址受限的 `REDIRECT 22→19720` 对普通监听可用，对 TCP 同时
+  打开的内向 SYN 被 `R.`（tcpdump 实录）。落地 0 B、md5 不匹配。报告中
+  `member_bridge_served` / `holder_splice_done` / `engineAttached` 属**relay 数据面**，
+  不是 punched-direct。证据 `tests/ARCHIVE/evidence/w67-punched-tcp-20261127/`。
+  关闭条件：第二台公网主机需要一个未被占用、安全组放通、可由 punch socket 直接绑定的
+  TCP 端口；`REDIRECT` / 静态 DNAT / 中继均不得顶替。
+- **验证**：`coldrevived` 定点单测（3 条 punched 数据面 + 1 条角色判定）通过；全量串行回归
+  **561 passed / 0 failed / 3 ignored**（`tests/ARCHIVE/evidence/regression-full-20261127-v158.log`）。
+  首次全量命中历史 flaky `cr-ed2k::server_satisfies_amule_style_sliding_window`
+  （连接超时 / os error 10060），隔离单跑 1/1 通过后重跑全量归档；仍按 flaky 观察，
+  不宣称已修。
+
 ## [2.4.157] - 2026-11-27 — M3 剩余项第二批：FR-25 双轨发布入帧、agent 看护内核与卡点清单
 
 > **不改门禁、不改判据**：`g2_claim=true`、三个工具字段、EX-1 FAIL 78/80、S6 条件计入、
