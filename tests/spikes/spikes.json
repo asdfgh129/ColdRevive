@@ -1045,7 +1045,11 @@
             "concurrent_seconds": 10,
             "recovery_seconds": 5,
             "rounds": 3,
-            "ratios": [0.2, 0.05, 0.02],
+            "ratios": [
+              0.2,
+              0.05,
+              0.02
+            ],
             "tcp_congestion": "bbr"
           },
           "measurements": [
@@ -1053,14 +1057,22 @@
               "bg_ratio": 0.2,
               "background_actual_link_share_median": 0.1252,
               "degradation_pct_median": 20.0,
-              "degradation_pct_all": [-0.01, 20.0, 20.0],
+              "degradation_pct_all": [
+                -0.01,
+                20.0,
+                20.0
+              ],
               "meets_5pct": false
             },
             {
               "bg_ratio": 0.05,
               "background_actual_link_share_median": 0.0496,
               "degradation_pct_median": 0.01,
-              "degradation_pct_all": [19.99, 0.0, 0.01],
+              "degradation_pct_all": [
+                19.99,
+                0.0,
+                0.01
+              ],
               "meets_5pct": true,
               "caveat": "中位达标但 1/3 轮劣化 19.99%，不能写成稳定达标"
             },
@@ -1068,7 +1080,11 @@
               "bg_ratio": 0.02,
               "background_actual_link_share_median": 0.0199,
               "degradation_pct_median": 0.0,
-              "degradation_pct_all": [0.0, -0.01, 0.0],
+              "degradation_pct_all": [
+                0.0,
+                -0.01,
+                0.0
+              ],
               "meets_5pct": true
             }
           ],
@@ -2077,8 +2093,14 @@
           "lowid_report": {
             "report": "tests/spikes/s6/reports/real-run/s6-matrix-class-symmetric-real.json",
             "holder": "222 / 112.5.32.34 symmetric / APDM",
-            "direct": {"trials": 30, "succeeded": 0},
-            "relay": {"trials": 30, "succeeded": 30}
+            "direct": {
+              "trials": 30,
+              "succeeded": 0
+            },
+            "relay": {
+              "trials": 30,
+              "succeeded": 30
+            }
           },
           "highid_report": {
             "harness": "tests/spikes/s6/nat_lab/run_real_nat_highid.py（非 smoke 30 次分支已补齐）",
@@ -2086,10 +2108,18 @@
             "smoke_diagnosis": "tests/spikes/s6/reports/highid-run/s6-highid-diagnosis.json（6 次直连失败的根因留痕，不作 30 次判据证据）",
             "holder": "A / 112.5.60.4 port-restricted-cone / EIM+APDF",
             "requester": "222 / 112.5.32.34 symmetric / APDM",
-            "direct": {"trials": 30, "succeeded": 3, "success_path": "stun-mapped",
-                       "success_ack": "OK",
-                       "note": "3/30 是描述性观测，不构成可达率数字承诺；不得写成稳定可达"},
-            "relay": {"trials": 30, "succeeded": 30, "success_ack": "OK"},
+            "direct": {
+              "trials": 30,
+              "succeeded": 3,
+              "success_path": "stun-mapped",
+              "success_ack": "OK",
+              "note": "3/30 是描述性观测，不构成可达率数字承诺；不得写成稳定可达"
+            },
+            "relay": {
+              "trials": 30,
+              "succeeded": 30,
+              "success_ack": "OK"
+            },
             "carrier_errors": 0,
             "holder_stun_mapped": "112.5.60.4:47488（内部 17801，映射端口不同→真实设备可证伪）",
             "declaration_query": "requester nat peer ok=true；plan candidates=private-lan / stun-mapped / relay",
@@ -2101,8 +2131,12 @@
             "status": "OBSERVED",
             "evidence_valid": true,
             "reach_evidence_complete": true,
-            "highid_reports": ["s6-matrix-class-port-restricted-cone-real.json"],
-            "lowid_reports": ["s6-matrix-class-symmetric-real.json"],
+            "highid_reports": [
+              "s6-matrix-class-port-restricted-cone-real.json"
+            ],
+            "lowid_reports": [
+              "s6-matrix-class-symmetric-real.json"
+            ],
             "matrix_coverage": "2 / 4 类真实 NAT（含 CGNAT 0/1）——描述性，非 pass 前提"
           },
           "known_limitations": [
@@ -2713,5 +2747,43 @@
     ],
     "g1_effect": "G1 通过（T0 2026-11-13 21/21 + T1 2026-11-14 11/11 均 evidence_valid=true）；M2 门禁解除（blocked_by_G1 → satisfied），可启动 M2（S6 四类 NAT 实测仍须 M2 真实多 NAT 环境回填，S6.status 保持 not_run）",
     "spike_status_changed": false
+  },
+  "r02_operational_rate_review": {
+    "recorded_at": "2026-11-28T20:57:00+08:00",
+    "decision_basis": "DOC-35 decision 6 (authorize public KAD/DHT publish) + decision 7=C (override G0 cap, full dual-track)",
+    "owner": "项目所有者",
+    "criteria_file": "tests/fixtures/r02-operational-rate.toml",
+    "criteria_sha256": "3688193d5d65d46d92ba42ec50b44331a2195fd9b6eca9f9cf2d50e98fc4317a",
+    "public_gate_requested": true,
+    "public_gate_config": {
+      "max_per_min": 4,
+      "daily_cap": 200,
+      "note": "GateConfig 受控配额；默认关，配置显式开启；保留 kill switch 与审计"
+    },
+    "g0_override": {
+      "new_value": {
+        "sample_size": 128,
+        "rate_limit_pps": 1.0,
+        "dual_track": true,
+        "distinct_nodes_min": 10
+      },
+      "old_value": {
+        "sample_size": 3,
+        "rate_limit_pps": 0.2,
+        "dual_track": false,
+        "distinct_nodes_min": 10
+      },
+      "old_value_preserved_in": "spikes.S2.public_kad_approval.confirmed（不改写，作为历史判定记录）",
+      "reason": "决定 7=C 授权突破 G0 sample_size_max=10；128=64 key x 双轨；pps 仍留 G0 上限内",
+      "red_line_note": "PLAN §2 红线 2「禁止批量发布测试 Key / --sample-size 硬上限 10」被决定 7=C 显式突破，风险由所有者签字承担；不靠 CLI 绕过，需在门禁逻辑中为 r02 模式单列路径"
+    },
+    "status": "prepared",
+    "evidence_valid_for_pass": false,
+    "no_auto_pass": true,
+    "forbidden_claims": [
+      "不得写公共 DHT 已发布/公网可发现/FR-25 公网侧已验证",
+      "不得写 R-02 已关闭",
+      "不得报成功率/可达率"
+    ]
   }
 }

@@ -2402,6 +2402,311 @@ fn spikes_json_path() -> PathBuf {
     Path::new(MANIFEST).join("..").join("..").join("spikes.json")
 }
 
+// ------------------------------------------------- R-02 operational-rate --
+//
+// DOC-35 决定 6 + 决定 7=C：所有者授权公共 KAD 发布 + 公网 DHT announce +
+// 突破 G0 上限做「全量双轨」发布。本模式走**独立门禁** `r02_gate`，读取
+// spikes.json 顶层的 `r02_operational_rate_review` 块，不碰 S2 的 live_gate，
+// 也不靠 CLI 参数绕过旧门禁。真正的判据文件字节级 sha256 校验由外部脚本
+// `r02_run.py` 在调用本探针前完成；这里只校验授权块存在且字符串一致。
+#[derive(Default)]
+struct R02Args {
+    bootstrap: Option<PathBuf>,
+    /// 实验执行人提供的判据 sha256，必须与 spikes.json 授权块一致。
+    criteria_sha256: Option<String>,
+    attest: bool,
+    check_only: bool,
+}
+
+fn r02_gate(args: &R02Args) -> (bool, Vec<String>, Vec<String>) {
+    let mut blockers = Vec::new();
+    let mut info = Vec::new();
+    let path = spikes_json_path();
+    let text = match fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) => {
+            blockers.push(format!("无法读取 {}: {e}", path.display()));
+            return (false, blockers, info);
+        }
+    };
+    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    // 授权块必须存在且明确标记 prepared。
+    if !compact.contains("\"r02_operational_rate_review\"") {
+        blockers.push("spikes.json 缺少 r02_operational_rate_review 授权块".into());
+    }
+    let start = match compact.find("\"r02_operational_rate_review\"") {
+        Some(i) => i,
+        None => return (false, blockers, info),
+    };
+    let end = compact[start..].find("\"status\"").map(|x| start + x).unwrap_or(compact.len());
+    let block = &compact[start..end];
+    // 宽松匹配：compact 去掉了空格，只要同时含 decision6 与 decision7=C 即可。
+    if !(block.contains("decision6") && block.contains("decision7=C")) {
+        blockers.push("授权块未引用决定 6 + 决定 7=C".into());
+    }
+    // 判据 sha 必须与授权块登记值一致（CLI 传入，外部脚本已做字节级校验）。
+    if let Some(registered) = extract_string(block, "criteria_sha256") {
+        info.push(format!("registered_criteria_sha256={registered}"));
+        match &args.criteria_sha256 {
+            Some(got) if got == &registered => info.push("criteria_sha256_match=true".into()),
+            Some(got) => blockers.push(format!("--criteria-sha256={got} 与授权块登记值 {registered} 不一致")),
+            None => blockers.push("缺少 --criteria-sha256（须与授权块登记值一致）".into()),
+        }
+    } else {
+        blockers.push("授权块缺少 criteria_sha256".into());
+    }
+    // 新旧门禁值都必须留痕（决定 7=C 要求写清新旧值）。
+    if !(block.contains("\"g0_override\"") && block.contains("\"old_value\"") && block.contains("\"new_value\"")) {
+        blockers.push("授权块缺少 g0_override 新旧值留痕".into());
+    }
+    if block.contains("\"status\":\"prepared\"") {
+        info.push("r02_status=prepared".into());
+    }
+    // bootstrap 必须用户显式提供且为公网地址。
+    match &args.bootstrap {
+        None => blockers.push("缺少 --bootstrap <file>（OPS §6 禁止内置默认列表）".into()),
+        Some(p) => match fs::read_to_string(p) {
+            Ok(t) => {
+                if t.contains("lan-interop-probe-only") {
+                    blockers.push(format!("{} 标记为 lan-interop-probe-only，禁止用于 live", p.display()));
+                }
+                match parse_bootstrap_file(&t) {
+                    Ok(nodes) if nodes.is_empty() => blockers.push("bootstrap 无有效节点".into()),
+                    Ok(nodes) => {
+                        let bad: Vec<String> = nodes.iter().filter(|a| !is_global_ipv4(a.ip())).map(|a| a.ip().to_string()).collect();
+                        if !bad.is_empty() {
+                            blockers.push(format!("bootstrap 含非公网地址: {}", bad.join(", ")));
+                        }
+                        info.push(format!("bootstrap_nodes={} public_validation={}", nodes.len(), if bad.is_empty() { "passed" } else { "FAILED" }));
+                    }
+                    Err(e) => blockers.push(format!("bootstrap 解析失败: {e}")),
+                }
+            }
+            Err(e) => blockers.push(format!("无法读取 bootstrap: {e}")),
+        },
+    }
+    if !args.attest {
+        blockers.push("缺少 --attest-i-am-the-experiment-operator".into());
+    }
+    (blockers.is_empty(), blockers, info)
+}
+
+/// 从 fresh bootstrap 收敛出 in-zone 且已验证的发布目标；复用 live 验证过的
+/// frontier-guard 迭代策略。返回 (targets, diagnostics)。
+fn r02_converge(
+    client: &mut Client,
+    key: &KadId,
+    nodes: &[SocketAddr],
+    limiter: &mut Limiter,
+) -> (Vec<Contact>, Vec<(&'static str, J)>) {
+    let mut diag: Vec<(&'static str, J)> = Vec::new();
+    let mut known: Vec<Contact> = Vec::new();
+    let mut seen: HashSet<SocketAddr> = HashSet::new();
+    let mut verified: HashSet<SocketAddr> = HashSet::new();
+
+    for dest in nodes {
+        match client.exchange(
+            *dest, &bootstrap_req(), op::BOOTSTRAP_RES,
+            "r02: BOOTSTRAP_REQ", "r02: BOOTSTRAP_RES", limiter, None,
+        ) {
+            Ok((p, _)) => {
+                if let Ok(r) = parse_bootstrap_res(&p) {
+                    for c in r.contacts {
+                        if !known.iter().any(|k| k.id == c.id) {
+                            known.push(c);
+                        }
+                    }
+                }
+                verified.insert(*dest);
+            }
+            Err(_) => {}
+        }
+    }
+    let global = |c: &Contact| c.udp != 0 && is_global_ipv4(contact_addr(c).ip());
+    let verified_zone = |contacts: &[Contact], verified: &HashSet<SocketAddr>| -> Vec<Contact> {
+        contacts.iter().filter(|c| {
+            global(c) && verified.contains(&contact_addr(c)) && top_chunk(&c.id, key) <= SEARCHTOLERANCE
+        }).cloned().collect()
+    };
+
+    let mut hops = 0usize;
+    let mut widened = 0usize;
+    while hops < MAX_FIND_HOPS && verified_zone(&known, &verified).len() < MIN_ZONE_TARGETS {
+        let best = known.iter().filter(|c| global(c)).map(|c| top_chunk(&c.id, key)).min().unwrap_or(u32::MAX);
+        let cap = ((best as u64) * FRONTIER_FACTOR).max(SEARCHTOLERANCE as u64).min(u32::MAX as u64) as u32;
+        let pick = |use_cap: bool| -> Vec<Contact> {
+            closest(key, &known, known.len()).into_iter()
+                .filter(|c| !seen.contains(&contact_addr(c)))
+                .filter(|c| global(c))
+                .filter(|c| !use_cap || top_chunk(&c.id, key) <= cap)
+                .take(ALPHA_QUERY).cloned().collect()
+        };
+        let mut candidates = pick(true);
+        if candidates.is_empty() { candidates = pick(false); widened += 1; }
+        if candidates.is_empty() { break; }
+        let mut learned: Vec<Contact> = Vec::new();
+        for c in candidates {
+            let addr = contact_addr(&c);
+            if !global(&c) || !seen.insert(addr) { continue; }
+            let req = find_node_req(key, &c.id, 0x0B);
+            if let Ok((p, _)) = client.exchange(
+                addr, &req, op::RES,
+                "r02: KADEMLIA2_REQ", "r02: KADEMLIA2_RES", limiter, None,
+            ) {
+                verified.insert(addr);
+                if let Ok(r) = parse_find_node_res(&p) {
+                    learned.extend(r.contacts);
+                }
+            }
+        }
+        hops += 1;
+        for c in learned {
+            if !known.iter().any(|k| k.id == c.id) { known.push(c); }
+        }
+    }
+    let vz = verified_zone(&known, &verified);
+    let targets: Vec<Contact> = vz.iter().take(PUBLISH_FANOUT).cloned().collect();
+    diag.push(("iteration_hops", n(hops as f64)));
+    diag.push(("frontier_widened_hops", n(widened as f64)));
+    diag.push(("known_contacts", n(known.len() as f64)));
+    diag.push(("verified_contacts", n(verified.len() as f64)));
+    diag.push(("zone_verified_contacts", n(vz.len() as f64)));
+    diag.push(("queried_contacts", n(seen.len() as f64)));
+    diag.push(("tolerance_reached", b(!vz.is_empty())));
+    (targets, diag)
+}
+
+fn run_r02_live(args: &R02Args) -> Result<J, String> {
+    let (ok, blockers, info) = r02_gate(args);
+    let gate = obj(vec![
+        ("passed", b(ok)),
+        ("blockers", J::Arr(blockers.iter().map(|x| s(x.clone())).collect())),
+        ("info", J::Arr(info.iter().map(|x| s(x.clone())).collect())),
+        ("attested", b(args.attest)),
+        ("check_only", b(args.check_only)),
+    ]);
+    if args.check_only || !ok {
+        return Ok(obj(vec![
+            ("schema", s("coldrevive.r02.operational-rate/v1")),
+            ("generated_at", s(utc_iso(unix_ms()))),
+            ("mode", s("r02-live-gate-check")),
+            ("public_kad_contacted", b(false)),
+            ("evidence_valid_for_pass", b(false)),
+            ("r02_status", s("not_run")),
+            ("gate", gate),
+            ("note", s("仅 --check 或门禁未通过：未发送任何报文。")),
+        ]));
+    }
+
+    let text = fs::read_to_string(args.bootstrap.as_ref().unwrap()).map_err(|e| format!("bootstrap read: {e}"))?;
+    let nodes = parse_bootstrap_file(&text)?;
+    let mut client = Client::bind_any("r02-live", node_id("r02-live"))
+        .map_err(|e| format!("bind socket: {e}"))?;
+    let mut limiter = Limiter::new(1.0); // 判据固定 pps=1.0
+
+    // 判据固定：64 key，每个派生 kw/src 两条轨道。
+    let key_count: usize = 64;
+    let mut bucket_protocol: u64 = 0;   // 协议层不可解析（不进预警分母）
+    let mut bucket_rejected: u64 = 0;   // 索引层拒绝（进预警分母）
+    let mut bucket_success: u64 = 0;    // 确认且取回
+    let mut per_key: Vec<J> = Vec::new();
+    let mut distinct_nodes: HashSet<IpAddr> = HashSet::new();
+
+    for seq in 0..key_count {
+        let kw_logical = format!("R02_V1:{seq}:kw");
+        let kw_key = kad_keyword_hash(&kw_logical);
+        let file_hash = ed2k_hash(format!("R02_V1:{seq}:src").as_bytes());
+        let filename = format!("r02-{seq}.bin");
+        let fsize = 64u64 + seq as u64;
+        let (targets, diag) = r02_converge(&mut client, &kw_key, &nodes, &mut limiter);
+        if targets.is_empty() {
+            bucket_protocol += 1;
+            per_key.push(obj(vec![
+                ("seq", n(seq as f64)),
+                ("skipped", s("no verified in-zone target")),
+                ("bucket", s("protocol_unparseable")),
+            ]));
+            continue;
+        }
+        for t in &targets { distinct_nodes.insert(contact_addr(t).ip()); }
+
+        let entry = IndexEntry {
+            source_id: file_hash,
+            tags: vec![Tag::str1(TAG_FILENAME, &filename), Tag::int4(TAG_FILESIZE, fsize as u32)],
+        };
+        let tags = source_tags(4662, client.addr().port(), fsize);
+        let mut kw_ack = false;
+        let mut src_ack = false;
+        let mut kw_hit = false;
+        for t in &targets {
+            let addr = contact_addr(t);
+            if client.exchange(addr, &publish_key_req(&kw_key, &[entry.clone()]), op::PUBLISH_RES,
+                "r02: PUBLISH_KEY_REQ (0x43)", "r02: PUBLISH_RES (kw)", &mut limiter, None).is_ok() {
+                kw_ack = true;
+            }
+            if client.exchange(addr, &publish_source_req(&file_hash, &file_hash, &tags), op::PUBLISH_RES,
+                "r02: PUBLISH_SOURCE_REQ (0x44)", "r02: PUBLISH_RES (src)", &mut limiter, None).is_ok() {
+                src_ack = true;
+            }
+            if kw_ack {
+                if let Ok((p, _)) = client.exchange(addr, &search_key_req(&kw_key), op::SEARCH_RES,
+                    "r02: SEARCH_KEY_REQ (0x33)", "r02: SEARCH_RES (kw)", &mut limiter, None) {
+                    if let Ok(sr) = parse_search_res(&p) {
+                        if sr.answers.iter().any(|a| a.source_id == file_hash) { kw_hit = true; }
+                    }
+                }
+            }
+        }
+        let bucket = if kw_ack && src_ack && kw_hit {
+            bucket_success += 1; "success"
+        } else if kw_ack || src_ack {
+            // 有 PUBLISH_RES 但未取回：按 RISK 口径，未确认成功也未明示拒绝 ->
+            // 保守计入索引层拒绝桶（载荷上限/命名空间 Key 被丢弃的表现）。
+            bucket_rejected += 1; "index_rejected"
+        } else {
+            bucket_protocol += 1; "protocol_unparseable"
+        };
+        let mut rec: Vec<(&str, J)> = vec![
+            ("seq", n(seq as f64)), ("bucket", s(bucket)),
+            ("keyword_ack", b(kw_ack)), ("source_ack", b(src_ack)), ("keyword_hit", b(kw_hit)),
+        ];
+        rec.extend(diag);
+        per_key.push(obj(rec));
+    }
+
+    let effective = bucket_protocol + bucket_rejected + bucket_success;
+    let reject_ratio = if effective > 0 { bucket_rejected as f64 / effective as f64 } else { 0.0 };
+    let warning = reject_ratio > 0.20 && effective >= 10;
+    let precondition_ok = distinct_nodes.len() >= 10;
+
+    Ok(obj(vec![
+        ("schema", s("coldrevive.r02.operational-rate/v1")),
+        ("generated_at", s(utc_iso(unix_ms()))),
+        ("mode", s("r02-live")),
+        ("public_kad_contacted", b(true)),
+        ("evidence_valid_for_pass", b(false)),
+        ("r02_status", s("not_run")),
+        ("gate", gate),
+        ("criteria_sha256_registered", s(args.criteria_sha256.clone().unwrap_or_default())),
+        ("key_count", n(key_count as f64)),
+        ("tracks_per_key", n(2.0)),
+        ("rate_limit_pps", n(1.0)),
+        ("bucket_protocol_unparseable", n(bucket_protocol as f64)),
+        ("bucket_index_rejected", n(bucket_rejected as f64)),
+        ("bucket_success", n(bucket_success as f64)),
+        ("effective_samples", n(effective as f64)),
+        ("reject_ratio", n(reject_ratio)),
+        ("warning_threshold_exceeded", b(warning)),
+        ("distinct_nodes", n(distinct_nodes.len() as f64)),
+        ("precondition_distinct_nodes_ok", b(precondition_ok)),
+        ("verdict", s(if !precondition_ok { "inconclusive_environment_blocked" }
+                      else if warning { "rejection_warning" } else { "no_rejection_warning" })),
+        ("per_key", J::Arr(per_key)),
+        ("raw_records", J::Arr(client.records.iter().map(Record::json).collect())),
+        ("note", s("自动枚举三桶并给出预警布尔值；不判 pass、不改 spikes.json、不报成功率/可达率。结论由实验执行人据原始报文人工回填。")),
+    ]))
+}
+
 fn live_gate(args: &LiveArgs) -> (bool, Vec<String>, Vec<String>) {
     let mut blockers = Vec::new();
     let mut info = Vec::new();
@@ -3446,7 +3751,10 @@ fn print_usage() {
     println!("            --sample-size N --rate-limit R --attest-i-am-the-experiment-operator  (PLAN §21 A/B)");
     println!("  kad-mini live --check             inspect the real-network gate, send nothing");
     println!("  kad-mini live --bootstrap FILE --sample-size N --rate-limit R \\");
-    println!("            --attest-i-am-the-experiment-operator\n");
+    println!("            --attest-i-am-the-experiment-operator");
+    println!("  kad-mini r02-live --check         inspect R-02 operational-rate gate, send nothing");
+    println!("  kad-mini r02-live --bootstrap FILE --criteria-sha256 SHA \\");
+    println!("            --attest-i-am-the-experiment-operator  (DOC-35 decision 7=C; full dual-track)\n");
     println!("See tests/spikes/s2/PLAN.md. Never contacts public KAD unless all gates pass.");
 }
 
@@ -3535,6 +3843,19 @@ fn main() {
                 handoff: arg_value(&argv, "--handoff").map(PathBuf::from),
             };
             run_split_probe(&args).map(|r| (r, "kad-split", 0))
+        }
+        "r02-live" => {
+            let args = R02Args {
+                bootstrap: arg_value(&argv, "--bootstrap").map(PathBuf::from),
+                criteria_sha256: arg_value(&argv, "--criteria-sha256"),
+                attest: argv.iter().any(|a| a == "--attest-i-am-the-experiment-operator"),
+                check_only: argv.iter().any(|a| a == "--check"),
+            };
+            let check_only = args.check_only;
+            run_r02_live(&args).map(|r| {
+                let exit = if check_only { gate_exit_code(&r) } else { 0 };
+                (r, "kad-r02-live", exit)
+            })
         }
         "live" => {
             let args = LiveArgs {
