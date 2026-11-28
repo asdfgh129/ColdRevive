@@ -998,6 +998,49 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   `g2_claim=true` 为全局既有值，工具字段仍 `s6_status=not_run` /
   `evidence_valid_for_pass=false` / `auto_pass=false`。
 
+## 13. v2.4.161～v2.4.162 新增证据（LEDBAT 判据 v2 采样；公共 DHT 闸门；Web UI 改推送）
+
+> 所有者 2026-11-28 09:18 拍板：决定 1 = A、决定 2 = B、决定 3 = B、决定 4 不动
+> （[DOC-35 决定单](../06-plan/OWNER-DECISIONS-2026-11-28.md)，已签）。本节只记证据与边界。
+
+- **公平性判据 v2 采样（`criterion_met=true`，单机 netns）**：
+  `tests/e2e/w61/run_g2_fairness.sh` 在 192.168.1.221（Ubuntu 24.04，`6.2.0-39-generic`）
+  真内核 veth + HTB + netem 上跑 5 arm × 2 shape × 10 轮 = **100 轮，0 轮失败**。
+  判定面 L2（8 Mbit/s / 50 ms / jitter 5 ms），阈值与 v1 逐字一致（`[0.45, 0.55]`、
+  Jain ≥ 0.95、每轮都要过）：
+
+  | arm | 结果 | 份额范围 | Jain 最低 |
+  | :--- | :--- | :--- | :--- |
+  | `ledbat`（判定） | **10/10** | 0.496–0.504 | 0.9999 |
+  | `ledbat_paced`（判定） | **10/10** | 0.490–0.510 | 0.9996 |
+  | `ledbat_on_per_session_cap`（判定） | **10/10** | 0.499–0.501 | 1.0000 |
+  | `cc_off`（对照，判定） | 10/10 | 0.499–0.501 | 1.0000 |
+  | `cc_on`（AIMD，**参考不判定**） | 8/10 | 0.429–0.571 | 0.9801 |
+
+  证据 `tests/ARCHIVE/evidence/g2-fairness-v2-20261128/`：`summary.json`（205 662 B，
+  sha256 `7a4d58e5…`）、`raw-rounds.tar.gz`（809 个逐轮原始文件，sha256 `c9e15f6e…`）、
+  `provenance.txt`（harness 原样输出）、`PROVENANCE-NOTE.md`、`MANIFEST.json`。
+  **边界**：单机 netns 结果，不是公网/跨主机；AIMD 参考臂的 8/10 不参与判定；
+  **EX-1 的 v1 FAIL 78/80 未改写**；按 EX-1 C5，**不得**写「公平性达标/通过」。
+  **欠账**：`git_commit` 为事后 blob 比对推导（`a98ddc1`；harness 在无 `.git` 的 tar 快照里
+  只能写 `unknown`），下一轮采样须改为干净 clone 或源码树哈希——见 PROVENANCE-NOTE。
+- **LEDBAT 机制单测**：`cargo test -p cr-nat` **24/24**（新增 6 例：窗口随时延增长到
+  `cwnd_max` 后停住、丢包不降窗而 AIMD 仍减半、排队超 `target` 回退、连续 RTO 才塌陷复位、
+  默认仍是 AIMD、`mode` 解析）。这些只证明「机制按书面语义动作」，**不产出公平性结论**。
+- **公共 DHT 宣告闸门**：`cr-dht` `public_gate` **6/6**（缺省关闭、分钟窗口、跨日配额、
+  运行时开关且未授权时 `revive` 必须失败、审计环形有界、公共地址分类器）。
+  `coldrevived` `dht_daemon` 6/6、`p1_config` 5/5（缺省 `announce_public=false`，
+  `public_max_per_min=0` 回落缺省而非无限放行）。
+  **测试不碰公网**：没有任何用例向公共地址发 `announce_peer`——那是不可撤回的副作用。
+- **Web UI 改推送（ADR-008）**：`cr-api` `webui` **4/4**，其中两例是护栏：
+  出现 `setInterval` 即失败（禁止回退到轮询）、断线必须有可见文案与退避重连
+  （`onclose` + `setTimeout(connect`）。`coldrevived` 的 UI/OpenAPI 不遮蔽既有端点的用例仍通过。
+- **全量串行回归**：**584 passed / 0 failed / 3 ignored**
+  （`tests/ARCHIVE/evidence/regression-full-20261128-v162.log`，比 v160 多 14 条）。
+- **门禁边界**：`g2_claim=true`（人为字段，未改）、`s6_status=not_run`、
+  `evidence_valid_for_pass=false`、`auto_pass=false`、`runtime_verified=false`、
+  `counts_toward_nfr02=false` 全部不变；本节不写 G2/S6/NFR-02 结论，不报成功率/可达率。
+
 ## 相关文档
 
 - [DOC-02 SRS 验收指标](../01-product/SRS.md)

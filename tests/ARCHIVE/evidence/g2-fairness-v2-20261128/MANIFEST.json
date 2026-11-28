@@ -1,0 +1,66 @@
+{
+  "kind": "g2-fairness-v2-evidence",
+  "created": "2026-11-28T02:04:00Z",
+  "host": "192.168.1.221 (Ubuntu 24.04, root, 6.2.0-39-generic)",
+  "topology": "single host, one netns + veth pair, HTB class + netem on the host side; two competing UdpRelayStream flows through a real relay",
+  "criteria": {
+    "file": "tests/fixtures/g2-fairness-thresholds-v2.toml",
+    "recorded_at": "2026-11-28T09:20:38+08:00",
+    "sha256": "4d5d931e4fa90f244a7dad307a00496026596286bba89fb5485e291791def615",
+    "thresholds_identical_to_v1": true,
+    "jain_min": 0.95,
+    "share_min": 0.45,
+    "share_max": 0.55,
+    "rounds_per_arm": 10,
+    "aggregation": "all_rounds_must_pass",
+    "judging_shapes": ["L2"],
+    "judged_arms": ["cc_off", "ledbat", "ledbat_paced", "ledbat_on_per_session_cap"],
+    "reference_arms_not_judged": ["cc_on"]
+  },
+  "verdict": {
+    "criterion_met": true,
+    "judged_combinations": 4,
+    "expected_combinations": 4,
+    "failed_combinations": [],
+    "missing_combinations": [],
+    "wording": "按预注册判据 v2，在单机 netns + 真内核 HTB/netem 的 L2（8 Mbit/s, 50 ms, jitter 5 ms）上，四个被判定 arm 各 10/10 满足；参考臂 AIMD（cc_on）8/10 未满足，与 v1 的 78/80 同源",
+    "not_a_pass_for": [
+      "EX-1 的 v1 判定（仍 FAIL 78/80，未改写）",
+      "G2 解禁或 NFR 达标",
+      "跨公网 / 跨物理主机公平性",
+      "与外部 Cubic/Reno 竞争的表现",
+      "任何成功率或可达率"
+    ]
+  },
+  "results": {
+    "L2/ledbat": {"pass": "10/10", "share_range": [0.496, 0.504], "jain_min": 0.9999},
+    "L2/ledbat_paced": {"pass": "10/10", "share_range": [0.490, 0.510], "jain_min": 0.9996},
+    "L2/ledbat_on_per_session_cap": {"pass": "10/10", "share_range": [0.499, 0.501], "jain_min": 1.0000},
+    "L2/cc_off": {"pass": "10/10", "share_range": [0.499, 0.501], "jain_min": 1.0000},
+    "L2/cc_on_reference": {"pass": "8/10", "share_range": [0.429, 0.571], "jain_min": 0.9801},
+    "L1_all_arms": {"pass": "10/10 each", "note": "16 Mbit/s / 20 ms，对照形状，不失真的证明"}
+  },
+  "provenance": {
+    "git_commit": "a98ddc1",
+    "git_commit_derivation": "harness 在无 .git 的 tar 快照里写了 git_commit=unknown；事后用 blob 哈希逐文件比对确认：cr-nat/relay_udp_stream.rs 56206c4c、cr-nat/lib.rs 5034dbb9、probe/main.rs 8259617d 与 a98ddc1 完全一致；cr-core/lib.rs 仅换行不同（CRLF→LF 后 = d847130f，与 a98ddc1 一致）。见 PROVENANCE-NOTE.md",
+    "kernel_release": "6.2.0-39-generic",
+    "tc_qdisc_and_class": "见 raw-rounds.tar.gz 内 tc-qdisc-*.txt / tc-class-*.txt / tc-before-*.txt / tc-after-*.txt",
+    "probe_sha256": "0c8c41ea23ba83ff51341067663cb46a098e69f18b4d5e8f26af9f419b516f90",
+    "criteria_sha256": "4d5d931e4fa90f244a7dad307a00496026596286bba89fb5485e291791def615",
+    "harness": "tests/e2e/w61/run_g2_fairness.sh + analyze_g2_fairness.py",
+    "gate_snapshot": {"g2_claim": true, "s6_status": "not_run", "evidence_valid_for_pass": false, "auto_pass": false}
+  },
+  "files": {
+    "summary.json": {"sha256": "7a4d58e5b888f7449a2005305424a1760a26f6b658792f93ad1eebcefeb48a1f", "bytes": 205662},
+    "provenance.txt": {"sha256": "0eab9f2a8a41bde6a737e1fec95c325ae45004e4ab6b9372c2de16931f7e3d2d", "bytes": 282, "note": "harness 原始输出，未改；git_commit=unknown 的原因见 PROVENANCE-NOTE.md"},
+    "raw-rounds.tar.gz": {"sha256": "c9e15f6ecee60a2bd6ed4c61bfd941bf6e156219ebbc5a0d3843eeac0816da51", "bytes": 2134230, "files": 809, "note": "100 轮 × (flow1/flow2/relay + tc + 日志)，满足判据 raw_rounds_must_be_archived"}
+  },
+  "voided_runs": [],
+  "do_not_claim": [
+    "不得写「公平性达标 / 通过 / 基本通过」（EX-1 C5 明文禁止）",
+    "不得用本结果改写 EX-1 的 v1 FAIL 78/80",
+    "不得外推为跨公网、跨主机或与外部 TCP 竞争的表现",
+    "不得报成功率 / 可达率（ADR-012）",
+    "不得把 cc_on 参考臂的 8/10 说成「v2 整体失败」——它不参与判定"
+  ]
+}

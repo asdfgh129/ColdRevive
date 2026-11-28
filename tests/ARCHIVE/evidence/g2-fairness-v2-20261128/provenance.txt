@@ -1,0 +1,6 @@
+git_commit=unknown
+git_dirty=0
+kernel_release=6.2.0-39-generic
+probe_sha256=0c8c41ea23ba83ff51341067663cb46a098e69f18b4d5e8f26af9f419b516f90
+criteria_sha256=4d5d931e4fa90f244a7dad307a00496026596286bba89fb5485e291791def615
+criteria_file=tests/fixtures/g2-fairness-thresholds-v2.toml

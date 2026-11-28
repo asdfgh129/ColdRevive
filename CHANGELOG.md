@@ -1,3 +1,50 @@
+## [2.4.162] - 2026-11-28 — 四项决定落地：LEDBAT 判据 v2 采样通过；公共 DHT 闸门；Web UI 改推送
+
+> **不改门禁、不改判据阈值**：`g2_claim=true`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 的 v1 FAIL 78/80、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+> 所有者 2026-11-28 09:18 口径：决定 1 选 A、决定 2 选 B、决定 3 选 B、决定 4 不动
+> （[DOC-35](docs/06-plan/OWNER-DECISIONS-2026-11-28.md) 已签）。
+
+- **决定 1-A 第一步：ADR-025（时延驱动拥塞控制）**。中继 UDP 流的 cwnd 从「丢包驱动」
+  改为「排队时延驱动」：`base_delay` 取单调最小 RTT，每 RTT 按 `gain·(target−qd)/target`
+  增减，`target=100 ms`、`gain=1.0`。**丢包只触发重传、不降窗**（EX-1 的失败机理就是
+  AIMD 把非对称随机丢包当成拥塞）；连续 6 轮 RTO 才塌陷复位到 `cwnd_init`。
+  明示三处偏离 RFC 6817（丢包不降窗 / 无慢启动 / 基准不老化）并各写了理由。
+  `CcMode::Aimd` 仍是缺省，既有行为逐字节不变。
+- **决定 1-A 第二步：判据 v2 先于代码登记**。`tests/fixtures/g2-fairness-thresholds-v2.toml`
+  （`2026-11-28T09:20:38+08:00`，sha256 `4d5d931e…`）：阈值与 v1 **逐字一致**，
+  只改被测机制与证据要求（补 `git_commit`/`kernel_release`/`tc_qdisc_and_class` 与逐轮原始目录）。
+  旧判据 `0671a173…` 未删未改。先提交（`d5d93aa`）再写代码，这是 EX-1 C4 的顺序约束。
+- **决定 1-A 第三步：实现与配置**。`CongestionConfig` 增 `mode`/`ledbat_target`/`ledbat_gain`；
+  探针 `--cc-mode aimd|ledbat`；守护进程配置 `nat.udp_cc_mode`（拼错直接报错，不静默回落成
+  aimd —— 否则「以为开了 LEDBAT 实际跑 AIMD」，量出来的数据会挂错名字）。
+- **决定 1-A 第四步：采样（单机 netns，判定面 L2）**。221 真内核 veth+HTB+netem，
+  5 arm × 2 shape × 10 轮 = 100 轮、**0 轮失败**：`ledbat` 10/10（0.496–0.504，Jain ≥ 0.9999）、
+  `ledbat_paced` 10/10（0.490–0.510）、`ledbat_on_per_session_cap` 10/10、`cc_off` 10/10 对照，
+  **参考臂 AIMD 8/10（0.429–0.571）**——与 v1 的 78/80 同源，说明变化来自机制而不是量具。
+  总体 `criterion_met=true`（4/4 判定组合）。证据
+  `tests/ARCHIVE/evidence/g2-fairness-v2-20261128/`（摘要 + 809 个逐轮原始文件打包 +
+  PROVENANCE-NOTE）。**边界**：单机 netns，不是公网/跨主机；EX-1 的 v1 判定不改写；
+  按 EX-1 C5 **不得**写「公平性达标/通过」。
+- **决定 3-B：公共 DHT 宣告闸门（授权 ≠ 默认开）**。`cr-dht::public_gate`：缺省关闭；
+  显式 `dht.announce_public=true` 后仍受每分钟（默认 4）与每 UTC 日（默认 200）双配额；
+  `/cli dht announce-off` 立即生效，`announce-on` 在配置未授权时**必须失败**（避免
+  「运行时开关替代授权」）；每次放行/拒绝留痕（有界环 16 条，`/health.dht.public_announce`）。
+  只对公共地址过闸门，回环/私有/CGNAT/链路本地/组播不算公共——否则会误伤内网自建测试节点，
+  也会把现有回环用例打挂。**没有新增任何触碰公网 DHT 的测试**。
+- **决定 2-B：Web UI 成为唯一界面，并改回推送**。`cr-api::webui` 重写：状态走 `/ws`
+  每秒推送（ADR-008 本来就禁止轮询，旧实现是 `setInterval(5000)`），任务列表只在
+  「推送里 `seed_tasks` 变化」「用户操作」「用户点刷新」时拉取；断线显示「已断开」并退避重连，
+  不拿旧数字充数；新增进度条/速率/错误原因分类。加了两条护栏单测：出现 `setInterval` 即失败、
+  断线必须有可见文案。`ARCH`/`ROADMAP` 把托盘/浏览器捕获/UPnP 续租标为 **M4 再评估**。
+- **测试**：`cr-nat` 24/24（新增 6 例 LEDBAT）、`cr-dht` public_gate 6/6、
+  `cr-api` webui 4/4、`coldrevived` dht_daemon 6/6 与 p1_config 5/5；
+  全量串行回归 **584 passed / 0 failed / 3 ignored**
+  （`regression-full-20261128-v162.log`，比 v160 多 14 条）。
+- **已知欠账**：`git_commit` 是事后 blob 比对推导（harness 在无 `.git` 的 tar 快照里只能写
+  `unknown`）。下一轮采样必须改成干净 clone 或源码树哈希，已写进 PROVENANCE-NOTE 与 TEST.md。
+
 ## [2.4.161] - 2026-11-28 — 待所有者决定统一成 DOC-35（每条带利弊选项与不决定的后果）
 
 > **纯文档，不动代码、不动门禁、不动判据**：`g2_claim=true`、`s6_status=not_run`、

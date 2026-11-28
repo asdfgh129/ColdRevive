@@ -1,0 +1,5 @@
+summary.json -text
+provenance.txt -text
+raw-rounds.tar.gz -text
+MANIFEST.json -text
+PROVENANCE-NOTE.md -text

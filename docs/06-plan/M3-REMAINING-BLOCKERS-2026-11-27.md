@@ -115,7 +115,7 @@ P95 截在 1.2 s 而失去意义。
 - 本报告里 H 侧线上字节数只统计了入向（过滤器 bug，事后已修），应读 M 侧接收数；
 - 不是 G2/S6/NFR-02 证据；门禁字段一个未动。
 
-### 2.3 LEDBAT / 公平性 EX-1 —— 所有者已选 A（2026-11-28），按顺序落地中
+### 2.3 LEDBAT / 公平性 EX-1 —— 所有者已选 A（2026-11-28），四项已全部落地
 
 EX-1 仍为 **FAIL**（80 轮中 78/80，cc_on/paced 两轮 0.430/0.570、0.433/0.567）。
 2026-11-28 09:18 所有者对 DOC-35 决定 1 选 **A**：实现 LEDBAT + 新 ADR + 新判据 + 重采。
@@ -129,9 +129,24 @@ EX-1 仍为 **FAIL**（80 轮中 78/80，cc_on/paced 两轮 0.430/0.570、0.433/
    旧判据 sha `0671a173…` 未删未改。
 3. ✅ **实现**：`CcMode::Ledbat` + `ledbat_target`/`ledbat_gain`；`--cc-mode` 探针开关；
    `nat.udp_cc_mode`（`aimd|ledbat`，非法值报错）；`cr-nat` 24/24（新增 6 例）。
-4. ⏳ **重采**：`tests/e2e/w61/run_g2_fairness.sh` 已加 ledbat 三个 arm + provenance +
-   判据原文落盘；正式采样在 221 真内核 veth/HTB/netem 上跑，结果**未出**。
-   **未出结果前不得写「LEDBAT 已改善公平性」**。
+4. ✅ **重采（2026-11-28 02:04 UTC 完成）**：`tests/e2e/w61/run_g2_fairness.sh` 加三个
+   ledbat arm + provenance + 判据原文落盘；221 真内核 veth/HTB/netem，5 arm × 2 shape ×
+   10 轮 = 100 轮，**0 轮失败**。L2（8 Mbit/s / 50 ms / jitter 5 ms）判定面：
+   `ledbat` 10/10（份额 0.496–0.504，Jain ≥ 0.9999）、`ledbat_paced` 10/10（0.490–0.510，
+   Jain ≥ 0.9996）、`ledbat_on_per_session_cap` 10/10（0.499–0.501）、`cc_off` 10/10；
+   **参考臂 AIMD（cc_on）8/10**（0.429–0.571），与 v1 的 78/80 同源。
+   总体 `criterion_met=true`（4/4 判定组合）。
+   证据 `tests/ARCHIVE/evidence/g2-fairness-v2-20261128/`（summary.json + 809 个逐轮原始文件
+   打包 + PROVENANCE-NOTE）。
+
+   **边界（写在一起，不许拆开引用）**：
+   - 这是**单机 netns + 真内核 HTB/netem** 的结果，不是公网、不是跨主机；
+   - AIMD 的 8/10 是**参考臂**，不参与 v2 判定，但也不能拿来当「v2 全过」的装饰；
+   - **EX-1 的 v1 判定仍是 FAIL 78/80，未改写**；本轮履行的是 C4 的「新判据 + 新样本 +
+     provenance」义务，是否调整 G2 记账口径属 G2 复评，不在本轮动；
+   - 措辞红线：**不得**写「公平性达标／通过」（EX-1 C5）；
+   - 欠账一条：`git_commit` 是事后 blob 比对推导（harness 在无 `.git` 目录里写了 unknown），
+     下一轮采样必须换成「干净 clone 或源码树哈希」，见 PROVENANCE-NOTE。
 
 不得调 β、不改现有阈值、不复用 sha `0671a173…` 重跑后宣称 PASS。
 
