@@ -2,15 +2,15 @@
 doc_id: DOC-14
 title: 开发计划与里程碑（ROADMAP）
 category: 计划
-version: 2.17
+version: 2.18
 status: 持续维护
 owner: 项目组
-updated: 2026-11-20
+updated: 2026-11-28
 ---
 
 # 开发计划与里程碑（ROADMAP）
 
-> 编号 DOC-14 · 版本 2.17 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-20
+> 编号 DOC-14 · 版本 2.18 · 状态 **持续维护** · 责任人 项目组 · 更新 2026-11-28
 > 本文只管「什么时候做、做完怎么验收」。需求见 [SRS](../01-product/SRS.md)，风险见 [RISK](../05-quality/RISK.md)。
 
 ## 1. WBS 任务树
@@ -102,7 +102,7 @@ ColdRevive
 | 安全 / 测试工程师 | 威胁建模、故障注入、压测 | M2–M4 |
 | 法务 / 合规顾问 | P2P 工具合规边界 | M0、M4 |
 
-## 6. 当前状态（起始 2026-11-09，更新至 2026-11-20）
+## 6. 当前状态（起始 2026-11-09，更新至 2026-11-28）
 
 > 本节按时间追加观测，**较早条目保留当时口径**，最新状态以本节末尾条目与
 > `spikes.json` 为准。截至 **2026-11-14**：**G0 条件冻结（conditional pass）**，
@@ -113,7 +113,7 @@ ColdRevive
 > 评审记录见 [G0-REVIEW](G0-REVIEW.md)，机读进度见 `spikes.json` 的 `m1_progress` / `m2_progress`。
 > 其中「立即下一步 / 换网 / 重跑 P4」等条目属 2026-11-09～10 的历史排期，
 > 已被 v2.4.14 / v2.4.26 的字节序与 Kad tag 编码修复推翻，**不再作为当前执行依据**，
-> 保留仅为决策演化链；当前应执行的是本节末尾「2026-11-14 状态更新」。
+> 保留仅为决策演化链；当前应执行的是本节末尾「2026-11-28 状态更新」。
 
 - 阶段：**设计冻结候选，M0 进行中（Spike 首批观测已产出，G0 未通过）**〔2026-11-11 口径；2026-11-13 起 G0 已条件冻结，见本节末尾〕。
 - 已完成：文档体系工程化（v2.4 自包含索引页，21 份 DOC + 10 份 ADR）、项目目录骨架、风险登记册、测试与计划基线。
@@ -843,6 +843,22 @@ ColdRevive
     credit/AICH；样本均 < `PARTSIZE`，跨分片与 hashset 校验未覆盖。
   - **下一步**：① 把 `cr-ed2k` 接进 `coldrevived` 生产路径（FR-25 升「已实现」的唯一路径）；
     ② 用 > `PARTSIZE` 的样本补跨分片 + `OP_HASHSETREQUEST`；③ FR-24 公网检索待 G0 放宽。
+
+- **2026-11-28 状态更新（v2.4.161～v2.4.163）**：M3 进入收口，**尚未进入 M4**。
+  所有者 09:18 签 [DOC-35](OWNER-DECISIONS-2026-11-28.md) 四项：决定 1 选 A（LEDBAT +
+  新判据 v2 + 真内核 netem 采样，4/4 判定组合 `criterion_met=true`；EX-1 v1 仍 FAIL 78/80，
+  不得写「公平性达标」）、决定 2 选 B（纯 Web UI，托盘 / 浏览器捕获 / UPnP 续租移出到 M4
+  再评估）、决定 3 选 B（授权公共 DHT 机制但默认关 + 双配额 + kill switch + 审计；
+  本轮无公网 announce 证据）、决定 4 不动（macOS 5 pass / 1 not_verified，不计入 NFR-02）。
+  G-1～G-5 欠账全关；G-3 中继运维面三项分句 PASS 关闭（DOC-37）；G3 兼容性矩阵仍为
+  人工带 6 条例外结案，机器字段 `g3_status=not_run` 未改。NFR-04 公网 P95 281/230 ms
+  与 W6.7 punched-TCP BT 1 MiB 落地均已有归档，边界按 [DOC-36](M3-REMAINING-BLOCKERS-2026-11-27.md)
+  执行。全量串行回归 **587 passed / 0 failed / 3 ignored**（`regression-full-20261128-v163.log`）。
+  **下一轮**：R-02 复审准备、G2 记账口径复评、M4 范围圈定，见
+  [DOC-38 M4 范围与 R-02 复审启动](M4-SCOPE-2026-11-28.md)。
+  门禁红线不变：`g2_claim=true`（人为字段）、`s6_status=not_run`、
+  `evidence_valid_for_pass=false`、`auto_pass=false`、`runtime_verified=false`、
+  `counts_toward_nfr02=false`。
 
 ## 相关文档
 
