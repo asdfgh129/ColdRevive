@@ -73,9 +73,9 @@ updated: 2026-11-27
 | DOC-32 | S6 是否折算进 G2 出口（决定单） | [06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md](06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md) | 已签 |
 | DOC-33 | G2 公平性书面例外 EX-1 | [06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md](06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md) | 已签 |
 | DOC-34 | G2 出口记录（M2 出口，2026-11-25 达标） | [06-plan/G2-EXIT-RECORD-2026-11-25.md](06-plan/G2-EXIT-RECORD-2026-11-25.md) | 已签 |
-| DOC-35 | 待所有者决定事项（2026-11-28，决定 1–6 已签 / 7 待签） | [06-plan/OWNER-DECISIONS-2026-11-28.md](06-plan/OWNER-DECISIONS-2026-11-28.md) | 部分已签 |
+| DOC-35 | 待所有者决定事项（2026-11-28，决定 1–7 已签；7 选 C + 开闸门） | [06-plan/OWNER-DECISIONS-2026-11-28.md](06-plan/OWNER-DECISIONS-2026-11-28.md) | 已签 |
 | DOC-37 | G-3 中继运维面验收判据（预登记；原 DOC-35，2026-11-28 重编号） | [06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md](06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md) | 有效 |
-| DOC-38 | M4 范围与 R-02 复审启动说明（2026-11-28） | [06-plan/M4-SCOPE-2026-11-28.md](06-plan/M4-SCOPE-2026-11-28.md) | 有效 |
+| DOC-38 | M4 范围与 R-02 复审启动说明（2026-11-28，决定 7 选 C 授权公网发布） | [06-plan/M4-SCOPE-2026-11-28.md](06-plan/M4-SCOPE-2026-11-28.md) | 有效 |
 
 ## 4. Front Matter 规范
 
