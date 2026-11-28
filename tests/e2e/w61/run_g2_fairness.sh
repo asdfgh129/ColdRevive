@@ -47,18 +47,38 @@ fi
 # provenance 三项（EX-1 C4 第 2 条）：缺一项都不许宣称可复现。
 # 源码树哈希必须是**采样前**当场算的：tar 快照没有 .git 时，git_commit=unknown 是事实，
 # 不许事后靠 blob 比对推导再回填。这里把「跑了哪些源码」直接钉成目录摘要。
+# 只收源码与量具脚本，**不收 reports/、__pycache__ 等运行生成物**——否则哈希会随
+# 上一轮结果漂移，反而不能证明这一轮的代码版本。
 source_tree_sha() {
   local files
-  files=$(cd "$REPO" && find src Cargo.toml Cargo.lock tests/e2e/w61 \
-    -type f -not -path '*/target/*' -print 2>/dev/null | LC_ALL=C sort)
+  files=$(
+    (
+      cd "$REPO"
+      find src -type f -print 2>/dev/null
+      printf '%s\n' Cargo.toml Cargo.lock \
+        tests/e2e/w61/run_g2_fairness.sh tests/e2e/w61/analyze_g2_fairness.py \
+        "$G2F_FIXTURE"
+    ) | LC_ALL=C sort | sed '/^$/d'
+  )
   if [[ -z "$files" ]]; then echo "unavailable"; return; fi
   (cd "$REPO" && printf '%s\n' "$files" | while IFS= read -r f; do
+      [[ -f "$f" ]] || continue
       printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "$f"
     done | sha256sum | awk '{print $1}')
 }
+# 没有 .git 时 git_dirty 必须是 unknown，不能写 0——0 会被读成「工作树干净」。
+git_identity() {
+  if ! git -C "$REPO" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "unknown unknown"; return
+  fi
+  local dirty
+  dirty=$(git -C "$REPO" status --porcelain 2>/dev/null | wc -l | tr -d '[:space:]')
+  echo "$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown) ${dirty:-unknown}"
+}
 {
-  echo "git_commit=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
-  echo "git_dirty=$(git -C "$REPO" status --porcelain 2>/dev/null | wc -l)"
+  read -r git_commit git_dirty < <(git_identity)
+  echo "git_commit=$git_commit"
+  echo "git_dirty=$git_dirty"
   echo "source_tree_sha256=$(source_tree_sha)"
   echo "kernel_release=$(uname -r)"
   echo "probe_sha256=$(sha256sum "$BIN" | awk '{print $1}')"
