@@ -73,6 +73,7 @@ updated: 2026-11-27
 | DOC-32 | S6 是否折算进 G2 出口（决定单） | [06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md](06-plan/G2-S6-FOLD-IN-DECISION-2026-11-25.md) | 已签 |
 | DOC-33 | G2 公平性书面例外 EX-1 | [06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md](06-plan/G2-FAIRNESS-EXCEPTION-2026-11-25.md) | 已签 |
 | DOC-34 | G2 出口记录（M2 出口，2026-11-25 达标） | [06-plan/G2-EXIT-RECORD-2026-11-25.md](06-plan/G2-EXIT-RECORD-2026-11-25.md) | 已签 |
+| DOC-35 | 待所有者决定事项（2026-11-28，四项带利弊选项） | [06-plan/OWNER-DECISIONS-2026-11-28.md](06-plan/OWNER-DECISIONS-2026-11-28.md) | 待评审 |
 
 ## 4. Front Matter 规范
 

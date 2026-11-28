@@ -1,3 +1,23 @@
+## [2.4.161] - 2026-11-28 — 待所有者决定统一成 DOC-35（每条带利弊选项与不决定的后果）
+
+> **纯文档，不动代码、不动门禁、不动判据**：`g2_claim=true`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 FAIL 78/80、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+
+- **新增 DOC-35 [`docs/06-plan/OWNER-DECISIONS-2026-11-28.md`]：四项待所有者决定集中一处**，
+  每条固定五段：一句话问题 → 为什么卡在所有者 → **带利与弊的选项表** → 我的建议与理由 →
+  不决定的后果。四项分别是：①EX-1 公平性（A 实现 LEDBAT / B 换宽判据 / C 书面延期 / D 删承诺）；
+  ②W6.6 GUI 路线（A Tauri / B 纯 Web UI / C 轻量托盘 / D 移出）；③FR-25 是否授权公共 DHT
+  announce；④macOS NFR-02 计入口径（补测 / 如实保留 / 不得伪造）。
+- **分工写死**：`OPEN-QUESTIONS`（DOC-15）只放技术待定项，**不再混入授权类问题**；
+  卡点清单（DOC-36）只描述「卡在哪」，不承担「怎么选」，§2 与 §3 已加指针指向 DOC-35。
+- **补 DOC-36 的 front matter**（`doc_id` / `title` / `category` / `version` / `status` /
+  `owner` / `updated`），`scripts/build_docs.py --check` 由 5 个问题降到 4 个。
+  剩下 4 个都是**已签署单据**（DOC-32 / DOC-33 / DOC-34 / G3 运维验收）缺 front matter，
+  属历史遗留；**未擅自改动签署文件**，待所有者确认后再补。
+- 结论口径未变：四项都**不挡 M3 的 G3 门**（G3 已由所有者带 6 条例外结案），
+  挡的是「产品能不能交出去用」；已关闭项（NFR-04 公网 P95、W6.7 打洞 BT、G-1～G-5）不回退。
+
 ## [2.4.160] - 2026-11-27 — 打洞登记可重入；W6.7 punched-TCP BT 关闭（1 MiB / md5 一致）
 
 > **不改门禁、不改判据**：`g2_claim=true`（人为字段）、`s6_status=not_run`、
