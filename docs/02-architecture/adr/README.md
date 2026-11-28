@@ -45,6 +45,7 @@ updated: 2026-11-18
 | [ADR-024](ADR-024-udp-bt-data-plane.md) | UDP 承载能不能跑 BT 数据面 | 不追性能，只覆盖「TCP 入向被边缘 RST」那类部署；对比维持现状 / std-only 自研有界可靠层 / 复用 uTP / QUIC，**选 B 并分阶段带闸门**（UDP 字节预算 → `relay_udp_stream` 有界可靠层 → opt-in 接入 → 证据）。实施偏差：UDP 数据面用 `"US"` 线段魔数而非复用 `CD`/`TunnelMux` 分流，OPEN 仍复用 ADR-023 的 23 B 编码 | ✅ 已接受并实施（2026-11-20 v0.3；阶段 0–3 完成：1 MiB 双向注入 5%/2%/1%、真 librqbit SOCKS5 取片 1 MiB、W61 在 RST 主机上双 NAT 1 MiB 12/12；`relay_data_plane_udp="udp-carrier-implemented-rst-path-verified"`，`path` 仅限 119.29.150.254） | 拥塞/公平性量具；其他 RST 部署的外推证据 |
 
 | [ADR-023](ADR-023-bt-over-relay.md) | 中继能不能承载 BT 数据面 | 用**TCP 中继帧**承载字节流（不新增帧类型、不重造 TCP）：`CD` 头 + channel + DATA/CLOSE/OPEN/OPENED，16 KiB 分块走 ADR-014 令牌桶；cr-bridge 的 `Upstream::Tunnel` 交给 librqbit SOCKS5 钩子；持有者侧在订阅连接上分流并 splice 到本地引擎；UDP 仍只做控制面 | ✅ 已接受（2026-11-19；v1.1 双向握手 + splice，**v1.2 读帧必须可续读**；W59 公网双端、W60 真打洞失败→中继接管实测） | UDP 数据面需要可靠层时才开 |
+| [ADR-025](ADR-025-ledbat-congestion.md) | 中继 UDP 流的 cwnd 该由什么信号驱动 | 对比继续调 AIMD `β` / 中继侧配额定公平 / **时延驱动（LEDBAT 语义）** / 不做；选时延驱动：`base_delay` 单调最小、每 RTT 按 `(target−qd)/target` 增减、丢包只重传不降窗、连续 RTO 6 次塌陷复位；AIMD 原样保留为 `CcMode::Aimd` | ✅ 已接受并实施（2026-11-28，所有者决定 1 选 A；判据 v2 先登记后采样，阈值与 v1 逐字一致） | 与外部 Cubic/Reno 竞争、深队列 bufferbloat、路由突变基准漂移；不产出任何 G2 结论 |
 
 **统计**：24 项决策，23 项已接受、1 项待定（ADR-005 待 M4）；ADR-001 已于 2026-11-13 由项目所有者签署 `public` 默认模式并定稿。
 

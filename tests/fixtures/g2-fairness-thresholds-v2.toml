@@ -1,0 +1,87 @@
+# G2 公平性量具预注册判据 v2（在采集任何样本之前写入）
+#
+# 为什么有 v2：所有者 2026-11-28 决定 1 选 A——用 LEDBAT（时延驱动）替代 AIMD 作为
+# 中继 UDP 流的拥塞控制信号，见 docs/02-architecture/adr/ADR-025-ledbat-congestion.md。
+# 按 EX-1 第 3 节 C4，「换机制」必须**先**登记新判据（新时间戳 + 新 sha256）**再**采样；
+# 顺序反了即为「看到结果改规则」，本轮作废。
+#
+# v1（g2-fairness-thresholds.toml，sha256 0671a173…）保留不删不改，它是 v1 的历史。
+# **本文件的阈值与 v1 完全一致**：份额 [0.45, 0.55]、Jain ≥ 0.95、每轮都要达标。
+# 变的是被测机制与证据要求（补 provenance 三项），不是合格线。
+
+recorded_at = "2026-11-28T09:20:38+08:00"
+version = "g2-fairness-thresholds-v2"
+scope = "221 单机双 netns + 真内核 veth/HTB/netem；两条 UdpRelayStream 竞争流；不是公网 G2 证据"
+supersedes = "g2-fairness-thresholds-v1"
+mechanism_under_test = "ledbat"   # v1 是 aimd
+
+[criteria]
+flows = 2
+warmup_s = 3
+sample_s = 10
+rounds_per_arm = 10
+jain_min = 0.95
+share_min = 0.45
+share_max = 0.55
+# 每一轮都必须同时满足 J >= jain_min 且两条流的份额都在 [share_min, share_max]。
+# 中位/平均达标不算；任一轮失败即该 arm FAIL。与 v1 逐字一致。
+aggregation = "all_rounds_must_pass"
+goodput_window = "sender/receiver 时间轴 [warmup_s, warmup_s + sample_s] 内实际收到的应用字节"
+
+[arms]
+# 被判定的 arm：LEDBAT 三种配置（纯时延 / 加 pacing / 中继侧每会话上限叠加）。
+# cc_off 仍是机制关闭对照：它若失真，其余 arm 的数字一律不采信。
+required = ["cc_off", "ledbat", "ledbat_paced", "ledbat_on_per_session_cap"]
+# 参考臂：记录并归档，但**不参与判定**。AIMD 在 v1 已 FAIL（78/80），本轮不重判它，
+# 只留同环境对照，避免「换了机制却没法对比」。
+reference = ["cc_on"]
+# LEDBAT 参数必须与 ADR-025 一致，采样命令里不许临时改。
+[arms.ledbat_params]
+mode = "ledbat"
+target_ms = 100
+gain = 1.0
+cwnd_init = 8
+cwnd_min = 1
+cwnd_max = 32
+
+[link_shapes]
+required = [
+  { name = "L1", rate_mbit = 16, delay_ms = 20, jitter_ms = 2 },
+  { name = "L2", rate_mbit = 8, delay_ms = 50, jitter_ms = 5 },
+]
+# v1 只在 L2 暴露了 78/80 的失败；L2 是必须跑满的判定面，L1 用于「不许变坏」的对照。
+judging_shapes = ["L2"]
+
+[evidence]
+required_fields = [
+  # provenance 三项：v1 缺这三项是真实欠账（EX-1 C4 第 2 条）
+  "git_commit", "kernel_release", "tc_qdisc_and_class",
+  "tc_s_counters",
+  "per_flow_timestamped_received_bytes", "per_flow_share", "jain_index",
+  "relay_delta_counters", "per_flow_cc_snapshot", "raw_probe_stdout",
+  "g2_gate_snapshot",
+  # v2 新增：必须能把「时延信号」本身当证据，而不只是结果
+  "per_flow_base_delay_ms", "per_flow_queued_delay_ms", "per_flow_ledbat_updates",
+  "per_flow_collapse_resets", "per_round_raw_dir",
+]
+# 逐轮原始目录必须入库（v1 的 80 轮原始目录已不在，只能靠 summary，属不可复现）。
+raw_rounds_must_be_archived = true
+
+[forbidden_claims]
+entries = [
+  "不得写 G2 解禁或 g2_claim=true",
+  "不得写跨公网公平性达标",
+  "不得把中继令牌桶限流冒充协议退让",
+  "不得把单机 netns 结果外推为跨物理主机结论",
+  "不得在本判据文件写入后再修改阈值来解释数据",
+  "不得用 v2 的结果回溯改写 v1 的 FAIL 结论",
+  "不得把 LEDBAT 与外部 Cubic/Reno 的竞争结论写成本项目公平性证据",
+  "不得在缺 provenance 三项时宣称本轮可复现",
+]
+
+[gate_snapshot]
+# 采样时的门禁取值，必须与实际一致；本文件不改变任何门禁字段。
+g2_claim = true
+s6_status = "not_run"
+evidence_valid_for_pass = false
+auto_pass = false
