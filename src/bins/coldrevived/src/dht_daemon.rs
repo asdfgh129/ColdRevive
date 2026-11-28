@@ -268,9 +268,14 @@ fn run_cycle(
                 if let Err(r) = gate.try_acquire(ih, SystemTime::now()) {
                     status.public_refused += 1;
                     status.public_last_refusal = Some(r.label());
-                    // 拒绝不消耗宣告预算、也不冒充一次 attempt；继续看下一个 key，
-                    // 因为拒绝原因可能是「这个 key 太频繁」而不是「以后都别发」。
-                    continue;
+                    // 这四种拒绝都意味着「本地址剩余 key 再试也没用」，于是跳过该地址、
+                    // 换下一个候选（不能 `break 'outer`：后面的私有候选仍应正常宣告）。
+                    match r {
+                        cr_api::dht::Refusal::MinuteRateLimit
+                        | cr_api::dht::Refusal::DailyCap
+                        | cr_api::dht::Refusal::Killed
+                        | cr_api::dht::Refusal::Disabled => continue 'outer,
+                    }
                 }
                 status.public_sent += 1;
             }
