@@ -1,3 +1,13 @@
+---
+doc_id: DOC-34
+title: G2 出口记录（M2 出口 · 2026-11-25 声明达标）
+category: 计划
+version: 1.7
+status: 有效
+owner: 项目所有者
+updated: 2026-11-27
+---
+
 # G2 出口记录（M2 出口 · 2026-11-25 声明达标）
 
 - 文档号：DOC-34

@@ -1,3 +1,13 @@
+---
+doc_id: DOC-35
+title: G-3 中继运维面验收判据（预登记）
+category: 计划
+version: 1.1
+status: 有效
+owner: 项目所有者
+updated: 2026-11-26
+---
+
 # G-3 中继运维面验收判据（预登记）
 
 - 文档号：DOC-35
