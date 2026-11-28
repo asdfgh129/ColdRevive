@@ -854,7 +854,8 @@ ColdRevive
   人工带 6 条例外结案，机器字段 `g3_status=not_run` 未改。NFR-04 公网 P95 281/230 ms
   与 W6.7 punched-TCP BT 1 MiB 落地均已有归档，边界按 [DOC-36](M3-REMAINING-BLOCKERS-2026-11-27.md)
   执行。全量串行回归 **587 passed / 0 failed / 3 ignored**（`regression-full-20261128-v163.log`）。
-  **下一轮**：R-02 复审准备、G2 记账口径复评、M4 范围圈定，见
+  **下一轮**：R-02 复审准备、G2 记账口径复评；M4 范围已按 DOC-35 决定 5 = A
+  锁定为 G4 核心（三项移出功能不纳入交付），见
   [DOC-38 M4 范围与 R-02 复审启动](M4-SCOPE-2026-11-28.md)。
   门禁红线不变：`g2_claim=true`（人为字段）、`s6_status=not_run`、
   `evidence_valid_for_pass=false`、`auto_pass=false`、`runtime_verified=false`、
