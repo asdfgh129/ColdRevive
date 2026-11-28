@@ -83,6 +83,8 @@ impl DataPlane {
             cwnd_max: 32,
             beta: cfg.nat_udp_cc_beta_x100 as f64 / 100.0,
             pacing: cfg.nat_udp_cc_pacing,
+            mode: cr_nat::relay_udp_stream::CcMode::from_mode_str(&cfg.nat_udp_cc_mode),
+            ..CongestionConfig::default()
         };
         Self::new_with_carrier_cc(Self::carrier_from_config(cfg), cc)
     }

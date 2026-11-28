@@ -1,8 +1,14 @@
-//! 最小内嵌 Web UI（FR-19 / W6.1 / W6.4）。
+//! 内嵌 Web UI（FR-19 / W6.1 / W6.4；DOC-35 决定 2 选 B 后的唯一界面形态）。
 //!
 //! HTML/CSS/JS 全部在编译期嵌进二进制，运行时不写盘、不访问 CDN。
 //! 默认关闭（`api.web_ui=false`）；开启时只占 `GET /` 与 `GET /ui/*`，不遮蔽任何既有端点。
-//! 页面只调用守护进程自己的 HTTP/JSON-RPC 面，所有数字都来自真实 `/health` 与引擎任务。
+//!
+//! **不轮询**（ADR-008）：节点计数走 `/ws` 每秒推送，任务列表只在「收到推送且
+//! `seed_tasks` 变化」「用户点了操作」「用户点了刷新」时拉取。这样断线时界面会
+//! 如实变成「未连接」，而不是继续显示上一次的陈旧数字。
+//!
+//! 决定 2 选 B 意味着本项目**不做托盘 / 浏览器下载捕获 / UPnP 续租**：本文件就是
+//! 用户界面，没有原生外壳。要关掉界面直接关浏览器标签，下载与做种不受影响。
 
 /// 首页 HTML。外链只允许同源的 `/ui/*` 静态资产。
 pub const INDEX_HTML: &str = r#"<!doctype html>
@@ -14,78 +20,180 @@ pub const INDEX_HTML: &str = r#"<!doctype html>
 <link rel="stylesheet" href="/ui/style.css">
 </head>
 <body>
-<h1>ColdRevive console</h1>
-<p class="hint">只读状态 + aria2 兼容任务控制；所有请求都发往本进程。</p>
+<header>
+<h1>ColdRevive</h1>
+<span id="conn" class="conn off" title="与守护进程的实时连接">未连接</span>
+</header>
+<p class="hint">状态由守护进程通过 WebSocket 推送；任务操作走 aria2 兼容 JSON-RPC。关闭本页不影响下载与做种。</p>
+
 <section>
-<h2>任务</h2>
+<h2>节点</h2>
+<div id="node" class="cards"><span class="hint">等待推送…</span></div>
+</section>
+
+<section>
+<h2>任务 <button id="reload" class="ghost" type="button">刷新</button></h2>
 <form id="add">
-<input id="uri" placeholder="magnet: 或 http(s)://.../*.torrent" size="46">
-<input id="token" placeholder="rpc-secret（可选）" size="18" autocomplete="off">
-<button type="submit">addUri</button>
+<input id="uri" placeholder="magnet: 或 http(s)://…/*.torrent" size="46" autocomplete="off">
+<input id="token" type="password" placeholder="rpc-secret（如已启用）" size="18" autocomplete="off">
+<button type="submit">添加</button>
 </form>
-<div id="tasks">loading…</div>
+<div id="tasks"><span class="hint">尚未加载</span></div>
 </section>
-<section>
-<h2>节点状态</h2>
-<pre id="status">loading…</pre>
-</section>
-<div id="err"></div>
+
+<div id="err" role="status"></div>
 <script src="/ui/app.js"></script>
 </body>
 </html>
 "#;
 
-pub const STYLE_CSS: &str = r#"body{font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#111;color:#ddd;margin:2rem;max-width:900px}
-h1{font-size:1.25rem}h2{font-size:1rem;margin-top:1.5rem;color:#7bd}
-.hint{color:#888}input,button{font:inherit;background:#1b1b1b;color:#ddd;border:1px solid #555;padding:.35rem .6rem}
-button{cursor:pointer;background:#26333b}#status{background:#181818;border:1px solid #333;padding:.8rem;overflow:auto}
-.task{border-bottom:1px solid #333;padding:.5rem 0}.task .gid{color:#7bd}.task .st{color:#fd8}
-#err{color:#f77;min-height:1.2rem}"#;
+pub const STYLE_CSS: &str = r#":root{color-scheme:dark}
+body{font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#111;color:#ddd;margin:0 auto;padding:1.5rem;max-width:960px}
+header{display:flex;align-items:baseline;gap:.8rem}h1{font-size:1.3rem;margin:0}
+h2{font-size:1rem;margin:0 0 .6rem;color:#7bd;display:flex;align-items:center;gap:.6rem}
+section{margin-top:1.6rem}.hint{color:#888}
+.conn{font-size:.8rem;padding:.1rem .5rem;border-radius:999px;border:1px solid #444}
+.conn.on{color:#7f7;border-color:#2a5}.conn.off{color:#f77;border-color:#633}
+input,button{font:inherit;background:#1b1b1b;color:#ddd;border:1px solid #555;padding:.35rem .6rem;border-radius:4px}
+button{cursor:pointer;background:#26333b}button.ghost{background:transparent;font-size:.85rem}
+#add{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.8rem}
+.cards{display:flex;gap:.6rem;flex-wrap:wrap}
+.card{background:#181818;border:1px solid #333;border-radius:6px;padding:.6rem .9rem;min-width:8rem}
+.card .k{color:#888;font-size:.8rem}.card .v{font-size:1.15rem}
+.task{border:1px solid #333;border-radius:6px;padding:.6rem .8rem;margin-bottom:.5rem;background:#161616}
+.task .row{display:flex;justify-content:space-between;gap:.6rem;flex-wrap:wrap}
+.task .gid{color:#7bd}.task .st{color:#fd8}.task .name{word-break:break-all}
+.bar{height:6px;background:#2a2a2a;border-radius:3px;margin:.5rem 0;overflow:hidden}
+.bar>i{display:block;height:100%;background:#3a8;transition:width .3s}
+.acts{display:flex;gap:.3rem;margin-top:.4rem}.acts button{font-size:.8rem;padding:.15rem .5rem}
+#err{color:#f77;min-height:1.3rem;margin-top:1rem;white-space:pre-wrap}"#;
 
 pub const APP_JS: &str = r#""use strict";
 const q = id => document.getElementById(id);
-function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function params(){const t=q('token').value.trim();return t?[['token:'+t],[]]:[[]];}
-function tokenParam(){const t=q('token').value.trim();return t?'token:'+t:null;}
-async function rpc(method,p){
-  const body={jsonrpc:'2.0',id:Date.now(),method,params:p};
-  const r=await fetch('/jsonrpc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
-  const j=await r.json();
-  if(j.error) throw new Error(j.error.message||('rpc '+j.error.code));
+const esc = v => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBytes = n => {
+  n = Number(n) || 0;
+  const u = ['B','KiB','MiB','GiB','TiB']; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i ? n.toFixed(1) : n) + ' ' + u[i];
+};
+const setErr = m => { q('err').textContent = m || ''; };
+
+function token() {
+  const t = q('token').value.trim();
+  return t ? 'token:' + t : null;
+}
+// 记住 token 但只存在本标签页：不落 localStorage，避免共享机器上留痕。
+try { q('token').value = sessionStorage.getItem('cr-token') || ''; } catch (e) {}
+q('token').addEventListener('change', () => {
+  try { sessionStorage.setItem('cr-token', q('token').value.trim()); } catch (e) {}
+});
+
+async function rpc(method, params) {
+  const body = {jsonrpc:'2.0', id:Date.now(), method, params};
+  const r = await fetch('/jsonrpc', {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(body)});
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  if (j.error) throw new Error(j.error.message || ('rpc ' + j.error.code));
   return j.result;
 }
-async function refresh(){
-  try{
-    const r=await fetch('/api/v1/status',{cache:'no-store'});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    q('status').textContent=JSON.stringify(await r.json(),null,2);
-    const active=await rpc('aria2.tellActive',[[]]);
-    const waiting=await rpc('aria2.tellWaiting',[[]]);
-    const stopped=await rpc('aria2.tellStopped',[[]]);
-    const all=[].concat(active||[],waiting||[],stopped||[]);
-    q('tasks').innerHTML=all.length?all.map(t=>{
-      const g=t.gid||'',st=t.status||'',n=t.name||t.uri||'';
-      return '<div class="task"><span class="gid">'+esc(g)+'</span> <span class="st">'+esc(st)+
-        '</span> '+esc(n)+' <button data-act="pause" data-gid="'+esc(g)+'">pause</button>'+
-        '<button data-act="resume" data-gid="'+esc(g)+'">resume</button>'+
-        '<button data-act="remove" data-gid="'+esc(g)+'">remove</button></div>';
-    }).join(''):'<p class="hint">暂无任务</p>';
-    q('err').textContent='';
-  }catch(e){q('err').textContent='read failed: '+esc(e.message);}
+const withToken = args => { const t = token(); return t ? [t].concat(args) : args; };
+
+function renderNode(s) {
+  const cards = [
+    ['节点', s.node || '—'],
+    ['活跃种子', s.seed_tasks],
+    ['累计上传', fmtBytes(s.served_bytes)],
+    ['推送时间', new Date(s.ts_ms || Date.now()).toLocaleTimeString()],
+  ];
+  q('node').innerHTML = cards.map(([k, v]) =>
+    '<div class="card"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('');
 }
-q('add').addEventListener('submit',async e=>{
-  e.preventDefault();const uri=q('uri').value.trim();if(!uri)return;
-  try{const t=tokenParam();await rpc('aria2.addUri',t?[t,[uri]]:[[uri]]);q('uri').value='';await refresh();}
-  catch(err){q('err').textContent='addUri failed: '+esc(err.message);}
+
+function renderTasks(all) {
+  if (!all.length) { q('tasks').innerHTML = '<span class="hint">暂无任务</span>'; return; }
+  q('tasks').innerHTML = all.map(t => {
+    const gid = t.gid || '', st = t.status || '', name = t.name || t.uri || '';
+    const done = Number(t.completedLength || 0), total = Number(t.totalLength || 0);
+    const pct = total ? Math.min(100, done * 100 / total) : 0;
+    const speed = Number(t.downloadSpeed || 0);
+    const act = st === 'active'
+      ? '<button data-act="pause" data-gid="' + esc(gid) + '">暂停</button>'
+      : '<button data-act="unpause" data-gid="' + esc(gid) + '">继续</button>';
+    return '<div class="task"><div class="row"><span class="gid">' + esc(gid) + '</span>' +
+      '<span class="st">' + esc(st) + '</span></div>' +
+      '<div class="name">' + esc(name) + '</div>' +
+      '<div class="bar"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<div class="row"><span>' + fmtBytes(done) + ' / ' + fmtBytes(total) + '</span>' +
+      (st === 'active' ? '<span>' + fmtBytes(speed) + '/s</span>' : '<span class="hint">—</span>') +
+      '</div><div class="acts">' + act +
+      '<button data-act="remove" data-gid="' + esc(gid) + '">移除记录</button></div></div>';
+  }).join('');
+}
+
+async function loadTasks() {
+  try {
+    const [a, w, s] = await Promise.all([
+      rpc('aria2.tellActive', withToken([[]])),
+      rpc('aria2.tellWaiting', withToken([[]])),
+      rpc('aria2.tellStopped', withToken([[]])),
+    ]);
+    renderTasks([].concat(a || [], w || [], s || []));
+    setErr('');
+  } catch (e) {
+    // 失败必须说清是「鉴权」还是「进程不可达」，不能只显示一个红点。
+    setErr('读取任务失败：' + e.message + (token() ? '' : '（若已启用 rpc-secret，请在上面填写）'));
+  }
+}
+
+q('add').addEventListener('submit', async e => {
+  e.preventDefault();
+  const uri = q('uri').value.trim();
+  if (!uri) return;
+  try { await rpc('aria2.addUri', withToken([[uri]])); q('uri').value = ''; setErr(''); await loadTasks(); }
+  catch (err) { setErr('添加失败：' + err.message); }
 });
-q('tasks').addEventListener('click',async e=>{
-  const b=e.target.closest('button');if(!b)return;
-  const act=b.dataset.act,g=b.dataset.gid;if(!g)return;
-  const m=act==='remove'?'aria2.removeDownloadResult':('aria2.'+act);
-  try{const t=tokenParam();await rpc(m,t?[t,g]:[g]);await refresh();}
-  catch(err){q('err').textContent=act+' failed: '+esc(err.message);}
+q('reload').addEventListener('click', loadTasks);
+q('tasks').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  const act = b.dataset.act, gid = b.dataset.gid;
+  if (!gid) return;
+  const method = act === 'remove' ? 'aria2.removeDownloadResult' : 'aria2.' + act;
+  try { await rpc(method, withToken([gid])); setErr(''); await loadTasks(); }
+  catch (err) { setErr(act + ' 失败：' + err.message); }
 });
-refresh();setInterval(refresh,5000);
+
+// ---- 实时连接：/ws 每秒推一帧。断线就显示断线，不拿旧数字充数。 ----
+let ws = null, lastSeedTasks = null, retry = 0;
+function setConn(on, label) {
+  const el = q('conn');
+  el.className = 'conn ' + (on ? 'on' : 'off');
+  el.textContent = label;
+}
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  setConn(false, retry ? '重连中…' : '连接中…');
+  ws = new WebSocket(proto + '//' + location.host + '/ws');
+  ws.onopen = () => { retry = 0; setConn(true, '已连接'); setErr(''); };
+  ws.onmessage = ev => {
+    let s;
+    try { s = JSON.parse(ev.data); } catch (e) { return; }
+    renderNode(s);
+    // 种子数变化 = 任务集合可能变了；这是事件驱动，不是定时轮询。
+    if (lastSeedTasks !== null && s.seed_tasks !== lastSeedTasks) loadTasks();
+    lastSeedTasks = s.seed_tasks;
+  };
+  ws.onclose = () => {
+    setConn(false, '已断开');
+    setErr('与守护进程的连接已断开（守护进程可能已停止）。重试中…');
+    retry = Math.min(retry + 1, 6);
+    setTimeout(connect, Math.min(1000 * retry, 8000));
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
+}
+connect();
+loadTasks();
 "#;
 
 pub const CONTENT_TYPE: &str = "text/html; charset=utf-8";
@@ -122,7 +230,26 @@ mod tests {
             assert!(!body.contains("http://") && !body.contains("https://"),
                     "{name} 引用了外部资源");
         }
-        assert!(INDEX_HTML.len() < 4096);
+        // 决定 2 选 B 之后界面会继续长，但必须仍然是「一个内嵌页面」，不能膨胀成
+        // 需要构建步骤的 SPA。上限按可读性给，不按字节抠。
+        assert!(INDEX_HTML.len() < 8192, "首页过大: {} B", INDEX_HTML.len());
+        assert!(APP_JS.len() < 24576, "脚本过大: {} B", APP_JS.len());
+    }
+
+    #[test]
+    fn ui_uses_push_not_polling() {
+        // ADR-008：状态推送必须走 WebSocket，禁止定时轮询。
+        assert!(APP_JS.contains("new WebSocket"), "界面必须建立 /ws 连接");
+        assert!(APP_JS.contains("/ws"), "必须连到 /ws");
+        assert!(!APP_JS.contains("setInterval"), "禁止定时轮询：改用 WS 推送驱动");
+    }
+
+    #[test]
+    fn disconnects_are_reported_not_hidden() {
+        // 断线时不能保留旧数字装作正常。
+        assert!(APP_JS.contains("onclose"), "必须处理断线");
+        assert!(APP_JS.contains("已断开"), "断线必须有可见文案");
+        assert!(APP_JS.contains("setTimeout(connect"), "断线后要有退避重连");
     }
 
     #[test]

@@ -16,8 +16,14 @@ DATA_RATE=${G2F_DATA_RATE:-1073741824}
 DATA_BURST=${G2F_DATA_BURST:-1048576}
 # 每会话桶的突发不能是 1 字节：首包就会被拒，发送方等不到 ACK 会永久阻塞。
 PER_BURST=${G2F_PER_BURST:-65536}
-# 可选只跑指定 arm（冒烟用）；正式判据必须跑全部四个 arm。
-G2F_ARMS=${G2F_ARMS:-cc_off cc_on cc_paced cc_on_per_session_cap}
+# 可选只跑指定 arm（冒烟用）；正式判据必须跑全部被判定的 arm。
+# ADR-025（判据 v2）：cc_off 对照 + 三个 ledbat arm 参与判定，cc_on 只作参考臂（不判定）。
+G2F_ARMS=${G2F_ARMS:-cc_off ledbat ledbat_paced ledbat_on_per_session_cap cc_on}
+# 预注册判据文件；本轮默认 v2。运行时把文件与 sha 一起落进证据目录，
+# 免得「跑完再说自己用的是哪版判据」。
+G2F_FIXTURE=${G2F_FIXTURE:-tests/fixtures/g2-fairness-thresholds-v2.toml}
+# 门禁快照必须如实打印，不许写死成「未达标」来显得保守。
+G2F_G2_CLAIM=${G2F_G2_CLAIM:-true}
 
 NS=g2fairsrv
 VETH_A=g2fa
@@ -35,6 +41,23 @@ trap cleanup EXIT
 mkdir -p "$OUT"
 if [[ ! -x "$BIN" ]]; then
   echo "缺少探针二进制 $BIN" >&2
+  exit 2
+fi
+
+# provenance 三项（EX-1 C4 第 2 条）：缺一项都不许宣称可复现。
+{
+  echo "git_commit=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+  echo "git_dirty=$(git -C "$REPO" status --porcelain 2>/dev/null | wc -l)"
+  echo "kernel_release=$(uname -r)"
+  echo "probe_sha256=$(sha256sum "$BIN" | awk '{print $1}')"
+} >"$OUT/provenance.txt"
+# 判据原文与 sha 必须与证据同目录，事后无法替换。
+if [[ -f "$REPO/$G2F_FIXTURE" ]]; then
+  cp "$REPO/$G2F_FIXTURE" "$OUT/criteria.toml"
+  sha256sum "$OUT/criteria.toml" | awk '{print "criteria_sha256="$1}' >>"$OUT/provenance.txt"
+  echo "criteria_file=$G2F_FIXTURE" >>"$OUT/provenance.txt"
+else
+  echo "缺少预注册判据 $REPO/$G2F_FIXTURE" >&2
   exit 2
 fi
 
@@ -65,7 +88,7 @@ setup_link() {
 }
 
 run_arm() {
-  local shape=$1 arm=$2 cc=$3 pacing=$4 per_rate=$5
+  local shape=$1 arm=$2 cc=$3 pacing=$4 per_rate=$5 mode=${6:-aimd}
   case " $G2F_ARMS " in
     *" $arm "*) ;;
     *) return 0 ;;
@@ -93,7 +116,7 @@ run_arm() {
       continue
     fi
 
-    local common=(--server "$IPB:$PORT" --warmup "$WARMUP" --sample "$SAMPLE" --chunk "$CHUNK" --cc "$cc" --pacing "$pacing")
+    local common=(--server "$IPB:$PORT" --warmup "$WARMUP" --sample "$SAMPLE" --chunk "$CHUNK" --cc "$cc" --cc-mode "$mode" --pacing "$pacing")
     local budget=$((WARMUP + SAMPLE + 20))
     timeout "$budget" "$BIN" flow "${common[@]}" --purpose flow1 \
       --recv-id 01000000000000000000000000000001 \
@@ -121,10 +144,13 @@ while read -r shape rate delay jitter; do
   # cap 设为链路速率的 1/8，低于 CC 流的自然速率，确保令牌桶真的触发；
   # 它是解释隔离组，不替代端侧拥塞控制，也不参与主判据的“机制达标”宣称。
   cap=$((rate * 1000000 / 8 / 8))
-  run_arm "$shape" cc_off false false 0
-  run_arm "$shape" cc_on true false 0
-  run_arm "$shape" cc_paced true true 0
-  run_arm "$shape" cc_on_per_session_cap true false "$cap"
+  run_arm "$shape" cc_off false false 0 aimd
+  # ADR-025 / 判据 v2：这三个是**被判定的** arm。
+  run_arm "$shape" ledbat true false 0 ledbat
+  run_arm "$shape" ledbat_paced true true 0 ledbat
+  run_arm "$shape" ledbat_on_per_session_cap true false "$cap" ledbat
+  # cc_on 是**参考臂**：v1 已 FAIL（78/80），本轮只做同环境对照，不参与判定。
+  run_arm "$shape" cc_on true false 0 aimd
 done <<'SHAPES'
 L1 16 20ms 2ms
 L2 8 50ms 5ms
@@ -132,4 +158,4 @@ SHAPES
 
 echo "=== 3) done ==="
 echo "OUT=$OUT"
-echo "G2_GATE_SNAPSHOT g2_claim=false s6_status=not_run evidence_valid_for_pass=false auto_pass=false"
+echo "G2_GATE_SNAPSHOT g2_claim=$G2F_G2_CLAIM s6_status=not_run evidence_valid_for_pass=false auto_pass=false"

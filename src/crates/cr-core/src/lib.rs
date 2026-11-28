@@ -358,6 +358,9 @@ pub struct Config {
     pub nat_udp_cc_cwnd_init: u32,
     pub nat_udp_cc_beta_x100: u32,
     pub nat_udp_cc_pacing: bool,
+    /// ADR-025：`aimd`（默认，丢包驱动）或 `ledbat`（时延驱动）。只在
+    /// `udp_cc_enabled=true` 时生效；非法取值直接报错，不静默回落。
+    pub nat_udp_cc_mode: String,
     /// 运维侧真实创建的 BT/TCP 显式端口映射（外部 IP:端口）。
     /// 只有配置了该值，tracker 才会向公网请求方通告公网 peer；未配置即返回空 peer 列表。
     pub nat_bt_external: Option<(String, u16)>,
@@ -755,6 +758,22 @@ impl Config {
             Some(n) if (10..=90).contains(&n) => n as u32,
             Some(n) => return Err(format!("nat.udp_cc_beta_x100 必须在 10..=90，当前 {n}")),
         };
+        // ADR-025：cwnd 驱动信号。拼错就报错，不静默当成 aimd——否则「以为开了 LEDBAT，
+        // 实际跑的还是 AIMD」，量出来的数据会挂错名字。
+        let nat_udp_cc_mode = match nat_get("udp_cc_mode") {
+            None => "aimd".to_string(),
+            Some(v) => {
+                let s = v.trim().to_ascii_lowercase();
+                match s.as_str() {
+                    "aimd" | "ledbat" => s,
+                    other => {
+                        return Err(format!(
+                            "nat.udp_cc_mode 只能是 aimd 或 ledbat，当前 {other}"
+                        ))
+                    }
+                }
+            }
+        };
         let api_rate_per_sec = opt_num("api", "rate_per_sec")?
             .map(|v| u32::try_from(v).map_err(|_| "api.rate_per_sec 过大".to_string()))
             .transpose()?;
@@ -800,6 +819,7 @@ impl Config {
             nat_udp_cc_cwnd_init,
             nat_udp_cc_beta_x100,
             nat_udp_cc_pacing,
+            nat_udp_cc_mode,
             nat_bt_external,
             nat_relay_rendezvous,
             nat_http_external,
@@ -1238,11 +1258,16 @@ mod tests {
         assert!(!d.nat_udp_cc_enabled && !d.nat_udp_cc_pacing);
         assert_eq!(d.nat_udp_cc_cwnd_init, 4);
         assert_eq!(d.nat_udp_cc_beta_x100, 50);
+        assert_eq!(d.nat_udp_cc_mode, "aimd", "缺省必须是 AIMD，v1 行为不变");
 
         let on = mk(r#"{"udp_cc_enabled":true,"udp_cc_pacing":true,"udp_cc_cwnd_init":"8","udp_cc_beta_x100":40}"#).unwrap();
         assert!(on.nat_udp_cc_enabled && on.nat_udp_cc_pacing);
         assert_eq!(on.nat_udp_cc_cwnd_init, 8);
         assert_eq!(on.nat_udp_cc_beta_x100, 40);
+
+        let ledbat = mk(r#"{"udp_cc_enabled":true,"udp_cc_mode":"LEDBAT"}"#).unwrap();
+        assert_eq!(ledbat.nat_udp_cc_mode, "ledbat", "接受大小写，落库统一小写");
+        assert!(mk(r#"{"udp_cc_mode":"vegas"}"#).is_err(), "未知模式必须报错");
 
         assert!(mk(r#"{"udp_cc_beta_x100":95}"#).is_err(), "β 越界必须报错");
         let _ = fs::remove_file(&p);

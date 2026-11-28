@@ -45,7 +45,7 @@ ColdRevive
 │  ├─ W6.3 WebSocket 推送
 │  ├─ W6.4 Web UI 页面
 │  ├─ W6.5 CLI / REST / 浏览器插件 / MCP（P2）
-│  └─ W6.6 三进程模型与托盘 Agent
+│  └─ W6.6 三进程模型（看护 Agent + 纯 Web UI；托盘/捕获/UPnP 移出，M4 再评估）
 ├─ W7 治理与横切
 │  ├─ W7.1 QoS / 阈值 / 降级
 │  ├─ W7.2 安全加固与隐私

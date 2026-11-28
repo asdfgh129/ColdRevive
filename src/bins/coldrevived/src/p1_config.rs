@@ -29,6 +29,11 @@ pub struct P1Config {
     pub dht_max_announces_per_cycle: usize,
     pub dht_min_interval_ms: u64,
     pub dht_rss_soft_skip_mb: u64,
+    /// DOC-35 决定 3 选 B：公共 DHT 宣告的授权闸门。**默认关闭**；
+    /// 打开后还要过每分钟 / 每日两道配额，且运行时可一键关闭。
+    pub dht_announce_public: bool,
+    pub dht_public_max_per_min: u64,
+    pub dht_public_daily_cap: u64,
 }
 
 impl Default for P1Config {
@@ -51,6 +56,9 @@ impl Default for P1Config {
             dht_max_announces_per_cycle: 16,
             dht_min_interval_ms: 50,
             dht_rss_soft_skip_mb: 0, // 0 = 不做 RSS 软跳过
+            dht_announce_public: false,
+            dht_public_max_per_min: 4,
+            dht_public_daily_cap: 200,
         }
     }
 }
@@ -132,6 +140,10 @@ impl P1Config {
             dht_max_announces_per_cycle: positive_u64_in(dht, "max_announces_per_cycle", 16) as usize,
             dht_min_interval_ms: u64_in(dht, "min_interval_ms", 50),
             dht_rss_soft_skip_mb: u64_in(dht, "rss_soft_skip_mb", 0),
+            // 授权默认关闭：只有显式写 true 才可能发出公共 announce。
+            dht_announce_public: bool_in(dht, "announce_public", false),
+            dht_public_max_per_min: positive_u64_in(dht, "public_max_per_min", 4),
+            dht_public_daily_cap: u64_in(dht, "public_daily_cap", 200),
         }
     }
 
@@ -179,6 +191,23 @@ mod tests {
         assert_eq!(p.nat_upnp_location.as_deref(), Some("http://1.2.3.4/d.xml"));
         assert!(p.dht_enabled);
         assert_eq!(p.dht_bootstrap, vec!["router.example:6881".to_string()]);
+    }
+
+    #[test]
+    fn dht_public_announce_defaults_to_closed() {
+        // DOC-35 决定 3：授权不等于默认开。缺省必须是关的。
+        let d = P1Config::from_json(&Json::Null);
+        assert!(!d.dht_announce_public, "缺省必须关闭公共宣告");
+        assert_eq!(d.dht_public_max_per_min, 4);
+        assert_eq!(d.dht_public_daily_cap, 200);
+
+        let j = Json::parse(r#"{"dht":{
+            "announce_public": true, "public_max_per_min": 0, "public_daily_cap": 0
+        }}"#).unwrap();
+        let p = P1Config::from_json(&j);
+        assert!(p.dht_announce_public);
+        assert_eq!(p.dht_public_max_per_min, 4, "0 是非法的，回落缺省而不是无限放行");
+        assert_eq!(p.dht_public_daily_cap, 0, "日上限 0 = 不设上限，是显式语义");
     }
 
     #[test]

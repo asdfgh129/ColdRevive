@@ -67,22 +67,81 @@ pub const FAST_RETRANS_ACKS: u32 = 3;
 /// v2.4.116：拥塞控制的 RTO 下限（有 RTT 样本时不再固定 200 ms）。
 pub const RTO_MIN: Duration = Duration::from_millis(50);
 
+/// ADR-025：LEDBAT 的目标排队时延（RFC 6817 `TARGET`，100 ms）。
+pub const LEDBAT_TARGET: Duration = Duration::from_millis(100);
+/// ADR-025：LEDBAT 的每 RTT 调整增益（RFC 6817 `GAIN`，1.0 段/RTT）。
+pub const LEDBAT_GAIN: f64 = 1.0;
+/// ADR-025 塌陷保护：同一段连续 RTO 达到此数且 base 未推进，就复位 cwnd。
+/// 没有这条，「丢包不降窗」在真实拥塞崩溃时会把队列越堆越深。
+pub const LEDBAT_RTO_COLLAPSE: u32 = 6;
+/// ADR-025 基准漂移：连续这么多个样本都高于基准 2 倍，判定路径变了，重设基准。
+/// 没有这条，换路由后 `base_delay` 单调不升会把「新基准」永久当成排队。
+pub const LEDBAT_BASE_RESET_SAMPLES: u32 = 30;
+
+/// ADR-025：cwnd 由什么信号驱动。
+///
+/// - `Aimd`：丢包驱动（v1 行为，乘性减 `beta`）。**默认**，逐字节保持既有语义。
+/// - `Ledbat`：排队时延驱动；丢包只触发重传，**不降窗**，仅连续超时走塌陷复位。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CcMode {
+    #[default]
+    Aimd,
+    Ledbat,
+}
+
+impl CcMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            CcMode::Aimd => "aimd",
+            CcMode::Ledbat => "ledbat",
+        }
+    }
+    /// 从配置字符串解析。**未知取值回落 `Aimd`**：真正的校验在 `cr-core` 的配置加载里
+    /// （非法值直接报错），这里只是最后一道消费侧兜底，不承担「猜用户意图」的职责。
+    pub fn from_mode_str(s: &str) -> Self {
+        if s.eq_ignore_ascii_case("ledbat") {
+            CcMode::Ledbat
+        } else {
+            CcMode::Aimd
+        }
+    }
+    pub fn as_u64(self) -> u64 {
+        match self {
+            CcMode::Aimd => 0,
+            CcMode::Ledbat => 1,
+        }
+    }
+    pub fn from_u64(v: u64) -> Self {
+        if v == 1 {
+            CcMode::Ledbat
+        } else {
+            CcMode::Aimd
+        }
+    }
+}
+
 /// ADR-024 阶段 3：可选拥塞控制参数。
 ///
 /// **默认全关**：阶段 1/2 的既有行为（固定 32 段窗口、RTO 指数退避、不 pacing）逐字节不变。
-/// 打开后发送窗口由 AIMD 控制：每收到一个推进 base 的 ACK 加性增长 `1/cwnd`，
-/// 每次丢包事件（快重传或 RTO）乘性减半且每个 RTT 最多减一次；RTO 由
-/// Jacobson–Karels 的 `srtt + 4*rttvar` 推导；pacing 把新段发送摊到整个 RTT。
+/// 打开后发送窗口由 `mode` 决定：`Aimd` 每收一个推进 ACK 加性增 `1/cwnd`、丢包乘性减半；
+/// `Ledbat`（ADR-025）按排队时延每 RTT 增减 1 段左右、丢包不降窗。
+/// RTO 由 Jacobson–Karels 的 `srtt + 4*rttvar` 推导；pacing 把新段发送摊到整个 RTT。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CongestionConfig {
     pub enabled: bool,
     pub cwnd_init: u32,
     pub cwnd_min: u32,
     pub cwnd_max: u32,
-    /// 乘性减小系数（典型 0.5）。
+    /// 乘性减小系数（典型 0.5）。**仅 `CcMode::Aimd` 使用**。
     pub beta: f64,
     /// 是否对新段做速率平滑；重传永远立即发，不受 pacing 阻挡。
     pub pacing: bool,
+    /// cwnd 驱动信号，见 [`CcMode`]。
+    pub mode: CcMode,
+    /// LEDBAT 目标排队时延；`Aimd` 忽略本字段。
+    pub ledbat_target: Duration,
+    /// LEDBAT 每 RTT 增益（段）；`Aimd` 忽略本字段。
+    pub ledbat_gain: f64,
 }
 
 impl Default for CongestionConfig {
@@ -94,6 +153,9 @@ impl Default for CongestionConfig {
             cwnd_max: WINDOW,
             beta: 0.5,
             pacing: false,
+            mode: CcMode::Aimd,
+            ledbat_target: LEDBAT_TARGET,
+            ledbat_gain: LEDBAT_GAIN,
         }
     }
 }
@@ -111,6 +173,18 @@ pub struct CcStats {
     pub paced_new_segments: u64,
     /// 中继明确回 `BandwidthLimited` 的次数（背压，不计入 loss_events）。
     pub relay_backpressure_events: u64,
+    /// 驱动信号（`aimd` / `ledbat`）。
+    pub mode: CcMode,
+    /// 观测到的最小 RTT（LEDBAT 的传播时延估计）。
+    pub base_delay_ms: u64,
+    /// 最近一次样本相对基准的排队时延。
+    pub queued_delay_ms: u64,
+    /// cwnd 按时延信号调整过的次数。
+    pub ledbat_updates: u64,
+    /// 丢了包但时延没超目标、因此**没有**降窗的次数（LEDBAT 的关键行为证据）。
+    pub loss_ignored_low_delay: u64,
+    /// 连续超时触发的塌陷复位次数。
+    pub collapse_resets: u64,
 }
 
 // ---- u32 序列号环绕比较（经典 TCP 差值法；窗口 32 « 2^31，安全）----
@@ -243,6 +317,25 @@ pub struct StreamCore {
     /// 中继背压：短时间内的多个 STATUS 只触发一次快重传，避免风暴。
     last_backpressure_at: Option<Instant>,
     relay_backpressure_events: u64,
+    // ---- ADR-025：LEDBAT（时延驱动）----
+    /// 观测到的最小 RTT，即传播时延基准（只降不升，路径突变时重设）。
+    base_delay: Option<Duration>,
+    /// 最近一次样本相对基准的排队时延。
+    queued_delay: Duration,
+    /// 上一次按时延信号调整 cwnd 的时刻（每个 RTT 最多调一次）。
+    ledbat_last_at: Option<Instant>,
+    ledbat_updates: u64,
+    /// 丢了包但排队时延未超目标、因此没有降窗的次数。
+    loss_ignored_low_delay: u64,
+    /// 塌陷复位次数（连续 RTO）。
+    collapse_resets: u64,
+    /// 连续超时重传次数（base 推进即清零）。
+    rto_streak: u32,
+    /// 上一次因超时计「连续轮次」的时刻：同一时刻一批段超时只算一轮，
+    /// 否则 8 个段一起超时会被误当成 8 次连续超时、立刻触发塌陷复位。
+    last_rto_at: Option<Instant>,
+    /// 连续「样本高于基准 2 倍」的次数，用于判定路径突变。
+    base_drift: u32,
     // ---- 接收侧 ----
     /// 下一个期望收到的 app seq（累积确认值）。
     expected: u32,
@@ -308,6 +401,15 @@ impl StreamCore {
             paced_new_segments: 0,
             last_backpressure_at: None,
             relay_backpressure_events: 0,
+            base_delay: None,
+            queued_delay: Duration::ZERO,
+            ledbat_last_at: None,
+            ledbat_updates: 0,
+            loss_ignored_low_delay: 0,
+            collapse_resets: 0,
+            rto_streak: 0,
+            last_rto_at: None,
+            base_drift: 0,
             expected: start_seq,
             incoming: BTreeMap::new(),
             peer_closed: false,
@@ -428,12 +530,15 @@ impl StreamCore {
                 self.base = ack;
                 if self.cc.enabled {
                     // 清掉已确认段并用它们的发送时刻采 RTT；只有真的发过的段才采样。
+                    let mut last_sample: Option<Duration> = None;
                     while let Some(front) = self.inflight.front() {
                         if seq_lt(front.seq, self.base) {
                             if let Some(seg) = self.inflight.pop_front() {
                                 if let Some(t) = seg.sent_at {
                                     if now >= t {
-                                        self.sample_rtt(now.duration_since(t));
+                                        let s = now.duration_since(t);
+                                        self.sample_rtt(s);
+                                        last_sample = Some(s);
                                     }
                                 }
                             }
@@ -441,9 +546,22 @@ impl StreamCore {
                             break;
                         }
                     }
-                    // AIMD 的 AI：每个推进 ACK 加 1/cwnd，封顶 cwnd_max。
-                    self.cwnd = (self.cwnd + 1.0 / self.cwnd.max(1.0))
-                        .min(self.cc.cwnd_max as f64);
+                    match self.cc.mode {
+                        CcMode::Aimd => {
+                            // AIMD 的 AI：每个推进 ACK 加 1/cwnd，封顶 cwnd_max。
+                            self.cwnd = (self.cwnd + 1.0 / self.cwnd.max(1.0))
+                                .min(self.cc.cwnd_max as f64);
+                        }
+                        CcMode::Ledbat => {
+                            // ADR-025：cwnd 由排队时延驱动；没有新样本时也允许按 srtt 节奏推进。
+                            match last_sample {
+                                Some(s) => self.ledbat_on_sample(now, s),
+                                None => self.ledbat_tick(now),
+                            }
+                        }
+                    }
+                    // base 推进说明链路还活着，塌陷计数清零。
+                    self.rto_streak = 0;
                     self.rto = self.derived_rto();
                 } else {
                     self.rto = RTO_INIT;
@@ -510,12 +628,76 @@ impl StreamCore {
         }
     }
 
-    /// 丢包事件：乘性减小，同一 RTT 内不重复减小，避免一次超时把 cwnd 连砍数刀。
+    // ---- ADR-025：LEDBAT（排队时延驱动）----
+
+    /// 新 RTT 样本到达：更新传播时延基准与排队时延，然后按 RTT 节奏调整一次窗口。
+    fn ledbat_on_sample(&mut self, now: Instant, sample: Duration) {
+        // 路径突变检测：样本连续高于基准 2 倍时，把基准重设到当前样本。
+        // 否则「只降不升」会把新路径的正常时延永久算成排队，窗口永远回不来。
+        match self.base_delay {
+            Some(b) => {
+                if sample > b.saturating_mul(2) {
+                    self.base_drift = self.base_drift.saturating_add(1);
+                } else {
+                    self.base_drift = 0;
+                }
+                if self.base_drift >= LEDBAT_BASE_RESET_SAMPLES {
+                    self.base_delay = Some(sample);
+                    self.base_drift = 0;
+                }
+            }
+            None => {}
+        }
+        let base = match self.base_delay {
+            Some(b) if b <= sample => b,
+            _ => sample,
+        };
+        self.base_delay = Some(base);
+        self.queued_delay = sample.saturating_sub(base);
+        self.ledbat_tick(now);
+    }
+
+    /// 每个 RTT 最多调一次 cwnd。空链路每 RTT 涨 `gain` 段；排队达 `target` 时停止增长；
+    /// 超过 `target` 时按超出比例回退。稳定态是「把瓶颈队列填到 target 附近」。
+    fn ledbat_tick(&mut self, now: Instant) {
+        if !self.cc.enabled || self.cc.mode != CcMode::Ledbat {
+            return;
+        }
+        let rtt = self.srtt.unwrap_or(RTO_INIT).max(Duration::from_millis(1));
+        let due = self
+            .ledbat_last_at
+            .map(|t| now.duration_since(t) >= rtt)
+            .unwrap_or(true);
+        if !due {
+            return;
+        }
+        self.ledbat_last_at = Some(now);
+        let target = self.cc.ledbat_target.as_secs_f64().max(1e-3);
+        // 排队时延超过 60 s 没有物理意义，夹一下防止异常样本把窗口一刀砍到底。
+        let qd = self.queued_delay.as_secs_f64().min(60.0);
+        let delta = if qd < target {
+            self.cc.ledbat_gain * (target - qd) / target
+        } else {
+            -self.cc.ledbat_gain * (qd - target) / target
+        };
+        self.cwnd = (self.cwnd + delta)
+            .clamp(self.cc.cwnd_min as f64, self.cc.cwnd_max as f64);
+        self.ledbat_updates += 1;
+    }
+
+    /// 丢包事件：AIMD 乘性减小（同一 RTT 内不重复减小）；LEDBAT **不降窗**。
+    ///
+    /// LEDBAT 的理由（ADR-025）：非对称随机丢包不是拥塞信号，而 AIMD 把它当成「我该让」，
+    /// 正是 EX-1 `78/80` 的失败机理。丢包只触发重传；真正的塌陷由连续超时兜底。
     fn note_loss(&mut self, now: Instant) {
         if !self.cc.enabled {
             return;
         }
         self.loss_events += 1;
+        if self.cc.mode == CcMode::Ledbat {
+            self.loss_ignored_low_delay += 1;
+            return;
+        }
         let rtt = self.srtt.unwrap_or(RTO_INIT);
         let due = self.last_loss_at
             .map(|t| now.duration_since(t) >= rtt)
@@ -537,6 +719,12 @@ impl StreamCore {
             rtt_samples: self.rtt_samples,
             paced_new_segments: self.paced_new_segments,
             relay_backpressure_events: self.relay_backpressure_events,
+            mode: self.cc.mode,
+            base_delay_ms: self.base_delay.map(|d| d.as_millis() as u64).unwrap_or(0),
+            queued_delay_ms: self.queued_delay.as_millis() as u64,
+            ledbat_updates: self.ledbat_updates,
+            loss_ignored_low_delay: self.loss_ignored_low_delay,
+            collapse_resets: self.collapse_resets,
         }
     }
 
@@ -639,13 +827,37 @@ impl StreamCore {
                     if self.cc.enabled {
                         // 内联 note_loss：这里持有 inflight 的 iter_mut，不能借整个 self。
                         self.loss_events += 1;
-                        let rtt = self.srtt.unwrap_or(RTO_INIT);
-                        let due = self.last_loss_at
-                            .map(|t| now.duration_since(t) >= rtt)
-                            .unwrap_or(true);
-                        if due {
-                            self.cwnd = (self.cwnd * self.cc.beta).max(self.cc.cwnd_min as f64);
-                            self.last_loss_at = Some(now);
+                        match self.cc.mode {
+                            CcMode::Aimd => {
+                                let rtt = self.srtt.unwrap_or(RTO_INIT);
+                                let due = self.last_loss_at
+                                    .map(|t| now.duration_since(t) >= rtt)
+                                    .unwrap_or(true);
+                                if due {
+                                    self.cwnd =
+                                        (self.cwnd * self.cc.beta).max(self.cc.cwnd_min as f64);
+                                    self.last_loss_at = Some(now);
+                                }
+                            }
+                            CcMode::Ledbat => {
+                                // ADR-025：丢包不降窗；只有连续超时才认塌陷并复位。
+                                self.loss_ignored_low_delay += 1;
+                                // 同一时刻一批段一起超时只算一轮，否则 8 段齐超会被
+                                // 误判成 8 次「连续超时」，塌陷保护立刻误触发。
+                                let new_round = self
+                                    .last_rto_at
+                                    .map(|t| now.duration_since(t) >= self.rto)
+                                    .unwrap_or(true);
+                                if new_round {
+                                    self.last_rto_at = Some(now);
+                                    self.rto_streak = self.rto_streak.saturating_add(1);
+                                }
+                                if self.rto_streak >= LEDBAT_RTO_COLLAPSE {
+                                    self.cwnd = self.cc.cwnd_init as f64;
+                                    self.rto_streak = 0;
+                                    self.collapse_resets += 1;
+                                }
+                            }
                         }
                     }
                     self.rto = if self.cc.enabled && self.srtt.is_some() {
@@ -720,6 +932,13 @@ struct StreamCounters {
     cc_rtt_samples: AtomicU64,
     cc_paced_new: AtomicU64,
     cc_backpressure: AtomicU64,
+    /// ADR-025：0 = aimd，1 = ledbat。
+    cc_mode: AtomicU64,
+    cc_base_delay_ms: AtomicU64,
+    cc_queued_delay_ms: AtomicU64,
+    cc_ledbat_updates: AtomicU64,
+    cc_loss_ignored: AtomicU64,
+    cc_collapse_resets: AtomicU64,
     last_error: std::sync::Mutex<Option<String>>,
 }
 
@@ -856,6 +1075,12 @@ impl UdpRelayStream {
                     c.cc_paced_new.store(cc_s.paced_new_segments, Ordering::Relaxed);
                     c.cc_backpressure
                         .store(cc_s.relay_backpressure_events, Ordering::Relaxed);
+                    c.cc_mode.store(cc_s.mode.as_u64(), Ordering::Relaxed);
+                    c.cc_base_delay_ms.store(cc_s.base_delay_ms, Ordering::Relaxed);
+                    c.cc_queued_delay_ms.store(cc_s.queued_delay_ms, Ordering::Relaxed);
+                    c.cc_ledbat_updates.store(cc_s.ledbat_updates, Ordering::Relaxed);
+                    c.cc_loss_ignored.store(cc_s.loss_ignored_low_delay, Ordering::Relaxed);
+                    c.cc_collapse_resets.store(cc_s.collapse_resets, Ordering::Relaxed);
 
                     // 3) 收对端帧：只认 DELIVER 里的 ACK / DATA；STATUS 忽略。
                     match client.recv_frame(STREAM_POLL) {
@@ -1011,6 +1236,12 @@ impl UdpRelayStream {
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
             relay_backpressure_events: g(&c.cc_backpressure),
+            mode: CcMode::from_u64(c.cc_mode.load(Ordering::Relaxed)),
+            base_delay_ms: g(&c.cc_base_delay_ms),
+            queued_delay_ms: g(&c.cc_queued_delay_ms),
+            ledbat_updates: g(&c.cc_ledbat_updates),
+            loss_ignored_low_delay: g(&c.cc_loss_ignored),
+            collapse_resets: g(&c.cc_collapse_resets),
         }
     }
 
@@ -1040,6 +1271,12 @@ impl UdpStreamRead {
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
             relay_backpressure_events: g(&c.cc_backpressure),
+            mode: CcMode::from_u64(c.cc_mode.load(Ordering::Relaxed)),
+            base_delay_ms: g(&c.cc_base_delay_ms),
+            queued_delay_ms: g(&c.cc_queued_delay_ms),
+            ledbat_updates: g(&c.cc_ledbat_updates),
+            loss_ignored_low_delay: g(&c.cc_loss_ignored),
+            collapse_resets: g(&c.cc_collapse_resets),
         }
     }
 
@@ -1107,6 +1344,12 @@ impl UdpStreamWrite {
             rtt_samples: g(&c.cc_rtt_samples),
             paced_new_segments: g(&c.cc_paced_new),
             relay_backpressure_events: g(&c.cc_backpressure),
+            mode: CcMode::from_u64(c.cc_mode.load(Ordering::Relaxed)),
+            base_delay_ms: g(&c.cc_base_delay_ms),
+            queued_delay_ms: g(&c.cc_queued_delay_ms),
+            ledbat_updates: g(&c.cc_ledbat_updates),
+            loss_ignored_low_delay: g(&c.cc_loss_ignored),
+            collapse_resets: g(&c.cc_collapse_resets),
         }
     }
 
@@ -1342,6 +1585,19 @@ mod tests {
             cwnd_max: 16,
             beta: 0.5,
             pacing: false,
+            ..CongestionConfig::default()
+        }
+    }
+
+    /// ADR-025：时延驱动配置（与判据 v2 的 `[arms.ledbat_params]` 一致）。
+    fn ledbat_config() -> CongestionConfig {
+        CongestionConfig {
+            mode: CcMode::Ledbat,
+            cwnd_init: 8,
+            cwnd_max: 32,
+            ledbat_target: LEDBAT_TARGET,
+            ledbat_gain: LEDBAT_GAIN,
+            ..cc_config()
         }
     }
 
@@ -1403,6 +1659,138 @@ mod tests {
         assert!(out.iter().any(|s| matches!(s, Segment::Data { seq: 0, .. })),
             "超时重传必须立即发出，不能被 pacing 挡住");
         assert!(core.retransmits() > 0);
+    }
+
+    // ---- ADR-025：LEDBAT（时延驱动）----
+    // 这几个用例只验证「机制按书面语义动作」，不产出任何公平性结论；
+    // 公平性必须由预注册判据 v2 在真 netem 上跑，单测不能代替。
+
+    #[test]
+    fn ledbat_window_grows_toward_target_then_holds_at_max() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, ledbat_config());
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        assert_eq!(core.take_transmissions(t0).len(), 8, "初始 cwnd=8 必须限制首发段数");
+
+        core.on_ack_at(8, 0, t0 + Duration::from_millis(40));
+        let s = core.cc_stats();
+        assert_eq!(s.mode, CcMode::Ledbat);
+        assert_eq!(s.base_delay_ms, 40, "基准就是观测到的最小 RTT");
+        assert_eq!(s.queued_delay_ms, 0, "空链路排队时延为 0");
+        assert_eq!(s.cwnd_x100, 900, "qd=0 时每 RTT 涨满 gain=1 段: {s:?}");
+        assert_eq!(s.ledbat_updates, 1);
+
+        // 按 RTT 节奏继续推进：窗口单调涨到 cwnd_max(32) 后必须停住，不能越界。
+        let mut ack = 8u32;
+        for i in 2..=40u64 {
+            let t = t0 + Duration::from_millis(40 * i);
+            core.write(&vec![7u8; DATA_PAYLOAD_MAX]);
+            core.take_transmissions(t);
+            ack += 1;
+            core.on_ack_at(ack, 0, t);
+        }
+        let s = core.cc_stats();
+        assert_eq!(s.cwnd_x100, 3200, "必须停在 cwnd_max: {s:?}");
+        assert!(s.ledbat_updates >= 24, "窗口应当被反复评估: {s:?}");
+        assert_eq!(s.collapse_resets, 0, "没有连续超时就不许复位");
+    }
+
+    #[test]
+    fn ledbat_does_not_shrink_on_loss_but_aimd_still_halves() {
+        let t0 = Instant::now();
+        let mut lb = StreamCore::with_cc(0, ledbat_config());
+        lb.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        lb.take_transmissions(t0);
+        lb.on_ack_at(8, 0, t0 + Duration::from_millis(40));
+        let before = lb.cc_stats().cwnd_x100;
+        for _ in 0..FAST_RETRANS_ACKS {
+            lb.on_ack_at(8, 0, t0 + Duration::from_millis(41));
+        }
+        let s = lb.cc_stats();
+        assert_eq!(s.loss_events, 1, "丢包事件仍要如实记数");
+        assert_eq!(s.loss_ignored_low_delay, 1, "丢了但不降窗，必须单独计数");
+        assert_eq!(s.cwnd_x100, before, "LEDBAT 不因丢包降窗（EX-1 的失败机理）");
+
+        // 同一场景换成 AIMD：必须照旧乘性减小，证明开关没把老路径改坏。
+        let mut aimd = StreamCore::with_cc(0, cc_config());
+        aimd.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        aimd.take_transmissions(t0);
+        aimd.on_ack_at(4, 0, t0 + Duration::from_millis(40));
+        let before_aimd = aimd.cc_stats().cwnd_x100;
+        for _ in 0..FAST_RETRANS_ACKS {
+            aimd.on_ack_at(4, 0, t0 + Duration::from_millis(41));
+        }
+        assert!(aimd.cc_stats().cwnd_x100 < before_aimd, "AIMD 必须仍然减半");
+    }
+
+    #[test]
+    fn ledbat_shrinks_when_queue_delay_exceeds_target() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, ledbat_config());
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        core.take_transmissions(t0);
+        core.on_ack_at(8, 0, t0 + Duration::from_millis(40));
+        let grown = core.cc_stats().cwnd_x100;
+        assert_eq!(grown, 900);
+
+        // 下一段让 ACK 晚到 200 ms：基准仍是 40 ms，排队 160 ms > target 100 ms。
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX]);
+        core.take_transmissions(t0 + Duration::from_millis(41));
+        core.on_ack_at(9, 0, t0 + Duration::from_millis(241));
+        let s = core.cc_stats();
+        assert_eq!(s.base_delay_ms, 40, "基准不因一次慢样本上升");
+        assert!(s.queued_delay_ms >= 150, "排队时延必须真实进快照: {s:?}");
+        assert!(s.cwnd_x100 < grown, "超过 target 必须回退: {s:?}");
+    }
+
+    #[test]
+    fn ledbat_collapse_reset_only_after_consecutive_timeouts() {
+        let t0 = Instant::now();
+        let mut core = StreamCore::with_cc(0, ledbat_config());
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        core.take_transmissions(t0);
+
+        // 先把窗口抬到 13，确保复位动作可观测（cwnd_init=8）。
+        // 两个坑：ack 必须 ≤ next_seq（否则当伪造 ACK 忽略）；ACK 要比发送晚一个 RTT，
+        // 否则样本恒为 0，基准被压成 0。
+        let mut t = t0;
+        core.on_ack_at(8, 0, t + Duration::from_millis(40));
+        t += Duration::from_millis(40);
+        for i in 1..=4u32 {
+            core.write(&vec![7u8; DATA_PAYLOAD_MAX]);
+            core.take_transmissions(t);
+            core.on_ack_at(8 + i, 0, t + Duration::from_millis(40));
+            t += Duration::from_millis(40);
+        }
+        let grown = core.cc_stats().cwnd_x100;
+        assert!(grown > 800, "先涨窗: {grown}");
+
+        // 重新灌满窗口再让对端静默：这样才有段可超时。
+        core.write(&vec![7u8; DATA_PAYLOAD_MAX * 64]);
+        let filled = core.take_transmissions(t);
+        assert!(!filled.is_empty(), "必须有在飞段，否则测不到超时");
+
+        // 连续 RTO。同一时刻一批段超时只算一轮，不能一次就复位。
+        let mut silent = t + Duration::from_millis(600);
+        core.take_transmissions(silent);
+        assert_eq!(core.cc_stats().collapse_resets, 0, "第一轮超时不许复位");
+        for _ in 1..LEDBAT_RTO_COLLAPSE {
+            silent += core.rto();
+            core.take_transmissions(silent);
+        }
+        let s = core.cc_stats();
+        assert_eq!(s.collapse_resets, 1, "连续超时必须复位一次: {s:?}");
+        assert_eq!(s.cwnd_x100, 800, "复位到 cwnd_init=8: {s:?}");
+    }
+
+    #[test]
+    fn ledbat_is_off_by_default_and_aimd_is_unchanged() {
+        let d = CongestionConfig::default();
+        assert_eq!(d.mode, CcMode::Aimd, "缺省必须是 AIMD，v1 行为逐字节不变");
+        assert!(!d.enabled);
+        assert_eq!(CcMode::from_mode_str("LEDBAT"), CcMode::Ledbat);
+        assert_eq!(CcMode::from_mode_str("aimd"), CcMode::Aimd);
+        assert_eq!(CcMode::from_mode_str("vegas"), CcMode::Aimd, "未知值由 cr-core 拒绝，这里只兜底");
     }
 
     #[test]

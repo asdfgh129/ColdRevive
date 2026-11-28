@@ -215,6 +215,8 @@ fn udp_cc_from_config(cfg: &Config) -> cr_nat::relay_udp_stream::CongestionConfi
         cwnd_max: 32,
         beta: cfg.nat_udp_cc_beta_x100 as f64 / 100.0,
         pacing: cfg.nat_udp_cc_pacing,
+        mode: cr_nat::relay_udp_stream::CcMode::from_mode_str(&cfg.nat_udp_cc_mode),
+        ..Default::default()
     }
 }
 

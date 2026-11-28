@@ -123,12 +123,63 @@ def main() -> int:
             }
         )
 
+    # 判定面：只判 `[arms].required` 里、且在 `[link_shapes].judging_shapes` 内的组合。
+    # `[arms].reference`（v2 的 cc_on）记录并归档，但**不参与判定**——用它判会把
+    # v1 已 FAIL 的 AIMD 结论混进 v2 的结论里。
+    arms_cfg = fixture.get("arms", {})
+    required = list(arms_cfg.get("required", []))
+    reference = list(arms_cfg.get("reference", []))
+    judging_shapes = list(fixture.get("link_shapes", {}).get("judging_shapes", []))
+    shapes_seen = sorted({s["shape"] for s in summary})
+    judge_shapes = judging_shapes or shapes_seen
+    judged = [
+        s
+        for s in summary
+        if (not required or s["arm"] in required) and s["shape"] in judge_shapes
+    ]
+    expected = len(required) * len(judge_shapes) if required else len(judged)
+    missing = [
+        f"{shape}/{arm}"
+        for shape in judge_shapes
+        for arm in required
+        if not any(s["shape"] == shape and s["arm"] == arm for s in summary)
+    ]
+    failed = [
+        f"{s['shape']}/{s['arm']}"
+        for s in judged
+        if not s["criterion_met"]
+    ]
+    overall_met = bool(required) and not failed and not missing and len(judged) == expected
+    overall = {
+        "required_arms": required,
+        "reference_arms_not_judged": reference,
+        "judging_shapes": judge_shapes,
+        "judged_combinations": len(judged),
+        "expected_combinations": expected,
+        "missing_combinations": missing,
+        "failed_combinations": failed,
+        "criterion_met": overall_met,
+        "wording": (
+            "该判据在单机 netns + 真内核 HTB/netem 下被满足"
+            if overall_met
+            else "该判据未被满足（不得写成「基本达标」或「带例外 PASS」）"
+        ),
+        "does_not_imply": [
+            "G2 解禁或 NFR 达标",
+            "跨公网 / 跨物理主机公平性",
+            "与外部 Cubic/Reno 竞争的表现",
+            "任何成功率或可达率（ADR-012）",
+        ],
+    }
+
     result = {
         "tool": "analyze_g2_fairness.py",
         "fixture_version": fixture.get("version"),
         "fixture_recorded_at": fixture.get("recorded_at"),
+        "mechanism_under_test": fixture.get("mechanism_under_test"),
         "scope": fixture.get("scope"),
         "summary": summary,
+        "overall": overall,
         "gate_snapshot": fixture.get("gate_snapshot"),
         "verdict_wording": "component-level fairness measurement only; not G2 unlock",
     }

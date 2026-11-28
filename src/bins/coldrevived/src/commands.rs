@@ -4,7 +4,7 @@
 //! 真实第三方下载器进程 / 真实 golden 文件解析。失败时返回 false 或错误码，
 //! **绝不返回「看起来像通过」的默认常量**。
 
-use crate::{ed2k_tasks, http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
+use crate::{dht_daemon, ed2k_tasks, http_get, http_post_json, nat_path, DownloadRecord, NodeState, NODE_SECRET};
 use cr_core::{unix_ts, Config, Json, CHALLENGE_WINDOW_SEC};
 use cr_engine::Engine;
 use cr_hash::sha256_hex;
@@ -27,6 +27,81 @@ fn args_of<'a>(req: &'a Json) -> Vec<String> {
         .iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
 }
 fn arg(args: &[String], i: usize) -> String { args.get(i).cloned().unwrap_or_default() }
+
+/// `dht announce-status | announce-off | announce-on`
+///
+/// 只碰闸门，不碰 DHT 本身：`announce-off` 之后进程仍在跑、路由表还在，
+/// 只是公共 `announce_peer` 一律被拒并留痕。**没有任何命令能让闸门在配置
+/// 未开启时放行**——授权是配置文件里的 `dht.announce_public`，不是运行时开关。
+fn dht_gate_cmd(args: &[String]) -> Json {
+    let sub = arg(args, 0);
+    let Some(gate) = dht_daemon::public_gate() else {
+        // DHT 没启用就是「没有闸门」，不能返回一个看起来正常的空快照。
+        return Json::obj(vec![
+            ("error", Json::s("DHT 未启用（dht.enabled=false），本进程没有闸门")),
+            ("sub", Json::s(&sub)),
+        ]);
+    };
+    let action = match sub.as_str() {
+        "" | "announce-status" => "status",
+        "announce-off" => "off",
+        "announce-on" => "on",
+        other => {
+            return Json::obj(vec![
+                ("error", Json::s(format!(
+                    "未知 dht 子命令 {other}；可用 announce-status | announce-off | announce-on"
+                ))),
+            ])
+        }
+    };
+    let mut note = "";
+    match action {
+        "off" => {
+            if gate.kill() {
+                note = "已在运行时关闭公共宣告（立即生效，持久化需改配置）";
+            } else {
+                note = "公共宣告此前已是关闭状态，无变化";
+            }
+        }
+        "on" => match gate.revive() {
+            Ok(()) => note = "已恢复公共宣告（仍受每分钟/每日配额约束）",
+            Err(r) => note = match r {
+                cr_api::dht::Refusal::Disabled => {
+                    "拒绝恢复：配置未开启 dht.announce_public，运行时开关不能替代授权"
+                }
+                _ => "拒绝恢复",
+            },
+        },
+        _ => {}
+    }
+    let s = gate.snapshot();
+    Json::obj(vec![
+        ("sub", Json::s(&sub)),
+        ("action", Json::s(action)),
+        ("enabled_by_config", Json::b(s.enabled)),
+        ("killed", Json::b(s.killed)),
+        ("max_per_min", Json::n(s.max_per_min as f64)),
+        ("daily_cap", Json::n(s.daily_cap as f64)),
+        ("used_this_minute", Json::n(s.used_this_minute as f64)),
+        ("used_today", Json::n(s.used_today as f64)),
+        ("sent_total", Json::n(s.sent_total as f64)),
+        ("refused_total", Json::n(s.refused_total as f64)),
+        ("refused_disabled", Json::n(s.refused_disabled as f64)),
+        ("refused_killed", Json::n(s.refused_killed as f64)),
+        ("refused_minute_rate", Json::n(s.refused_minute as f64)),
+        ("refused_daily_cap", Json::n(s.refused_daily as f64)),
+        ("last_refusal", match s.last_refusal {
+            Some(r) => Json::s(r), None => Json::Null }),
+        ("audit", Json::arr(s.audit.iter().map(|e| Json::obj(vec![
+            ("at", Json::n(e.at as f64)),
+            ("info_hash", Json::s(&e.info_hash)),
+            ("refused", match e.refused {
+                Some(r) => Json::s(r), None => Json::Null }),
+        ])).collect())),
+        ("note", Json::s(note)),
+        ("caveat", Json::s("闸门只管「允不允许发」；不代表公网可发现，也不是 S3/S6 证据")),
+    ])
+}
 
 fn peer_wake(cfg: &Config) -> Result<SocketAddr, String> {
     socket_addr(cfg.peer_host(), cfg.peer()?.wake_udp_port)
@@ -93,6 +168,9 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "golden" => golden(&cfg),
         "env" => env_defaults(state),
         "nat" => nat_path::dispatch(state, &cfg, &args),
+        // DOC-35 决定 3：公共 DHT 宣告闸门。默认关闭；这里提供运行时的读取与开关，
+        // 关闭动作立即生效并留痕。
+        "dht" => dht_gate_cmd(&args),
         other => Json::obj(vec![("error", Json::s(format!("未知命令 {}", other)))]),
     };
     result

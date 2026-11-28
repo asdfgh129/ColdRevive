@@ -16,6 +16,7 @@ pub mod bencode;
 pub mod id;
 pub mod krpc;
 pub mod node;
+pub mod public_gate;
 pub mod table;
 
 pub use announce::{announce_active_seed, token_from_get_peers, AnnounceOutcome};
@@ -23,6 +24,7 @@ pub use bencode::Value;
 pub use id::{Contact, NodeId, COMPACT_NODE_LEN, ID_LEN};
 pub use krpc::{Message, Query, Response};
 pub use node::{DhtClient, DhtNode, DhtServer, DhtStats, ServerHandle, MAX_DATAGRAM};
+pub use public_gate::{AuditEntry, GateConfig, GateSnapshot, PublicAnnounceGate, Refusal};
 pub use table::{RoutingTable, BUCKETS, K};
 
 /// 里程碑标签（与文档/机读清单对齐）。

@@ -1,7 +1,7 @@
 //! FR-18：opt-in 的 Mainline DHT daemon 接线。
 //!
 //! 每个活跃种子走真实的 `find_node → get_peers → announce_peer → 回查` 路径
-//! （见 `cr_dht::announce`）。状态只报真实结果：拿到 token 且回查见自己才叫
+//! （见 `cr_api::dht::announce`）。状态只报真实结果：拿到 token 且回查见自己才叫
 //! `announced_verified`；公共邻居不给 token 就如实记 `token_unavailable`，
 //! **不宣称公网可发现、也不改任何门禁常量**。
 //!
@@ -11,7 +11,7 @@
 use std::collections::{HashSet, VecDeque};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -19,6 +19,15 @@ use cr_core::Json;
 
 use crate::p1_config::P1Config;
 use crate::NodeState;
+
+/// DOC-35 决定 3 选 B：公共 DHT 宣告闸门的进程级句柄。
+/// 由 `spawn` 初始化，`/cli dht announce-off|on` 与 `/health` 共用同一份状态。
+static PUBLIC_GATE: OnceLock<Arc<cr_api::dht::PublicAnnounceGate>> = OnceLock::new();
+
+/// 取闸门句柄（未启用 DHT 时为 None——那是「没装闸门」，不是「闸门放行」）。
+pub fn public_gate() -> Option<Arc<cr_api::dht::PublicAnnounceGate>> {
+    PUBLIC_GATE.get().cloned()
+}
 
 /// 每轮最多从迭代查询中新增的候选节点数（硬上限，防拓扑遍历失控）。
 const MAX_DISCOVERED: usize = 32;
@@ -72,6 +81,12 @@ pub struct DhtStatus {
     pub last_cycle_at_ms: u64,
     /// 只描述**最近一轮**，不再用历史 verified 永久盖住后来的失败。
     pub last_cycle_status: String,
+    // DOC-35 决定 3：公共宣告闸门（默认关闭）。
+    pub public_enabled: bool,
+    pub public_killed: bool,
+    pub public_sent: u64,
+    pub public_refused: u64,
+    pub public_last_refusal: Option<&'static str>,
 }
 
 impl DhtStatus {
@@ -81,6 +96,8 @@ impl DhtStatus {
             attempts: 0, verified: 0, no_token: 0, failed: 0, last_error: String::new(),
             cycles: 0, requests: 0, discovered: 0, resource_skipped: 0,
             last_cycle_at_ms: 0, last_cycle_status: String::new(),
+            public_enabled: false, public_killed: false,
+            public_sent: 0, public_refused: 0, public_last_refusal: None,
         }
     }
 
@@ -123,6 +140,15 @@ impl DhtStatus {
             ("resource_skipped", Json::n(self.resource_skipped as f64)),
             ("last_cycle_at_ms", Json::n(self.last_cycle_at_ms as f64)),
             ("last_error", Json::s(&self.last_error)),
+            ("public_announce", Json::obj(vec![
+                ("enabled", Json::b(self.public_enabled)),
+                ("killed", Json::b(self.public_killed)),
+                ("sent", Json::n(self.public_sent as f64)),
+                ("refused", Json::n(self.public_refused as f64)),
+                ("last_refusal", match self.public_last_refusal {
+                    Some(r) => Json::s(r), None => Json::Null }),
+                ("note", Json::s("公共宣告授权闸门：默认关闭，开启后仍受每分钟/每日配额约束")),
+            ])),
             ("note", Json::s("本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据")),
         ])
     }
@@ -207,6 +233,7 @@ fn run_cycle(
     port: u16,
     status: &mut DhtStatus,
     cfg: &DhtRunConfig,
+    gate: &cr_api::dht::PublicAnnounceGate,
 ) {
     status.cycles += 1;
     status.last_cycle_at_ms = now_ms();
@@ -234,6 +261,18 @@ fn run_cycle(
         for ih in seeds {
             if used >= cfg.max_announces_per_cycle {
                 break 'outer;
+            }
+            // DOC-35 决定 3：公共地址必须先过闸门；内网/回环/自建测试节点不过闸门
+            // （那本来就不是「公共 DHT announce」）。
+            if cr_api::dht::public_gate::is_public_addr(addr) {
+                if let Err(r) = gate.try_acquire(ih, SystemTime::now()) {
+                    status.public_refused += 1;
+                    status.public_last_refusal = Some(r.label());
+                    // 拒绝不消耗宣告预算、也不冒充一次 attempt；继续看下一个 key，
+                    // 因为拒绝原因可能是「这个 key 太频繁」而不是「以后都别发」。
+                    continue;
+                }
+                status.public_sent += 1;
             }
             used += 1;
             pace(status, cfg);
@@ -328,11 +367,20 @@ pub fn spawn(
 ) -> Option<DhtHandle> {
     if !p1.dht_enabled { return None; }
     let cfg = DhtRunConfig::from(&p1);
+    // 闸门在这里落地：即使 `dht.enabled=true`，公共宣告仍要 `announce_public=true`。
+    let gate = Arc::new(cr_api::dht::PublicAnnounceGate::new(cr_api::dht::GateConfig {
+        enabled: p1.dht_announce_public,
+        max_per_min: p1.dht_public_max_per_min,
+        daily_cap: p1.dht_public_daily_cap,
+    }));
+    let _ = PUBLIC_GATE.set(gate.clone());
+    let cycle_gate = gate.clone();
     {
         let mut st = state.lock().unwrap();
         st.dht.enabled = true;
         st.dht.bootstrap = p1.dht_bootstrap.clone();
         st.dht.seed_count = hashes.len().min(cfg.max_seeds);
+        st.dht.public_enabled = p1.dht_announce_public;
     }
     let stop = Arc::new(AtomicBool::new(false));
     let srv_stop = stop.clone();
@@ -385,7 +433,10 @@ pub fn spawn(
                     let st = state.lock().unwrap();
                     st.dht.clone()
                 };
-                run_cycle(&client, &node, &bootstraps, &hashes, port, &mut snapshot, &cfg);
+                run_cycle(
+                    &client, &node, &bootstraps, &hashes, port, &mut snapshot, &cfg, &cycle_gate,
+                );
+                snapshot.public_killed = cycle_gate.killed();
                 {
                     let mut st = state.lock().unwrap();
                     st.dht = snapshot;
@@ -408,7 +459,16 @@ mod tests {
             attempts: 0, verified: 0, no_token: 0, failed: 0, last_error: String::new(),
             cycles: 0, requests: 0, discovered: 0, resource_skipped: 0,
             last_cycle_at_ms: 0, last_cycle_status: String::new(),
+            public_enabled: false, public_killed: false,
+            public_sent: 0, public_refused: 0, public_last_refusal: None,
         }
+    }
+
+    /// 测试用闸门：**故意用默认（关闭）配置**。回环地址不过闸门，
+    /// 所以这些用例仍然走真实 announce；一旦哪天有人把闸门误加到内网路径上，
+    /// 这些用例会立刻失败——这正是我们要的护栏。
+    fn test_gate() -> cr_api::dht::PublicAnnounceGate {
+        cr_api::dht::PublicAnnounceGate::new(cr_api::dht::GateConfig::default())
     }
 
     fn test_cfg() -> DhtRunConfig {
@@ -443,7 +503,7 @@ mod tests {
         let hashes = [[0x55u8; cr_api::dht::ID_LEN]];
         let mut status = test_status();
         status.bootstrap = vec![server.addr.to_string()];
-        run_cycle(&client, &node, &[server.addr], &hashes, port, &mut status, &test_cfg());
+        run_cycle(&client, &node, &[server.addr], &hashes, port, &mut status, &test_cfg(), &test_gate());
         assert_eq!(status.attempts, 1);
         assert_eq!(status.verified, 1);
         assert_eq!(status.last_cycle_status, "announced_verified");
@@ -459,7 +519,7 @@ mod tests {
         status.bootstrap = vec!["127.0.0.1:9".into()];
         let cfg = DhtRunConfig { timeout: Duration::from_millis(120), ..test_cfg() };
         run_cycle(&client, &node, &["127.0.0.1:9".parse().unwrap()],
-                  &[[0x66u8; cr_api::dht::ID_LEN]], 6881, &mut status, &cfg);
+                  &[[0x66u8; cr_api::dht::ID_LEN]], 6881, &mut status, &cfg, &test_gate());
         assert_eq!(status.attempts, 0);
         assert_eq!(status.failed, 1);
         assert_eq!(status.last_cycle_status, "failed");
@@ -475,7 +535,7 @@ mod tests {
         let mut status = test_status();
         let cfg = DhtRunConfig { max_announces_per_cycle: 2, ..test_cfg() };
         let hashes = [[0x77u8; cr_api::dht::ID_LEN]; 9];
-        run_cycle(&client, &node, &[server.addr], &hashes, 6881, &mut status, &cfg);
+        run_cycle(&client, &node, &[server.addr], &hashes, 6881, &mut status, &cfg, &test_gate());
         assert!(status.attempts <= 2, "预算必须硬封顶，实际 {}", status.attempts);
         assert!(status.requests <= 4, "find_node 与 announce 总请求也应受预算约束");
     }

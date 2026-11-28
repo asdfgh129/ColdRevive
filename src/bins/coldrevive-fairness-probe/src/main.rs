@@ -189,6 +189,18 @@ fn run_flow(args: &[String]) -> Result<(), String> {
         cwnd_max: 32,
         beta: 0.5,
         pacing: boolean(args, "--pacing", false)?,
+        // ADR-025：默认 aimd，逐字节保持 v1 量具行为；`--cc-mode ledbat` 才换信号。
+        mode: match opt(args, "--cc-mode") {
+            None => cr_nat::relay_udp_stream::CcMode::Aimd,
+            Some(v) => {
+                let s = v.trim().to_ascii_lowercase();
+                if s != "aimd" && s != "ledbat" {
+                    return Err(format!("--cc-mode 只能是 aimd 或 ledbat，当前 {v}"));
+                }
+                cr_nat::relay_udp_stream::CcMode::from_mode_str(&s)
+            }
+        },
+        ..CongestionConfig::default()
     };
 
     let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(2);
@@ -231,7 +243,9 @@ fn run_flow(args: &[String]) -> Result<(), String> {
                 "{{\"bytes_read\":{},\"bytes_read_counter\":{},\"retransmits\":{},",
                 "\"cc\":{{\"enabled\":{},\"cwnd_x100\":{},\"srtt_ms\":{},",
                 "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{},",
-                "\"backpressure\":{}}},",
+                "\"backpressure\":{},\"mode\":\"{}\",\"base_delay_ms\":{},",
+                "\"queued_delay_ms\":{},\"ledbat_updates\":{},\"loss_ignored\":{},",
+                "\"collapse_resets\":{}}},",
                 "\"samples\":[{}]}}"
             ),
             total,
@@ -244,6 +258,12 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             stats.loss_events,
             stats.paced_new_segments,
             stats.relay_backpressure_events,
+            stats.mode.label(),
+            stats.base_delay_ms,
+            stats.queued_delay_ms,
+            stats.ledbat_updates,
+            stats.loss_ignored_low_delay,
+            stats.collapse_resets,
             sample_pairs,
         ))
     });
@@ -281,7 +301,9 @@ fn run_flow(args: &[String]) -> Result<(), String> {
                 "{{\"bytes_written\":{},\"retransmits\":{},",
                 "\"cc\":{{\"enabled\":{},\"cwnd_x100\":{},\"srtt_ms\":{},",
                 "\"rtt_samples\":{},\"loss_events\":{},\"paced_new\":{},",
-                "\"backpressure\":{}}}}}"
+                "\"backpressure\":{},\"mode\":\"{}\",\"base_delay_ms\":{},",
+                "\"queued_delay_ms\":{},\"ledbat_updates\":{},\"loss_ignored\":{},",
+                "\"collapse_resets\":{}}}}}"
             ),
             bytes,
             retransmits,
@@ -292,6 +314,12 @@ fn run_flow(args: &[String]) -> Result<(), String> {
             stats.loss_events,
             stats.paced_new_segments,
             stats.relay_backpressure_events,
+            stats.mode.label(),
+            stats.base_delay_ms,
+            stats.queued_delay_ms,
+            stats.ledbat_updates,
+            stats.loss_ignored_low_delay,
+            stats.collapse_resets,
         ))
     });
 
