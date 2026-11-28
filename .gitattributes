@@ -16,3 +16,7 @@
 *.png       binary
 *.jpg       binary
 *.ico       binary
+
+# 预注册判据文件：sha256 登记在文档里，字节必须跨 checkout 稳定。
+# 显式 -text 禁止任何行尾规范化，避免 core.autocrlf 把 sha 改成不可复现。
+tests/fixtures/r02-operational-rate.toml -text

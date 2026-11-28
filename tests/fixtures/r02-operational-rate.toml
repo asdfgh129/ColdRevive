@@ -1,0 +1,95 @@
+# R-02 公共 KAD 运营速率判据（预注册；在采集任何公网样本之前写入）
+#
+# 授权链：DOC-35 决定 6 授权公网发布动作本身；决定 7 选 C，授权突破 G0
+# sample_size 上限做真·全量双轨发布，并要求立即开公共 DHT 闸门（受控配额）。
+# 本文件把「运营速率 + 全量」落成可判定的固定参数；采样期间不得改动。
+# 改任一项即须新时间戳 + 新 sha256 + 新证据，不得调阈值解释旧数据。
+#
+# 三桶规则逐字沿用 docs/05-quality/RISK.md §2 的 R-02 观测口径，本文件不改其阈值：
+#   协议层不可解析不进预警分母；索引层拒绝计入；成功收敛；第二桶占有效样本 >20% 触发预警。
+# 本判据只新增「运营速率执行参数」，不降低既有证据要求（降判据 ≠ 降证据）。
+
+recorded_at = "2026-11-28T20:58:57+08:00"
+version = "r02-operational-rate-v1"
+scope = "公共 eMule KAD 真实 UDP 双轨发布（0x43 关键词 + 0x44 源）；非回环 / 非 LAN；不产出公网可达性或成功率结论"
+authorization = "DOC-35 决定 6 + 决定 7=C"
+supersedes_g0 = "S2.public_kad_approval.confirmed.sample_size=3 与 hard_caps.sample_size_max=10；决定 7=C 明确突破，须在 spikes.json 留痕新旧值"
+
+[publish_corpus]
+# 「全量」的可判定定义：本机没有真实共享文件库（PLAN §23.6：LAN eMule 共享文件数为 0），
+# 故用合成唯一 key 模拟全量发布的负载特征；这不是某个真实用户的共享文件集合。
+# 若所有者要改用真实文件集合，必须在采样前改本文件并换新 sha，不得中途替换。
+kind = "synthetic_unique_keys"
+key_count = 64
+tracks_per_key = 2
+total_publish_requests = 128
+key_derivation = "SHA1('R02_V1:<seq>:kw'|'R02_V1:<seq>:src')[0..16], seq=0..key_count-1"
+payload = "128-bit key + Node_Descriptor Tag 列表；不含明文文件名（发布明文文件名是 LEGAL-REVIEW L2 待答问题）"
+search_after_publish = true
+
+[rate]
+pps = 1.0
+# 决定 7=C 只突破 sample_size 上限；pps 仍留在 G0 rate_limit_pps_max=1.0 内，缩小风险面。
+token_bucket = true
+inter_publish_gap_ms = 1000
+
+[nodes]
+min_distinct_nodes = 10
+dedup_key = "source_ip"
+selection = "新鲜 BOOTSTRAP_RES 联系人 -> KADEMLIA2 迭代收敛到 SEARCHTOLERANCE 邻域 -> verified_in_zone"
+bootstrap_max_age_hours = 48
+distribution = "round_robin_over_distinct_nodes"
+unconverged_policy = "skip_and_record"
+
+[window]
+bootstrap_iteration_timeout_s = 30
+per_request_timeout_s = 10
+wall_clock_cap_s = 900
+day_window = "UTC，与 GateConfig.daily_cap 对齐"
+
+[buckets]
+protocol_unparseable = ["0xE5_zlib", "rc4", "timeout", "no_hello_verification", "not_converged_to_searchtolerance"]
+protocol_unparseable_in_denominator = false
+index_rejected = ["PUBLISH_RES_explicit_reject", "payload_cap", "namespace_key_dropped", "no_PUBLISH_RES_after_verified_in_zone"]
+index_rejected_in_denominator = true
+success = ["PUBLISH_RES_confirm", "SEARCH_RES_hit_descriptor"]
+warning_threshold_ratio = 0.20
+min_effective_samples = 10
+
+[precondition]
+failure_verdict = "inconclusive_environment_blocked"
+failure_criteria = "与 KAD 无关的公网高位 UDP 往返也失败（STUN 19302/3478），且 DNS/UDP-53 正常"
+stun_is_proxy_only = true
+lan_emule_not_valid = true
+
+[evidence]
+required_fields = [
+  "recorded_at", "criteria_sha256", "git_commit", "binary_sha256",
+  "bootstrap_file_sha256", "bootstrap_capture_time", "per_node_counts",
+  "bucket_counts", "raw_packets", "gate_snapshot", "wall_clock_elapsed",
+]
+raw_packets_must_be_archived = true
+per_node_counts_required = true
+gate_snapshot_required = true
+no_success_rate_claim = true
+no_reachability_claim = true
+gate_must_not_auto_pass = true
+
+[gate_snapshot]
+g2_claim = true
+s6_status = "not_run"
+evidence_valid_for_pass = false
+auto_pass = false
+runtime_verified = false
+counts_toward_nfr02 = false
+
+[forbidden_claims]
+entries = [
+  "不得写公共 DHT 已发布或公网可发现或 FR-25 公网侧已验证",
+  "不得写 R-02 已关闭；结论只由实验执行人依证据人工回填",
+  "不得报成功率 / 可达率（ADR-012）",
+  "不得把本轮结果外推为多 NAT 形态或跨公网结论",
+  "不得在本文件写入后修改阈值来解释数据",
+  "不得以 LAN 回环结果代替公网证据",
+  "不得在 L2 书面法务意见缺失时宣称合规风险已消除",
+]
