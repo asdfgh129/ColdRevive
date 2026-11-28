@@ -172,8 +172,35 @@ def main() -> int:
         ],
     }
 
+    # 采样侧的 provenance 必须原样进结论：git_commit 为 unknown 时，
+    # source_tree_sha256 是「这次到底跑了哪棵树」的唯一硬证据，不许事后推导回填。
+    prov: dict[str, str] = {}
+    prov_path = pathlib.Path(args.dir) / "provenance.txt"
+    if prov_path.is_file():
+        for line in prov_path.read_text(encoding="utf-8").splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                prov[k.strip()] = v.strip()
+    provenance_note = None
+    if prov.get("git_commit", "unknown") == "unknown":
+        sha = prov.get("source_tree_sha256", "")
+        if sha and sha != "unavailable":
+            provenance_note = (
+                "git_commit=unknown（tar 快照无 .git）；采样当场记下的 source_tree_sha256="
+                + sha + " 是本次源码树的硬证据。不得事后用 blob 比对伪造 git_commit。"
+            )
+        else:
+            provenance_note = (
+                "git_commit=unknown 且缺 source_tree_sha256：本轮不具备可复现证明，"
+                "不得宣称 provenance 完整"
+            )
+    else:
+        provenance_note = "git_commit 来自采样现场的 git 仓库"
+
     result = {
         "tool": "analyze_g2_fairness.py",
+        "provenance": prov,
+        "provenance_note": provenance_note,
         "fixture_version": fixture.get("version"),
         "fixture_recorded_at": fixture.get("recorded_at"),
         "mechanism_under_test": fixture.get("mechanism_under_test"),

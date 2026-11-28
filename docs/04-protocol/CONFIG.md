@@ -108,6 +108,7 @@ cors_allowlist = []
 | nat | `data_plane_carrier` | `tcp` | 中继 BT 数据面走哪种承载：`tcp`（默认，[ADR-023](../02-architecture/adr/ADR-023-bt-over-relay.md)）或 `udp`（[ADR-024](../02-architecture/adr/ADR-024-udp-bt-data-plane.md)，需同时配 `relay_udp`）。非法值回落 `tcp` 并告警。选 `udp` 时发起方在 UDP 中继会话上做 OPEN/OPENED（**未收到 `OPENED` 不登记隧道**），持有方在 `relay_udp` 订阅之外另起数据面服务；`/health.data_plane` 增加 `carrier`、`udp_tunnels`、`udp_tunnels_alive`。默认 `tcp` 保证 W58/W59/W60 的结论不变 |
 | nat | `udp_cc_enabled` / `udp_cc_pacing` | `false` / `false` | ADR-024 阶段 3 的 UDP 可靠层拥塞控制，默认全关。开启后发送窗口从固定 32 段改为 AIMD（ACK 加性增长、丢失乘性减半且每 RTT 最多一次），RTO 由真实 RTT 推导；`pacing=true` 把新段摊到整个 RTT，重传仍立即发。非法整数在配置层报错，不静默夹到「以为开了」。`/health.data_plane.udp_cc_*` 是机制快照，**不是跨公网公平性结论** |
 | nat | `udp_cc_cwnd_init` / `udp_cc_beta_x100` | `4` / `50` | 初始拥塞窗口（1..32）与乘性减小系数（10..90，除以 100）。只在 `udp_cc_enabled=true` 时生效；越界直接报错 |
+| nat | `udp_cc_mode` | `aimd` | ADR-025：`aimd`（丢包驱动，既有行为）或 `ledbat`（排队时延驱动，丢包不降窗、连续 6 轮 RTO 才塌陷复位）。只在 `udp_cc_enabled=true` 时生效；**拼错直接报错，不静默回落**——否则「以为开了 LEDBAT 实际跑 AIMD」，量出来的数据会挂错名字。`/health.data_plane.udp_cc_*` 给机制快照；单机 netns 的判据 v2 结果不是公网公平性结论 |
 | nat | `udp_per_session_rate` / `udp_per_session_burst` | `0` / `0`（关） | 这是**中继进程**的启动参数（`coldrevive-relay --udp-per-session-rate/--udp-per-session-burst`），不是 daemon 配置。每会话字节桶与全局 `data_byte_rate` 叠加；v2.4.118 起超会话预算的 DATA 进入**有界整形队列**（每会话 64 帧、总 256 帧）等令牌，不再立刻拒收——立即拒收会让发送端按 RTO 退避，RTT 反馈环造成长期不公平。队列满才返回带原因的 `BandwidthLimited` STATUS。计数分开：`per_session_limited`（触发整形/拒绝）、`per_session_shaped`（入队）、`per_session_dropped`（队列满拒绝）。默认 0 = 不建桶、老行为逐字节不变 |
 | nat | `relay_rendezvous` | 空 | **中继会合地址**（IPv4，只允许 RFC 5737 网段 `203.0.113.0/24`、`198.51.100.0/24`、`192.0.2.0/24`），必须与 `punch_route=true` 同时配置。没有入向映射时，持有者把它作为 `bt_external`（`kind=relay`）通告出去，对端引擎据此拨号、再由本机 SOCKS5 桥改道到中继隧道。它**不是端口映射**：不进 `is_explicit_port_mapping()`，也不作为公网入向证据；填真实 IP 或私网地址会在启动时直接报错（避免被 tracker/可达性声明读成「真的有公网入向」） |
 | engine | `dir` | `<workdir>/downloads` | 引擎下载目录 |
@@ -141,6 +142,8 @@ cors_allowlist = []
 | dht | `timeout_ms` / `refresh_secs` / `min_interval_ms` | `2000` / `600` / `50` | 单请求超时、轮次间隔、请求间最小间隔。`min_interval_ms=0` 表示不刻意限速；前两项 0 或非整数回落缺省 |
 | dht | `max_bootstraps` / `max_seeds` / `max_keys` | `8` / `50` / `512` | 每轮引导节点与种子数上限；`max_keys` 是本地 DHT 节点保存 peer 表的 infohash 总数上限，超出淘汰最旧 key。0 回落缺省，不解释成「无限」 |
 | dht | `max_announces_per_cycle` / `rss_soft_skip_mb` | `16` / `0` | 每轮宣告尝试硬上限（每次内部仍走真实 token 门）与 RSS 软跳过阈值（MB，0=关）。读不到 RSS 时不参与判定，**绝不当 0** |
+| dht | `announce_public` | `false` | DOC-35 决定 3：向**公共地址** `announce_peer` 的授权闸门，默认关；`dht.enabled=true` 也不会自动打开。回环/私网/CGNAT/链路本地/组播目标不过闸门（自建测试节点不受影响） |
+| dht | `public_max_per_min` / `public_daily_cap` | `4` / `200` | 公共宣告的双配额：固定分钟窗口与 UTC 日上限。超限按原因拒绝、留审计，不消耗其他 key 的预算。`/cli dht announce-off` 立即 kill，`announce-on` 在配置未授权时**必须失败**——运行时开关不能替代所有者授权。放行/拒绝/kill/revive 全进有界审计（16 条），`/health.dht.public_announce.audit` 与 `/cli dht announce-status` 读同一份；**不代表公网可发现或 FR-25 已验证** |
 
 `GET /openapi.json` 始终可用，列出真实 REST 路径与 JSON-RPC 方法（含 `mutating` 标记）。
 跨协议补源与信誉/激励仍是 `not_implemented` 状态接口，不返回伪造来源或分数。

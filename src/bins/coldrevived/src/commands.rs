@@ -33,7 +33,7 @@ fn arg(args: &[String], i: usize) -> String { args.get(i).cloned().unwrap_or_def
 /// 只碰闸门，不碰 DHT 本身：`announce-off` 之后进程仍在跑、路由表还在，
 /// 只是公共 `announce_peer` 一律被拒并留痕。**没有任何命令能让闸门在配置
 /// 未开启时放行**——授权是配置文件里的 `dht.announce_public`，不是运行时开关。
-fn dht_gate_cmd(args: &[String]) -> Json {
+fn dht_gate_cmd(state: &Shared, args: &[String]) -> Json {
     let sub = arg(args, 0);
     let Some(gate) = dht_daemon::public_gate() else {
         // DHT 没启用就是「没有闸门」，不能返回一个看起来正常的空快照。
@@ -75,6 +75,8 @@ fn dht_gate_cmd(args: &[String]) -> Json {
         _ => {}
     }
     let s = gate.snapshot();
+    // CLI 开关后立刻回写 NodeState：/health 不该等到下一轮宣告才反映 kill/revive。
+    state.lock().unwrap().dht.sync_gate(&s);
     Json::obj(vec![
         ("sub", Json::s(&sub)),
         ("action", Json::s(action)),
@@ -97,6 +99,8 @@ fn dht_gate_cmd(args: &[String]) -> Json {
             ("info_hash", Json::s(&e.info_hash)),
             ("refused", match e.refused {
                 Some(r) => Json::s(r), None => Json::Null }),
+            ("action", match e.action {
+                Some(a) => Json::s(a), None => Json::Null }),
         ])).collect())),
         ("note", Json::s(note)),
         ("caveat", Json::s("闸门只管「允不允许发」；不代表公网可发现，也不是 S3/S6 证据")),
@@ -170,7 +174,7 @@ pub fn dispatch(state: &Shared, req: &Json) -> Json {
         "nat" => nat_path::dispatch(state, &cfg, &args),
         // DOC-35 决定 3：公共 DHT 宣告闸门。默认关闭；这里提供运行时的读取与开关，
         // 关闭动作立即生效并留痕。
-        "dht" => dht_gate_cmd(&args),
+        "dht" => dht_gate_cmd(state, &args),
         other => Json::obj(vec![("error", Json::s(format!("未知命令 {}", other)))]),
     };
     result

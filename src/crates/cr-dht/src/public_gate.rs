@@ -66,10 +66,17 @@ pub struct AuditEntry {
     /// Unix 秒。
     pub at: u64,
     /// 被放行 / 被拒绝的 infohash（小写 hex，40 字符）。
+    /// kill/revive 这类开关动作没有 infohash，填 40 个 `0`（见 action）。
     pub info_hash: String,
     /// `None` = 放行；`Some(reason)` = 拒绝。
     pub refused: Option<&'static str>,
+    /// `Some("kill"|"revive"|"revive_denied")` = 运行时开关动作；
+    /// `None` = 一次 announce 决策。两者不能混为一谈。
+    pub action: Option<&'static str>,
 }
+
+/// 无 infohash 的开关动作用这个占位串，避免把空串当成合法 hash。
+pub const NO_INFO_HASH: &str = "0000000000000000000000000000000000000000";
 
 /// 只读快照，供 `/health` 与 `/cli dht announce-status` 使用。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,7 +184,9 @@ impl PublicAnnounceGate {
                 st.used_minute += 1;
                 st.used_day += 1;
                 st.sent_total += 1;
-                push_audit(&mut st.audit, AuditEntry { at: secs, info_hash: hex, refused: None });
+                push_audit(&mut st.audit, AuditEntry {
+                    at: secs, info_hash: hex, refused: None, action: None,
+                });
                 Ok(())
             }
             Some(r) => {
@@ -191,7 +200,9 @@ impl PublicAnnounceGate {
                 st.last_refusal = Some(r.label());
                 push_audit(
                     &mut st.audit,
-                    AuditEntry { at: secs, info_hash: hex, refused: Some(r.label()) },
+                    AuditEntry {
+                        at: secs, info_hash: hex, refused: Some(r.label()), action: None,
+                    },
                 );
                 Err(r)
             }
@@ -199,22 +210,39 @@ impl PublicAnnounceGate {
     }
 
     /// 运行时一键关闭。幂等；返回是否发生了状态变化。
+    /// DOC-35：关闭动作本身必须留审计，不能只写 CLI 返回值。
     pub fn kill(&self) -> bool {
+        let secs = unix_secs();
         let mut st = self.inner.lock().unwrap();
         if st.killed {
             return false;
         }
         st.killed = true;
+        push_audit(&mut st.audit, AuditEntry {
+            at: secs, info_hash: NO_INFO_HASH.to_string(), refused: None,
+            action: Some("kill"),
+        });
         true
     }
 
     /// 重新放行。**只有配置本身已开启时才允许**——否则「revive 成功但实际仍拒绝」会误导运维。
+    /// 成功与失败都留审计：失败不能藏在返回值里，审计要能回答「谁在配置没授权时试过开」。
     pub fn revive(&self) -> Result<(), Refusal> {
+        let secs = unix_secs();
         if !self.cfg.enabled {
+            let mut st = self.inner.lock().unwrap();
+            push_audit(&mut st.audit, AuditEntry {
+                at: secs, info_hash: NO_INFO_HASH.to_string(),
+                refused: Some(Refusal::Disabled.label()), action: Some("revive_denied"),
+            });
             return Err(Refusal::Disabled);
         }
         let mut st = self.inner.lock().unwrap();
         st.killed = false;
+        push_audit(&mut st.audit, AuditEntry {
+            at: secs, info_hash: NO_INFO_HASH.to_string(), refused: None,
+            action: Some("revive"),
+        });
         Ok(())
     }
 
@@ -241,6 +269,10 @@ impl PublicAnnounceGate {
             audit: st.audit.iter().cloned().collect(),
         }
     }
+}
+
+fn unix_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
 fn push_audit(buf: &mut VecDeque<AuditEntry>, e: AuditEntry) {
@@ -382,6 +414,35 @@ mod tests {
             let sa: SocketAddr = a.parse().unwrap();
             assert!(!is_public_addr(sa), "{a} 不该被当作公共地址");
         }
+    }
+
+    #[test]
+    fn gate_actions_are_audited_and_never_look_like_announces() {
+        let g = PublicAnnounceGate::new(GateConfig { enabled: true, max_per_min: 4, daily_cap: 0 });
+        assert!(g.kill());
+        assert!(!g.kill(), "重复关闭无状态变化，也不该再写一条");
+        assert_eq!(g.try_acquire(&ih(1), at(60)), Err(Refusal::Killed));
+        assert!(g.revive().is_ok());
+        let s = g.snapshot();
+        let actions: Vec<_> = s.audit.iter().filter(|e| e.action.is_some()).collect();
+        assert_eq!(actions.len(), 2, "kill 与 revive 各留一条: {:?}", s.audit);
+        assert_eq!(actions[0].action, Some("kill"));
+        assert_eq!(actions[1].action, Some("revive"));
+        for e in actions {
+            assert_eq!(e.info_hash, NO_INFO_HASH);
+            assert!(e.refused.is_none(), "开关动作不是一次被拒的 announce");
+        }
+        // announce 决策不许带 action，否则审计会把「拒绝一次 announce」
+        // 误读成「有人关了闸门」。
+        assert!(s.audit.iter().any(|e| e.action.is_none() && e.refused == Some("killed")));
+
+        // 配置未授权时尝试 revive：失败也必须留痕。
+        let closed = PublicAnnounceGate::new(GateConfig::default());
+        assert_eq!(closed.revive(), Err(Refusal::Disabled));
+        let a = closed.snapshot().audit;
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].action, Some("revive_denied"));
+        assert_eq!(a[0].refused, Some("disabled"));
     }
 
     #[test]

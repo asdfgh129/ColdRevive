@@ -87,6 +87,9 @@ pub struct DhtStatus {
     pub public_sent: u64,
     pub public_refused: u64,
     pub public_last_refusal: Option<&'static str>,
+    /// 闸门审计的有界副本；每次宣告轮次与每次 CLI 开关后同步。
+    /// 没有它时 `/health` 只有计数，回答不了「刚才到底关没关、哪个 key 被拒」。
+    pub public_audit: Vec<cr_api::dht::AuditEntry>,
 }
 
 impl DhtStatus {
@@ -98,7 +101,19 @@ impl DhtStatus {
             last_cycle_at_ms: 0, last_cycle_status: String::new(),
             public_enabled: false, public_killed: false,
             public_sent: 0, public_refused: 0, public_last_refusal: None,
+            public_audit: Vec::new(),
         }
+    }
+
+    /// 从闸门快照同步「计数 + 审计」。CLI 开关后与每轮宣告后都调用，
+    /// 让 `/health` 不再等下一轮才反映真实状态。
+    pub fn sync_gate(&mut self, snap: &cr_api::dht::GateSnapshot) {
+        self.public_enabled = snap.enabled;
+        self.public_killed = snap.killed;
+        self.public_sent = snap.sent_total;
+        self.public_refused = snap.refused_total;
+        self.public_last_refusal = snap.last_refusal;
+        self.public_audit = snap.audit.clone();
     }
 
     pub fn status_label(&self) -> &'static str {
@@ -147,6 +162,12 @@ impl DhtStatus {
                 ("refused", Json::n(self.public_refused as f64)),
                 ("last_refusal", match self.public_last_refusal {
                     Some(r) => Json::s(r), None => Json::Null }),
+                ("audit", Json::arr(self.public_audit.iter().map(|e| Json::obj(vec![
+                    ("at", Json::n(e.at as f64)),
+                    ("info_hash", Json::s(&e.info_hash)),
+                    ("refused", match e.refused { Some(r) => Json::s(r), None => Json::Null }),
+                    ("action", match e.action { Some(a) => Json::s(a), None => Json::Null }),
+                ])).collect())),
                 ("note", Json::s("公共宣告授权闸门：默认关闭，开启后仍受每分钟/每日配额约束")),
             ])),
             ("note", Json::s("本地 Mainline DHT 宣告；不代表公网可发现，不改 S3/S6 判据")),
@@ -441,7 +462,7 @@ pub fn spawn(
                 run_cycle(
                     &client, &node, &bootstraps, &hashes, port, &mut snapshot, &cfg, &cycle_gate,
                 );
-                snapshot.public_killed = cycle_gate.killed();
+                snapshot.sync_gate(&cycle_gate.snapshot());
                 {
                     let mut st = state.lock().unwrap();
                     st.dht = snapshot;
@@ -466,6 +487,7 @@ mod tests {
             last_cycle_at_ms: 0, last_cycle_status: String::new(),
             public_enabled: false, public_killed: false,
             public_sent: 0, public_refused: 0, public_last_refusal: None,
+            public_audit: Vec::new(),
         }
     }
 
@@ -497,6 +519,24 @@ mod tests {
         assert_eq!(j.get("enabled").and_then(Json::as_bool), Some(false));
         assert_eq!(j.get("status").and_then(Json::as_str), Some("disabled"));
         assert_eq!(DhtStatus::disabled().attempts, 0);
+    }
+
+    #[test]
+    fn gate_audit_is_exposed_in_health_immediately() {
+        let gate = cr_api::dht::PublicAnnounceGate::new(cr_api::dht::GateConfig {
+            enabled: true, max_per_min: 4, daily_cap: 0,
+        });
+        assert!(gate.kill());
+        let mut status = test_status();
+        // 模拟 /cli dht announce-off 之后的同步动作。
+        status.sync_gate(&gate.snapshot());
+        let j = status.json();
+        let p = j.get("public_announce").expect("health 必须带闸门块");
+        assert_eq!(p.get("killed").and_then(Json::as_bool), Some(true));
+        let audit = p.get("audit").and_then(Json::as_arr).expect("health 必须带审计条目");
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].get("action").and_then(Json::as_str), Some("kill"));
+        assert_eq!(audit[0].get("refused").and_then(Json::as_str), None);
     }
 
     #[test]

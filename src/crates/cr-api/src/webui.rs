@@ -159,7 +159,15 @@ q('tasks').addEventListener('click', async e => {
   if (!b) return;
   const act = b.dataset.act, gid = b.dataset.gid;
   if (!gid) return;
-  const method = act === 'remove' ? 'aria2.removeDownloadResult' : 'aria2.' + act;
+  // 显式方法表：按钮名不直接拼进 RPC 方法，避免未知 data-act
+  // 变成任意 aria2 方法调用；也让「有哪些任务操作」在代码里可审计。
+  const methods = {
+    pause: 'aria2.pause',
+    unpause: 'aria2.unpause',
+    remove: 'aria2.removeDownloadResult',
+  };
+  const method = methods[act];
+  if (!method) { setErr('未知操作：' + act); return; }
   try { await rpc(method, withToken([gid])); setErr(''); await loadTasks(); }
   catch (err) { setErr(act + ' 失败：' + err.message); }
 });
@@ -250,6 +258,23 @@ mod tests {
         assert!(APP_JS.contains("onclose"), "必须处理断线");
         assert!(APP_JS.contains("已断开"), "断线必须有可见文案");
         assert!(APP_JS.contains("setTimeout(connect"), "断线后要有退避重连");
+    }
+
+    #[test]
+    fn ui_exposes_token_hint_and_task_actions() {
+        // 决定 2 选 B：没有托盘，浏览器页面就是唯一界面。可交付的最低条件：
+        // ① 提示 rpc-secret 在哪填；② 任务增删暂停可用；③ 错误分鉴权/连接两类。
+        assert!(APP_JS.contains("rpc-secret"), "必须提示 token 输入位置");
+        for method in [
+            "aria2.tellActive", "aria2.tellWaiting", "aria2.tellStopped",
+            "aria2.addUri", "aria2.pause", "aria2.unpause",
+            "aria2.removeDownloadResult",
+        ] {
+            assert!(APP_JS.contains(method), "缺少任务操作 {method}");
+        }
+        assert!(APP_JS.contains("读取任务失败"), "读取失败必须可见");
+        assert!(APP_JS.contains("添加失败"), "添加失败必须可见");
+        assert!(APP_JS.contains("连接已断开"), "断线原因必须可见");
     }
 
     #[test]

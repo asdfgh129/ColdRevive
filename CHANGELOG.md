@@ -1,3 +1,25 @@
+## [2.4.163] - 2026-11-28 — 四项决定闭环补强：闸门动作审计、健康快照即时同步、provenance harness
+
+> **不改门禁、不改判据、不改已归档证据**：`g2_claim=true`、`s6_status=not_run`、
+> `evidence_valid_for_pass=false`、`auto_pass=false`、EX-1 的 v1 FAIL 78/80、
+> `runtime_verified=false`、`counts_toward_nfr02=false` 全部保持原值。
+> v2.4.162 的公平性采样证据与 `PROVENANCE-NOTE.md` 一字未动；本版只修下一轮的执行方式。
+
+- **补 DOC-35 决定 3 的明文要求**：公共 DHT 闸门的 `kill` / `revive` / `revive_denied`
+  现在都写进有界审计环（`action` 字段与 announce 决策分开，`info_hash` 用 40 个 0 占位），
+  避免「关了闸门但审计只显示计数变化」。`/health.dht.public_announce.audit` 与
+  `/cli dht announce-status` 读同一份快照。
+- **CLI 开关即时生效于可观测面**：`commands::dht_gate_cmd` 与宣告轮次都调用
+  `DhtStatus::sync_gate()`；`/health` 不再等下一轮才反映 killed / 计数 / 审计。
+- **公平性 provenance 欠账改成工具层修复**：`run_g2_fairness.sh` 采样当场计算并记录
+  `source_tree_sha256`；`analyze_g2_fairness.py` 原样带进 `summary.json`。tar 快照没有
+  `.git` 时照实写 `git_commit=unknown`，**禁止事后用 blob 比对伪造 commit**。
+- **文档**：DOC-35 回填每项的完成点 / 下一到期点 / 禁止措辞；`CONFIG.md` 补
+  `nat.udp_cc_mode` 与公共 DHT 授权字段；`TEST.md` 加第 13 节。
+- **测试**：`cr-dht` `public_gate` **7/7**、`coldrevived` `dht_daemon` **7/7**、
+  `cr-api` `webui` **5/5**（各新增 1 例）；全量串行回归 **587 passed / 0 failed / 3 ignored**
+  （`regression-full-20261128-v163.log`，比 v162 多 3 条）。
+
 ## [2.4.162] - 2026-11-28 — 四项决定落地：LEDBAT 判据 v2 采样通过；公共 DHT 闸门；Web UI 改推送
 
 > **不改门禁、不改判据阈值**：`g2_claim=true`、`s6_status=not_run`、

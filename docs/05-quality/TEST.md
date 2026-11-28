@@ -1029,17 +1029,36 @@ G3 保持 `not_run`；证据只证明「我方标准 .torrent 可被零改造第
   默认仍是 AIMD、`mode` 解析）。这些只证明「机制按书面语义动作」，**不产出公平性结论**。
 - **公共 DHT 宣告闸门**：`cr-dht` `public_gate` **6/6**（缺省关闭、分钟窗口、跨日配额、
   运行时开关且未授权时 `revive` 必须失败、审计环形有界、公共地址分类器）。
-  `coldrevived` `dht_daemon` 6/6、`p1_config` 5/5（缺省 `announce_public=false`，
+  `coldrevived` `dht_daemon` 7/7（v2.4.163 起）、`p1_config` 5/5（缺省 `announce_public=false`，
   `public_max_per_min=0` 回落缺省而非无限放行）。
   **测试不碰公网**：没有任何用例向公共地址发 `announce_peer`——那是不可撤回的副作用。
-- **Web UI 改推送（ADR-008）**：`cr-api` `webui` **4/4**，其中两例是护栏：
+- **Web UI 改推送（ADR-008）**：`cr-api` `webui` **5/5**（v2.4.163 起），其中两例是护栏：
   出现 `setInterval` 即失败（禁止回退到轮询）、断线必须有可见文案与退避重连
   （`onclose` + `setTimeout(connect`）。`coldrevived` 的 UI/OpenAPI 不遮蔽既有端点的用例仍通过。
-- **全量串行回归**：**584 passed / 0 failed / 3 ignored**
-  （`tests/ARCHIVE/evidence/regression-full-20261128-v162.log`，比 v160 多 14 条）。
+- **全量串行回归**：v2.4.162 **584 passed / 0 failed / 3 ignored**
+  （`tests/ARCHIVE/evidence/regression-full-20261128-v162.log`，比 v160 多 14 条）；
+  v2.4.163 **587 passed / 0 failed / 3 ignored**
+  （`tests/ARCHIVE/evidence/regression-full-20261128-v163.log`，比 v162 多 3 条）。
 - **门禁边界**：`g2_claim=true`（人为字段，未改）、`s6_status=not_run`、
   `evidence_valid_for_pass=false`、`auto_pass=false`、`runtime_verified=false`、
   `counts_toward_nfr02=false` 全部不变；本节不写 G2/S6/NFR-02 结论，不报成功率/可达率。
+
+### 13. v2.4.163 决定闭环补测
+
+- **闸门审计补齐**（DOC-35 决定 3 的明文要求）：`cr-dht::public_gate` **7/7**，新增一例断言
+  `kill` / `revive` / `revive_denied` 都进审计环，且开关动作带 `action`、用
+  `info_hash=0000…0000`，**不会被误读成一次 announce 拒绝**。
+  `coldrevived` `dht_daemon` **7/7**，新增一例断言 CLI 关闸后 `/health.dht.public_announce.audit`
+  立刻出现 `kill`（不必等下一轮宣告）。CLI 与宣告轮次都调用 `DhtStatus::sync_gate()`，
+  计数与审计来自同一份闸门快照。
+- **公平性 provenance harness 修正**：`tests/e2e/w61/run_g2_fairness.sh` 在采样**当场**写
+  `source_tree_sha256`（对 `src/`、`Cargo.toml/lock`、量具目录逐文件 sha256 后再取摘要）；
+  tar 快照无 `.git` 时 `git_commit=unknown` 仍是事实，不再事后推导回填。
+  `analyze_g2_fairness.py` 把这个字段与提示原样带进 `summary.json`。
+  **本条修的是下一轮**，v2.4.162 的证据与 `PROVENANCE-NOTE.md` 不改、不追认。
+- **文档闭环**：DOC-35 回填每项「本轮完成点 / 下一到期点 / 禁止措辞」；
+  `CONFIG.md` 补 `nat.udp_cc_mode` 与 `dht.announce_public/public_max_per_min/public_daily_cap`。
+- **未变**：EX-1 v1 FAIL 78/80、判据 v2 的 `criterion_met=true` 与边界措辞、所有门禁字段。
 
 ## 相关文档
 

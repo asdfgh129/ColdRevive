@@ -45,9 +45,21 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 # provenance 三项（EX-1 C4 第 2 条）：缺一项都不许宣称可复现。
+# 源码树哈希必须是**采样前**当场算的：tar 快照没有 .git 时，git_commit=unknown 是事实，
+# 不许事后靠 blob 比对推导再回填。这里把「跑了哪些源码」直接钉成目录摘要。
+source_tree_sha() {
+  local files
+  files=$(cd "$REPO" && find src Cargo.toml Cargo.lock tests/e2e/w61 \
+    -type f -not -path '*/target/*' -print 2>/dev/null | LC_ALL=C sort)
+  if [[ -z "$files" ]]; then echo "unavailable"; return; fi
+  (cd "$REPO" && printf '%s\n' "$files" | while IFS= read -r f; do
+      printf '%s  %s\n' "$(sha256sum "$f" | awk '{print $1}')" "$f"
+    done | sha256sum | awk '{print $1}')
+}
 {
   echo "git_commit=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
   echo "git_dirty=$(git -C "$REPO" status --porcelain 2>/dev/null | wc -l)"
+  echo "source_tree_sha256=$(source_tree_sha)"
   echo "kernel_release=$(uname -r)"
   echo "probe_sha256=$(sha256sum "$BIN" | awk '{print $1}')"
 } >"$OUT/provenance.txt"
