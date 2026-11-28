@@ -1,5 +1,5 @@
 ---
-doc_id: DOC-35
+doc_id: DOC-37
 title: G-3 中继运维面验收判据（预登记）
 category: 计划
 version: 1.1
@@ -10,7 +10,10 @@ updated: 2026-11-26
 
 # G-3 中继运维面验收判据（预登记）
 
-- 文档号：DOC-35
+- 文档号：DOC-37
+- 编号说明：2026-11-28 由 DOC-35 重编号为 DOC-37（DOC-35 已登记给 `OWNER-DECISIONS-2026-11-28.md`）。
+  历史文档中仍写作「DOC-35」的判据引用（DOC-34、G2-REVIEW-BRIEF、CHANGELOG v2.4.152、`g2-spike-verdicts.toml`）
+  均指本文；判据 sha256 `8e91943a…`、证据归档与门禁字段均未改。
 - 版本：v1.1（2026-11-26T08:32+08:00：预登记判据未改，追加 §5 实测结果）
 - 状态：**三项分句均实测通过；G-3 运维面关闭**（不改变 `g2_claim` 与三个工具字段）
 - 关联：DOC-34 §3 第 3 项（G-3 欠账原文）、ADR-014（数据预算）、`docs/07-operations/OPS.md`

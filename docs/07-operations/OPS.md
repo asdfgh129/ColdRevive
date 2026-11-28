@@ -92,7 +92,7 @@ python3 scripts/relay_ops_watch.py \
   stats 文件过期本身就是 `*_stats_stale` 告警。告警记录带 `condition/counter/delta_window/threshold/recorded_at/criteria_sha256`。
 - 仓库内**没有** relay systemd unit（只有 `coldrevived-a/b`），watch 进程需要由部署侧 supervisor 常驻。
 - 这里是「运维面可用性」，不是带宽/丢包 SLO；判据与实测边界见
-  [DOC-35](../06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md)。
+  [DOC-37](../06-plan/G3-RELAY-OPS-ACCEPTANCE-2026-11-26.md)。
 
 ## 4. 升级与数据迁移
 
